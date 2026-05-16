@@ -56,6 +56,7 @@ const authRow = document.querySelector("#authRow");
 const ghostBanner = document.querySelector("#ghostBanner");
 const ghostTrashButton = document.querySelector("#ghostTrashButton");
 const ghostReuploadButton = document.querySelector("#ghostReuploadButton");
+const wordCount = document.querySelector("#wordCount");
 
 const ime = new NaturalCodeIMEAdapter();
 
@@ -119,6 +120,41 @@ function computeDisplayName(doc, siblings) {
 function setSaveStatus(message, isError = false) {
   saveStatus.textContent = message;
   saveStatus.classList.toggle("error", isError);
+}
+
+// Pick the right "what's the state of this doc" status text — used after
+// a doc switch, so the bar reflects the new doc instead of stale text
+// from the previous one.
+function statusForDoc(doc) {
+  if (!doc) return "就绪";
+  if (doc.dirty) {
+    return state.authSignedIn ? "未同步" : "本地草稿";
+  }
+  if (doc.lastSyncedAt) {
+    return `已保存 ${formatTime(doc.lastSyncedAt)}`;
+  }
+  if (doc.modifiedAt) {
+    return `上次修改 ${formatTime(doc.modifiedAt)}`;
+  }
+  return "就绪";
+}
+
+// Word count. Chinese / Japanese / Korean ideographs are counted as
+// characters; Latin alphabetic runs are counted as words. Punctuation and
+// whitespace don't count toward either.
+function statsForText(text) {
+  const str = text ?? "";
+  const cjk = (str.match(/[㐀-䶿一-鿿豈-﫿]/g) || []).length;
+  const en = (str.match(/[A-Za-z][A-Za-z'’]*/g) || []).length;
+  return { cjk, en };
+}
+
+function renderWordCount() {
+  if (!wordCount) return;
+  const { cjk, en } = statsForText(editor.value);
+  // Always show both counters — user wants to track each writing surface
+  // (Chinese characters vs. English words) independently, including 0.
+  wordCount.textContent = `${cjk} 字 · ${en} 词`;
 }
 
 function renderImeState() {
@@ -282,6 +318,7 @@ async function doPush() {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
         moveCaretToStart(editor);
+        renderWordCount();
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
       } else if (result?.conflict === "missing-clean") {
         setSaveStatus("此文件在云端已不存在", true);
@@ -324,12 +361,14 @@ async function checkActiveDocFreshness() {
           editor.value = fresh.content ?? "";
           titleInput.value = fresh.title ?? "";
           moveCaretToStart(editor);
+          renderWordCount();
           setSaveStatus(`已加载云端最新 ${formatTime(Date.now())}`);
         }
       } else if (result?.conflict === "sibling-created") {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
         moveCaretToStart(editor);
+        renderWordCount();
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
       } else if (result?.missing) {
         setSaveStatus("此文件在云端已不存在", true);
@@ -364,14 +403,14 @@ function renderEditor() {
     editor.value = "";
     titleInput.value = "";
     renderGhostBanner();
+    renderWordCount();
     return;
   }
   editor.value = state.activeDoc.content ?? "";
   titleInput.value = state.activeDoc.title ?? "";
-  // Drop the caret at the end so the user can pick up writing where they
-  // left off, instead of staring at the top of the file.
   moveCaretToStart(editor);
   renderGhostBanner();
+  renderWordCount();
 }
 
 function renderGhostBanner() {
@@ -402,6 +441,7 @@ async function switchDoc(id) {
   state.activeDoc = doc;
   await setActiveDocId(doc.id);
   renderEditor();
+  setSaveStatus(statusForDoc(doc));
   // Stub doc → fetch content; otherwise → freshness check. Both async.
   if (state.authSignedIn) {
     if (doc.onedriveItemId && !doc.contentLoaded && doc.remoteFound) {
@@ -426,6 +466,7 @@ async function hydrateStub(docId) {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
         moveCaretToStart(editor);
+        renderWordCount();
       }
       setSaveStatus(`已加载 ${formatTime(Date.now())}`);
       renderGhostBanner();
@@ -875,6 +916,8 @@ function setupImeOn(inputEl, onCommitSchedule) {
       const text = inputEl.tagName === "INPUT" ? result.text.replace(/[\r\n]+/g, " ") : result.text;
       insertAtCursor(inputEl, text);
       renderImeState();
+      setSaveStatus("编辑中…");
+      if (inputEl === editor) renderWordCount();
       onCommitSchedule();
       // RIME learns from this commit — throttled push of the user dict so
       // typing habits persist across devices.
@@ -891,6 +934,8 @@ function setupImeOn(inputEl, onCommitSchedule) {
       stripGhostBuffer(inputEl, result.consumedBuffer);
       const text = inputEl.tagName === "INPUT" ? result.text.replace(/[\r\n]+/g, " ") : result.text;
       insertAtCursor(inputEl, text);
+      setSaveStatus("编辑中…");
+      if (inputEl === editor) renderWordCount();
       onCommitSchedule();
     }
     renderImeState();
@@ -911,6 +956,10 @@ setupImeOn(editor, scheduleContentSave);
 setupImeOn(titleInput, scheduleTitleSave);
 
 editor.addEventListener("input", () => {
+  // Immediate feedback BEFORE the debounced IDB save fires (200ms) — user
+  // shouldn't see the previous "已保存" sticking around while they type.
+  setSaveStatus("编辑中…");
+  renderWordCount();
   scheduleContentSave();
 });
 
@@ -927,6 +976,7 @@ titleInput.addEventListener("input", () => {
       // ignore
     }
   }
+  setSaveStatus("编辑中…");
   scheduleTitleSave();
 });
 
@@ -1188,11 +1238,7 @@ async function initialize() {
     await cleanupAutoEmptyDocs();
     await ensureActiveDoc();
     renderEditor();
-    if (state.activeDoc?.content) {
-      setSaveStatus(`已恢复 ${formatTime(Date.now())}`);
-    } else {
-      setSaveStatus("就绪");
-    }
+    setSaveStatus(statusForDoc(state.activeDoc));
   } catch (error) {
     setSaveStatus(`恢复失败：${error.message ?? error}`, true);
   }
