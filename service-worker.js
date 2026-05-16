@@ -1,7 +1,7 @@
 // Bump CACHE_VERSION whenever any precached asset changes. The activate
 // handler wipes older caches; skipWaiting + clientsClaim make the new SW
 // take over on the next reload (no need to close all tabs).
-const CACHE_VERSION = "v28-2026-05-17-status-wordcount";
+const CACHE_VERSION = "v36-2026-05-17-debounce-heartbeat";
 const CACHE_NAME = `xiaoheiwu-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [

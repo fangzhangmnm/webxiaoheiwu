@@ -27,6 +27,7 @@ function blankDoc({ title = "", content = "", createdAt = Date.now() } = {}) {
     contentLoaded: true,   // locally-created docs always have content
     remoteFound: true,     // until proven otherwise by a list-merge
     remoteName: null,      // actual OneDrive filename (may differ from computed)
+    locked: false,         // read-only guard; doesn't sync (per-device choice)
   };
 }
 

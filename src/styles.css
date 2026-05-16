@@ -88,6 +88,32 @@ body {
 
 .menu-button svg { width: 16px; height: 16px; }
 
+.lock-toggle {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms, background 120ms;
+}
+
+.lock-toggle:hover,
+.lock-toggle:focus-visible {
+  color: var(--ink);
+  background: var(--bg-2);
+  outline: none;
+}
+
+.lock-toggle[data-locked="true"] {
+  color: var(--accent);
+}
+
 .menu-button:hover,
 .menu-button:focus-visible {
   color: var(--ink);
@@ -142,6 +168,10 @@ body {
 .status .sep { color: var(--line-strong); }
 
 #saveStatus.error { color: var(--danger); }
+#saveStatus.unsynced::before {
+  content: "● ";
+  color: var(--accent);
+}
 #saveStatus.flash {
   color: var(--accent);
   transition: color 120ms ease-out;
@@ -243,6 +273,11 @@ body {
 }
 
 .body::placeholder { color: var(--ink-muted); }
+
+.body.locked,
+.title.locked {
+  caret-color: var(--accent);
+}
 
 .body::selection,
 .title::selection {

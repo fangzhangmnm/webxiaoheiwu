@@ -34,6 +34,13 @@
           aria-label="文档标题"
         />
 
+        <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="锁定/解锁文档">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="5" y="11" width="14" height="10" rx="2"></rect>
+            <path d="M8 11V7a4 4 0 1 1 8 0"></path>
+          </svg>
+        </button>
+
         <div class="status" aria-live="polite">
           <span id="wordCount">0 字</span>
           <span class="sep" aria-hidden="true">·</span>

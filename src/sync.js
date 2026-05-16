@@ -138,29 +138,45 @@ async function pushAsNew(doc) {
   const dateStr = formatDateForFilename(doc.createdAt);
   const title = sanitizeFilenamePart(doc.title);
   const base = title ? `${dateStr} ${title}` : dateStr;
-  const item = await createWithCollisionRetry(base, doc.content ?? "");
-  await applySyncPatch(doc.id, {
+  const pushedContent = doc.content ?? "";
+  const pushedTitle = doc.title ?? "";
+  const item = await createWithCollisionRetry(base, pushedContent);
+  // Content might have diverged while the PUT was in flight (user kept
+  // typing). Only mark clean if it didn't.
+  const current = await getDoc(doc.id);
+  const stillSame =
+    current &&
+    (current.content ?? "") === pushedContent &&
+    (current.title ?? "") === pushedTitle;
+  const patch = {
     onedriveItemId: item.id,
     etag: item.eTag,
     lastSyncedAt: Date.now(),
-    dirty: false,
     contentLoaded: true,
     remoteFound: true,
     remoteName: item.name,
-  });
+  };
+  if (stillSame) patch.dirty = false;
+  await applySyncPatch(doc.id, patch);
   return { ok: true, action: "created", item };
 }
 
 async function pushUpdate(doc) {
+  const pushedContent = doc.content ?? "";
   try {
-    const item = await updateItemContent(doc.onedriveItemId, doc.content ?? "", doc.etag);
-    await applySyncPatch(doc.id, {
+    const item = await updateItemContent(doc.onedriveItemId, pushedContent, doc.etag);
+    // Content may have diverged during the PUT (heartbeat fired mid-typing).
+    // Re-read IDB and only flip dirty=false if it still matches what we pushed.
+    const current = await getDoc(doc.id);
+    const stillSame = current && (current.content ?? "") === pushedContent;
+    const patch = {
       etag: item.eTag,
       lastSyncedAt: Date.now(),
-      dirty: false,
       remoteName: item.name,
       remoteFound: true,
-    });
+    };
+    if (stillSame) patch.dirty = false;
+    await applySyncPatch(doc.id, patch);
 
     // If our computed canonical filename has drifted from the remote name
     // (user edited title), try to rename remote to match — best effort.
@@ -225,6 +241,7 @@ async function handleEtagConflict(doc) {
     contentLoaded: true,
     remoteFound: true,
     remoteName: siblingItem.name,
+    locked: true,  // conflict copy — protect from accidental edits, force review
   };
   await insertSyncedDoc(siblingDoc);
 
@@ -429,6 +446,7 @@ export async function mergeRemoteList() {
       contentLoaded: false,
       remoteFound: true,
       remoteName: item.name,
+      locked: true,  // docs that appear from OneDrive default to locked
     };
     await insertSyncedDoc(stub);
     stubsCreated += 1;

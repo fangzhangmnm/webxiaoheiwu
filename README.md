@@ -1,6 +1,8 @@
-# Quest Novel Draft v0
+# 网页版小黑屋 — Quest Novel Draft
 
 Local-first Chinese writing prototype for Meta Quest browser usage.
+
+**Live**: https://fangzhangmnm.github.io/webxiaoheiwu/
 
 ## Current v0 status
 

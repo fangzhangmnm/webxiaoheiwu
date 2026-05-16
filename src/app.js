@@ -8,6 +8,7 @@ import {
   purgeDoc,
   getActiveDocId,
   setActiveDocId,
+  applySyncPatch,
 } from "./db.js";
 import { NaturalCodeIMEAdapter } from "./ime.js";
 import {
@@ -57,6 +58,10 @@ const ghostBanner = document.querySelector("#ghostBanner");
 const ghostTrashButton = document.querySelector("#ghostTrashButton");
 const ghostReuploadButton = document.querySelector("#ghostReuploadButton");
 const wordCount = document.querySelector("#wordCount");
+const lockToggle = document.querySelector("#lockToggle");
+
+const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
+const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0"></path></svg>`;
 
 const ime = new NaturalCodeIMEAdapter();
 
@@ -117,9 +122,12 @@ function computeDisplayName(doc, siblings) {
   return idx <= 0 ? dateStr : `${dateStr} ${idx}`;
 }
 
-function setSaveStatus(message, isError = false) {
+function setSaveStatus(message, opts = false) {
+  // Backwards compat: 2nd arg used to be a boolean for isError.
+  if (typeof opts === "boolean") opts = { isError: opts };
   saveStatus.textContent = message;
-  saveStatus.classList.toggle("error", isError);
+  saveStatus.classList.toggle("error", !!opts.isError);
+  saveStatus.classList.toggle("unsynced", !!opts.unsynced);
 }
 
 // Pick the right "what's the state of this doc" status text — used after
@@ -230,6 +238,12 @@ function syncEditorToDoc() {
 }
 
 async function flushSaves() {
+  // Only write if there's an actually-pending debounced save. Writing
+  // unconditionally would flip `dirty` to true on docs the user hasn't
+  // touched, which then bleeds back into the status bar as "未同步"
+  // when they switch to that doc later.
+  const hadContentTimer = contentSaveTimer !== null;
+  const hadTitleTimer = titleSaveTimer !== null;
   if (contentSaveTimer) {
     clearTimeout(contentSaveTimer);
     contentSaveTimer = null;
@@ -239,6 +253,7 @@ async function flushSaves() {
     titleSaveTimer = null;
   }
   if (!state.activeDocId) return;
+  if (!hadContentTimer && !hadTitleTimer) return;
   try {
     const updated = await updateDoc(state.activeDocId, {
       content: editor.value,
@@ -258,14 +273,14 @@ function scheduleContentSave() {
     try {
       const updated = await updateDoc(state.activeDocId, { content: editor.value });
       state.activeDoc = updated;
-      // Signed in: don't claim "已保存" until OneDrive has actually
-      // accepted the bytes — otherwise the user sees "saved" and closes
-      // the device before the push fires, losing work.
-      if (state.authSignedIn) {
-        setSaveStatus("同步中…");
-      } else {
+      if (!state.authSignedIn) {
         setSaveStatus(`已保存 ${formatTime(Date.now())}`);
       }
+      // Signed in: schedulePush starts the heartbeat + countdown, which
+      // owns the status bar ("XX 秒后自动同步") until the push actually
+      // fires. We deliberately don't show "已保存" here because the bytes
+      // haven't reached OneDrive yet — that'd mislead the user into
+      // closing the device early.
       schedulePush();
     } catch (error) {
       setSaveStatus(`保存失败：${error.message ?? error}`, true);
@@ -281,9 +296,7 @@ function scheduleTitleSave() {
     try {
       const updated = await updateDoc(state.activeDocId, { title: titleInput.value });
       state.activeDoc = updated;
-      if (state.authSignedIn) {
-        setSaveStatus("同步中…");
-      } else {
+      if (!state.authSignedIn) {
         setSaveStatus(`已保存 ${formatTime(Date.now())}`);
       }
       schedulePush();
@@ -293,20 +306,36 @@ function scheduleTitleSave() {
   }, 250);
 }
 
+// Debounce + heartbeat max-wait. Each keystroke resets a 15s debounce
+// (catches "user just stopped"), but the timer never waits past
+// firstDirtyAt + 30s (catches "user is typing nonstop for ages"). Static
+// "● 未同步" indicator in the status bar; no ticking countdown.
+const PUSH_DEBOUNCE_MS = 15 * 1000;
+const PUSH_HEARTBEAT_MS = 30 * 1000;
+let firstDirtyAt = 0;
+
 function schedulePush() {
   if (!state.authSignedIn) return;
-  if (pushTimer) clearTimeout(pushTimer);
-  // Short debounce — push every ~300ms during fast typing rather than
-  // making the user wait seconds to know their work is safe on OneDrive.
-  // Text files are tiny so the extra request count is fine.
-  pushTimer = setTimeout(doPush, 300);
+  const now = Date.now();
+  if (firstDirtyAt === 0) firstDirtyAt = now;
+  if (pushTimer !== null) clearTimeout(pushTimer);
+  const target = Math.min(now + PUSH_DEBOUNCE_MS, firstDirtyAt + PUSH_HEARTBEAT_MS);
+  const wait = Math.max(0, target - now);
+  pushTimer = setTimeout(doPush, wait);
 }
 
 async function doPush() {
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+  }
   pushTimer = null;
+  // Resetting firstDirtyAt: each push attempt starts a fresh cycle so
+  // the heartbeat budget renews even if this push fails.
+  firstDirtyAt = 0;
   if (!state.activeDocId || !state.authSignedIn) return;
   const targetId = state.activeDocId;
   const wasUntracked = state.activeDoc && !state.activeDoc.onedriveItemId;
+  setSaveStatus("正在同步…");
   try {
     const result = await pushDoc(targetId);
     const fresh = await getDoc(targetId);
@@ -335,9 +364,16 @@ async function doPush() {
       if (wasUntracked && result?.ok && fresh.onedriveItemId) {
         pushLastActiveItemId(fresh.onedriveItemId).catch(() => {});
       }
+      // Race: user typed during push so dirty stayed true (pushUpdate's
+      // stillSame check). Kick off another heartbeat to catch up.
+      if (fresh.dirty && state.authSignedIn) {
+        schedulePush();
+      }
     }
   } catch (error) {
     setSaveStatus(`同步失败：${error.message ?? error}`, true);
+    // Network/5xx — leave dirty=true and schedule retry on next heartbeat.
+    if (state.authSignedIn) schedulePush();
   }
 }
 
@@ -403,6 +439,7 @@ function renderEditor() {
     editor.value = "";
     titleInput.value = "";
     renderGhostBanner();
+    renderLockState();
     renderWordCount();
     return;
   }
@@ -410,6 +447,7 @@ function renderEditor() {
   titleInput.value = state.activeDoc.title ?? "";
   moveCaretToStart(editor);
   renderGhostBanner();
+  renderLockState();
   renderWordCount();
 }
 
@@ -420,6 +458,37 @@ function renderGhostBanner() {
     state.activeDoc.onedriveItemId &&
     state.activeDoc.remoteFound === false;
   ghostBanner.classList.toggle("hidden", !isGhost);
+}
+
+function renderLockState() {
+  if (!lockToggle) return;
+  if (!state.activeDoc) {
+    lockToggle.hidden = true;
+    editor.classList.remove("locked");
+    titleInput.classList.remove("locked");
+    return;
+  }
+  lockToggle.hidden = false;
+  const locked = !!state.activeDoc.locked;
+  lockToggle.setAttribute("data-locked", locked ? "true" : "false");
+  lockToggle.setAttribute("aria-label", locked ? "解锁编辑" : "锁定文档");
+  lockToggle.title = locked ? "解锁编辑" : "锁定（只读）";
+  lockToggle.innerHTML = locked ? ICON_LOCKED : ICON_UNLOCKED;
+  // Don't set readOnly — that hides the caret and breaks keyboard nav on
+  // some browsers (Quest included). Instead we mark a class and block
+  // mutation events below. Caret, selection, arrow nav, Ctrl+C all work.
+  editor.classList.toggle("locked", locked);
+  titleInput.classList.toggle("locked", locked);
+}
+
+async function toggleLock() {
+  if (!state.activeDocId || !state.activeDoc) return;
+  const next = !state.activeDoc.locked;
+  // Lock state is a local-only preference; applySyncPatch (not updateDoc)
+  // so we don't bump modifiedAt or set dirty.
+  const updated = await applySyncPatch(state.activeDocId, { locked: next });
+  state.activeDoc = updated;
+  renderLockState();
 }
 
 async function switchDoc(id) {
@@ -904,6 +973,11 @@ function setupImeOn(inputEl, onCommitSchedule) {
     }
     shiftCleanPress = false;
 
+    // Locked doc: don't run IME at all. User can still navigate / select /
+    // copy via the browser's built-in keyboard handling. (We don't use the
+    // textarea's own readOnly attribute because that hides the caret.)
+    if (state.activeDoc?.locked) return;
+
     const result = await ime.onKeydown(event);
 
     if (result.type === "toggle" || result.type === "clear" || result.type === "composing") {
@@ -916,7 +990,7 @@ function setupImeOn(inputEl, onCommitSchedule) {
       const text = inputEl.tagName === "INPUT" ? result.text.replace(/[\r\n]+/g, " ") : result.text;
       insertAtCursor(inputEl, text);
       renderImeState();
-      setSaveStatus("编辑中…");
+      setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
       if (inputEl === editor) renderWordCount();
       onCommitSchedule();
       // RIME learns from this commit — throttled push of the user dict so
@@ -934,7 +1008,7 @@ function setupImeOn(inputEl, onCommitSchedule) {
       stripGhostBuffer(inputEl, result.consumedBuffer);
       const text = inputEl.tagName === "INPUT" ? result.text.replace(/[\r\n]+/g, " ") : result.text;
       insertAtCursor(inputEl, text);
-      setSaveStatus("编辑中…");
+      setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
       if (inputEl === editor) renderWordCount();
       onCommitSchedule();
     }
@@ -955,10 +1029,24 @@ function setupImeOn(inputEl, onCommitSchedule) {
 setupImeOn(editor, scheduleContentSave);
 setupImeOn(titleInput, scheduleTitleSave);
 
+// Lock = block content-changing events, leave selection/navigation alone.
+function blockIfLocked(event) {
+  if (state.activeDoc?.locked) {
+    event.preventDefault();
+  }
+}
+for (const el of [editor, titleInput]) {
+  el.addEventListener("beforeinput", blockIfLocked);
+  el.addEventListener("paste", blockIfLocked);
+  el.addEventListener("cut", blockIfLocked);
+  el.addEventListener("drop", blockIfLocked);
+}
+
 editor.addEventListener("input", () => {
-  // Immediate feedback BEFORE the debounced IDB save fires (200ms) — user
-  // shouldn't see the previous "已保存" sticking around while they type.
-  setSaveStatus("编辑中…");
+  // Stable dirty indicator from the very first keystroke until push lands.
+  // Set both signed-in and signed-out cases — for signed-out, the next
+  // IDB save (200ms) flips it back to "已保存" since there's no upload step.
+  setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
   renderWordCount();
   scheduleContentSave();
 });
@@ -976,7 +1064,7 @@ titleInput.addEventListener("input", () => {
       // ignore
     }
   }
-  setSaveStatus("编辑中…");
+  setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
   scheduleTitleSave();
 });
 
@@ -999,6 +1087,10 @@ menuButton.addEventListener("click", () => {
 });
 
 drawerCloseButton.addEventListener("click", closeDrawer);
+lockToggle?.addEventListener("click", () => {
+  toggleLock().catch((err) => console.warn("toggleLock:", err));
+});
+
 reloadButton?.addEventListener("click", async () => {
   await flushSaves();
   setSaveStatus("刷新中…");
@@ -1020,10 +1112,11 @@ document.addEventListener("keydown", async (event) => {
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) {
     event.preventDefault();
     await flushSaves();
-    setSaveStatus(`已保存 ${formatTime(Date.now())}`);
     saveStatus.classList.add("flash");
     setTimeout(() => saveStatus.classList.remove("flash"), 500);
-    schedulePush();
+    // Force-push now: cancel the pending heartbeat (if any) so it doesn't
+    // double-fire after we just pushed.
+    doPush();
   }
 });
 
@@ -1097,6 +1190,11 @@ async function dismissIdleOverlay() {
     } catch (err) {
       console.warn("idle resume sync:", err);
     }
+    // Reflect the now-current active doc state in the status bar (not
+    // "同步中…" forever).
+    const fresh = state.activeDocId ? await getDoc(state.activeDocId) : null;
+    if (fresh) state.activeDoc = fresh;
+    setSaveStatus(statusForDoc(state.activeDoc));
   }
   // Restore focus to the editor so the user can continue typing immediately.
   editor.focus();
