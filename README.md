@@ -25,6 +25,22 @@ Then visit:
 
 - `http://localhost:5173/`
 
+The service worker is **not** registered on `localhost` / `127.0.0.1`, so F5
+on your dev machine always reloads fresh code. To exercise PWA / offline
+behavior, hit the page via your LAN IP (e.g. `http://192.168.x.x:5173/`) or a
+deployed origin — the SW registers on any non-local hostname.
+
+## PWA / offline
+
+Once registered on a non-local origin, the service worker pre-caches the app
+shell and all vendor assets (~19MB) on first visit. After that the bookmarked
+URL works offline, including on a Meta Quest with no network. Add to home
+screen → opens like an app (no browser chrome).
+
+To ship a code change to clients that have already installed the SW, bump
+`CACHE_VERSION` in [service-worker.js](service-worker.js) — the new SW wipes
+old caches and `skipWaiting + clientsClaim` activates it on next reload.
+
 ## IME controls
 
 - `a-z`: build composition buffer

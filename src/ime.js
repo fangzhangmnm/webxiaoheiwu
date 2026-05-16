@@ -29,6 +29,9 @@ const PUNCTUATION_KEYS = new Set([
 ]);
 
 function isAsciiLetter(event) {
+  if (event.ctrlKey || event.altKey || event.metaKey) {
+    return false;
+  }
   return /^[a-z]$/i.test(event.key);
 }
 

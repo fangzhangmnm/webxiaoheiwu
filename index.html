@@ -2,31 +2,104 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Quest Novel Draft v0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#d8c8a8" />
+    <meta name="color-scheme" content="light" />
+    <title>网页版小黑屋</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
-    <main class="app-shell" aria-label="Novel writer">
-      <header class="status-strip" aria-live="polite">
-        <div id="saveStatus">Ready</div>
-        <div id="imeStatus">IME: Initializing...</div>
+    <main class="surface" aria-label="网页版小黑屋">
+      <header class="top-bar">
+        <button class="menu-button" id="menuButton" aria-label="文件菜单" title="文件菜单">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="4" y1="7" x2="20" y2="7"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="17" x2="20" y2="17"></line>
+          </svg>
+        </button>
+
+        <input
+          id="titleInput"
+          type="text"
+          class="title"
+          placeholder="无标题"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          aria-label="文档标题"
+        />
+
+        <div class="status" aria-live="polite">
+          <span id="saveStatus">就绪</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span id="imeStatus">输入法初始化中</span>
+        </div>
       </header>
 
-      <section class="editor-wrap">
-        <label class="sr-only" for="editor">Novel editor</label>
+      <article class="page">
+        <label class="sr-only" for="editor">小说编辑区</label>
         <textarea
           id="editor"
+          class="body"
           spellcheck="false"
           autocorrect="off"
           autocomplete="off"
           autocapitalize="off"
-          placeholder=""
         ></textarea>
-      </section>
-
-      <section id="candidateBar" class="candidate-bar hidden" aria-live="polite"></section>
+        <div id="candidateBar" class="candidates hidden" aria-live="polite"></div>
+      </article>
     </main>
+
+    <div id="drawerBackdrop" class="backdrop hidden" aria-hidden="true"></div>
+    <aside id="drawer" class="drawer hidden" aria-hidden="true" aria-label="文件管理">
+      <header class="drawer-header">
+        <button class="icon-button drawer-back" id="drawerBackButton" aria-label="返回" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <h2 id="drawerTitle">文件</h2>
+        <button class="icon-button" id="drawerCloseButton" aria-label="关闭">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+            <line x1="6" y1="18" x2="18" y2="6"></line>
+          </svg>
+        </button>
+      </header>
+
+      <div class="drawer-actions" id="drawerActions">
+        <button class="drawer-action" id="newDocButton">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>新建</span>
+        </button>
+      </div>
+      <div class="drawer-actions hidden" id="trashActions">
+        <button class="drawer-action danger" id="emptyTrashButton">清空垃圾箱</button>
+      </div>
+
+      <ul id="docList" class="doc-list" role="list"></ul>
+      <p id="docListEmpty" class="doc-list-empty hidden">这里还没有任何文件。</p>
+
+      <footer class="drawer-foot">
+        <button class="drawer-foot-button" id="openTrashButton">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            <path d="M10 11v6M14 11v6"></path>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+          </svg>
+          <span>垃圾箱</span>
+        </button>
+      </footer>
+    </aside>
 
     <script type="module" src="./src/app.js"></script>
   </body>
