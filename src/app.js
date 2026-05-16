@@ -218,7 +218,14 @@ function scheduleContentSave() {
     try {
       const updated = await updateDoc(state.activeDocId, { content: editor.value });
       state.activeDoc = updated;
-      setSaveStatus(`已保存 ${formatTime(Date.now())}`);
+      // Signed in: don't claim "已保存" until OneDrive has actually
+      // accepted the bytes — otherwise the user sees "saved" and closes
+      // the device before the push fires, losing work.
+      if (state.authSignedIn) {
+        setSaveStatus("同步中…");
+      } else {
+        setSaveStatus(`已保存 ${formatTime(Date.now())}`);
+      }
       schedulePush();
     } catch (error) {
       setSaveStatus(`保存失败：${error.message ?? error}`, true);
@@ -234,7 +241,11 @@ function scheduleTitleSave() {
     try {
       const updated = await updateDoc(state.activeDocId, { title: titleInput.value });
       state.activeDoc = updated;
-      setSaveStatus(`已保存 ${formatTime(Date.now())}`);
+      if (state.authSignedIn) {
+        setSaveStatus("同步中…");
+      } else {
+        setSaveStatus(`已保存 ${formatTime(Date.now())}`);
+      }
       schedulePush();
     } catch (error) {
       setSaveStatus(`保存失败：${error.message ?? error}`, true);
@@ -245,7 +256,10 @@ function scheduleTitleSave() {
 function schedulePush() {
   if (!state.authSignedIn) return;
   if (pushTimer) clearTimeout(pushTimer);
-  pushTimer = setTimeout(doPush, 1500);
+  // Short debounce — push every ~300ms during fast typing rather than
+  // making the user wait seconds to know their work is safe on OneDrive.
+  // Text files are tiny so the extra request count is fine.
+  pushTimer = setTimeout(doPush, 300);
 }
 
 async function doPush() {
@@ -268,7 +282,8 @@ async function doPush() {
       } else if (result?.conflict === "missing-dirty") {
         setSaveStatus("云端已删 — 见编辑器顶部提示", true);
       } else if (result?.ok && !contentDiverged) {
-        setSaveStatus(`已同步 ${formatTime(Date.now())}`);
+        // Only call it "saved" once OneDrive has actually accepted the bytes.
+        setSaveStatus(`已保存 ${formatTime(Date.now())}`);
       }
       renderGhostBanner();
     }
@@ -511,8 +526,14 @@ async function renderDocList() {
 
     const previewSpan = document.createElement("span");
     previewSpan.className = "doc-preview";
-    const previewText = (doc.content ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
-    previewSpan.textContent = previewText || "（空白）";
+    let previewText;
+    if (doc.onedriveItemId && !doc.contentLoaded) {
+      previewText = "（云端，未加载）";
+    } else {
+      const cleaned = (doc.content ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+      previewText = cleaned || "（空白）";
+    }
+    previewSpan.textContent = previewText;
     mainBtn.appendChild(previewSpan);
 
     if (!isTrashView) {
