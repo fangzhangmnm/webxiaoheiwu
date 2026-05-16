@@ -601,6 +601,67 @@ export async function purgeDocPermanent(docId) {
   return { ok: true };
 }
 
+// ── RIME user dict sync ──────────────────────────────────────────────────
+// Stored as a single JSON blob at Apps/<AppName>/.userdata/rime-user-dir.json.
+// Last-write-wins — RIME just relearns frequencies if a remote push
+// happens to overwrite local learning. The user dict is a best-effort
+// enhancement, not authoritative data.
+
+const USER_DICT_PATH = ".userdata/rime-user-dir.json";
+
+async function getUserDictRemote() {
+  try {
+    const response = await graphFetch(
+      "GET",
+      `/me/drive/special/approot:/${USER_DICT_PATH}:/content`,
+    );
+    return response.json();
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
+async function putUserDictRemote(payload) {
+  await graphFetch(
+    "PUT",
+    `/me/drive/special/approot:/${USER_DICT_PATH}:/content?@microsoft.graph.conflictBehavior=replace`,
+    {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function pushUserDict(ime) {
+  if (!ime || typeof ime.dumpUserDir !== "function") return { ok: false, reason: "no-backend" };
+  const dump = await ime.dumpUserDir();
+  if (!dump || !Array.isArray(dump.files) || dump.files.length === 0) {
+    return { ok: false, reason: "empty" };
+  }
+  dump.savedAt = Date.now();
+  dump.device = detectDeviceLabel();
+  try {
+    await putUserDictRemote(dump);
+    return { ok: true, fileCount: dump.files.length };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function pullUserDict(ime) {
+  if (!ime || typeof ime.restoreUserDir !== "function") return { ok: false, reason: "no-backend" };
+  let dump;
+  try {
+    dump = await getUserDictRemote();
+  } catch (error) {
+    return { ok: false, error };
+  }
+  if (!dump) return { ok: true, reason: "no-remote" };
+  await ime.restoreUserDir(dump);
+  return { ok: true, fileCount: dump.files?.length ?? 0, savedAt: dump.savedAt };
+}
+
 // ── User-driven action for ☁️? ghost docs ────────────────────────────────
 
 export async function reuploadGhostAsNew(docId) {

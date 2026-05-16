@@ -26,6 +26,8 @@ import {
   restoreDocFromTrash,
   purgeDocPermanent,
   reuploadGhostAsNew,
+  pushUserDict,
+  pullUserDict,
 } from "./sync.js";
 
 const editor = document.querySelector("#editor");
@@ -753,6 +755,16 @@ async function initializeAuthFlow() {
       mergeRemoteList()
         .then(() => startBackgroundPrefetch())
         .catch((err) => console.warn("startup merge:", err));
+      // Pull RIME user dict in the background. If it lands, restoreUserDir
+      // re-inits the worker; any keystrokes between now and then learn into
+      // the old user db — acceptable price for blank-page-immediately.
+      pullUserDict(ime)
+        .then((result) => {
+          if (result?.ok && result.fileCount > 0) {
+            lastUserDictPushAt = Date.now();
+          }
+        })
+        .catch((err) => console.warn("pull user dict:", err));
     }, 800);
   }
 }
@@ -782,6 +794,9 @@ function setupImeOn(inputEl, onCommitSchedule) {
       insertAtCursor(inputEl, text);
       renderImeState();
       onCommitSchedule();
+      // RIME learns from this commit — throttled push of the user dict so
+      // typing habits persist across devices.
+      maybePushUserDict();
     }
   });
 
@@ -931,6 +946,18 @@ async function dismissIdleOverlay() {
       setSaveStatus("同步中…");
       await checkActiveDocFreshness();
       await drainDirtyDocs();
+      // Refresh the full remote list too — other devices may have added,
+      // renamed, or trashed files while this tab was idle. Re-render the
+      // drawer if it's open so the user sees the new state immediately.
+      await mergeRemoteList();
+      if (state.drawerView !== "closed") {
+        await renderDocList();
+      }
+      startBackgroundPrefetch();
+      // Flush RIME user dict opportunistically — idle dismiss is a natural
+      // "user came back" moment where uploading their typing habits costs
+      // nothing in perceived UX.
+      flushUserDictNow().catch(() => {});
     } catch (err) {
       console.warn("idle resume sync:", err);
     }
@@ -964,6 +991,44 @@ document.addEventListener(
 
 // Initial schedule
 scheduleIdleOverlay();
+
+// RIME user dict throttle: every IME commit may have taught RIME a new
+// word, but uploading the entire user-data tree on every commit is wasteful.
+// On commit we check elapsed time and only push if INTERVAL has passed —
+// "event-driven throttle". On idle-dismiss / unload we flush unconditionally.
+const USER_DICT_PUSH_INTERVAL_MS = 2 * 60 * 1000;
+let lastUserDictPushAt = 0;
+let userDictPushInFlight = false;
+
+async function maybePushUserDict() {
+  if (!state.authSignedIn) return;
+  const now = Date.now();
+  if (now - lastUserDictPushAt < USER_DICT_PUSH_INTERVAL_MS) return;
+  if (userDictPushInFlight) return;
+  lastUserDictPushAt = now;
+  userDictPushInFlight = true;
+  try {
+    await pushUserDict(ime);
+  } catch (error) {
+    console.warn("maybe push user dict:", error);
+  } finally {
+    userDictPushInFlight = false;
+  }
+}
+
+async function flushUserDictNow() {
+  if (!state.authSignedIn) return;
+  if (userDictPushInFlight) return;
+  userDictPushInFlight = true;
+  try {
+    await pushUserDict(ime);
+    lastUserDictPushAt = Date.now();
+  } catch (error) {
+    console.warn("flush user dict:", error);
+  } finally {
+    userDictPushInFlight = false;
+  }
+}
 
 async function drainDirtyDocs() {
   if (!state.authSignedIn) return;
@@ -1014,6 +1079,10 @@ window.addEventListener("beforeunload", () => {
   // but cancelling timers prevents stale fires after the page is torn down.
   if (contentSaveTimer) clearTimeout(contentSaveTimer);
   if (titleSaveTimer) clearTimeout(titleSaveTimer);
+  // Fire-and-forget user dict push. Browsers limit network during unload
+  // so this is unlikely to complete, but it's free to try and might catch
+  // a recent learning before tab close.
+  flushUserDictNow().catch(() => {});
 });
 
 // --- Initialize ---

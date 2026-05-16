@@ -131,6 +131,20 @@ class StarterMapBackend {
   }
 }
 
+function bytesToBase64(bytes) {
+  let binary = "";
+  const len = bytes.byteLength ?? bytes.length;
+  for (let i = 0; i < len; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToBytes(str) {
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 class RimeWorkerBackend {
   constructor() {
     this.worker = null;
@@ -282,6 +296,84 @@ class RimeWorkerBackend {
       return this.normalizeProcessResult(result);
     });
   }
+
+  // ── User dict dump / restore (for OneDrive sync) ──────────────────────
+  // The RIME worker mounts IDBFS at /rime; we use its fsOperate passthrough
+  // to read the whole tree, then ship it as a JSON-of-base64 blob.
+
+  async dumpUserDir() {
+    const dump = { files: [] };
+    await this._dumpRecursive("/rime", "", dump.files);
+    return dump;
+  }
+
+  async _dumpRecursive(absRoot, relPath, accum) {
+    const path = relPath ? `${absRoot}/${relPath}` : absRoot;
+    let entries;
+    try {
+      entries = await this.call("fsOperate", "readdir", path);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      if (name === "." || name === "..") continue;
+      const childRel = relPath ? `${relPath}/${name}` : name;
+      const childAbs = `${absRoot}/${childRel}`;
+      let stat;
+      try {
+        stat = await this.call("fsOperate", "stat", childAbs);
+      } catch {
+        continue;
+      }
+      const isDir = ((stat?.mode ?? 0) & 0o170000) === 0o040000;
+      if (isDir) {
+        await this._dumpRecursive(absRoot, childRel, accum);
+      } else {
+        try {
+          const data = await this.call("fsOperate", "readFile", childAbs);
+          accum.push({
+            path: childRel,
+            data: bytesToBase64(data instanceof Uint8Array ? data : new Uint8Array(data)),
+          });
+        } catch {
+          /* skip unreadable file */
+        }
+      }
+    }
+  }
+
+  async restoreUserDir(dump) {
+    if (!dump || !Array.isArray(dump.files) || dump.files.length === 0) return;
+    const root = "/rime";
+    for (const entry of dump.files) {
+      // Recursively mkdir all parents.
+      const parts = entry.path.split("/").slice(0, -1);
+      let cur = root;
+      for (const part of parts) {
+        cur = `${cur}/${part}`;
+        try {
+          await this.call("fsOperate", "mkdir", cur);
+        } catch {
+          /* EEXIST etc. — fine */
+        }
+      }
+      try {
+        const bytes = base64ToBytes(entry.data);
+        await this.call("fsOperate", "writeFile", `${root}/${entry.path}`, bytes);
+      } catch (error) {
+        console.warn("restoreUserDir: failed to write", entry.path, error);
+      }
+    }
+    // Re-call setIME to trigger the worker's internal syncfs("write") and
+    // make RIME pick up the new user-data files.
+    try {
+      await this.call("setIME", NATURAL_CODE_SCHEMA);
+      await this.call("setOption", "simplification", 1);
+      await this.call("setOption", "ascii_punct", 0);
+    } catch (error) {
+      console.warn("restoreUserDir: re-init setIME failed", error);
+    }
+  }
 }
 
 export class NaturalCodeIMEAdapter {
@@ -327,6 +419,25 @@ export class NaturalCodeIMEAdapter {
       this.backend.resetState();
     }
     return this.getState();
+  }
+
+  async dumpUserDir() {
+    if (typeof this.backend?.dumpUserDir !== "function") return null;
+    try {
+      return await this.backend.dumpUserDir();
+    } catch (error) {
+      console.warn("IME dumpUserDir failed", error);
+      return null;
+    }
+  }
+
+  async restoreUserDir(dump) {
+    if (typeof this.backend?.restoreUserDir !== "function") return;
+    try {
+      await this.backend.restoreUserDir(dump);
+    } catch (error) {
+      console.warn("IME restoreUserDir failed", error);
+    }
   }
 
   async toggleAsciiMode() {
