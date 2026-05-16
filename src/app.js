@@ -281,7 +281,7 @@ async function doPush() {
       if (result?.conflict === "sibling-created") {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
-        moveCaretToEnd(editor);
+        moveCaretToStart(editor);
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
       } else if (result?.conflict === "missing-clean") {
         setSaveStatus("此文件在云端已不存在", true);
@@ -323,13 +323,13 @@ async function checkActiveDocFreshness() {
         if (!contentSaveTimer && !titleSaveTimer) {
           editor.value = fresh.content ?? "";
           titleInput.value = fresh.title ?? "";
-          moveCaretToEnd(editor);
+          moveCaretToStart(editor);
           setSaveStatus(`已加载云端最新 ${formatTime(Date.now())}`);
         }
       } else if (result?.conflict === "sibling-created") {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
-        moveCaretToEnd(editor);
+        moveCaretToStart(editor);
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
       } else if (result?.missing) {
         setSaveStatus("此文件在云端已不存在", true);
@@ -342,17 +342,20 @@ async function checkActiveDocFreshness() {
   }
 }
 
-function moveCaretToEnd(input) {
+function moveCaretToStart(input) {
   if (!input) return;
-  const end = input.value.length;
+  // Chrome auto-positions selection at .value.length after a value setter
+  // and focus() scrolls there — overriding makes opening land at the top
+  // of the file, which is what the user actually wants for re-reading
+  // their draft from the beginning.
   try {
-    input.selectionStart = end;
-    input.selectionEnd = end;
+    input.selectionStart = 0;
+    input.selectionEnd = 0;
   } catch {
     /* some inputs don't support selection */
   }
   if (typeof input.scrollTop === "number") {
-    input.scrollTop = input.scrollHeight;
+    input.scrollTop = 0;
   }
 }
 
@@ -367,7 +370,7 @@ function renderEditor() {
   titleInput.value = state.activeDoc.title ?? "";
   // Drop the caret at the end so the user can pick up writing where they
   // left off, instead of staring at the top of the file.
-  moveCaretToEnd(editor);
+  moveCaretToStart(editor);
   renderGhostBanner();
 }
 
@@ -422,7 +425,7 @@ async function hydrateStub(docId) {
       if (!contentSaveTimer && !titleSaveTimer) {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
-        moveCaretToEnd(editor);
+        moveCaretToStart(editor);
       }
       setSaveStatus(`已加载 ${formatTime(Date.now())}`);
       renderGhostBanner();
