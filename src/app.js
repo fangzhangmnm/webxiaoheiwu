@@ -281,6 +281,7 @@ async function doPush() {
       if (result?.conflict === "sibling-created") {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
+        moveCaretToEnd(editor);
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
       } else if (result?.conflict === "missing-clean") {
         setSaveStatus("此文件在云端已不存在", true);
@@ -322,11 +323,13 @@ async function checkActiveDocFreshness() {
         if (!contentSaveTimer && !titleSaveTimer) {
           editor.value = fresh.content ?? "";
           titleInput.value = fresh.title ?? "";
+          moveCaretToEnd(editor);
           setSaveStatus(`已加载云端最新 ${formatTime(Date.now())}`);
         }
       } else if (result?.conflict === "sibling-created") {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
+        moveCaretToEnd(editor);
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
       } else if (result?.missing) {
         setSaveStatus("此文件在云端已不存在", true);
@@ -339,6 +342,20 @@ async function checkActiveDocFreshness() {
   }
 }
 
+function moveCaretToEnd(input) {
+  if (!input) return;
+  const end = input.value.length;
+  try {
+    input.selectionStart = end;
+    input.selectionEnd = end;
+  } catch {
+    /* some inputs don't support selection */
+  }
+  if (typeof input.scrollTop === "number") {
+    input.scrollTop = input.scrollHeight;
+  }
+}
+
 function renderEditor() {
   if (!state.activeDoc) {
     editor.value = "";
@@ -348,6 +365,9 @@ function renderEditor() {
   }
   editor.value = state.activeDoc.content ?? "";
   titleInput.value = state.activeDoc.title ?? "";
+  // Drop the caret at the end so the user can pick up writing where they
+  // left off, instead of staring at the top of the file.
+  moveCaretToEnd(editor);
   renderGhostBanner();
 }
 
@@ -402,6 +422,7 @@ async function hydrateStub(docId) {
       if (!contentSaveTimer && !titleSaveTimer) {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
+        moveCaretToEnd(editor);
       }
       setSaveStatus(`已加载 ${formatTime(Date.now())}`);
       renderGhostBanner();
