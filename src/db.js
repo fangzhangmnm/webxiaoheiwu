@@ -19,14 +19,18 @@ function blankDoc({ title = "", content = "", createdAt = Date.now() } = {}) {
     createdAt,
     modifiedAt: createdAt,
     deletedAt: null,
-    // Reserved for the OneDrive sync layer added in phase 2; phase 1 leaves
-    // them null/false so the schema doesn't need a migration later.
+    // OneDrive sync fields. Set lazily by the sync layer.
     onedriveItemId: null,
     etag: null,
     lastSyncedAt: null,
     dirty: false,
+    contentLoaded: true,   // locally-created docs always have content
+    remoteFound: true,     // until proven otherwise by a list-merge
+    remoteName: null,      // actual OneDrive filename (may differ from computed)
   };
 }
+
+export { newId };
 
 let dbPromise = null;
 
@@ -144,6 +148,78 @@ export async function updateDoc(id, patch) {
     };
     getReq.onerror = () => reject(getReq.error ?? new Error("updateDoc get error"));
   });
+}
+
+// Sync-layer write: applies arbitrary fields without auto-dirty / auto-mtime.
+// Use this for ETag updates, content pulled from remote, remoteFound flips, etc.
+export async function applySyncPatch(id, patch) {
+  if (!id) throw new Error("applySyncPatch: missing id");
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DOCS_STORE, "readwrite");
+    const store = tx.objectStore(DOCS_STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (!existing) {
+        reject(new Error(`applySyncPatch: doc ${id} not found`));
+        return;
+      }
+      const next = { ...existing, ...patch };
+      store.put(next);
+      tx.oncomplete = () => resolve(next);
+      tx.onerror = () => reject(tx.error ?? new Error("applySyncPatch tx error"));
+    };
+    getReq.onerror = () => reject(getReq.error ?? new Error("applySyncPatch get error"));
+  });
+}
+
+// Sync-layer atomic conditional write: only apply patch if the doc is still
+// clean (no user edits raced in while sync was fetching). Returns
+// { applied: true|false, reason? }. Used by checkRemoteFreshness so a
+// silent remote-replace can't clobber the user mid-keystroke.
+export async function applySyncPatchIfClean(id, patch) {
+  if (!id) throw new Error("applySyncPatchIfClean: missing id");
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DOCS_STORE, "readwrite");
+    const store = tx.objectStore(DOCS_STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (!existing) {
+        tx.abort();
+        resolve({ applied: false, reason: "missing" });
+        return;
+      }
+      if (existing.dirty) {
+        tx.abort();
+        resolve({ applied: false, reason: "dirty" });
+        return;
+      }
+      store.put({ ...existing, ...patch });
+      tx.oncomplete = () => resolve({ applied: true });
+      tx.onerror = () => reject(tx.error ?? new Error("applySyncPatchIfClean tx error"));
+    };
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
+
+// Insert a doc whose fields (id, sync metadata, etc.) are already prepared.
+// Used by the sync layer when ingesting a remote item or creating a sibling.
+export async function insertSyncedDoc(doc) {
+  if (!doc?.id) throw new Error("insertSyncedDoc: doc.id required");
+  const db = await openDb();
+  const tx = db.transaction(DOCS_STORE, "readwrite");
+  tx.objectStore(DOCS_STORE).put(doc);
+  await txPromise(tx);
+  return doc;
+}
+
+export async function findDocByItemId(onedriveItemId) {
+  if (!onedriveItemId) return null;
+  const all = await listDocs({ includeTrashed: true });
+  return all.find((d) => d.onedriveItemId === onedriveItemId) ?? null;
 }
 
 export async function trashDoc(id) {

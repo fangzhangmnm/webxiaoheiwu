@@ -14,8 +14,19 @@ import {
   initializeAuth,
   signIn,
   signOut,
-  getActiveAccount,
+  isSignedIn,
 } from "./auth.js";
+import {
+  pushDoc,
+  checkRemoteFreshness,
+  mergeRemoteList,
+  prefetchPendingContents,
+  fetchContentForDoc,
+  moveDocToTrash,
+  restoreDocFromTrash,
+  purgeDocPermanent,
+  reuploadGhostAsNew,
+} from "./sync.js";
 
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
@@ -27,6 +38,7 @@ const menuButton = document.querySelector("#menuButton");
 const drawer = document.querySelector("#drawer");
 const drawerBackdrop = document.querySelector("#drawerBackdrop");
 const drawerCloseButton = document.querySelector("#drawerCloseButton");
+const reloadButton = document.querySelector("#reloadButton");
 const drawerBackButton = document.querySelector("#drawerBackButton");
 const drawerTitle = document.querySelector("#drawerTitle");
 const drawerActions = document.querySelector("#drawerActions");
@@ -37,6 +49,9 @@ const emptyTrashButton = document.querySelector("#emptyTrashButton");
 const docList = document.querySelector("#docList");
 const docListEmpty = document.querySelector("#docListEmpty");
 const authRow = document.querySelector("#authRow");
+const ghostBanner = document.querySelector("#ghostBanner");
+const ghostTrashButton = document.querySelector("#ghostTrashButton");
+const ghostReuploadButton = document.querySelector("#ghostReuploadButton");
 
 const ime = new NaturalCodeIMEAdapter();
 
@@ -55,6 +70,8 @@ const state = {
 
 let contentSaveTimer = null;
 let titleSaveTimer = null;
+let pushTimer = null;
+let prefetchPending = false;
 let shiftCleanPress = false;
 
 function formatDate(ts) {
@@ -202,6 +219,7 @@ function scheduleContentSave() {
       const updated = await updateDoc(state.activeDocId, { content: editor.value });
       state.activeDoc = updated;
       setSaveStatus(`已保存 ${formatTime(Date.now())}`);
+      schedulePush();
     } catch (error) {
       setSaveStatus(`保存失败：${error.message ?? error}`, true);
     }
@@ -217,20 +235,103 @@ function scheduleTitleSave() {
       const updated = await updateDoc(state.activeDocId, { title: titleInput.value });
       state.activeDoc = updated;
       setSaveStatus(`已保存 ${formatTime(Date.now())}`);
+      schedulePush();
     } catch (error) {
       setSaveStatus(`保存失败：${error.message ?? error}`, true);
     }
   }, 250);
 }
 
+function schedulePush() {
+  if (!state.authSignedIn) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(doPush, 1500);
+}
+
+async function doPush() {
+  pushTimer = null;
+  if (!state.activeDocId || !state.authSignedIn) return;
+  const targetId = state.activeDocId;
+  try {
+    const result = await pushDoc(targetId);
+    const fresh = await getDoc(targetId);
+    if (fresh && targetId === state.activeDocId) {
+      state.activeDoc = fresh;
+      // Don't clobber the user's in-flight edits if they typed during push.
+      const contentDiverged = editor.value !== (fresh.content ?? "");
+      if (result?.conflict === "sibling-created") {
+        editor.value = fresh.content ?? "";
+        titleInput.value = fresh.title ?? "";
+        setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
+      } else if (result?.conflict === "missing-clean") {
+        setSaveStatus("此文件在云端已不存在", true);
+      } else if (result?.conflict === "missing-dirty") {
+        setSaveStatus("云端已删 — 见编辑器顶部提示", true);
+      } else if (result?.ok && !contentDiverged) {
+        setSaveStatus(`已同步 ${formatTime(Date.now())}`);
+      }
+      renderGhostBanner();
+    }
+  } catch (error) {
+    setSaveStatus(`同步失败：${error.message ?? error}`, true);
+  }
+}
+
+async function checkActiveDocFreshness() {
+  if (!state.authSignedIn || !state.activeDocId) return;
+  // Hard rule: never probe remote while the user has uncommitted edits in
+  // the textarea (debounced save timer is set). A silent-replace at that
+  // moment would diverge editor.value from IDB, and the next push would
+  // clobber the remote with stale-plus-user-typing content. If the user
+  // really is editing, just let the save → push → 412 → sibling path run.
+  if (contentSaveTimer || titleSaveTimer) return;
+  const id = state.activeDocId;
+  try {
+    const result = await checkRemoteFreshness(id);
+    const fresh = await getDoc(id);
+    if (fresh && id === state.activeDocId) {
+      state.activeDoc = fresh;
+      if (result?.changed && result.contentChanged) {
+        // Only replace editor if user isn't actively typing.
+        if (!contentSaveTimer && !titleSaveTimer) {
+          editor.value = fresh.content ?? "";
+          titleInput.value = fresh.title ?? "";
+          setSaveStatus(`已加载云端最新 ${formatTime(Date.now())}`);
+        }
+      } else if (result?.conflict === "sibling-created") {
+        editor.value = fresh.content ?? "";
+        titleInput.value = fresh.title ?? "";
+        setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
+      } else if (result?.missing) {
+        setSaveStatus("此文件在云端已不存在", true);
+      }
+      renderGhostBanner();
+    }
+  } catch (error) {
+    // Network/transient — silent, will retry on next trigger.
+    console.warn("freshness check failed:", error);
+  }
+}
+
 function renderEditor() {
   if (!state.activeDoc) {
     editor.value = "";
     titleInput.value = "";
+    renderGhostBanner();
     return;
   }
   editor.value = state.activeDoc.content ?? "";
   titleInput.value = state.activeDoc.title ?? "";
+  renderGhostBanner();
+}
+
+function renderGhostBanner() {
+  if (!ghostBanner) return;
+  const isGhost =
+    state.activeDoc &&
+    state.activeDoc.onedriveItemId &&
+    state.activeDoc.remoteFound === false;
+  ghostBanner.classList.toggle("hidden", !isGhost);
 }
 
 async function switchDoc(id) {
@@ -252,6 +353,33 @@ async function switchDoc(id) {
   state.activeDoc = doc;
   await setActiveDocId(doc.id);
   renderEditor();
+  // Stub doc → fetch content; otherwise → freshness check. Both async.
+  if (state.authSignedIn) {
+    if (doc.onedriveItemId && !doc.contentLoaded && doc.remoteFound) {
+      hydrateStub(doc.id).catch((err) => console.warn("hydrateStub:", err));
+    } else {
+      checkActiveDocFreshness().catch(() => {});
+    }
+  }
+}
+
+async function hydrateStub(docId) {
+  try {
+    setSaveStatus("加载中…");
+    await fetchContentForDoc(docId);
+    const fresh = await getDoc(docId);
+    if (fresh && docId === state.activeDocId) {
+      state.activeDoc = fresh;
+      if (!contentSaveTimer && !titleSaveTimer) {
+        editor.value = fresh.content ?? "";
+        titleInput.value = fresh.title ?? "";
+      }
+      setSaveStatus(`已加载 ${formatTime(Date.now())}`);
+      renderGhostBanner();
+    }
+  } catch (error) {
+    setSaveStatus(`加载失败：${error.message ?? error}`, true);
+  }
 }
 
 async function ensureActiveDoc() {
@@ -290,6 +418,47 @@ async function openDrawer(view = "active") {
     trashActions.classList.remove("hidden");
   }
   await renderDocList();
+  // When the drawer opens we (best-effort) sync remote metadata into IDB,
+  // then kick off content prefetch for any new stubs. Both are background.
+  if (state.authSignedIn) {
+    syncOnDrawerOpen().catch((err) => console.warn("drawer sync:", err));
+  }
+}
+
+async function syncOnDrawerOpen() {
+  try {
+    const summary = await mergeRemoteList();
+    if (summary?.stubsCreated > 0 || state.drawerView !== "closed") {
+      await renderDocList();
+    }
+  } catch (error) {
+    // Don't disturb the drawer if list failed; user can hit refresh.
+    console.warn("mergeRemoteList:", error);
+    return;
+  }
+  startBackgroundPrefetch();
+}
+
+function startBackgroundPrefetch() {
+  if (prefetchPending) return;
+  prefetchPending = true;
+  prefetchPendingContents({
+    onProgress: ({ done, total }) => {
+      if (total > 0 && done < total) {
+        setSaveStatus(`本地化 ${done}/${total}`);
+      }
+    },
+  })
+    .then(async ({ done, total }) => {
+      if (total > 0) {
+        setSaveStatus(`本地化完成 ${done}/${total} · ${formatTime(Date.now())}`);
+      }
+      if (state.drawerView !== "closed") await renderDocList();
+    })
+    .catch((err) => console.warn("prefetch:", err))
+    .finally(() => {
+      prefetchPending = false;
+    });
 }
 
 function closeDrawer() {
@@ -328,7 +497,15 @@ async function renderDocList() {
     mainBtn.className = "doc-main";
 
     const nameSpan = document.createElement("span");
-    nameSpan.className = doc.title ? "doc-name" : "doc-name untitled";
+    let nameClass = doc.title ? "doc-name" : "doc-name untitled";
+    if (doc.onedriveItemId && doc.remoteFound === false) {
+      nameClass += " ghost";
+    } else if (doc.onedriveItemId && !doc.contentLoaded) {
+      nameClass += " stub";
+    } else if (!doc.onedriveItemId && state.authSignedIn) {
+      nameClass += " local-only";
+    }
+    nameSpan.className = nameClass;
     nameSpan.textContent = computeDisplayName(doc, all);
     mainBtn.appendChild(nameSpan);
 
@@ -390,7 +567,15 @@ async function renderDocList() {
 
 async function onTrashDoc(id) {
   await flushSaves();
-  await trashDoc(id);
+  if (state.authSignedIn) {
+    try {
+      await moveDocToTrash(id);
+    } catch (error) {
+      setSaveStatus(`移到回收站失败：${error.message ?? error}`, true);
+    }
+  } else {
+    await trashDoc(id);
+  }
   if (id === state.activeDocId) {
     await pickNextActive();
   }
@@ -398,13 +583,29 @@ async function onTrashDoc(id) {
 }
 
 async function onRestoreDoc(id) {
-  await restoreDoc(id);
+  if (state.authSignedIn) {
+    try {
+      await restoreDocFromTrash(id);
+    } catch (error) {
+      setSaveStatus(`恢复失败：${error.message ?? error}`, true);
+    }
+  } else {
+    await restoreDoc(id);
+  }
   await renderDocList();
 }
 
 async function onPurgeDoc(id) {
   if (!confirm("此文件将永久删除，无法恢复。继续吗？")) return;
-  await purgeDoc(id);
+  if (state.authSignedIn) {
+    try {
+      await purgeDocPermanent(id);
+    } catch (error) {
+      setSaveStatus(`删除失败：${error.message ?? error}`, true);
+    }
+  } else {
+    await purgeDoc(id);
+  }
   await renderDocList();
 }
 
@@ -413,7 +614,15 @@ async function onEmptyTrash() {
   if (trashed.length === 0) return;
   if (!confirm(`将永久删除 ${trashed.length} 个文件，无法恢复。继续吗？`)) return;
   for (const d of trashed) {
-    await purgeDoc(d.id);
+    if (state.authSignedIn) {
+      try {
+        await purgeDocPermanent(d.id);
+      } catch (error) {
+        console.warn(`purge ${d.id} failed:`, error);
+      }
+    } else {
+      await purgeDoc(d.id);
+    }
   }
   await renderDocList();
 }
@@ -515,6 +724,16 @@ async function initializeAuthFlow() {
     console.warn("Auth init failed:", error);
   }
   renderAuthRow();
+  if (state.authSignedIn) {
+    // Don't block the editor on the network. Let it idle a moment so the
+    // initial render is instant, then sync the active doc + start the merge.
+    setTimeout(() => {
+      checkActiveDocFreshness().catch(() => {});
+      mergeRemoteList()
+        .then(() => startBackgroundPrefetch())
+        .catch((err) => console.warn("startup merge:", err));
+    }, 800);
+  }
 }
 
 // --- IME wiring for editor + title input ---
@@ -612,6 +831,13 @@ menuButton.addEventListener("click", () => {
 });
 
 drawerCloseButton.addEventListener("click", closeDrawer);
+reloadButton?.addEventListener("click", async () => {
+  await flushSaves();
+  setSaveStatus("刷新中…");
+  // Hard reload — wipes all in-memory state and re-runs the init sequence,
+  // which is the simplest way to recover from any cross-device weirdness.
+  location.reload();
+});
 drawerBackdrop.addEventListener("click", closeDrawer);
 drawerBackButton.addEventListener("click", () => openDrawer("active"));
 newDocButton.addEventListener("click", onNewDoc);
@@ -629,6 +855,136 @@ document.addEventListener("keydown", async (event) => {
     setSaveStatus(`已保存 ${formatTime(Date.now())}`);
     saveStatus.classList.add("flash");
     setTimeout(() => saveStatus.classList.remove("flash"), 500);
+    schedulePush();
+  }
+});
+
+// Quest waking from standby, network reconnect, or tab regaining focus —
+// good moments to ask OneDrive if the active doc changed under us.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    checkActiveDocFreshness().catch(() => {});
+  }
+});
+window.addEventListener("focus", () => {
+  checkActiveDocFreshness().catch(() => {});
+});
+window.addEventListener("online", () => {
+  setSaveStatus(`已联网 ${formatTime(Date.now())}`);
+  checkActiveDocFreshness().catch(() => {});
+  // Drain any dirty docs that piled up while offline.
+  drainDirtyDocs().catch((err) => console.warn("drain:", err));
+});
+
+// Idle overlay — after N minutes of no input, dim the page and require the
+// user to click before continuing. Forces a fresh sync on resume so they
+// never type onto stale content. The timer is local (no network until the
+// user actually clicks to dismiss), so it's cheap on Quest battery.
+const IDLE_OVERLAY_MS = 2 * 60 * 1000; // 2 minutes — tweak here
+const idleOverlay = document.querySelector("#idleOverlay");
+let idleOverlayTimer = null;
+let idleOverlayShown = false;
+
+function scheduleIdleOverlay() {
+  if (idleOverlayTimer) clearTimeout(idleOverlayTimer);
+  idleOverlayTimer = setTimeout(showIdleOverlay, IDLE_OVERLAY_MS);
+}
+
+function showIdleOverlay() {
+  if (idleOverlayShown) return;
+  idleOverlayShown = true;
+  idleOverlay?.classList.remove("hidden");
+  // Defocus the editor so any racing keystroke goes nowhere visible.
+  if (document.activeElement && typeof document.activeElement.blur === "function") {
+    document.activeElement.blur();
+  }
+}
+
+async function dismissIdleOverlay() {
+  if (!idleOverlayShown) return;
+  idleOverlayShown = false;
+  idleOverlay?.classList.add("hidden");
+  scheduleIdleOverlay();
+  if (state.authSignedIn) {
+    try {
+      setSaveStatus("同步中…");
+      await checkActiveDocFreshness();
+      await drainDirtyDocs();
+    } catch (err) {
+      console.warn("idle resume sync:", err);
+    }
+  }
+  // Restore focus to the editor so the user can continue typing immediately.
+  editor.focus();
+}
+
+function onAnyActivity(event) {
+  if (idleOverlayShown) {
+    // Eat the input — don't let the keystroke land in the editor on top of
+    // the still-stale content. Dismiss kicks off the fresh sync.
+    if (event?.cancelable) event.preventDefault();
+    event?.stopPropagation?.();
+    dismissIdleOverlay();
+    return;
+  }
+  scheduleIdleOverlay();
+}
+
+document.addEventListener("keydown", onAnyActivity, { capture: true });
+document.addEventListener("pointerdown", onAnyActivity, { capture: true });
+document.addEventListener("touchstart", onAnyActivity, { capture: true, passive: true });
+document.addEventListener(
+  "scroll",
+  () => {
+    if (!idleOverlayShown) scheduleIdleOverlay();
+  },
+  { passive: true, capture: true },
+);
+
+// Initial schedule
+scheduleIdleOverlay();
+
+async function drainDirtyDocs() {
+  if (!state.authSignedIn) return;
+  const docs = await listDocs({ includeTrashed: true });
+  const dirty = docs.filter((d) => d.dirty);
+  for (const d of dirty) {
+    try {
+      await pushDoc(d.id);
+    } catch (error) {
+      console.warn(`push ${d.id} failed:`, error);
+    }
+  }
+  // Refresh active doc state if it was in the dirty set.
+  const fresh = state.activeDocId ? await getDoc(state.activeDocId) : null;
+  if (fresh) {
+    state.activeDoc = fresh;
+    renderGhostBanner();
+  }
+}
+
+ghostTrashButton?.addEventListener("click", async () => {
+  if (!state.activeDocId) return;
+  if (!confirm("把这个文件从本地清除？（不会影响 OneDrive，因为云端已经没有了。）")) return;
+  await purgeDoc(state.activeDocId);
+  await pickNextActive();
+  renderEditor();
+  setSaveStatus(`已清除 ${formatTime(Date.now())}`);
+});
+
+ghostReuploadButton?.addEventListener("click", async () => {
+  if (!state.activeDocId) return;
+  try {
+    setSaveStatus("正在重新上传…");
+    await reuploadGhostAsNew(state.activeDocId);
+    const fresh = await getDoc(state.activeDocId);
+    if (fresh) {
+      state.activeDoc = fresh;
+      renderGhostBanner();
+    }
+    setSaveStatus(`已重新上传 ${formatTime(Date.now())}`);
+  } catch (error) {
+    setSaveStatus(`重新上传失败：${error.message ?? error}`, true);
   }
 });
 

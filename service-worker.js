@@ -1,7 +1,7 @@
 // Bump CACHE_VERSION whenever any precached asset changes. The activate
 // handler wipes older caches; skipWaiting + clientsClaim make the new SW
 // take over on the next reload (no need to close all tabs).
-const CACHE_VERSION = "v17-2026-05-16-signoutui";
+const CACHE_VERSION = "v21-2026-05-17-idleoverlay";
 const CACHE_NAME = `xiaoheiwu-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -15,7 +15,9 @@ const PRECACHE_URLS = [
   "./src/auth.js",
   "./src/db.js",
   "./src/ime.js",
+  "./src/onedrive.js",
   "./src/styles.css",
+  "./src/sync.js",
   "./src/vendor/my-rime/worker.js",
   "./src/vendor/my-rime/dist/rime.js",
   "./src/vendor/my-rime/dist/rime.wasm",

@@ -68,9 +68,46 @@ export async function listAppFolderChildren(subfolder = "") {
 
 // ── Content & metadata ─────────────────────────────────────────────────────
 
+// Heuristic decode: handle BOM, then try UTF-8 strict, then GB18030 (covers
+// GB2312/GBK/GB18030), then Big5, fall back to lossy UTF-8. Returns the
+// detected encoding so the sync layer can flag non-UTF-8 files for
+// re-upload (normalising OneDrive content to UTF-8 on next save).
+export function decodeBytes(buf) {
+  const arr = new Uint8Array(buf);
+  if (
+    arr.length >= 3 &&
+    arr[0] === 0xef && arr[1] === 0xbb && arr[2] === 0xbf
+  ) {
+    return { text: new TextDecoder("utf-8").decode(arr.slice(3)), encoding: "utf-8-bom" };
+  }
+  if (arr.length >= 2 && arr[0] === 0xff && arr[1] === 0xfe) {
+    return { text: new TextDecoder("utf-16le").decode(arr.slice(2)), encoding: "utf-16le" };
+  }
+  if (arr.length >= 2 && arr[0] === 0xfe && arr[1] === 0xff) {
+    return { text: new TextDecoder("utf-16be").decode(arr.slice(2)), encoding: "utf-16be" };
+  }
+  try {
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(arr), encoding: "utf-8" };
+  } catch {
+    // not utf-8
+  }
+  try {
+    return { text: new TextDecoder("gb18030", { fatal: true }).decode(arr), encoding: "gb18030" };
+  } catch {
+    // not gb
+  }
+  try {
+    return { text: new TextDecoder("big5", { fatal: true }).decode(arr), encoding: "big5" };
+  } catch {
+    // not big5
+  }
+  return { text: new TextDecoder("utf-8").decode(arr), encoding: "utf-8-lossy" };
+}
+
 export async function getItemContent(itemId) {
   const response = await graphFetch("GET", `/me/drive/items/${itemId}/content`);
-  return response.text();
+  const buf = await response.arrayBuffer();
+  return decodeBytes(buf);
 }
 
 export async function getItemMetadata(itemId) {
@@ -84,16 +121,15 @@ export async function getItemMetadata(itemId) {
 // ── Create / update ────────────────────────────────────────────────────────
 
 export async function createTxtAtRoot(filename, content) {
+  // @microsoft.graph.conflictBehavior is a Graph parameter, NOT an HTTP
+  // header (the `@` makes it an invalid header name). For the PUT /content
+  // endpoint it goes in the URL query string.
   const response = await graphFetch(
     "PUT",
-    `/me/drive/special/approot:/${encodePathSegment(filename)}:/content`,
+    `/me/drive/special/approot:/${encodePathSegment(filename)}:/content?@microsoft.graph.conflictBehavior=fail`,
     {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
-        // Fail rather than silently overwrite if the name already exists —
-        // the caller is responsible for resolving collisions (and bumping
-        // the numeric suffix) before retrying.
-        "@microsoft.graph.conflictBehavior": "fail",
       },
       body: content,
     },
@@ -137,6 +173,18 @@ export async function deleteItem(itemId, etag = null) {
   const headers = {};
   if (etag) headers["If-Match"] = etag;
   await graphFetch("DELETE", `/me/drive/items/${itemId}`, { headers });
+}
+
+// ── AppFolder root id (used when restoring from trash) ────────────────────
+
+let appFolderRootIdCache = null;
+
+export async function getAppFolderRootId() {
+  if (appFolderRootIdCache) return appFolderRootIdCache;
+  const response = await graphFetch("GET", "/me/drive/special/approot?$select=id");
+  const item = await response.json();
+  appFolderRootIdCache = item.id;
+  return appFolderRootIdCache;
 }
 
 // ── Subfolder ensure (used for .trash/) ───────────────────────────────────

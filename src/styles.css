@@ -163,6 +163,66 @@ body {
   position: relative;
 }
 
+.ghost-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: rgba(157, 46, 33, 0.08);
+  border: 1px solid rgba(157, 46, 33, 0.28);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.ghost-banner.hidden { display: none; }
+
+.ghost-banner-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ghost-banner-action {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid rgba(157, 46, 33, 0.4);
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ghost-banner-action:hover,
+.ghost-banner-action:focus-visible {
+  background: rgba(157, 46, 33, 0.16);
+  outline: none;
+}
+
+.ghost-banner-action.primary {
+  background: rgba(157, 46, 33, 0.18);
+}
+
+.doc-row .doc-name.ghost::after {
+  content: " ☁️?";
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.doc-row .doc-name.stub::after {
+  content: " ⋯";
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.doc-row .doc-name.local-only::after {
+  content: " 🌐";
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
 .body {
   flex: 1 1 auto;
   border: 0;
@@ -567,6 +627,52 @@ body {
   background: var(--bg-2);
   color: var(--ink);
   outline: none;
+}
+
+/* Idle overlay — half-locked state after N min of no input */
+
+.idle-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(45, 27, 15, 0.5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  animation: idle-fade-in 200ms ease-out;
+}
+
+.idle-overlay.hidden { display: none; }
+
+.idle-card {
+  background: rgba(241, 230, 207, 0.96);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 18px 24px;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(58, 40, 24, 0.3);
+  max-width: 80vw;
+}
+
+.idle-title {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+
+.idle-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+@keyframes idle-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* New-version toast (SW signaled an asset update) */

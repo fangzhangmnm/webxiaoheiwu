@@ -1,0 +1,619 @@
+// Sync orchestrator: OneDrive AppFolder is SSOT, IndexedDB is offline cache.
+//
+// Design rules — every code path here exists to preserve user data:
+//  - 412 push conflict      → save current local content as a sibling .txt,
+//                              then reload remote into the active doc.
+//                              Two files preserved; user merges manually
+//                              on PC. No content destroyed.
+//  - 404 push on clean doc  → mark remoteFound=false (☁️?). No remote write.
+//                              No local delete.
+//  - 404 push on dirty doc  → caller is responsible for the [save as new]
+//                              vs [discard] modal.
+//  - List + merge           → never auto-purges local docs. Missing-on-remote
+//                              just flips remoteFound. User must confirm.
+//  - Prefetch               → idempotent, throttled, skips files > 5MB.
+
+import {
+  listDocs,
+  getDoc,
+  applySyncPatch,
+  applySyncPatchIfClean,
+  insertSyncedDoc,
+  purgeDoc,
+  newId,
+} from "./db.js";
+import {
+  listAppFolderChildren,
+  getItemContent,
+  getItemMetadata,
+  createTxtAtRoot,
+  updateItemContent,
+  renameItem,
+  moveItemToFolder,
+  deleteItem,
+  ensureSubfolder,
+  getAppFolderRootId,
+} from "./onedrive.js";
+
+const PREFETCH_SIZE_LIMIT = 5 * 1024 * 1024;
+
+// ── Filename helpers ──────────────────────────────────────────────────────
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+export function formatDateForFilename(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+}
+
+function sanitizeFilenamePart(s) {
+  return String(s ?? "")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/^\.+/, "")
+    .trim()
+    .slice(0, 200);
+}
+
+function detectDeviceLabel() {
+  const ua = (globalThis.navigator?.userAgent ?? "").toLowerCase();
+  if (ua.includes("quest") || ua.includes("oculusbrowser")) return "Quest";
+  if (ua.includes("ipad")) return "iPad";
+  if (ua.includes("iphone")) return "iPhone";
+  if (ua.includes("android")) return "Android";
+  return "PC";
+}
+
+function siblingFilename(originalName, ts = Date.now()) {
+  const stem = (originalName ?? "untitled.txt").replace(/\.txt$/i, "");
+  const d = new Date(ts);
+  const stamp = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
+  return `${stem} (${detectDeviceLabel()} 离线副本 ${stamp}).txt`;
+}
+
+// Loose remote-name parser. Strict canonical form first; anything else falls
+// through to "treat the whole stem as the title".
+export function parseRemoteFilename(name) {
+  const stem = (name ?? "").replace(/\.txt$/i, "");
+  const m = stem.match(/^(\d{8})(?:\s+(.+?))?(?:\s+(\d+))?$/);
+  if (m) {
+    const [, dateStr, titlePart, ordinalStr] = m;
+    const year = +dateStr.slice(0, 4);
+    const month = +dateStr.slice(4, 6) - 1;
+    const day = +dateStr.slice(6, 8);
+    const date = new Date(year, month, day, 12, 0, 0);
+    if (!Number.isNaN(date.getTime())) {
+      return {
+        canonical: true,
+        createdAt: date.getTime(),
+        title: titlePart ?? "",
+        ordinal: ordinalStr ? Number.parseInt(ordinalStr, 10) : 0,
+      };
+    }
+  }
+  return { canonical: false, createdAt: null, title: stem, ordinal: 0 };
+}
+
+// Create-with-numeric-suffix-on-collision. Returns the created OneDrive item.
+async function createWithCollisionRetry(baseName, content) {
+  const stem = baseName.replace(/\.txt$/i, "");
+  for (let n = 0; n < 200; n += 1) {
+    const candidate = n === 0 ? `${stem}.txt` : `${stem} ${n}.txt`;
+    try {
+      return await createTxtAtRoot(candidate, content);
+    } catch (error) {
+      if (error.status === 409) continue;
+      throw error;
+    }
+  }
+  throw new Error("too many filename collisions creating remote file");
+}
+
+// ── Push ──────────────────────────────────────────────────────────────────
+
+// Single-flight guard per doc so a rapid double-push doesn't spawn duplicate
+// siblings on 412.
+const inFlightPush = new Set();
+
+export async function pushDoc(docId) {
+  if (inFlightPush.has(docId)) return { ok: false, skipped: "in-flight" };
+  inFlightPush.add(docId);
+  try {
+    const doc = await getDoc(docId);
+    if (!doc) return { ok: false, missing: true };
+    if (doc.deletedAt) return { ok: false, skipped: "trashed" };
+
+    if (!doc.onedriveItemId) {
+      return await pushAsNew(doc);
+    }
+    return await pushUpdate(doc);
+  } finally {
+    inFlightPush.delete(docId);
+  }
+}
+
+async function pushAsNew(doc) {
+  const dateStr = formatDateForFilename(doc.createdAt);
+  const title = sanitizeFilenamePart(doc.title);
+  const base = title ? `${dateStr} ${title}` : dateStr;
+  const item = await createWithCollisionRetry(base, doc.content ?? "");
+  await applySyncPatch(doc.id, {
+    onedriveItemId: item.id,
+    etag: item.eTag,
+    lastSyncedAt: Date.now(),
+    dirty: false,
+    contentLoaded: true,
+    remoteFound: true,
+    remoteName: item.name,
+  });
+  return { ok: true, action: "created", item };
+}
+
+async function pushUpdate(doc) {
+  try {
+    const item = await updateItemContent(doc.onedriveItemId, doc.content ?? "", doc.etag);
+    await applySyncPatch(doc.id, {
+      etag: item.eTag,
+      lastSyncedAt: Date.now(),
+      dirty: false,
+      remoteName: item.name,
+      remoteFound: true,
+    });
+
+    // If our computed canonical filename has drifted from the remote name
+    // (user edited title), try to rename remote to match — best effort.
+    const desiredName = computeDesiredFilename(doc);
+    if (desiredName && item.name !== desiredName) {
+      await tryRenameRemote(doc.id, item.id, item.eTag, desiredName);
+    }
+    return { ok: true, action: "updated", item };
+  } catch (error) {
+    if (error.status === 412) return await handleEtagConflict(doc);
+    if (error.status === 404) return await handle404OnPush(doc);
+    throw error;
+  }
+}
+
+function computeDesiredFilename(doc) {
+  const dateStr = formatDateForFilename(doc.createdAt);
+  const title = sanitizeFilenamePart(doc.title);
+  return title ? `${dateStr} ${title}.txt` : `${dateStr}.txt`;
+}
+
+async function tryRenameRemote(docId, itemId, etag, desiredBaseName) {
+  const stem = desiredBaseName.replace(/\.txt$/i, "");
+  for (let n = 0; n < 50; n += 1) {
+    const candidate = n === 0 ? `${stem}.txt` : `${stem} ${n}.txt`;
+    try {
+      const renamed = await renameItem(itemId, candidate, etag);
+      await applySyncPatch(docId, {
+        remoteName: renamed.name,
+        etag: renamed.eTag,
+      });
+      return;
+    } catch (error) {
+      if (error.status === 409) continue; // name taken, try next
+      if (error.status === 412) return;   // etag changed; skip rename this round
+      return; // any other error: don't blow up the push pipeline
+    }
+  }
+}
+
+// Save current local dirty content as a sibling, then reload remote into
+// the active doc. Both versions preserved.
+async function handleEtagConflict(doc) {
+  const remoteBaseName = doc.remoteName ?? computeDesiredFilename(doc);
+  const siblingBase = siblingFilename(remoteBaseName);
+  const siblingItem = await createWithCollisionRetry(siblingBase, doc.content ?? "");
+
+  const parsed = parseRemoteFilename(siblingItem.name);
+  const siblingDoc = {
+    id: newId(),
+    title: parsed.title,
+    content: doc.content ?? "",
+    createdAt: parsed.canonical
+      ? parsed.createdAt
+      : Date.parse(siblingItem.createdDateTime ?? "") || Date.now(),
+    modifiedAt: Date.now(),
+    deletedAt: null,
+    onedriveItemId: siblingItem.id,
+    etag: siblingItem.eTag,
+    lastSyncedAt: Date.now(),
+    dirty: false,
+    contentLoaded: true,
+    remoteFound: true,
+    remoteName: siblingItem.name,
+  };
+  await insertSyncedDoc(siblingDoc);
+
+  // Now reload remote into the original doc.
+  try {
+    const meta = await getItemMetadata(doc.onedriveItemId);
+    const { text: content } = await getItemContent(doc.onedriveItemId);
+    await applySyncPatch(doc.id, {
+      content,
+      etag: meta.eTag,
+      lastSyncedAt: Date.now(),
+      dirty: false,
+      contentLoaded: true,
+      remoteFound: true,
+      remoteName: meta.name,
+    });
+  } catch (error) {
+    // If we can't reload, the sibling still preserved the user's content.
+    console.warn("conflict: sibling created but reload failed", error);
+  }
+
+  return {
+    ok: false,
+    conflict: "sibling-created",
+    siblingDocId: siblingDoc.id,
+    siblingName: siblingItem.name,
+  };
+}
+
+async function handle404OnPush(doc) {
+  await applySyncPatch(doc.id, { remoteFound: false });
+  if (doc.dirty) {
+    return { ok: false, conflict: "missing-dirty" };
+  }
+  return { ok: false, conflict: "missing-clean" };
+}
+
+// ── Pull (single doc freshness check) ─────────────────────────────────────
+
+export async function checkRemoteFreshness(docId) {
+  const doc = await getDoc(docId);
+  if (!doc || !doc.onedriveItemId) return { ok: true, changed: false };
+
+  let meta;
+  try {
+    meta = await getItemMetadata(doc.onedriveItemId);
+  } catch (error) {
+    if (error.status === 404) {
+      await applySyncPatch(docId, { remoteFound: false });
+      return { ok: false, missing: true };
+    }
+    throw error;
+  }
+
+  if (meta.eTag === doc.etag) {
+    if (!doc.remoteFound) {
+      await applySyncPatch(docId, { remoteFound: true, remoteName: meta.name });
+    }
+    return { ok: true, changed: false };
+  }
+
+  if (doc.dirty) {
+    return await handleEtagConflict(doc);
+  }
+
+  // Local is clean as of the read above. But the user might type while we
+  // GET content (~100-500ms network). Use atomic conditional write so we
+  // never overwrite an in-flight keystroke.
+  const { text: content, encoding } = await getItemContent(doc.onedriveItemId);
+  const applyResult = await applySyncPatchIfClean(docId, {
+    content,
+    etag: meta.eTag,
+    remoteName: meta.name,
+    lastSyncedAt: Date.now(),
+    contentLoaded: true,
+    remoteFound: true,
+  });
+
+  if (!applyResult.applied) {
+    // User dirty'd during our fetch — fall back to conflict path.
+    const reread = await getDoc(docId);
+    if (reread?.dirty) return await handleEtagConflict(reread);
+    return { ok: true, changed: false };
+  }
+
+  // Non-UTF-8 source → immediately push back to OneDrive in UTF-8. We do
+  // this here instead of marking dirty so the user's dirty flag stays a
+  // pure "user has unsaved edits" signal.
+  if (encoding && encoding !== "utf-8" && encoding !== "utf-8-bom") {
+    await reuploadAsUtf8(docId).catch((err) =>
+      console.warn("encoding re-upload:", err),
+    );
+  }
+
+  return { ok: true, changed: true, contentChanged: true };
+}
+
+// Push the current local content of an already-synced doc back to OneDrive
+// without going through the dirty/timer machinery. Used by the encoding
+// normaliser. Uses If-Match so a parallel update doesn't get clobbered.
+async function reuploadAsUtf8(docId) {
+  const doc = await getDoc(docId);
+  if (!doc || !doc.onedriveItemId) return;
+  try {
+    const item = await updateItemContent(doc.onedriveItemId, doc.content ?? "", doc.etag);
+    await applySyncPatch(docId, {
+      etag: item.eTag,
+      lastSyncedAt: Date.now(),
+      remoteName: item.name,
+      remoteFound: true,
+    });
+  } catch (error) {
+    if (error.status === 412) {
+      // Someone else wrote between our fetch and our re-upload — just bail,
+      // their version is the new SSOT.
+      return;
+    }
+    if (error.status === 404) {
+      await applySyncPatch(docId, { remoteFound: false });
+      return;
+    }
+    throw error;
+  }
+}
+
+// ── List + merge ──────────────────────────────────────────────────────────
+
+export async function mergeRemoteList() {
+  let rootItems;
+  let trashItems;
+  try {
+    [rootItems, trashItems] = await Promise.all([
+      listAppFolderChildren(""),
+      listAppFolderChildren(".trash"),
+    ]);
+  } catch (error) {
+    throw error; // bail; do not mutate local state on partial list
+  }
+
+  const remoteById = new Map();
+  for (const item of rootItems) {
+    if (item.file && /\.txt$/i.test(item.name ?? "")) {
+      remoteById.set(item.id, { ...item, _location: "root" });
+    }
+  }
+  for (const item of trashItems) {
+    if (item.file && /\.txt$/i.test(item.name ?? "")) {
+      remoteById.set(item.id, { ...item, _location: "trash" });
+    }
+  }
+
+  const localDocs = await listDocs({ includeTrashed: true });
+  const localItemIds = new Set();
+
+  for (const doc of localDocs) {
+    if (!doc.onedriveItemId) continue;
+    localItemIds.add(doc.onedriveItemId);
+    const remote = remoteById.get(doc.onedriveItemId);
+
+    if (!remote) {
+      if (doc.remoteFound !== false) {
+        await applySyncPatch(doc.id, { remoteFound: false });
+      }
+      continue;
+    }
+
+    const patch = {
+      remoteFound: true,
+      remoteName: remote.name,
+    };
+
+    if (remote._location === "trash" && !doc.deletedAt) {
+      patch.deletedAt = Date.parse(remote.lastModifiedDateTime ?? "") || Date.now();
+    } else if (remote._location === "root" && doc.deletedAt) {
+      patch.deletedAt = null;
+    }
+
+    await applySyncPatch(doc.id, patch);
+  }
+
+  // Insert stubs for unknown remote items.
+  let stubsCreated = 0;
+  for (const [itemId, item] of remoteById) {
+    if (localItemIds.has(itemId)) continue;
+    const parsed = parseRemoteFilename(item.name);
+    const createdAt = parsed.canonical
+      ? parsed.createdAt
+      : Date.parse(item.createdDateTime ?? "") || Date.now();
+    const stub = {
+      id: newId(),
+      title: parsed.title,
+      content: "",
+      createdAt,
+      modifiedAt: Date.parse(item.lastModifiedDateTime ?? "") || createdAt,
+      deletedAt: item._location === "trash"
+        ? Date.parse(item.lastModifiedDateTime ?? "") || Date.now()
+        : null,
+      onedriveItemId: item.id,
+      etag: item.eTag,
+      lastSyncedAt: Date.now(),
+      dirty: false,
+      contentLoaded: false,
+      remoteFound: true,
+      remoteName: item.name,
+    };
+    await insertSyncedDoc(stub);
+    stubsCreated += 1;
+  }
+
+  return {
+    rootCount: rootItems.length,
+    trashCount: trashItems.length,
+    stubsCreated,
+  };
+}
+
+// ── Prefetch content for stubs ───────────────────────────────────────────
+
+let prefetchInFlight = false;
+
+export async function prefetchPendingContents({ onProgress } = {}) {
+  if (prefetchInFlight) return { skipped: "in-flight" };
+  prefetchInFlight = true;
+  try {
+    const docs = await listDocs({ includeTrashed: true });
+    const stubs = docs.filter(
+      (d) => d.onedriveItemId && !d.contentLoaded && d.remoteFound,
+    );
+    const total = stubs.length;
+    let done = 0;
+    for (const doc of stubs) {
+      try {
+        const meta = await getItemMetadata(doc.onedriveItemId);
+        if ((meta.size ?? 0) > PREFETCH_SIZE_LIMIT) {
+          // Mark as "too large to prefetch" — leave contentLoaded=false,
+          // user can still open it explicitly while online.
+          done += 1;
+          onProgress?.({ done, total, skipped: doc.id });
+          continue;
+        }
+        const { text: content, encoding } = await getItemContent(doc.onedriveItemId);
+        await applySyncPatch(doc.id, {
+          content,
+          contentLoaded: true,
+          etag: meta.eTag,
+          remoteName: meta.name,
+          remoteFound: true,
+        });
+        if (encoding && encoding !== "utf-8" && encoding !== "utf-8-bom") {
+          await reuploadAsUtf8(doc.id).catch((err) =>
+            console.warn("prefetch encoding re-upload:", err),
+          );
+        }
+      } catch (error) {
+        if (error.status === 404) {
+          await applySyncPatch(doc.id, { remoteFound: false });
+        }
+        // else: skip; will retry on next prefetch run
+      } finally {
+        done += 1;
+        onProgress?.({ done, total });
+      }
+    }
+    return { done, total };
+  } finally {
+    prefetchInFlight = false;
+  }
+}
+
+// ── Explicit content fetch for a single doc (e.g. user clicked a stub) ──
+
+export async function fetchContentForDoc(docId) {
+  const doc = await getDoc(docId);
+  if (!doc || !doc.onedriveItemId) return null;
+  try {
+    const meta = await getItemMetadata(doc.onedriveItemId);
+    const { text: content, encoding } = await getItemContent(doc.onedriveItemId);
+    await applySyncPatch(docId, {
+      content,
+      etag: meta.eTag,
+      remoteName: meta.name,
+      remoteFound: true,
+      contentLoaded: true,
+      lastSyncedAt: Date.now(),
+    });
+    if (encoding && encoding !== "utf-8" && encoding !== "utf-8-bom") {
+      await reuploadAsUtf8(docId).catch((err) =>
+        console.warn("fetchContentForDoc encoding re-upload:", err),
+      );
+    }
+    return content;
+  } catch (error) {
+    if (error.status === 404) {
+      await applySyncPatch(docId, { remoteFound: false });
+    }
+    throw error;
+  }
+}
+
+// ── Trash (move to OneDrive .trash/) ─────────────────────────────────────
+
+export async function moveDocToTrash(docId) {
+  const doc = await getDoc(docId);
+  if (!doc) return { ok: false, missing: true };
+
+  await applySyncPatch(docId, { deletedAt: Date.now() });
+
+  if (!doc.onedriveItemId) {
+    return { ok: true, localOnly: true };
+  }
+
+  try {
+    const trashId = await ensureSubfolder(".trash");
+    await moveItemToFolder(doc.onedriveItemId, trashId);
+    const meta = await getItemMetadata(doc.onedriveItemId);
+    await applySyncPatch(docId, {
+      remoteName: meta.name,
+      etag: meta.eTag,
+      lastSyncedAt: Date.now(),
+      dirty: false,
+    });
+    return { ok: true };
+  } catch (error) {
+    if (error.status === 404) {
+      await applySyncPatch(docId, { remoteFound: false });
+      return { ok: true, alreadyGone: true };
+    }
+    // Network / 5xx — keep deletedAt set and mark dirty so a retry pushes again.
+    await applySyncPatch(docId, { dirty: true });
+    return { ok: false, error };
+  }
+}
+
+export async function restoreDocFromTrash(docId) {
+  const doc = await getDoc(docId);
+  if (!doc) return { ok: false, missing: true };
+
+  await applySyncPatch(docId, { deletedAt: null });
+
+  if (!doc.onedriveItemId) return { ok: true, localOnly: true };
+
+  try {
+    const rootId = await getAppFolderRootId();
+    await moveItemToFolder(doc.onedriveItemId, rootId);
+    const meta = await getItemMetadata(doc.onedriveItemId);
+    await applySyncPatch(docId, {
+      remoteName: meta.name,
+      etag: meta.eTag,
+      lastSyncedAt: Date.now(),
+    });
+    return { ok: true };
+  } catch (error) {
+    if (error.status === 404) {
+      await applySyncPatch(docId, { remoteFound: false });
+      return { ok: false, missing: true };
+    }
+    return { ok: false, error };
+  }
+}
+
+export async function purgeDocPermanent(docId) {
+  const doc = await getDoc(docId);
+  if (!doc) return { ok: false, missing: true };
+  if (doc.onedriveItemId) {
+    try {
+      await deleteItem(doc.onedriveItemId);
+    } catch (error) {
+      if (error.status !== 404) {
+        return { ok: false, error };
+      }
+    }
+  }
+  await purgeDoc(docId);
+  return { ok: true };
+}
+
+// ── User-driven action for ☁️? ghost docs ────────────────────────────────
+
+export async function reuploadGhostAsNew(docId) {
+  const doc = await getDoc(docId);
+  if (!doc) return { ok: false, missing: true };
+  // Treat as if it never had an onedriveItemId.
+  await applySyncPatch(docId, {
+    onedriveItemId: null,
+    etag: null,
+    remoteName: null,
+    remoteFound: true,
+    dirty: true,
+    lastSyncedAt: null,
+  });
+  return await pushDoc(docId);
+}
