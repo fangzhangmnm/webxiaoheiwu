@@ -601,6 +601,45 @@ export async function purgeDocPermanent(docId) {
   return { ok: true };
 }
 
+// ── Last-active doc pointer (cross-device "continue where I left off") ──
+
+const LAST_ACTIVE_PATH = ".userdata/last-active.json";
+
+export async function pushLastActiveItemId(itemId) {
+  if (!itemId) return { ok: false, reason: "no-item" };
+  try {
+    await graphFetch(
+      "PUT",
+      `/me/drive/special/approot:/${LAST_ACTIVE_PATH}:/content?@microsoft.graph.conflictBehavior=replace`,
+      {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId,
+          savedAt: Date.now(),
+          device: detectDeviceLabel(),
+        }),
+      },
+    );
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function pullLastActiveItemId() {
+  try {
+    const response = await graphFetch(
+      "GET",
+      `/me/drive/special/approot:/${LAST_ACTIVE_PATH}:/content`,
+    );
+    const data = await response.json();
+    return data?.itemId ?? null;
+  } catch (error) {
+    if (error.status === 404) return null;
+    return null; // any failure: just bail, don't disturb local state
+  }
+}
+
 // ── RIME user dict sync ──────────────────────────────────────────────────
 // Stored as a single JSON blob at Apps/<AppName>/.userdata/rime-user-dir.json.
 // Last-write-wins — RIME just relearns frequencies if a remote push

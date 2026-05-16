@@ -28,6 +28,8 @@ import {
   reuploadGhostAsNew,
   pushUserDict,
   pullUserDict,
+  pushLastActiveItemId,
+  pullLastActiveItemId,
 } from "./sync.js";
 
 const editor = document.querySelector("#editor");
@@ -268,6 +270,7 @@ async function doPush() {
   pushTimer = null;
   if (!state.activeDocId || !state.authSignedIn) return;
   const targetId = state.activeDocId;
+  const wasUntracked = state.activeDoc && !state.activeDoc.onedriveItemId;
   try {
     const result = await pushDoc(targetId);
     const fresh = await getDoc(targetId);
@@ -288,6 +291,12 @@ async function doPush() {
         setSaveStatus(`已保存 ${formatTime(Date.now())}`);
       }
       renderGhostBanner();
+      // First successful push: doc just got an onedriveItemId. Record it as
+      // the cross-device "last active" so the next cold start on another
+      // device opens this file.
+      if (wasUntracked && result?.ok && fresh.onedriveItemId) {
+        pushLastActiveItemId(fresh.onedriveItemId).catch(() => {});
+      }
     }
   } catch (error) {
     setSaveStatus(`同步失败：${error.message ?? error}`, true);
@@ -377,6 +386,9 @@ async function switchDoc(id) {
     } else {
       checkActiveDocFreshness().catch(() => {});
     }
+    if (doc.onedriveItemId) {
+      pushLastActiveItemId(doc.onedriveItemId).catch(() => {});
+    }
   }
 }
 
@@ -396,6 +408,29 @@ async function hydrateStub(docId) {
     }
   } catch (error) {
     setSaveStatus(`加载失败：${error.message ?? error}`, true);
+  }
+}
+
+// An auto-generated blank doc: user clicked "新建" then walked away without
+// typing anything. Safe to purge on next app boot — they were never pushed
+// to OneDrive (no onedriveItemId), have no title, no content.
+function isAutoEmpty(doc) {
+  return (
+    !doc.title &&
+    !doc.content &&
+    !doc.onedriveItemId &&
+    !doc.deletedAt
+  );
+}
+
+async function cleanupAutoEmptyDocs() {
+  try {
+    const docs = await listDocs({ includeTrashed: false });
+    for (const d of docs.filter(isAutoEmpty)) {
+      await purgeDoc(d.id);
+    }
+  } catch (error) {
+    console.warn("cleanupAutoEmptyDocs:", error);
   }
 }
 
@@ -753,7 +788,13 @@ async function initializeAuthFlow() {
     setTimeout(() => {
       checkActiveDocFreshness().catch(() => {});
       mergeRemoteList()
-        .then(() => startBackgroundPrefetch())
+        .then(async () => {
+          startBackgroundPrefetch();
+          // Cold start only: respect the cross-device "last active" pointer.
+          // We deliberately don't do this on idle resume — switching docs
+          // out from under the user mid-session would be jarring.
+          await maybeSwitchToRemoteLastActive();
+        })
         .catch((err) => console.warn("startup merge:", err));
       // Pull RIME user dict in the background. If it lands, restoreUserDir
       // re-inits the worker; any keystrokes between now and then learn into
@@ -767,6 +808,23 @@ async function initializeAuthFlow() {
         .catch((err) => console.warn("pull user dict:", err));
     }, 800);
   }
+}
+
+async function maybeSwitchToRemoteLastActive() {
+  if (!state.authSignedIn) return;
+  // Don't disturb someone actively typing.
+  if (contentSaveTimer || titleSaveTimer) return;
+  const remoteItemId = await pullLastActiveItemId();
+  if (!remoteItemId) return;
+  const currentItemId = state.activeDoc?.onedriveItemId ?? null;
+  if (remoteItemId === currentItemId) return;
+  const all = await listDocs({ includeTrashed: false });
+  const target = all.find((d) => d.onedriveItemId === remoteItemId);
+  if (!target) return;
+  // Re-check the typing guard right before we actually switch — the pull
+  // call had latency and the user may have started typing in between.
+  if (contentSaveTimer || titleSaveTimer) return;
+  await switchDoc(target.id);
 }
 
 // --- IME wiring for editor + title input ---
@@ -958,6 +1016,10 @@ async function dismissIdleOverlay() {
       // "user came back" moment where uploading their typing habits costs
       // nothing in perceived UX.
       flushUserDictNow().catch(() => {});
+      // Also push current last-active so other devices see it next start.
+      if (state.activeDoc?.onedriveItemId) {
+        pushLastActiveItemId(state.activeDoc.onedriveItemId).catch(() => {});
+      }
     } catch (err) {
       console.warn("idle resume sync:", err);
     }
@@ -1083,6 +1145,9 @@ window.addEventListener("beforeunload", () => {
   // so this is unlikely to complete, but it's free to try and might catch
   // a recent learning before tab close.
   flushUserDictNow().catch(() => {});
+  if (state.authSignedIn && state.activeDoc?.onedriveItemId) {
+    pushLastActiveItemId(state.activeDoc.onedriveItemId).catch(() => {});
+  }
 });
 
 // --- Initialize ---
@@ -1096,6 +1161,7 @@ async function initialize() {
   await ime.initialize();
 
   try {
+    await cleanupAutoEmptyDocs();
     await ensureActiveDoc();
     renderEditor();
     if (state.activeDoc?.content) {
