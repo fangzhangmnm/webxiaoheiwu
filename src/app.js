@@ -1159,6 +1159,18 @@ function showIdleOverlay() {
   if (document.activeElement && typeof document.activeElement.blur === "function") {
     document.activeElement.blur();
   }
+  // Lock-time is the safe moment to push: the user clearly stopped, and
+  // if they never come back (closed Quest, walked away for the day), this
+  // is the last chance to make sure their dirty content reaches OneDrive.
+  // doPush + dict + last-active fire as fire-and-forget; the overlay
+  // hides whatever the status bar shows anyway.
+  if (state.authSignedIn) {
+    doPush().catch(() => {});
+    flushUserDictNow().catch(() => {});
+    if (state.activeDoc?.onedriveItemId) {
+      pushLastActiveItemId(state.activeDoc.onedriveItemId).catch(() => {});
+    }
+  }
 }
 
 async function dismissIdleOverlay() {
@@ -1169,24 +1181,16 @@ async function dismissIdleOverlay() {
   if (state.authSignedIn) {
     try {
       setSaveStatus("同步中…");
+      // Lock-time (showIdleOverlay) already pushed dirty content + dict +
+      // last-active. Dismiss is purely for the PULL side — see what other
+      // devices changed while we were idle.
       await checkActiveDocFreshness();
-      await drainDirtyDocs();
-      // Refresh the full remote list too — other devices may have added,
-      // renamed, or trashed files while this tab was idle. Re-render the
-      // drawer if it's open so the user sees the new state immediately.
+      await drainDirtyDocs(); // catches any push retries left over from lock-time
       await mergeRemoteList();
       if (state.drawerView !== "closed") {
         await renderDocList();
       }
       startBackgroundPrefetch();
-      // Flush RIME user dict opportunistically — idle dismiss is a natural
-      // "user came back" moment where uploading their typing habits costs
-      // nothing in perceived UX.
-      flushUserDictNow().catch(() => {});
-      // Also push current last-active so other devices see it next start.
-      if (state.activeDoc?.onedriveItemId) {
-        pushLastActiveItemId(state.activeDoc.onedriveItemId).catch(() => {});
-      }
     } catch (err) {
       console.warn("idle resume sync:", err);
     }
