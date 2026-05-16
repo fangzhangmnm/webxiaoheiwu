@@ -1,7 +1,7 @@
 // Bump CACHE_VERSION whenever any precached asset changes. The activate
 // handler wipes older caches; skipWaiting + clientsClaim make the new SW
 // take over on the next reload (no need to close all tabs).
-const CACHE_VERSION = "v12-2026-05-16-renamededupe";
+const CACHE_VERSION = "v17-2026-05-16-signoutui";
 const CACHE_NAME = `xiaoheiwu-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -12,6 +12,7 @@ const PRECACHE_URLS = [
   "./icon-192.png",
   "./icon-512.png",
   "./src/app.js",
+  "./src/auth.js",
   "./src/db.js",
   "./src/ime.js",
   "./src/styles.css",
@@ -57,7 +58,22 @@ self.addEventListener("activate", (event) => {
 
 // Cache-first with background revalidate. App shell loads instantly from
 // cache; network fetch in the background refreshes the cached copy so the
-// next reload picks up changes (when CACHE_VERSION hasn't been bumped yet).
+// next reload picks up changes. When that background fetch turns up a new
+// ETag (i.e. the file actually changed on the server), notify the page so
+// it can show a non-blocking "new version available" hint — never reload
+// automatically since the user might be mid-sentence.
+
+let updateAnnouncedThisLoad = false;
+
+async function notifyUpdate(url) {
+  if (updateAnnouncedThisLoad) return;
+  updateAnnouncedThisLoad = true;
+  const clientsList = await self.clients.matchAll({ includeUncontrolled: true });
+  for (const client of clientsList) {
+    client.postMessage({ type: "asset-updated", url });
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") {
@@ -77,6 +93,18 @@ self.addEventListener("fetch", (event) => {
       const networkFetch = fetch(request)
         .then((response) => {
           if (response && response.ok) {
+            if (cached) {
+              const cachedEtag = cached.headers.get("etag");
+              const freshEtag = response.headers.get("etag");
+              const cachedLen = cached.headers.get("content-length");
+              const freshLen = response.headers.get("content-length");
+              const changed =
+                (cachedEtag && freshEtag && cachedEtag !== freshEtag) ||
+                (!cachedEtag && cachedLen && freshLen && cachedLen !== freshLen);
+              if (changed) {
+                notifyUpdate(request.url).catch(() => {});
+              }
+            }
             cache.put(request, response.clone()).catch(() => {});
           }
           return response;
@@ -98,4 +126,11 @@ self.addEventListener("fetch", (event) => {
       });
     })(),
   );
+});
+
+// Allow page to push us to activate on demand (e.g. on its "refresh" click).
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "skip-waiting") {
+    self.skipWaiting();
+  }
 });

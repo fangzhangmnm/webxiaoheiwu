@@ -10,6 +10,12 @@ import {
   setActiveDocId,
 } from "./db.js";
 import { NaturalCodeIMEAdapter } from "./ime.js";
+import {
+  initializeAuth,
+  signIn,
+  signOut,
+  getActiveAccount,
+} from "./auth.js";
 
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
@@ -30,6 +36,7 @@ const openTrashButton = document.querySelector("#openTrashButton");
 const emptyTrashButton = document.querySelector("#emptyTrashButton");
 const docList = document.querySelector("#docList");
 const docListEmpty = document.querySelector("#docListEmpty");
+const authRow = document.querySelector("#authRow");
 
 const ime = new NaturalCodeIMEAdapter();
 
@@ -41,6 +48,9 @@ const state = {
   activeDocId: null,
   activeDoc: null,
   drawerView: "closed", // "closed" | "active" | "trash"
+  authSignedIn: false,
+  authAccount: null,
+  authError: null,
 };
 
 let contentSaveTimer = null;
@@ -426,6 +436,87 @@ async function onNewDoc() {
   titleInput.focus();
 }
 
+// --- Auth (OneDrive sign-in) ---
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]));
+}
+
+function renderAuthRow() {
+  if (!authRow) return;
+  if (state.authSignedIn && state.authAccount) {
+    const label = state.authAccount.username || state.authAccount.name || "已登录";
+    authRow.innerHTML = `
+      <span class="auth-account" title="${escapeHtml(label)}">已登录 · ${escapeHtml(label)}</span>
+      <button class="auth-action" id="signOutButton">退出</button>
+    `;
+    const btn = authRow.querySelector("#signOutButton");
+    if (btn) btn.addEventListener("click", onSignOut);
+    return;
+  }
+  if (state.authError) {
+    authRow.innerHTML = `
+      <span class="auth-account" title="${escapeHtml(state.authError)}">登录不可用</span>
+      <button class="auth-action" id="signInButton">重试</button>
+    `;
+  } else {
+    authRow.innerHTML = `
+      <button class="auth-action primary" id="signInButton">登录 OneDrive 同步</button>
+    `;
+  }
+  const btn = authRow.querySelector("#signInButton");
+  if (btn) btn.addEventListener("click", onSignIn);
+}
+
+async function onSignIn() {
+  await flushSaves();
+  setSaveStatus("正在跳转到 Microsoft 登录…");
+  try {
+    await signIn();
+    // signIn navigates away via redirect — code after this rarely runs.
+  } catch (error) {
+    state.authError = error.message ?? String(error);
+    setSaveStatus(`登录失败：${state.authError}`, true);
+    renderAuthRow();
+  }
+}
+
+async function onSignOut() {
+  if (!confirm("退出后将停止 OneDrive 同步。继续吗？")) return;
+  await flushSaves();
+  try {
+    await signOut();
+    state.authSignedIn = false;
+    state.authAccount = null;
+    state.authError = null;
+    renderAuthRow();
+    setSaveStatus(`已退出 ${formatTime(Date.now())}`);
+  } catch (error) {
+    setSaveStatus(`退出失败：${error.message ?? error}`, true);
+  }
+}
+
+async function initializeAuthFlow() {
+  try {
+    const result = await initializeAuth();
+    state.authSignedIn = result.signedIn;
+    state.authAccount = result.account;
+    state.authError = null;
+  } catch (error) {
+    state.authSignedIn = false;
+    state.authAccount = null;
+    state.authError = error.message ?? String(error);
+    console.warn("Auth init failed:", error);
+  }
+  renderAuthRow();
+}
+
 // --- IME wiring for editor + title input ---
 
 function setupImeOn(inputEl, onCommitSchedule) {
@@ -551,6 +642,11 @@ window.addEventListener("beforeunload", () => {
 // --- Initialize ---
 
 async function initialize() {
+  // Render the auth row immediately as not-signed-in; the actual MSAL probe
+  // runs in the background so it never blocks first paint of the editor.
+  renderAuthRow();
+  initializeAuthFlow();
+
   await ime.initialize();
 
   try {
@@ -574,14 +670,70 @@ async function initialize() {
   editor.focus();
 }
 
+// --- Update toast (new version available) ---
+
+const updateToast = document.querySelector("#updateToast");
+const updateReloadButton = document.querySelector("#updateReloadButton");
+const updateDismissButton = document.querySelector("#updateDismissButton");
+
+let updateAvailable = false;
+let updateDismissed = false;
+
+function showUpdateToast() {
+  if (updateDismissed) return;
+  if (!updateToast) return;
+  updateToast.classList.remove("hidden");
+}
+
+function hideUpdateToast() {
+  updateToast?.classList.add("hidden");
+}
+
+updateReloadButton?.addEventListener("click", () => {
+  navigator.serviceWorker?.controller?.postMessage({ type: "skip-waiting" });
+  location.reload();
+});
+
+updateDismissButton?.addEventListener("click", () => {
+  updateDismissed = true;
+  hideUpdateToast();
+});
+
 // Register the service worker only outside of local dev so F5 keeps working
 // as a normal reload while editing code on the PC. Quest (and any non-local
 // hostname) gets the PWA: precaches the app shell + vendor for offline.
 const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1", "::1", ""]);
 if ("serviceWorker" in navigator && !LOCAL_DEV_HOSTS.has(location.hostname)) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "asset-updated") {
+      updateAvailable = true;
+      showUpdateToast();
+    }
+  });
+
+  window.addEventListener("load", async () => {
+    let registration;
+    try {
+      registration = await navigator.serviceWorker.register("./service-worker.js");
+    } catch (error) {
       console.warn("SW registration failed:", error);
+      return;
+    }
+
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      updateAvailable = true;
+      showUpdateToast();
+    }
+
+    registration.addEventListener("updatefound", () => {
+      const newWorker = registration.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener("statechange", () => {
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+          updateAvailable = true;
+          showUpdateToast();
+        }
+      });
     });
   });
 }

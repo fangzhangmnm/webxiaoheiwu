@@ -55,6 +55,12 @@
       </article>
     </main>
 
+    <div id="updateToast" class="update-toast hidden" role="status" aria-live="polite">
+      <span class="update-text">有新版本</span>
+      <button class="update-reload" id="updateReloadButton" type="button">刷新</button>
+      <button class="update-dismiss" id="updateDismissButton" type="button" aria-label="忽略">×</button>
+    </div>
+
     <div id="drawerBackdrop" class="backdrop hidden" aria-hidden="true"></div>
     <aside id="drawer" class="drawer hidden" aria-hidden="true" aria-label="文件管理">
       <header class="drawer-header">
@@ -71,6 +77,8 @@
           </svg>
         </button>
       </header>
+
+      <div class="auth-row" id="authRow"></div>
 
       <div class="drawer-actions" id="drawerActions">
         <button class="drawer-action" id="newDocButton">
