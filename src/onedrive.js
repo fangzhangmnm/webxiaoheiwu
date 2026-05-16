@@ -147,6 +147,28 @@ export async function updateItemContent(itemId, content, etag = null) {
   return response.json();
 }
 
+// Keepalive variant: survives page unload / tab hide. Fire-and-forget;
+// we don't await the response (the page may be torn down before it
+// arrives), but the browser still pushes the bytes onto the wire.
+// Used by beforeunload / visibilitychange-hidden last-ditch saves.
+export async function updateItemContentKeepalive(itemId, content, etag = null) {
+  const token = await getToken();
+  const url = `${GRAPH_BASE}/me/drive/items/${itemId}/content`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "text/plain; charset=utf-8",
+  };
+  if (etag) headers["If-Match"] = etag;
+  // Note the `keepalive: true` — body must be < 64KB per spec; .txt files
+  // here are tiny so that's fine.
+  fetch(url, {
+    method: "PUT",
+    headers,
+    body: content,
+    keepalive: true,
+  }).catch(() => {});
+}
+
 // ── Rename / move / delete ─────────────────────────────────────────────────
 
 export async function renameItem(itemId, newName, etag = null) {

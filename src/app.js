@@ -32,6 +32,7 @@ import {
   pushLastActiveItemId,
   pullLastActiveItemId,
 } from "./sync.js";
+import { updateItemContentKeepalive } from "./onedrive.js";
 
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
@@ -1125,8 +1126,41 @@ document.addEventListener("keydown", async (event) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     checkActiveDocFreshness().catch(() => {});
+  } else {
+    // Tab going to background — flush DOM → IDB and push dirty content
+    // NOW, before browsers throttle timers (which may delay the 30s
+    // heartbeat or idle overlay arbitrarily).
+    pushOnTabHidden().catch(() => {});
   }
 });
+
+async function pushOnTabHidden() {
+  if (!state.authSignedIn || !state.activeDocId) return;
+  // 1) Force-flush any pending DOM → IDB before pushing.
+  if (state.activeDoc) {
+    const editorDivergent = editor.value !== (state.activeDoc.content ?? "");
+    const titleDivergent = titleInput.value !== (state.activeDoc.title ?? "");
+    if (editorDivergent || titleDivergent) {
+      if (contentSaveTimer) { clearTimeout(contentSaveTimer); contentSaveTimer = null; }
+      if (titleSaveTimer) { clearTimeout(titleSaveTimer); titleSaveTimer = null; }
+      try {
+        const updated = await updateDoc(state.activeDocId, {
+          content: editor.value,
+          title: titleInput.value,
+        });
+        state.activeDoc = updated;
+      } catch (err) {
+        console.warn("flush on hidden:", err);
+      }
+    }
+  }
+  // 2) If dirty, push. Browsers allow in-flight fetch to continue while
+  // tab is hidden (only setTimeout / setInterval are throttled).
+  const fresh = await getDoc(state.activeDocId);
+  if (fresh?.dirty) {
+    await doPush();
+  }
+}
 window.addEventListener("focus", () => {
   checkActiveDocFreshness().catch(() => {});
 });
@@ -1323,6 +1357,21 @@ window.addEventListener("beforeunload", () => {
   flushUserDictNow().catch(() => {});
   if (state.authSignedIn && state.activeDoc?.onedriveItemId) {
     pushLastActiveItemId(state.activeDoc.onedriveItemId).catch(() => {});
+  }
+  // Last-ditch DOC push via keepalive fetch — survives the unload that
+  // would otherwise abort an ordinary fetch. The body cap is 64KB which
+  // covers any reasonable .txt chapter.
+  if (
+    state.authSignedIn &&
+    state.activeDocId &&
+    state.activeDoc?.onedriveItemId &&
+    editor.value !== (state.activeDoc.content ?? "")
+  ) {
+    updateItemContentKeepalive(
+      state.activeDoc.onedriveItemId,
+      editor.value,
+      state.activeDoc.etag ?? undefined,
+    ).catch(() => {});
   }
 });
 
