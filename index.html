@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quest Novel Draft v0</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-label="Novel writer">
+      <header class="status-strip" aria-live="polite">
+        <div id="saveStatus">Ready</div>
+        <div id="imeStatus">IME: Initializing...</div>
+      </header>
+
+      <section class="editor-wrap">
+        <label class="sr-only" for="editor">Novel editor</label>
+        <textarea
+          id="editor"
+          spellcheck="false"
+          autocorrect="off"
+          autocomplete="off"
+          autocapitalize="off"
+          placeholder=""
+        ></textarea>
+      </section>
+
+      <section id="candidateBar" class="candidate-bar hidden" aria-live="polite"></section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
