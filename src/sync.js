@@ -66,45 +66,99 @@ function detectDeviceLabel() {
   return "PC";
 }
 
-function siblingFilename(originalName, ts = Date.now()) {
-  const stem = (originalName ?? "untitled.txt").replace(/\.txt$/i, "");
+function siblingTitleFor(originalTitle, ts = Date.now()) {
   const d = new Date(ts);
   const stamp = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
-  return `${stem} (${detectDeviceLabel()} 离线副本 ${stamp}).txt`;
+  const tag = `(${detectDeviceLabel()} 离线副本 ${stamp})`;
+  return originalTitle ? `${originalTitle} ${tag}` : tag;
 }
 
-// Loose remote-name parser. Strict canonical form first; anything else falls
-// through to "treat the whole stem as the title".
+// Remote-name parser. Tries the new canonical form (YYYYMMDD N title)
+// first, then several legacy variants so old files don't get misread
+// during migration. Returns { canonical, createdAt, title }.
+function parseDateStr(s) {
+  const year = +s.slice(0, 4);
+  const month = +s.slice(4, 6) - 1;
+  const day = +s.slice(6, 8);
+  const date = new Date(year, month, day, 12, 0, 0);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function canonicalParse(date, title) {
+  return { canonical: true, createdAt: date.getTime(), title };
+}
+
 export function parseRemoteFilename(name) {
   const stem = (name ?? "").replace(/\.txt$/i, "");
-  const m = stem.match(/^(\d{8})(?:\s+(.+?))?(?:\s+(\d+))?$/);
+
+  // "YYYYMMDD" alone
+  let m = stem.match(/^(\d{8})$/);
   if (m) {
-    const [, dateStr, titlePart, ordinalStr] = m;
-    const year = +dateStr.slice(0, 4);
-    const month = +dateStr.slice(4, 6) - 1;
-    const day = +dateStr.slice(6, 8);
-    const date = new Date(year, month, day, 12, 0, 0);
-    if (!Number.isNaN(date.getTime())) {
-      return {
-        canonical: true,
-        createdAt: date.getTime(),
-        title: titlePart ?? "",
-        ordinal: ordinalStr ? Number.parseInt(ordinalStr, 10) : 0,
-      };
-    }
+    const date = parseDateStr(m[1]);
+    if (date) return canonicalParse(date, "");
   }
-  return { canonical: false, createdAt: null, title: stem, ordinal: 0 };
+
+  // "YYYYMMDD N" — N is a pure number, no title
+  m = stem.match(/^(\d{8})\s+\d+$/);
+  if (m) {
+    const date = parseDateStr(m[1]);
+    if (date) return canonicalParse(date, "");
+  }
+
+  // "YYYYMMDD N title" — N is a pure number followed by text
+  m = stem.match(/^(\d{8})\s+\d+\s+(.+)$/);
+  if (m) {
+    const date = parseDateStr(m[1]);
+    if (date) return canonicalParse(date, m[2].trim());
+  }
+
+  // "YYYYMMDD anything-not-starting-with-digit-token" — token right after
+  // the date isn't a pure number, so whatever follows is treated as the
+  // title verbatim (incl. cases like "YYYYMMDD title 1" where the "1" is
+  // part of the title, not an index).
+  m = stem.match(/^(\d{8})\s+(.+)$/);
+  if (m) {
+    const date = parseDateStr(m[1]);
+    if (date) return canonicalParse(date, m[2].trim());
+  }
+
+  return { canonical: false, createdAt: null, title: stem };
 }
 
-// Create-with-numeric-suffix-on-collision. Returns the created OneDrive item.
-async function createWithCollisionRetry(baseName, content) {
-  const stem = baseName.replace(/\.txt$/i, "");
-  for (let n = 0; n < 200; n += 1) {
-    const candidate = n === 0 ? `${stem}.txt` : `${stem} ${n}.txt`;
+// Compute "YYYYMMDD N title.txt" using doc's chronological position
+// among same-day siblings.
+function computeFilenameFor(doc, siblings) {
+  const dateStr = formatDateForFilename(doc.createdAt);
+  const sameDay = siblings
+    .filter((d) => formatDateForFilename(d.createdAt) === dateStr)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const idx = sameDay.findIndex((d) => d.id === doc.id);
+  const n = idx < 0 ? sameDay.length + 1 : idx + 1;
+  const title = sanitizeFilenamePart(doc.title);
+  return title ? `${dateStr} ${n} ${title}.txt` : `${dateStr} ${n}.txt`;
+}
+
+// Create a file using "YYYYMMDD N title" naming. If the desired N
+// collides on remote (another device pushed there first), bump N
+// upward until the PUT succeeds.
+async function createWithBumpedN(doc, allSiblings, content) {
+  const dateStr = formatDateForFilename(doc.createdAt);
+  const title = sanitizeFilenamePart(doc.title);
+  const sameDay = allSiblings
+    .filter((d) => formatDateForFilename(d.createdAt) === dateStr)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  let idx = sameDay.findIndex((d) => d.id === doc.id);
+  let n = idx < 0 ? sameDay.length + 1 : idx + 1;
+
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const candidate = title ? `${dateStr} ${n} ${title}.txt` : `${dateStr} ${n}.txt`;
     try {
       return await createTxtAtRoot(candidate, content);
     } catch (error) {
-      if (error.status === 409) continue;
+      if (error.status === 409) {
+        n += 1;
+        continue;
+      }
       throw error;
     }
   }
@@ -135,12 +189,10 @@ export async function pushDoc(docId) {
 }
 
 async function pushAsNew(doc) {
-  const dateStr = formatDateForFilename(doc.createdAt);
-  const title = sanitizeFilenamePart(doc.title);
-  const base = title ? `${dateStr} ${title}` : dateStr;
+  const allDocs = await listDocs({ includeTrashed: true });
   const pushedContent = doc.content ?? "";
   const pushedTitle = doc.title ?? "";
-  const item = await createWithCollisionRetry(base, pushedContent);
+  const item = await createWithBumpedN(doc, allDocs, pushedContent);
   // Content might have diverged while the PUT was in flight (user kept
   // typing). Only mark clean if it didn't.
   const current = await getDoc(doc.id);
@@ -178,11 +230,13 @@ async function pushUpdate(doc) {
     if (stillSame) patch.dirty = false;
     await applySyncPatch(doc.id, patch);
 
-    // If our computed canonical filename has drifted from the remote name
-    // (user edited title), try to rename remote to match — best effort.
-    const desiredName = computeDesiredFilename(doc);
+    // Reconcile remote filename to canonical "YYYYMMDD N title". Title
+    // change or migration from legacy format both trigger a rename. If
+    // the desired N collides, bump it upward.
+    const allDocs = await listDocs({ includeTrashed: true });
+    const desiredName = computeFilenameFor(doc, allDocs);
     if (desiredName && item.name !== desiredName) {
-      await tryRenameRemote(doc.id, item.id, item.eTag, desiredName);
+      await tryRenameRemoteWithBumpedN(doc.id, item.id, item.eTag, doc, allDocs);
     }
     return { ok: true, action: "updated", item };
   } catch (error) {
@@ -192,16 +246,17 @@ async function pushUpdate(doc) {
   }
 }
 
-function computeDesiredFilename(doc) {
+async function tryRenameRemoteWithBumpedN(docId, itemId, etag, doc, allSiblings) {
   const dateStr = formatDateForFilename(doc.createdAt);
   const title = sanitizeFilenamePart(doc.title);
-  return title ? `${dateStr} ${title}.txt` : `${dateStr}.txt`;
-}
+  const sameDay = allSiblings
+    .filter((d) => formatDateForFilename(d.createdAt) === dateStr)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  let idx = sameDay.findIndex((d) => d.id === doc.id);
+  let n = idx < 0 ? sameDay.length + 1 : idx + 1;
 
-async function tryRenameRemote(docId, itemId, etag, desiredBaseName) {
-  const stem = desiredBaseName.replace(/\.txt$/i, "");
-  for (let n = 0; n < 50; n += 1) {
-    const candidate = n === 0 ? `${stem}.txt` : `${stem} ${n}.txt`;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const candidate = title ? `${dateStr} ${n} ${title}.txt` : `${dateStr} ${n}.txt`;
     try {
       const renamed = await renameItem(itemId, candidate, etag);
       await applySyncPatch(docId, {
@@ -210,9 +265,9 @@ async function tryRenameRemote(docId, itemId, etag, desiredBaseName) {
       });
       return;
     } catch (error) {
-      if (error.status === 409) continue; // name taken, try next
-      if (error.status === 412) return;   // etag changed; skip rename this round
-      return; // any other error: don't blow up the push pipeline
+      if (error.status === 409) { n += 1; continue; }
+      if (error.status === 412) return;
+      return;
     }
   }
 }
@@ -220,18 +275,26 @@ async function tryRenameRemote(docId, itemId, etag, desiredBaseName) {
 // Save current local dirty content as a sibling, then reload remote into
 // the active doc. Both versions preserved.
 async function handleEtagConflict(doc) {
-  const remoteBaseName = doc.remoteName ?? computeDesiredFilename(doc);
-  const siblingBase = siblingFilename(remoteBaseName);
-  const siblingItem = await createWithCollisionRetry(siblingBase, doc.content ?? "");
+  const siblingId = newId();
+  const siblingCreatedAt = Date.now();
+  const siblingTitle = siblingTitleFor(doc.title ?? "", siblingCreatedAt);
+  const tentative = {
+    id: siblingId,
+    title: siblingTitle,
+    createdAt: siblingCreatedAt,
+  };
+  const allDocs = await listDocs({ includeTrashed: true });
+  const siblings = [...allDocs, tentative];
+  const siblingItem = await createWithBumpedN(tentative, siblings, doc.content ?? "");
 
   const parsed = parseRemoteFilename(siblingItem.name);
   const siblingDoc = {
-    id: newId(),
-    title: parsed.title,
+    id: siblingId,
+    title: parsed.canonical ? parsed.title : siblingTitle,
     content: doc.content ?? "",
     createdAt: parsed.canonical
       ? parsed.createdAt
-      : Date.parse(siblingItem.createdDateTime ?? "") || Date.now(),
+      : siblingCreatedAt,
     modifiedAt: Date.now(),
     deletedAt: null,
     onedriveItemId: siblingItem.id,

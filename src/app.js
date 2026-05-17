@@ -103,24 +103,16 @@ function formatTime(ts) {
 }
 
 function computeDisplayName(doc, siblings) {
+  // Canonical: "YYYYMMDD N title" where N is the 1-indexed sequence number
+  // among all same-day docs (sorted by createdAt). Title is optional.
+  // Pure string sort then equals chronological by day + creation order.
   const dateStr = formatDate(doc.createdAt);
-  const sameDay = siblings.filter((d) => formatDate(d.createdAt) === dateStr);
-
-  if (doc.title) {
-    const sameDaySameTitle = sameDay
-      .filter((d) => d.title === doc.title)
-      .sort((a, b) => a.createdAt - b.createdAt);
-    const idx = sameDaySameTitle.findIndex((d) => d.id === doc.id);
-    return idx <= 0
-      ? `${dateStr} ${doc.title}`
-      : `${dateStr} ${doc.title} ${idx}`;
-  }
-
-  const untitledSameDay = sameDay
-    .filter((d) => !d.title)
+  const sameDay = siblings
+    .filter((d) => formatDate(d.createdAt) === dateStr)
     .sort((a, b) => a.createdAt - b.createdAt);
-  const idx = untitledSameDay.findIndex((d) => d.id === doc.id);
-  return idx <= 0 ? dateStr : `${dateStr} ${idx}`;
+  const idx = sameDay.findIndex((d) => d.id === doc.id);
+  const n = idx < 0 ? sameDay.length + 1 : idx + 1;
+  return doc.title ? `${dateStr} ${n} ${doc.title}` : `${dateStr} ${n}`;
 }
 
 function setSaveStatus(message, opts = false) {
@@ -656,12 +648,32 @@ function closeDrawer() {
   editor.focus();
 }
 
+// Natural / number-aware filename comparator, matching VS Code's Explorer
+// sort. With user's YYYYMMDD-leading filename convention, descending order
+// = newest first, with `... 1` < `... 2` < `... 10` instead of lex order.
+const NAME_COLLATOR = new Intl.Collator("zh-CN", {
+  numeric: true,
+  sensitivity: "base",
+});
+
 async function renderDocList() {
   const all = await listDocs({ includeTrashed: true });
   const isTrashView = state.drawerView === "trash";
+
+  // Precompute display names once (computeDisplayName scans siblings; doing
+  // it inside the sort comparator would be O(N² log N)).
+  const nameByDocId = new Map();
+  for (const doc of all) {
+    nameByDocId.set(doc.id, computeDisplayName(doc, all));
+  }
+
   const filtered = isTrashView
-    ? all.filter((d) => d.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt)
-    : all.filter((d) => !d.deletedAt).sort((a, b) => b.modifiedAt - a.modifiedAt);
+    ? all.filter((d) => d.deletedAt)
+    : all.filter((d) => !d.deletedAt);
+
+  filtered.sort((a, b) =>
+    NAME_COLLATOR.compare(nameByDocId.get(b.id), nameByDocId.get(a.id)),
+  );
 
   docList.innerHTML = "";
 
@@ -693,7 +705,7 @@ async function renderDocList() {
       nameClass += " local-only";
     }
     nameSpan.className = nameClass;
-    nameSpan.textContent = computeDisplayName(doc, all);
+    nameSpan.textContent = nameByDocId.get(doc.id);
     mainBtn.appendChild(nameSpan);
 
     const previewSpan = document.createElement("span");
