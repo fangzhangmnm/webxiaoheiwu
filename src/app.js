@@ -155,9 +155,13 @@ function statsForText(text) {
 function renderWordCount() {
   if (!wordCount) return;
   const { cjk, en } = statsForText(editor.value);
-  // Always show both counters — user wants to track each writing surface
-  // (Chinese characters vs. English words) independently, including 0.
-  wordCount.textContent = `${cjk} 字 · ${en} 词`;
+  // Hide whichever counter is zero so we don't show meaningless "0 词"
+  // alongside an active CJK count. Both visible only when both > 0.
+  // The "字 / words" language split itself signals which is which.
+  const parts = [];
+  if (cjk > 0) parts.push(`${cjk} 字`);
+  if (en > 0) parts.push(`${en} words`);
+  wordCount.textContent = parts.length > 0 ? parts.join(" · ") : "0 字";
 }
 
 function renderImeState() {
