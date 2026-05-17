@@ -458,11 +458,6 @@ export class NaturalCodeIMEAdapter {
   }
 
   async onKeydown(event) {
-    if (event.ctrlKey && event.code === "Space") {
-      event.preventDefault();
-      return { type: "toggle", state: this.toggle() };
-    }
-
     if (!this.enabled || this.asciiMode) {
       return { type: "passthrough" };
     }

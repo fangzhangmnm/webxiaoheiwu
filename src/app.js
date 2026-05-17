@@ -9,6 +9,8 @@ import {
   getActiveDocId,
   setActiveDocId,
   applySyncPatch,
+  getSetting,
+  setSetting,
 } from "./db.js";
 import { NaturalCodeIMEAdapter } from "./ime.js";
 import {
@@ -84,6 +86,7 @@ let titleSaveTimer = null;
 let pushTimer = null;
 let prefetchPending = false;
 let shiftCleanPress = false;
+let imeInitialized = false; // RIME worker loaded? Lazy; only when user turns IME on.
 
 function formatDate(ts) {
   const d = new Date(ts);
@@ -160,14 +163,16 @@ function renderWordCount() {
 
 function renderImeState() {
   const imeState = ime.getState();
-  const engineLabel =
-    imeState.engine === "rime-double_pinyin"
-      ? "Natural Code"
-      : "Natural Code (fallback)";
-  const modeLabel = imeState.asciiMode ? "EN" : "中";
-  imeStatus.textContent = imeState.enabled
-    ? `${engineLabel} · ${modeLabel}`
-    : "输入法停用";
+  if (!imeState.enabled) {
+    imeStatus.textContent = "系统输入法";
+  } else {
+    const engineLabel =
+      imeState.engine === "rime-double_pinyin"
+        ? "Natural Code"
+        : "Natural Code (fallback)";
+    const modeLabel = imeState.asciiMode ? "EN" : "中";
+    imeStatus.textContent = `${engineLabel} · ${modeLabel}`;
+  }
 
   if (!imeState.enabled || imeState.buffer.length === 0) {
     candidateBar.classList.add("hidden");
@@ -185,6 +190,24 @@ function renderImeState() {
     )
     .join("");
   candidateBar.innerHTML = `${buffer}${candidates}`;
+}
+
+async function toggleImeEnabled() {
+  if (!ime.getState().enabled) {
+    // Turning on — lazy-load RIME worker on first activation. Status bar
+    // shows "加载中…" during the ~1s load.
+    if (!imeInitialized) {
+      imeStatus.textContent = "加载中…";
+      await ime.initialize();
+      imeInitialized = true;
+    }
+    ime.enabled = true;
+  } else {
+    ime.enabled = false;
+    ime.backend?.resetState?.();
+  }
+  await setSetting("imeEnabled", ime.getState().enabled);
+  renderImeState();
 }
 
 function insertAtCursor(target, text) {
@@ -979,7 +1002,12 @@ async function maybeSwitchToRemoteLastActive() {
 function setupImeOn(inputEl, onCommitSchedule) {
   inputEl.addEventListener("keydown", async (event) => {
     if (event.key === "Shift") {
-      if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat) {
+      // Only arm Shift-tap mode toggle when IME is actually on; otherwise
+      // the keyup handler would call toggleAsciiMode for nothing.
+      if (
+        !event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat &&
+        ime.getState().enabled
+      ) {
         shiftCleanPress = true;
       }
       return;
@@ -1102,6 +1130,10 @@ menuButton.addEventListener("click", () => {
 drawerCloseButton.addEventListener("click", closeDrawer);
 lockToggle?.addEventListener("click", () => {
   toggleLock().catch((err) => console.warn("toggleLock:", err));
+});
+
+imeStatus?.addEventListener("click", () => {
+  toggleImeEnabled().catch((err) => console.warn("toggleImeEnabled:", err));
 });
 
 reloadButton?.addEventListener("click", async () => {
@@ -1395,7 +1427,17 @@ async function initialize() {
   renderAuthRow();
   initializeAuthFlow();
 
-  await ime.initialize();
+  // IME defaults to OFF — most platforms have a native Chinese IME and our
+  // RIME would just get in the way. Quest users manually flip it on once
+  // (status bar click) and the choice persists per-device via IDB.
+  const imePref = await getSetting("imeEnabled");
+  if (imePref === true) {
+    await ime.initialize();
+    imeInitialized = true;
+    ime.enabled = true;
+  } else {
+    ime.enabled = false;
+  }
 
   try {
     await cleanupAutoEmptyDocs();
