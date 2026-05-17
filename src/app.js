@@ -105,17 +105,16 @@ function formatTime(ts) {
   });
 }
 
-function computeDisplayName(doc, siblings) {
-  // Canonical: "YYYYMMDD N title" where N is the 1-indexed sequence number
-  // among all same-day docs (sorted by createdAt). Title is optional.
-  // Pure string sort then equals chronological by day + creation order.
+function computeDisplayName(doc) {
+  // Source of truth: the actual remote filename once pushed. For not-yet-
+  // pushed docs we compute "YYYYMMDD title" as a preview. Collision suffix
+  // (" 1", " 2", ...) is added by the sync layer at push time and lives
+  // inside doc.remoteName; we don't synthesize an ordinal here.
+  if (doc.remoteName) {
+    return doc.remoteName.replace(/\.txt$/i, "");
+  }
   const dateStr = formatDate(doc.createdAt);
-  const sameDay = siblings
-    .filter((d) => formatDate(d.createdAt) === dateStr)
-    .sort((a, b) => a.createdAt - b.createdAt);
-  const idx = sameDay.findIndex((d) => d.id === doc.id);
-  const n = idx < 0 ? sameDay.length + 1 : idx + 1;
-  return doc.title ? `${dateStr} ${n} ${doc.title}` : `${dateStr} ${n}`;
+  return doc.title ? `${dateStr} ${doc.title}` : dateStr;
 }
 
 function setSaveStatus(message, opts = false) {
@@ -683,11 +682,10 @@ async function renderDocList() {
   const all = await listDocs({ includeTrashed: true });
   const isTrashView = state.drawerView === "trash";
 
-  // Precompute display names once (computeDisplayName scans siblings; doing
-  // it inside the sort comparator would be O(N² log N)).
+  // Precompute display names so the sort comparator stays cheap.
   const nameByDocId = new Map();
   for (const doc of all) {
-    nameByDocId.set(doc.id, computeDisplayName(doc, all));
+    nameByDocId.set(doc.id, computeDisplayName(doc));
   }
 
   const filtered = isTrashView
