@@ -3,8 +3,6 @@ import {
   getDoc,
   createDoc,
   updateDoc,
-  trashDoc,
-  restoreDoc,
   purgeDoc,
   getActiveDocId,
   setActiveDocId,
@@ -27,14 +25,13 @@ import {
   fetchContentForDoc,
   moveDocToTrash,
   restoreDocFromTrash,
-  purgeDocPermanent,
   reuploadGhostAsNew,
   pushUserDict,
   pullUserDict,
   pushLastActiveItemId,
   pullLastActiveItemId,
 } from "./sync.js";
-import { updateItemContentKeepalive } from "./onedrive.js";
+import { updateItemContentKeepalive, deleteItem } from "./onedrive.js";
 
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
@@ -795,66 +792,76 @@ async function renderDocList() {
   }
 }
 
+// Optimistic-UI pattern for trash/restore/purge: write to IDB and re-render
+// drawer immediately so the click feels instant. The remote OneDrive call runs
+// in the background; on success it may patch etag/lastSyncedAt, on failure it
+// flips dirty back on — re-render on completion either way so the row reflects
+// final state (and any error toast lands).
 async function onTrashDoc(id) {
   await flushSaves();
-  if (state.authSignedIn) {
-    try {
-      await moveDocToTrash(id);
-    } catch (error) {
-      setSaveStatus(`移到回收站失败：${error.message ?? error}`, true);
-    }
-  } else {
-    await trashDoc(id);
-  }
+  await applySyncPatch(id, { deletedAt: Date.now() });
   if (id === state.activeDocId) {
     await pickNextActive();
   }
   await renderDocList();
+  if (state.authSignedIn) {
+    moveDocToTrash(id)
+      .catch((error) => {
+        setSaveStatus(`移到回收站失败：${error.message ?? error}`, true);
+      })
+      .finally(() => renderDocList());
+  }
 }
 
 async function onRestoreDoc(id) {
-  if (state.authSignedIn) {
-    try {
-      await restoreDocFromTrash(id);
-    } catch (error) {
-      setSaveStatus(`恢复失败：${error.message ?? error}`, true);
-    }
-  } else {
-    await restoreDoc(id);
-  }
+  await applySyncPatch(id, { deletedAt: null });
   await renderDocList();
+  if (state.authSignedIn) {
+    restoreDocFromTrash(id)
+      .catch((error) => {
+        setSaveStatus(`恢复失败：${error.message ?? error}`, true);
+      })
+      .finally(() => renderDocList());
+  }
 }
 
 async function onPurgeDoc(id) {
   if (!confirm("此文件将永久删除，无法恢复。继续吗？")) return;
-  if (state.authSignedIn) {
-    try {
-      await purgeDocPermanent(id);
-    } catch (error) {
-      setSaveStatus(`删除失败：${error.message ?? error}`, true);
-    }
-  } else {
-    await purgeDoc(id);
-  }
+  const doc = await getDoc(id);
+  const remoteItemId = doc?.onedriveItemId ?? null;
+  await purgeDoc(id);
   await renderDocList();
+  if (state.authSignedIn && remoteItemId) {
+    deleteItem(remoteItemId)
+      .catch((error) => {
+        if (error?.status === 404) return;
+        setSaveStatus(`远端删除失败：${error.message ?? error}`, true);
+      })
+      .finally(() => renderDocList());
+  }
 }
 
 async function onEmptyTrash() {
   const trashed = (await listDocs({ includeTrashed: true })).filter((d) => d.deletedAt);
   if (trashed.length === 0) return;
   if (!confirm(`将永久删除 ${trashed.length} 个文件，无法恢复。继续吗？`)) return;
+  const remoteIds = trashed.map((d) => d.onedriveItemId).filter(Boolean);
   for (const d of trashed) {
-    if (state.authSignedIn) {
-      try {
-        await purgeDocPermanent(d.id);
-      } catch (error) {
-        console.warn(`purge ${d.id} failed:`, error);
-      }
-    } else {
-      await purgeDoc(d.id);
-    }
+    await purgeDoc(d.id);
   }
   await renderDocList();
+  if (state.authSignedIn && remoteIds.length > 0) {
+    Promise.allSettled(remoteIds.map((rid) => deleteItem(rid)))
+      .then((results) => {
+        const failed = results.filter(
+          (r) => r.status === "rejected" && r.reason?.status !== 404,
+        );
+        if (failed.length > 0) {
+          setSaveStatus(`远端删除失败 ${failed.length} 项`, true);
+        }
+      })
+      .finally(() => renderDocList());
+  }
 }
 
 async function pickNextActive() {
