@@ -9,3 +9,6 @@ Thumbs.db
 # Build / temp
 node_modules/
 *.log
+
+# Local notes (not for GitHub)
+journals/
