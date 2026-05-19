@@ -109,7 +109,7 @@ const settingsBuild = document.querySelector("#settingsBuild");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v68-2026-05-19-left-ctrl-ptt";
+const APP_VERSION = "v69-2026-05-19-backtick-ptt-composition-cleanup";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
@@ -1477,58 +1477,52 @@ document.addEventListener("keydown", async (event) => {
   }
 });
 
-// --- Left Ctrl push-to-talk ---
+// --- Backtick / tilde push-to-talk ---
 //
-// Hold Left Ctrl in the editor for ≥250ms → start recording, release → stop.
-// Ctrl is a modifier: it doesn't produce a character and the OS IME doesn't
-// compose it, so we don't need any suppression / synthetic-insert machinery.
-// Chord guard accepts ctrlKey=true on the Ctrl keydown itself (Ctrl IS the
-// trigger), but bails if Shift/Alt/Meta are also held — leaves chord
-// shortcuts (Ctrl+S, Ctrl+Shift+anything, etc.) alone. Any non-Ctrl key
-// pressed during the hold also cancels the timer so e.g. quick Ctrl+S
-// doesn't briefly arm recording.
+// Hold ` (or Shift+` → ~) in the editor for ≥250ms → start recording, release
+// → stop. Short tap (<250ms) just lets the key through as a normal `/~ char.
+//
+// Quest's OS IME treats the held key as a multi-char composition and inserts
+// the run via a non-cancelable insertCompositionText event, so preventDefault
+// doesn't work for the leak. Instead we let the composition happen and clean
+// it up at compositionend: we know the exact data string and position, so
+// only the just-committed `/~ run is removed — and ONLY when PTT was active
+// or just released (grace window covers the typical 300ms compositionend
+// lag after keyup on Quest).
 
 const PTT_HOLD_MS = 250;
+const PTT_COMPOSITION_GRACE_MS = 1500;
 let pttTimer = null;
 let pttBackend = null;
 let pttActive = false;
+let pttCompositionCleanupUntil = 0;
 
 function isPttKeyEvent(event) {
-  return event.code === "ControlLeft";
+  return event.code === "Backquote" || event.key === "`" || event.key === "~";
 }
 
-document.addEventListener(
-  "keydown",
-  (event) => {
-    // Any other key during a pending PTT timer = the user is starting a
-    // chord shortcut. Cancel the timer so we don't begin recording.
-    if (pttTimer && !isPttKeyEvent(event)) {
-      clearTimeout(pttTimer);
-      pttTimer = null;
-      return;
-    }
-    if (!isPttKeyEvent(event)) return;
-    if (event.repeat) return;
-    if (event.shiftKey || event.altKey || event.metaKey) return;
-    if (document.activeElement !== editor) return;
-    if (state.activeDoc?.locked) return;
-    if (pttTimer || pttBackend) return;
-    pttTimer = setTimeout(() => {
-      pttTimer = null;
-      const backend = activeVoiceBackend();
-      if (!backend) return;
-      if (backend.state !== "idle") return; // don't yank a mic-button session
-      pttActive = true;
-      backend.start(pickSpeechLang());
-      pttBackend = backend;
-    }, PTT_HOLD_MS);
-  },
-  { capture: true },
-);
+document.addEventListener("keydown", (event) => {
+  if (!isPttKeyEvent(event)) return;
+  if (event.repeat) return;
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+  if (document.activeElement !== editor) return;
+  if (state.activeDoc?.locked) return;
+  if (pttTimer || pttBackend) return;
+  pttTimer = setTimeout(() => {
+    pttTimer = null;
+    const backend = activeVoiceBackend();
+    if (!backend) return;
+    if (backend.state !== "idle") return; // don't yank a mic-button session
+    pttActive = true;
+    backend.start(pickSpeechLang());
+    pttBackend = backend;
+  }, PTT_HOLD_MS);
+});
 
 document.addEventListener("keyup", (event) => {
   if (!isPttKeyEvent(event)) return;
   if (pttTimer) {
+    // Short tap. Let the natural composition / character insertion run.
     clearTimeout(pttTimer);
     pttTimer = null;
     return;
@@ -1537,7 +1531,51 @@ document.addEventListener("keyup", (event) => {
     pttBackend.stop();
     pttBackend = null;
     pttActive = false;
+    // compositionend lags keyup by a few hundred ms on Quest — keep cleanup
+    // armed for a window after release so the trailing run still gets caught.
+    pttCompositionCleanupUntil = Date.now() + PTT_COMPOSITION_GRACE_MS;
   }
+});
+
+// Targeted cleanup: at compositionend we know exactly what was inserted
+// (event.data) and where (the range immediately before the caret). Only
+// remove when:
+//  - the composed string is pure ` / ~,
+//  - PTT is currently active OR we're in the post-release grace window,
+//  - the editor's tail actually matches event.data (defensive against
+//    the user moving the caret mid-cleanup).
+function pttCleanupRange(data) {
+  const end = editor.selectionEnd ?? editor.value.length;
+  const start = end - data.length;
+  if (start < 0) return;
+  if (editor.value.slice(start, end) !== data) return;
+  editor.value = editor.value.slice(0, start) + editor.value.slice(end);
+  try {
+    editor.selectionStart = editor.selectionEnd = start;
+  } catch { /* ignore */ }
+}
+
+function pttCleanupActive() {
+  return pttActive || Date.now() < pttCompositionCleanupUntil;
+}
+
+editor.addEventListener("compositionend", (event) => {
+  if (!pttCleanupActive()) return;
+  if (!event.data || !/^[`~]+$/.test(event.data)) return;
+  pttCleanupRange(event.data);
+});
+
+// Backup: catches input events that don't go through compositionend (some
+// platforms commit composition via insertFromComposition as plain `input`
+// alone, or fire a stray insertText for `/~ around keyup). Skip
+// insertCompositionText because those replay every composition update —
+// cleaning them mid-composition would flicker, and compositionend handles
+// the final commit anyway.
+editor.addEventListener("input", (event) => {
+  if (!pttCleanupActive()) return;
+  if (event.inputType === "insertCompositionText") return;
+  if (!event.data || !/^[`~]+$/.test(event.data)) return;
+  pttCleanupRange(event.data);
 });
 
 // Quest waking from standby, network reconnect, or tab regaining focus —
