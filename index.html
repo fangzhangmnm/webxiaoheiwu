@@ -128,18 +128,6 @@
 
         <div class="settings-build" id="settingsBuild" title="构建版本"></div>
 
-        <details class="settings-section" id="pttDebugSection">
-          <summary class="settings-section-title">PTT 调试</summary>
-          <div class="ptt-debug-form">
-            <pre class="ptt-debug-display" id="pttDebugDisplay"></pre>
-            <div class="voice-config-actions">
-              <button class="voice-config-save" id="pttDebugRefreshButton" type="button">刷新</button>
-              <button class="voice-config-save" id="pttDebugClearButton" type="button">清空</button>
-              <span class="voice-config-hint">显示与 ` / ~ 相关的所有键盘事件，用于诊断 Quest 上的字符泄漏。</span>
-            </div>
-          </div>
-        </details>
-
         <details class="settings-section" id="voiceConfigSection" hidden>
           <summary class="settings-section-title">语音输入</summary>
           <div class="voice-config-form">
@@ -179,6 +167,18 @@
             <div class="voice-config-actions">
               <button class="voice-config-save" id="voiceConfigSaveButton" type="button">保存</button>
               <span class="voice-config-hint">写入 OneDrive AppFolder/voice.json（明文，仅你可见）</span>
+            </div>
+          </div>
+        </details>
+
+        <details class="settings-section" id="pttDebugSection">
+          <summary class="settings-section-title">PTT 调试</summary>
+          <div class="ptt-debug-form">
+            <pre class="ptt-debug-display" id="pttDebugDisplay"></pre>
+            <div class="voice-config-actions">
+              <button class="voice-config-save" id="pttDebugRefreshButton" type="button">刷新</button>
+              <button class="voice-config-save" id="pttDebugClearButton" type="button">清空</button>
+              <span class="voice-config-hint">按一次 ` 之后，5 秒内的所有 editor 事件都会被记下来（kd/ku/kp/bi/in 等）。配合 onState/onChange 看哪条事件漏了 \`。</span>
             </div>
           </div>
         </details>

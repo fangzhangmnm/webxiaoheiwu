@@ -84,7 +84,7 @@ const pttDebugClearButton = document.querySelector("#pttDebugClearButton");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v62-2026-05-19-ptt-debug-panel";
+const APP_VERSION = "v63-2026-05-19-ptt-verbose-window";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
@@ -129,6 +129,18 @@ function isInterestingInputEvent(e) {
   return e.data === "`" || e.data === "~";
 }
 
+// Verbose log window: when any ` keydown is seen, log EVERY editor event
+// (regardless of code / data) for the next N ms so a leak via a non-`
+// inputType or different key still shows up.
+const PTT_VERBOSE_WINDOW_MS = 5000;
+let pttVerboseUntil = 0;
+function armPttVerbose() {
+  pttVerboseUntil = Date.now() + PTT_VERBOSE_WINDOW_MS;
+}
+function pttVerbose() {
+  return Date.now() < pttVerboseUntil;
+}
+
 // Pure observers — capture phase, do nothing but log. Run BEFORE our actual
 // suppression handlers so we record even events that the suppressors then
 // reject.
@@ -136,6 +148,7 @@ document.addEventListener(
   "keydown",
   (e) => {
     if (isInterestingKeyEvent(e)) {
+      armPttVerbose();
       pttLog("kd", {
         code: e.code,
         key: e.key,
@@ -143,6 +156,8 @@ document.addEventListener(
         shift: e.shiftKey,
         ae: document.activeElement?.id || document.activeElement?.tagName,
       });
+    } else if (pttVerbose()) {
+      pttLog("kd*", { code: e.code, key: e.key });
     }
   },
   { capture: true },
@@ -152,6 +167,8 @@ document.addEventListener(
   (e) => {
     if (isInterestingKeyEvent(e)) {
       pttLog("ku", { code: e.code, key: e.key });
+    } else if (pttVerbose()) {
+      pttLog("ku*", { code: e.code, key: e.key });
     }
   },
   { capture: true },
@@ -161,6 +178,8 @@ document.addEventListener(
   (e) => {
     if (isInterestingKeyEvent(e)) {
       pttLog("kp", { code: e.code, key: e.key });
+    } else if (pttVerbose()) {
+      pttLog("kp*", { code: e.code, key: e.key });
     }
   },
   { capture: true },
@@ -168,7 +187,7 @@ document.addEventListener(
 editor.addEventListener(
   "beforeinput",
   (e) => {
-    if (isInterestingInputEvent(e)) {
+    if (isInterestingInputEvent(e) || pttVerbose()) {
       pttLog("bi", { inputType: e.inputType, data: e.data, defaultPrevented: e.defaultPrevented });
     }
   },
@@ -177,10 +196,25 @@ editor.addEventListener(
 editor.addEventListener(
   "input",
   (e) => {
-    if (isInterestingInputEvent(e)) {
+    if (isInterestingInputEvent(e) || pttVerbose()) {
       pttLog("in", { inputType: e.inputType, data: e.data });
     }
   },
+  { capture: true },
+);
+editor.addEventListener(
+  "compositionstart",
+  (e) => { if (pttVerbose()) pttLog("cs", { data: e.data }); },
+  { capture: true },
+);
+editor.addEventListener(
+  "compositionupdate",
+  (e) => { if (pttVerbose()) pttLog("cu", { data: e.data }); },
+  { capture: true },
+);
+editor.addEventListener(
+  "compositionend",
+  (e) => { if (pttVerbose()) pttLog("ce", { data: e.data }); },
   { capture: true },
 );
 
@@ -1286,6 +1320,7 @@ function backendIsUsable(backend) {
 }
 
 function onVoiceInsert() {
+  if (pttVerbose()) pttLog("ins", { tail: editor.value.slice(-30) });
   setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
   renderWordCount();
   scheduleContentSave();
@@ -1295,6 +1330,9 @@ function onVoiceInsert() {
 }
 
 function onVoiceState(next, error) {
+  if (pttVerbose() || next === "error") {
+    pttLog("st", { state: next, err: error?.message });
+  }
   if (!micButton) return;
   micButton.setAttribute("data-state", next);
   if (next === "recording") {
