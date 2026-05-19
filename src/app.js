@@ -639,8 +639,8 @@ async function openDrawer(view = "active") {
   drawerBackButton.hidden = view === "active";
   drawerActions.classList.toggle("hidden", isTrash || isSettings);
   trashActions.classList.toggle("hidden", !isTrash);
-  settingsView.hidden = !isSettings;
-  docList.hidden = isSettings;
+  if (settingsView) settingsView.hidden = !isSettings;
+  if (docList) docList.hidden = isSettings;
   if (isSettings) {
     docListEmpty.classList.add("hidden");
     renderVoiceConfigForm();
@@ -1423,7 +1423,7 @@ drawerBackdrop.addEventListener("click", closeDrawer);
 drawerBackButton.addEventListener("click", () => openDrawer("active"));
 newDocButton.addEventListener("click", onNewDoc);
 openTrashButton.addEventListener("click", () => openDrawer("trash"));
-openSettingsButton.addEventListener("click", () => openDrawer("settings"));
+openSettingsButton?.addEventListener("click", () => openDrawer("settings"));
 emptyTrashButton.addEventListener("click", onEmptyTrash);
 
 document.addEventListener("keydown", async (event) => {
@@ -1921,5 +1921,22 @@ if ("serviceWorker" in navigator && !LOCAL_DEV_HOSTS.has(location.hostname)) {
     });
   });
 }
+
+// Surface any uncaught JS error in the status bar so problems are visible
+// on devices without a DevTools connection (e.g. Quest standalone). Console
+// still gets the full trace for remote debugging.
+window.addEventListener("error", (event) => {
+  console.error("[app] uncaught error:", event.error || event.message, event);
+  try {
+    setSaveStatus(`JS 错误: ${(event.message || "").slice(0, 80)}`, true);
+  } catch { /* status bar may not be ready */ }
+});
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("[app] unhandled rejection:", event.reason);
+  try {
+    const msg = (event.reason?.message ?? String(event.reason ?? "")).slice(0, 80);
+    setSaveStatus(`Promise 错误: ${msg}`, true);
+  } catch { /* status bar may not be ready */ }
+});
 
 initialize();
