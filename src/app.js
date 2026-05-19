@@ -11,6 +11,7 @@ import {
   setSetting,
 } from "./db.js";
 import { NaturalCodeIMEAdapter } from "./ime.js";
+import { isSpeechSupported, SpeechSession } from "./speech.js";
 import {
   initializeAuth,
   signIn,
@@ -59,6 +60,7 @@ const ghostTrashButton = document.querySelector("#ghostTrashButton");
 const ghostReuploadButton = document.querySelector("#ghostReuploadButton");
 const wordCount = document.querySelector("#wordCount");
 const lockToggle = document.querySelector("#lockToggle");
+const micButton = document.querySelector("#micButton");
 
 const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
 const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0"></path></svg>`;
@@ -495,6 +497,10 @@ function renderLockState() {
   // mutation events below. Caret, selection, arrow nav, Ctrl+C all work.
   editor.classList.toggle("locked", locked);
   titleInput.classList.toggle("locked", locked);
+  // Voice input would inject text past the lock — hide the mic outright.
+  if (micButton && !micButton.hidden) {
+    micButton.style.visibility = locked ? "hidden" : "";
+  }
 }
 
 async function toggleLock() {
@@ -1079,6 +1085,67 @@ function setupImeOn(inputEl, onCommitSchedule) {
 setupImeOn(editor, scheduleContentSave);
 setupImeOn(titleInput, scheduleTitleSave);
 
+// --- Voice input (Web Speech API) ---
+
+// Browser-native, free, no infra. On Chrome/Edge/Quest the audio is routed to
+// Google's servers; Firefox has no implementation so we hide the button there.
+// Language follows the IME: Chinese mode → zh-CN, ASCII mode or IME off → en-US.
+
+function pickSpeechLang() {
+  const imeState = ime.getState();
+  if (imeState.enabled && !imeState.asciiMode) return "zh-CN";
+  return "en-US";
+}
+
+const speechSession = isSpeechSupported()
+  ? new SpeechSession({
+      target: editor,
+      onChange: () => {
+        setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
+        renderWordCount();
+        scheduleContentSave();
+        // Counts as activity — long dictations shouldn't trigger the idle
+        // overlay just because no key/pointer events landed.
+        scheduleIdleOverlay();
+      },
+      onState: (next, error) => {
+        if (!micButton) return;
+        micButton.setAttribute("data-state", next);
+        if (next === "error" && error) {
+          setSaveStatus(`语音失败：${error.message ?? error}`, true);
+        }
+      },
+    })
+  : null;
+
+if (micButton) {
+  if (speechSession) {
+    micButton.hidden = false;
+    micButton.addEventListener("click", () => {
+      if (state.activeDoc?.locked) return;
+      // Make sure pending IME composition isn't sitting underneath — committing
+      // it would inject extra text mid-dictation.
+      if (ime.isComposing()) {
+        ime.backend?.resetState?.();
+        renderImeState();
+      }
+      editor.focus();
+      speechSession.toggle(pickSpeechLang());
+    });
+  } else {
+    // Firefox / unsupported — keep the button hidden so users aren't misled.
+    micButton.hidden = true;
+  }
+}
+
+editor.addEventListener("input", () => {
+  speechSession?.notifyExternalInput();
+});
+editor.addEventListener("pointerdown", () => {
+  // Caret moves on click — anchor would be stale, just abort cleanly.
+  if (speechSession?.state === "listening") speechSession.abort();
+});
+
 // Lock = block content-changing events, leave selection/navigation alone.
 function blockIfLocked(event) {
   if (state.activeDoc?.locked) {
@@ -1246,6 +1313,9 @@ function showIdleOverlay() {
   if (document.activeElement && typeof document.activeElement.blur === "function") {
     document.activeElement.blur();
   }
+  // Kill any in-progress dictation — the overlay implies the user stepped
+  // away, and we don't want the engine to keep transcribing ambient audio.
+  if (speechSession?.state === "listening") speechSession.abort();
   // Lock-time is the safe moment to push: the user clearly stopped, and
   // if they never come back (closed Quest, walked away for the day), this
   // is the last chance to make sure their dirty content reaches OneDrive.

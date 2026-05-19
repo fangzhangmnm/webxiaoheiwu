@@ -361,6 +361,79 @@ body {
   font-family: ui-monospace, monospace;
 }
 
+/* Voice input — floating mic button anchored to the page box */
+
+.mic-button {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: rgba(241, 230, 207, 0.94);
+  color: var(--ink-soft);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(58, 40, 24, 0.18);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  z-index: 7;
+  transition: background 140ms, color 140ms, transform 140ms, border-color 140ms;
+  padding: 0;
+}
+
+.mic-button[hidden] { display: none !important; }
+
+.mic-button:hover,
+.mic-button:focus-visible {
+  color: var(--accent);
+  background: var(--bg-1);
+  outline: none;
+}
+
+.mic-button[data-state="listening"] {
+  color: #faf2e2;
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.04);
+}
+
+.mic-button[data-state="error"] {
+  color: var(--danger);
+  border-color: rgba(157, 46, 33, 0.4);
+}
+
+.mic-icon {
+  position: relative;
+  z-index: 1;
+}
+
+.mic-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mic-button[data-state="listening"] .mic-pulse {
+  animation: mic-pulse 1.4s ease-out infinite;
+}
+
+@keyframes mic-pulse {
+  0% { opacity: 0.55; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.55); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-button[data-state="listening"] .mic-pulse { animation: none; }
+  .mic-button[data-state="listening"] { transform: none; }
+}
+
 /* Drawer */
 
 .backdrop {

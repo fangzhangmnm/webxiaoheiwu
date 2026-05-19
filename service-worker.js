@@ -1,7 +1,7 @@
 // Bump CACHE_VERSION whenever any precached asset changes. The activate
 // handler wipes older caches; skipWaiting + clientsClaim make the new SW
 // take over on the next reload (no need to close all tabs).
-const CACHE_VERSION = "v46-2026-05-17-optimistic-trash";
+const CACHE_VERSION = "v49-2026-05-19-voice-input-error-recovery";
 const CACHE_NAME = `xiaoheiwu-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -16,6 +16,7 @@ const PRECACHE_URLS = [
   "./src/db.js",
   "./src/ime.js",
   "./src/onedrive.js",
+  "./src/speech.js",
   "./src/styles.css",
   "./src/sync.js",
   "./src/vendor/my-rime/worker.js",
