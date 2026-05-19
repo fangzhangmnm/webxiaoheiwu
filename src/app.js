@@ -42,6 +42,19 @@ import {
 
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
+
+// On Quest the OS-level IME runs alongside our Rime adapter and composes the
+// held PTT key into a multi-` insertCompositionText event (which is non-
+// cancelable per spec — preventDefault is a no-op). Telling the browser
+// "the page implements its own keyboard input" via inputmode=none skips that
+// composition path entirely. Phones without a physical keyboard would also
+// lose the virtual keyboard from inputmode=none, so gate on the Quest UA.
+const IS_QUEST_BROWSER = /OculusBrowser|Quest|Wolvic/i.test(navigator.userAgent || "");
+if (IS_QUEST_BROWSER) {
+  console.log("[app] Quest browser detected → inputmode=none on editor + title");
+  editor.setAttribute("inputmode", "none");
+  titleInput.setAttribute("inputmode", "none");
+}
 const saveStatus = document.querySelector("#saveStatus");
 const imeStatus = document.querySelector("#imeStatus");
 const candidateBar = document.querySelector("#candidateBar");
@@ -84,7 +97,7 @@ const pttDebugClearButton = document.querySelector("#pttDebugClearButton");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v65-2026-05-19-whisper-strip-backtick-tail";
+const APP_VERSION = "v66-2026-05-19-quest-inputmode-none";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
