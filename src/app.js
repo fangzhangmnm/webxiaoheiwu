@@ -78,12 +78,111 @@ const voiceVocabField = document.querySelector("#voiceVocabField");
 const voiceVocabInput = document.querySelector("#voiceVocabInput");
 const voiceConfigSaveButton = document.querySelector("#voiceConfigSaveButton");
 const settingsBuild = document.querySelector("#settingsBuild");
+const pttDebugDisplay = document.querySelector("#pttDebugDisplay");
+const pttDebugRefreshButton = document.querySelector("#pttDebugRefreshButton");
+const pttDebugClearButton = document.querySelector("#pttDebugClearButton");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v61-2026-05-19-broader-ptt-traps";
+const APP_VERSION = "v62-2026-05-19-ptt-debug-panel";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
+
+// --- PTT diagnostic log ---
+//
+// Visible buffer of every ` / ~ -touching keyboard / input event, regardless
+// of whether our filters matched. Quest doesn't have great remote-debug
+// affordances; this lets the user open Settings → PTT 调试 to see the
+// actual event sequence (code, key, repeat, inputType) and tell us which
+// event path is leaking a stray ` past the suppressors.
+
+const PTT_DEBUG_MAX = 80;
+const pttDebugBuffer = [];
+
+function pttLog(label, fields) {
+  const ts = new Date().toISOString().slice(11, 23);
+  const detail = Object.entries(fields ?? {})
+    .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+    .join(" ");
+  const line = `${ts} ${label} ${detail}`.trim();
+  pttDebugBuffer.push(line);
+  if (pttDebugBuffer.length > PTT_DEBUG_MAX) pttDebugBuffer.shift();
+  console.debug("[ptt]", line);
+}
+
+function renderPttDebug() {
+  if (!pttDebugDisplay) return;
+  pttDebugDisplay.textContent = pttDebugBuffer.join("\n") || "（无事件）";
+  pttDebugDisplay.scrollTop = pttDebugDisplay.scrollHeight;
+}
+
+pttDebugRefreshButton?.addEventListener("click", renderPttDebug);
+pttDebugClearButton?.addEventListener("click", () => {
+  pttDebugBuffer.length = 0;
+  renderPttDebug();
+});
+
+function isInterestingKeyEvent(e) {
+  return e.code === "Backquote" || e.key === "`" || e.key === "~";
+}
+function isInterestingInputEvent(e) {
+  return e.data === "`" || e.data === "~";
+}
+
+// Pure observers — capture phase, do nothing but log. Run BEFORE our actual
+// suppression handlers so we record even events that the suppressors then
+// reject.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (isInterestingKeyEvent(e)) {
+      pttLog("kd", {
+        code: e.code,
+        key: e.key,
+        repeat: e.repeat,
+        shift: e.shiftKey,
+        ae: document.activeElement?.id || document.activeElement?.tagName,
+      });
+    }
+  },
+  { capture: true },
+);
+document.addEventListener(
+  "keyup",
+  (e) => {
+    if (isInterestingKeyEvent(e)) {
+      pttLog("ku", { code: e.code, key: e.key });
+    }
+  },
+  { capture: true },
+);
+document.addEventListener(
+  "keypress",
+  (e) => {
+    if (isInterestingKeyEvent(e)) {
+      pttLog("kp", { code: e.code, key: e.key });
+    }
+  },
+  { capture: true },
+);
+editor.addEventListener(
+  "beforeinput",
+  (e) => {
+    if (isInterestingInputEvent(e)) {
+      pttLog("bi", { inputType: e.inputType, data: e.data, defaultPrevented: e.defaultPrevented });
+    }
+  },
+  { capture: true },
+);
+editor.addEventListener(
+  "input",
+  (e) => {
+    if (isInterestingInputEvent(e)) {
+      pttLog("in", { inputType: e.inputType, data: e.data });
+    }
+  },
+  { capture: true },
+);
 
 const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
 const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0"></path></svg>`;
@@ -651,6 +750,7 @@ async function openDrawer(view = "active") {
   if (isSettings) {
     docListEmpty.classList.add("hidden");
     renderVoiceConfigForm();
+    renderPttDebug();
     return;
   }
   await renderDocList();
