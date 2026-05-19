@@ -1,7 +1,7 @@
 // Bump CACHE_VERSION whenever any precached asset changes. The activate
 // handler wipes older caches; skipWaiting + clientsClaim make the new SW
 // take over on the next reload (no need to close all tabs).
-const CACHE_VERSION = "v50-2026-05-19-whisper-and-mic-visibility";
+const CACHE_VERSION = "v58-2026-05-19-collapsible-voice-section";
 const CACHE_NAME = `xiaoheiwu-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -20,6 +20,7 @@ const PRECACHE_URLS = [
   "./src/styles.css",
   "./src/sync.js",
   "./src/whisper.js",
+  "./src/zh-punct.js",
   "./src/vendor/my-rime/worker.js",
   "./src/vendor/my-rime/dist/rime.js",
   "./src/vendor/my-rime/dist/rime.wasm",

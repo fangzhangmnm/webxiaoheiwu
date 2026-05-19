@@ -67,10 +67,15 @@ const ghostReuploadButton = document.querySelector("#ghostReuploadButton");
 const wordCount = document.querySelector("#wordCount");
 const lockToggle = document.querySelector("#lockToggle");
 const micButton = document.querySelector("#micButton");
+const settingsView = document.querySelector("#settingsView");
+const openSettingsButton = document.querySelector("#openSettingsButton");
 const voiceConfigSection = document.querySelector("#voiceConfigSection");
-const voiceConfigStatus = document.querySelector("#voiceConfigStatus");
-const voiceGroqKeyInput = document.querySelector("#voiceGroqKey");
-const voiceOpenaiKeyInput = document.querySelector("#voiceOpenaiKey");
+const voiceProviderSelect = document.querySelector("#voiceProviderSelect");
+const voiceKeyField = document.querySelector("#voiceKeyField");
+const voiceKeyLabel = document.querySelector("#voiceKeyLabel");
+const voiceKeyInput = document.querySelector("#voiceKeyInput");
+const voiceVocabField = document.querySelector("#voiceVocabField");
+const voiceVocabInput = document.querySelector("#voiceVocabInput");
 const voiceConfigSaveButton = document.querySelector("#voiceConfigSaveButton");
 
 const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
@@ -623,16 +628,23 @@ async function openDrawer(view = "active") {
   drawer.classList.remove("hidden");
   drawer.setAttribute("aria-hidden", "false");
   drawerBackdrop.classList.remove("hidden");
-  if (view === "active") {
-    drawerTitle.textContent = "文件";
-    drawerBackButton.hidden = true;
-    drawerActions.classList.remove("hidden");
-    trashActions.classList.add("hidden");
-  } else {
-    drawerTitle.textContent = "垃圾箱";
-    drawerBackButton.hidden = false;
-    drawerActions.classList.add("hidden");
-    trashActions.classList.remove("hidden");
+
+  // View matrix: 'active' shows the file list with the new-doc action.
+  //              'trash' shows the trash list with empty-trash action.
+  //              'settings' hides the list entirely and shows the settings
+  //              panel (auth + voice config).
+  const isSettings = view === "settings";
+  const isTrash = view === "trash";
+  drawerTitle.textContent = isSettings ? "设置" : isTrash ? "垃圾箱" : "文件";
+  drawerBackButton.hidden = view === "active";
+  drawerActions.classList.toggle("hidden", isTrash || isSettings);
+  trashActions.classList.toggle("hidden", !isTrash);
+  settingsView.hidden = !isSettings;
+  docList.hidden = isSettings;
+  if (isSettings) {
+    docListEmpty.classList.add("hidden");
+    renderVoiceConfigForm();
+    return;
   }
   await renderDocList();
   // When the drawer opens we (best-effort) sync remote metadata into IDB,
@@ -1247,24 +1259,30 @@ function renderVoiceConfigForm() {
   if (!visible) return;
 
   const provider = resolvedVoiceProvider(voiceConfig);
-  for (const radio of voiceConfigSection.querySelectorAll('input[name="voiceProvider"]')) {
-    radio.checked = radio.value === provider;
-  }
-  // Both keys are stored regardless of which provider is currently selected,
-  // so the user can switch back later without re-pasting.
-  voiceGroqKeyInput.value = voiceConfig?.groqKey ?? "";
-  voiceOpenaiKeyInput.value = voiceConfig?.openaiKey ?? "";
+  voiceProviderSelect.value = provider;
+  renderVoiceConfigKeyField(provider);
+  voiceVocabInput.value = voiceConfig?.vocab ?? "";
+}
 
-  // Status chip: label the currently-selected backend, flag missing key for
-  // the Whisper providers.
+// Single key input that swaps placeholder/value based on the selected provider.
+// All keys live in voiceConfig regardless of which is selected, so switching
+// from Groq → OpenAI → Groq doesn't lose the original key.
+function renderVoiceConfigKeyField(provider) {
   if (provider === "webspeech") {
-    voiceConfigStatus.textContent = "浏览器";
-    voiceConfigStatus.classList.add("configured");
+    voiceKeyField.hidden = true;
+    voiceVocabField.hidden = true; // Web Speech ignores vocab/prompt.
+    return;
+  }
+  voiceKeyField.hidden = false;
+  voiceVocabField.hidden = false;
+  if (provider === "openai") {
+    voiceKeyLabel.textContent = "OpenAI key";
+    voiceKeyInput.placeholder = "sk-...";
+    voiceKeyInput.value = voiceConfig?.openaiKey ?? "";
   } else {
-    const hasKey = !!voiceConfig?.[`${provider}Key`];
-    const label = provider === "openai" ? "OpenAI" : "Groq";
-    voiceConfigStatus.textContent = hasKey ? label : `${label} · 未填 key`;
-    voiceConfigStatus.classList.toggle("configured", hasKey);
+    voiceKeyLabel.textContent = "Groq key";
+    voiceKeyInput.placeholder = "gsk_...";
+    voiceKeyInput.value = voiceConfig?.groqKey ?? "";
   }
 }
 
@@ -1288,14 +1306,18 @@ async function loadVoiceConfig() {
 
 async function saveVoiceConfig() {
   if (!state.authSignedIn) return;
-  const provider =
-    voiceConfigSection.querySelector('input[name="voiceProvider"]:checked')?.value
-    ?? "groq";
+  const provider = voiceProviderSelect.value || "webspeech";
+  // Preserve both keys: switching provider via the dropdown shouldn't wipe
+  // the other backend's saved key. Only the currently-shown key is editable.
   const next = {
     provider,
-    groqKey: voiceGroqKeyInput.value.trim(),
-    openaiKey: voiceOpenaiKeyInput.value.trim(),
+    groqKey: voiceConfig?.groqKey ?? "",
+    openaiKey: voiceConfig?.openaiKey ?? "",
+    vocab: voiceVocabInput.value.trim(),
   };
+  if (provider === "groq" || provider === "openai") {
+    next[`${provider}Key`] = voiceKeyInput.value.trim();
+  }
   voiceConfigSaveButton.disabled = true;
   const prevLabel = voiceConfigSaveButton.textContent;
   voiceConfigSaveButton.textContent = "保存中…";
@@ -1318,6 +1340,10 @@ async function saveVoiceConfig() {
 
 voiceConfigSaveButton?.addEventListener("click", () => {
   saveVoiceConfig().catch((err) => console.warn("saveVoiceConfig:", err));
+});
+
+voiceProviderSelect?.addEventListener("change", () => {
+  renderVoiceConfigKeyField(voiceProviderSelect.value);
 });
 
 // Lock = block content-changing events, leave selection/navigation alone.
@@ -1397,6 +1423,7 @@ drawerBackdrop.addEventListener("click", closeDrawer);
 drawerBackButton.addEventListener("click", () => openDrawer("active"));
 newDocButton.addEventListener("click", onNewDoc);
 openTrashButton.addEventListener("click", () => openDrawer("trash"));
+openSettingsButton.addEventListener("click", () => openDrawer("settings"));
 emptyTrashButton.addEventListener("click", onEmptyTrash);
 
 document.addEventListener("keydown", async (event) => {
@@ -1414,6 +1441,123 @@ document.addEventListener("keydown", async (event) => {
     doPush();
   }
 });
+
+// --- Backtick-hold push-to-talk ---
+//
+// Hold ` (Backquote) in the editor for ≥250ms → start recording. Release →
+// stop. Short tap (<250ms) inserts the appropriate char (` or ~) at the
+// caret, routed through the IME so Rime's punctuation table still maps it
+// to fullwidth Chinese when the IME is on (e.g. ~ → ～).
+// Auto-repeat keydowns and IME-side handling are both suppressed by
+// stopImmediatePropagation on the capture phase, so the held key produces
+// neither a typed char nor a Rime commit until we decide what it meant.
+// Uses start()/stop() (not toggle) so a session you began via the mic
+// button isn't accidentally cancelled by an unrelated ` tap.
+
+const PTT_HOLD_MS = 250;
+let pttTimer = null;
+let pttBackend = null;        // non-null while a PTT session is running
+let pttActive = false;        // true once timer fired & PTT actually started
+let pttPressedKey = "";       // captured event.key from the original keydown
+let pttPressedShift = false;  // captured event.shiftKey from the original keydown
+
+document.addEventListener(
+  "keydown",
+  (event) => {
+    if (event.code !== "Backquote") return;
+    if (document.activeElement !== editor) return;
+    if (state.activeDoc?.locked) return;
+    // Stop the textarea's native insert AND the setupImeOn keydown listener
+    // (which would otherwise route ~ through Rime as ～ on every repeat).
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.repeat) return; // already swallowed; nothing else to do.
+    pttPressedKey = event.key;
+    pttPressedShift = !!event.shiftKey;
+    pttActive = false;
+    if (pttTimer) clearTimeout(pttTimer);
+    pttTimer = setTimeout(() => {
+      pttTimer = null;
+      const backend = activeVoiceBackend();
+      if (!backend) return;
+      // Don't yank a session the user already started via the mic button.
+      if (backend.state !== "idle") return;
+      pttActive = true;
+      backend.start(pickSpeechLang());
+      pttBackend = backend;
+    }, PTT_HOLD_MS);
+  },
+  { capture: true },
+);
+
+document.addEventListener(
+  "keyup",
+  (event) => {
+    if (event.code !== "Backquote") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (pttTimer) {
+      // Short tap — never reached the hold threshold. Emit the char that
+      // would have appeared if we hadn't intercepted, by feeding the IME
+      // a synthesized keydown so Rime gets its chance to map ~ → ～.
+      clearTimeout(pttTimer);
+      pttTimer = null;
+      if (!state.activeDoc?.locked) {
+        feedSyntheticPunctuation(pttPressedKey, pttPressedShift);
+      }
+      return;
+    }
+    if (pttActive && pttBackend) {
+      pttBackend.stop();
+      pttBackend = null;
+      pttActive = false;
+    }
+  },
+  { capture: true },
+);
+
+// Synthesize a keydown for the IME, then mirror the commit / passthrough
+// handling that setupImeOn does for real events.
+async function feedSyntheticPunctuation(key, shiftKey) {
+  const synth = {
+    key,
+    code: "Backquote",
+    shiftKey,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    repeat: false,
+    preventDefault() {},
+  };
+  let result;
+  try {
+    result = await ime.onKeydown(synth);
+  } catch (err) {
+    console.warn("[ptt] ime.onKeydown:", err);
+    insertAtCursor(editor, key);
+    onVoiceInsert();
+    return;
+  }
+  if (
+    result.type === "toggle" ||
+    result.type === "clear" ||
+    result.type === "composing"
+  ) {
+    renderImeState();
+    return;
+  }
+  if (result.type === "commit") {
+    stripGhostBuffer(editor, result.consumedBuffer);
+    insertAtCursor(editor, result.text);
+    renderImeState();
+    onVoiceInsert();
+    maybePushUserDict();
+    return;
+  }
+  // Passthrough — IME didn't claim the key. Insert literal char.
+  insertAtCursor(editor, key);
+  onVoiceInsert();
+}
 
 // Quest waking from standby, network reconnect, or tab regaining focus —
 // good moments to ask OneDrive if the active doc changed under us.

@@ -9,6 +9,8 @@
 //  - User typing/pasting/clicking elsewhere stops the session — anything
 //    that mutates the textarea behind our back would invalidate the anchor.
 
+import { chineseifyPunctuation } from "./zh-punct.js";
+
 // Two-phase silence timer:
 //  - INITIAL_GRACE: from "mic captures audio" until the user actually starts
 //    talking. Generous, because tapping the button and opening one's mouth
@@ -18,7 +20,7 @@
 //  - SILENCE_TIMEOUT: mid-utterance gap that means "I'm done." Short, so the
 //    user doesn't have to manually tap the mic to end a dictation.
 const INITIAL_GRACE_MS = 8000;
-const SILENCE_TIMEOUT_MS = 2500;
+const SILENCE_TIMEOUT_MS = 1000;
 
 export function isSpeechSupported() {
   return typeof window !== "undefined"
@@ -78,6 +80,9 @@ export class SpeechSession {
       let text = "";
       for (let i = 0; i < event.results.length; i += 1) {
         text += event.results[i][0].transcript;
+      }
+      if (r.lang && r.lang.startsWith("zh")) {
+        text = chineseifyPunctuation(text);
       }
       this._replaceAnchor(text);
       this._armTimer(SILENCE_TIMEOUT_MS);

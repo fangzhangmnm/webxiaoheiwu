@@ -1,3 +1,5 @@
+import { chineseifyPunctuation } from "./zh-punct.js";
+
 // Whisper-style speech-to-text via a user-supplied API key (Groq or OpenAI).
 //
 // External shape matches SpeechSession (Web Speech) so app.js can pick one
@@ -16,7 +18,7 @@
 //   provider returns text
 //     → inserted at the anchor (cursor position at the moment mic was tapped)
 
-const SILENCE_MS = 2500;        // mid-utterance silence → end recording
+const SILENCE_MS = 1000;        // mid-utterance silence → end recording
 const MAX_DURATION_MS = 60_000; // hard cap so a forgotten session can't run forever
 const VAD_POLL_MS = 100;
 const VOICE_THRESHOLD = 0.04;   // RMS over [0,1]; rough but workable
@@ -186,7 +188,25 @@ export class WhisperSession {
       key,
       // Both APIs want ISO-639-1 ('zh', 'en'), not BCP-47 ('zh-CN').
       lang: langHint ? langHint.slice(0, 2) : null,
+      vocab: typeof c.vocab === "string" ? c.vocab.trim() : "",
     };
+  }
+
+  // Whisper's `prompt` parameter biases the output style + vocabulary. We use
+  // it for two things:
+  //  - Force Simplified Chinese: zh ambiguous between Simplified/Traditional,
+  //    so seeding the prompt with simplified glyphs nudges the model toward
+  //    simplified output even on dialectal audio.
+  //  - User-supplied vocab list (proper nouns, jargon, character names) so
+  //    Whisper actually transcribes them correctly instead of guessing
+  //    near-homophones.
+  _buildPrompt(config) {
+    const parts = [];
+    if (config.lang === "zh") {
+      parts.push("以下是简体中文语音转录。");
+    }
+    if (config.vocab) parts.push(`常见词汇：${config.vocab}`);
+    return parts.length > 0 ? parts.join(" ") : null;
   }
 
   _setState(next, error) {
@@ -255,6 +275,8 @@ export class WhisperSession {
     form.append("model", config.model);
     form.append("response_format", "json");
     if (config.lang) form.append("language", config.lang);
+    const prompt = this._buildPrompt(config);
+    if (prompt) form.append("prompt", prompt);
 
     this.abortController = new AbortController();
     try {
@@ -270,7 +292,10 @@ export class WhisperSession {
         throw new Error(`${response.status} ${detail.slice(0, 200)}`);
       }
       const data = await response.json();
-      const text = (data.text ?? "").trim();
+      let text = (data.text ?? "").trim();
+      if (text && config.lang === "zh") {
+        text = chineseifyPunctuation(text);
+      }
       if (text) this._insertAtAnchor(text);
       this._setState("idle");
     } catch (err) {
