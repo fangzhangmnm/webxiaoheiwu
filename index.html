@@ -34,12 +34,8 @@
           aria-label="文档标题"
         />
 
-        <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="锁定/解锁文档">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="5" y="11" width="14" height="10" rx="2"></rect>
-            <path d="M8 11V7a4 4 0 1 1 8 0"></path>
-          </svg>
-        </button>
+        <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档"></button>
+        <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护"></button>
 
         <div class="status" aria-live="polite">
           <span id="wordCount">0 字</span>
@@ -93,10 +89,49 @@
       </div>
     </div>
 
+    <div id="busyOverlay" class="idle-overlay busy-overlay hidden" role="dialog" aria-modal="true" aria-label="处理中">
+      <div class="idle-card">
+        <p class="idle-title" id="busyOverlayText">处理中…</p>
+        <p class="idle-hint" id="busyOverlayHint">请稍候</p>
+      </div>
+    </div>
+
     <div id="updateToast" class="update-toast hidden" role="status" aria-live="polite">
       <span class="update-text">有新版本</span>
       <button class="update-reload" id="updateReloadButton" type="button">刷新</button>
       <button class="update-dismiss" id="updateDismissButton" type="button" aria-label="忽略">×</button>
+    </div>
+
+    <div id="cryptoModal" class="crypto-modal hidden" role="dialog" aria-modal="true" aria-label="加密">
+      <div class="crypto-card">
+        <h3 class="crypto-title" id="cryptoModalTitle">解锁加密</h3>
+        <p class="crypto-hint" id="cryptoModalHint">输入密码以解锁加密文件</p>
+        <input
+          id="cryptoPassphrase"
+          class="crypto-input"
+          type="password"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+        />
+        <input
+          id="cryptoPassphraseConfirm"
+          class="crypto-input"
+          type="password"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="再次输入以确认"
+          hidden
+        />
+        <p id="cryptoModalError" class="crypto-error hidden"></p>
+        <div class="crypto-actions">
+          <button id="cryptoModalCancel" class="crypto-button" type="button">取消</button>
+          <button id="cryptoModalSubmit" class="crypto-button primary" type="button">解锁</button>
+        </div>
+      </div>
     </div>
 
     <div id="drawerBackdrop" class="backdrop hidden" aria-hidden="true"></div>

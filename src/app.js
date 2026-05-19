@@ -38,7 +38,18 @@ import {
   pullUserDict,
   pushLastActiveItemId,
   pullLastActiveItemId,
+  encryptDocAction,
+  decryptDocAction,
+  saveEncryptedActive,
 } from "./sync.js";
+import {
+  loadCryptoSetup,
+  setupCrypto,
+  unlockCrypto,
+  lockCrypto,
+  isUnlocked,
+  decryptDoc,
+} from "./crypto.js";
 
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
@@ -94,6 +105,28 @@ const ghostTrashButton = document.querySelector("#ghostTrashButton");
 const ghostReuploadButton = document.querySelector("#ghostReuploadButton");
 const wordCount = document.querySelector("#wordCount");
 const lockToggle = document.querySelector("#lockToggle");
+const cryptoToggle = document.querySelector("#cryptoToggle");
+const cryptoModal = document.querySelector("#cryptoModal");
+const cryptoModalTitle = document.querySelector("#cryptoModalTitle");
+const cryptoModalHint = document.querySelector("#cryptoModalHint");
+const cryptoPassphrase = document.querySelector("#cryptoPassphrase");
+const cryptoPassphraseConfirm = document.querySelector("#cryptoPassphraseConfirm");
+const cryptoModalError = document.querySelector("#cryptoModalError");
+const cryptoModalCancel = document.querySelector("#cryptoModalCancel");
+const cryptoModalSubmit = document.querySelector("#cryptoModalSubmit");
+const busyOverlay = document.querySelector("#busyOverlay");
+const busyOverlayText = document.querySelector("#busyOverlayText");
+const busyOverlayHint = document.querySelector("#busyOverlayHint");
+
+function showBusyOverlay(text, hint = "请稍候") {
+  if (!busyOverlay) return;
+  if (busyOverlayText) busyOverlayText.textContent = text;
+  if (busyOverlayHint) busyOverlayHint.textContent = hint;
+  busyOverlay.classList.remove("hidden");
+}
+function hideBusyOverlay() {
+  busyOverlay?.classList.add("hidden");
+}
 const micButton = document.querySelector("#micButton");
 const settingsView = document.querySelector("#settingsView");
 const openSettingsButton = document.querySelector("#openSettingsButton");
@@ -113,8 +146,13 @@ const APP_VERSION = "v70-2026-05-19-left-ctrl-ptt-restored";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
-const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
-const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0"></path></svg>`;
+// Read-only (lockToggle): pencil with diagonal slash means "writes blocked".
+// Unlocked variant is the same pencil without the slash.
+const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6L8 22H2v-6L14 4z"></path><line x1="3" y1="3" x2="21" y2="21"></line></svg>`;
+const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4l6 6L8 22H2v-6L14 4z"></path></svg>`;
+// Crypto toggle: key icon. Filled bow = encrypted, outline = plaintext.
+const ICON_KEY_ON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="3.5"></circle><line x1="11.5" y1="12" x2="22" y2="12" fill="none"></line><line x1="18" y1="12" x2="18" y2="15" fill="none"></line><line x1="22" y1="12" x2="22" y2="14" fill="none"></line></svg>`;
+const ICON_KEY_OFF = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="3.5"></circle><line x1="11.5" y1="12" x2="22" y2="12"></line><line x1="18" y1="12" x2="18" y2="15"></line><line x1="22" y1="12" x2="22" y2="14"></line></svg>`;
 
 const ime = new NaturalCodeIMEAdapter();
 
@@ -129,7 +167,16 @@ const state = {
   authSignedIn: false,
   authAccount: null,
   authError: null,
+  // Encryption setup detected on this device. Tri-state:
+  //   null    → not yet probed (or signed out)
+  //   false   → no .crypto/salt.json on OneDrive (never set up)
+  //   true    → setup file exists; we may still be locked (call isUnlocked())
+  cryptoExists: null,
 };
+
+// In-memory decoded title/createdAt for encrypted docs, populated after unlock
+// by decrypting each blob. Cleared on lockCrypto(). Lives only in JS heap.
+const titleCache = new Map(); // docId → { title, createdAt }
 
 let contentSaveTimer = null;
 let titleSaveTimer = null;
@@ -156,6 +203,22 @@ function formatTime(ts) {
 }
 
 function computeDisplayName(doc) {
+  if (doc.encrypted) {
+    // Encrypted doc: title lives only in the (in-memory) titleCache, populated
+    // after unlock. Locked → opaque placeholder + a 4-hex shard of the random
+    // filename so the user can still tell two locked rows apart.
+    const cached = titleCache.get(doc.id);
+    if (cached) {
+      const dateStr = cached.createdAt ? formatDate(cached.createdAt) : "";
+      const t = cached.title ?? "";
+      if (dateStr && t) return `${dateStr} ${t}`;
+      if (t) return t;
+      if (dateStr) return dateStr;
+    }
+    // Fall back to a stable shard from the filename (or itemId if no name yet).
+    const tag = (doc.remoteName ?? doc.onedriveItemId ?? doc.id).slice(-8);
+    return `(已锁定 ${tag})`;
+  }
   // Source of truth: the actual remote filename once pushed. For not-yet-
   // pushed docs we compute "YYYYMMDD title" as a preview. Collision suffix
   // (" 1", " 2", ...) is added by the sync layer at push time and lives
@@ -180,6 +243,7 @@ function setSaveStatus(message, opts = false) {
 // from the previous one.
 function statusForDoc(doc) {
   if (!doc) return "就绪";
+  if (doc.encrypted && !isUnlocked()) return "已加密 · 点钥匙图标解锁";
   if (doc.dirty) {
     return state.authSignedIn ? "未同步" : "本地草稿";
   }
@@ -306,6 +370,46 @@ function syncEditorToDoc() {
   }
 }
 
+// Returns true if the active doc is encrypted-and-unlocked (the save path
+// that re-encrypts in-memory plaintext to an IDB blob).
+function activeIsEncryptedUnlocked() {
+  return !!(state.activeDoc?.encrypted && isUnlocked());
+}
+
+async function persistActiveDocEdit({ content, title }) {
+  // Encrypted active doc: re-encrypt and write the blob. Plaintext never
+  // touches IDB. state.activeDoc holds the only plaintext copy in memory.
+  if (activeIsEncryptedUnlocked()) {
+    state.activeDoc.title = title ?? state.activeDoc.title ?? "";
+    state.activeDoc.content = content ?? state.activeDoc.content ?? "";
+    const updated = await saveEncryptedActive(state.activeDocId, {
+      title: state.activeDoc.title,
+      content: state.activeDoc.content,
+      createdAt: state.activeDoc.createdAt,
+    });
+    // updated comes back with the new encryptedBlob; merge into in-memory
+    // active doc but keep the plaintext fields we just set.
+    state.activeDoc = {
+      ...updated,
+      title: state.activeDoc.title,
+      content: state.activeDoc.content,
+      createdAt: state.activeDoc.createdAt,
+    };
+    titleCache.set(state.activeDocId, {
+      title: state.activeDoc.title,
+      createdAt: state.activeDoc.createdAt,
+    });
+    return state.activeDoc;
+  }
+  // Plaintext doc: original path.
+  const patch = {};
+  if (content !== undefined) patch.content = content;
+  if (title !== undefined) patch.title = title;
+  const updated = await updateDoc(state.activeDocId, patch);
+  state.activeDoc = updated;
+  return updated;
+}
+
 async function flushSaves() {
   // Only write if there's an actually-pending debounced save. Writing
   // unconditionally would flip `dirty` to true on docs the user hasn't
@@ -323,12 +427,13 @@ async function flushSaves() {
   }
   if (!state.activeDocId) return;
   if (!hadContentTimer && !hadTitleTimer) return;
+  // Encrypted-but-locked: editor is disabled, no edits should exist, skip.
+  if (state.activeDoc?.encrypted && !isUnlocked()) return;
   try {
-    const updated = await updateDoc(state.activeDocId, {
+    await persistActiveDocEdit({
       content: editor.value,
       title: titleInput.value,
     });
-    state.activeDoc = updated;
   } catch (error) {
     setSaveStatus(`保存失败：${error.message ?? error}`, true);
   }
@@ -339,9 +444,9 @@ function scheduleContentSave() {
   contentSaveTimer = setTimeout(async () => {
     contentSaveTimer = null;
     if (!state.activeDocId) return;
+    if (state.activeDoc?.encrypted && !isUnlocked()) return;
     try {
-      const updated = await updateDoc(state.activeDocId, { content: editor.value });
-      state.activeDoc = updated;
+      await persistActiveDocEdit({ content: editor.value });
       if (!state.authSignedIn) {
         setSaveStatus(`已保存 ${formatTime(Date.now())}`);
       }
@@ -362,9 +467,9 @@ function scheduleTitleSave() {
   titleSaveTimer = setTimeout(async () => {
     titleSaveTimer = null;
     if (!state.activeDocId) return;
+    if (state.activeDoc?.encrypted && !isUnlocked()) return;
     try {
-      const updated = await updateDoc(state.activeDocId, { title: titleInput.value });
-      state.activeDoc = updated;
+      await persistActiveDocEdit({ title: titleInput.value });
       if (!state.authSignedIn) {
         setSaveStatus(`已保存 ${formatTime(Date.now())}`);
       }
@@ -409,12 +514,44 @@ async function doPush() {
     const result = await pushDoc(targetId);
     const fresh = await getDoc(targetId);
     if (fresh && targetId === state.activeDocId) {
-      state.activeDoc = fresh;
-      // Don't clobber the user's in-flight edits if they typed during push.
-      const contentDiverged = editor.value !== (fresh.content ?? "");
+      // For encrypted docs, fresh.content/title are empty by design — the
+      // in-memory plaintext in state.activeDoc is still the truth. Preserve
+      // it across the spread.
+      const preservePlain = state.activeDoc?.encrypted && isUnlocked()
+        ? {
+            title: state.activeDoc.title,
+            content: state.activeDoc.content,
+            createdAt: state.activeDoc.createdAt,
+          }
+        : null;
+      state.activeDoc = preservePlain ? { ...fresh, ...preservePlain } : fresh;
+      // For plaintext: did the user keep typing during push? For encrypted,
+      // we always preserve in-memory plaintext above, so no divergence check.
+      const contentDiverged = preservePlain
+        ? false
+        : editor.value !== (fresh.content ?? "");
       if (result?.conflict === "sibling-created") {
-        editor.value = fresh.content ?? "";
-        titleInput.value = fresh.title ?? "";
+        if (preservePlain && fresh.encryptedBlob) {
+          // Encrypted conflict: local content saved as sibling on OneDrive,
+          // remote pulled back into this doc. Decrypt remote into editor.
+          try {
+            const decoded = await decryptDoc(fresh.encryptedBlob);
+            state.activeDoc.title = decoded.title ?? "";
+            state.activeDoc.content = decoded.content ?? "";
+            state.activeDoc.createdAt = decoded.createdAt ?? Date.now();
+            titleCache.set(targetId, {
+              title: state.activeDoc.title,
+              createdAt: state.activeDoc.createdAt,
+            });
+            editor.value = state.activeDoc.content;
+            titleInput.value = state.activeDoc.title;
+          } catch (error) {
+            setSaveStatus(`冲突恢复时解密失败：${error.message ?? error}`, true);
+          }
+        } else {
+          editor.value = fresh.content ?? "";
+          titleInput.value = fresh.title ?? "";
+        }
         moveCaretToStart(editor);
         renderWordCount();
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
@@ -459,19 +596,56 @@ async function checkActiveDocFreshness() {
     const result = await checkRemoteFreshness(id);
     const fresh = await getDoc(id);
     if (fresh && id === state.activeDocId) {
+      // Encrypted doc: decrypt the freshly-pulled blob into in-memory
+      // plaintext before touching the editor. Lock state mirrors what we
+      // already preserved across switchDoc.
+      const wasEncryptedUnlocked = activeIsEncryptedUnlocked();
       state.activeDoc = fresh;
       if (result?.changed && result.contentChanged) {
-        // Only replace editor if user isn't actively typing.
         if (!contentSaveTimer && !titleSaveTimer) {
-          editor.value = fresh.content ?? "";
-          titleInput.value = fresh.title ?? "";
+          if (fresh.encrypted && wasEncryptedUnlocked && fresh.encryptedBlob) {
+            try {
+              const decoded = await decryptDoc(fresh.encryptedBlob);
+              state.activeDoc.title = decoded.title ?? "";
+              state.activeDoc.content = decoded.content ?? "";
+              state.activeDoc.createdAt = decoded.createdAt ?? Date.now();
+              titleCache.set(id, {
+                title: state.activeDoc.title,
+                createdAt: state.activeDoc.createdAt,
+              });
+              editor.value = state.activeDoc.content;
+              titleInput.value = state.activeDoc.title;
+            } catch (error) {
+              setSaveStatus(`远端解密失败：${error.message ?? error}`, true);
+            }
+          } else if (!fresh.encrypted) {
+            editor.value = fresh.content ?? "";
+            titleInput.value = fresh.title ?? "";
+          }
           moveCaretToStart(editor);
           renderWordCount();
           setSaveStatus(`已加载云端最新 ${formatTime(Date.now())}`);
         }
       } else if (result?.conflict === "sibling-created") {
-        editor.value = fresh.content ?? "";
-        titleInput.value = fresh.title ?? "";
+        if (fresh.encrypted && wasEncryptedUnlocked && fresh.encryptedBlob) {
+          try {
+            const decoded = await decryptDoc(fresh.encryptedBlob);
+            state.activeDoc.title = decoded.title ?? "";
+            state.activeDoc.content = decoded.content ?? "";
+            state.activeDoc.createdAt = decoded.createdAt ?? Date.now();
+            titleCache.set(id, {
+              title: state.activeDoc.title,
+              createdAt: state.activeDoc.createdAt,
+            });
+            editor.value = state.activeDoc.content;
+            titleInput.value = state.activeDoc.title;
+          } catch (error) {
+            setSaveStatus(`冲突恢复时解密失败：${error.message ?? error}`, true);
+          }
+        } else if (!fresh.encrypted) {
+          editor.value = fresh.content ?? "";
+          titleInput.value = fresh.title ?? "";
+        }
         moveCaretToStart(editor);
         renderWordCount();
         setSaveStatus(`离线修改已存为副本 · ${formatTime(Date.now())}`);
@@ -509,6 +683,22 @@ function renderEditor() {
     titleInput.value = "";
     renderGhostBanner();
     renderLockState();
+    renderCryptoState();
+    renderWordCount();
+    return;
+  }
+  // Encrypted doc with no key in memory: editor is blank + disabled until
+  // the user unlocks. We deliberately do not show the random filename or
+  // any other identifying scrap — the doc list already shows the locked
+  // placeholder, and the title bar should be visually empty too.
+  if (state.activeDoc.encrypted && !isUnlocked()) {
+    editor.value = "";
+    titleInput.value = "";
+    editor.classList.add("locked");
+    titleInput.classList.add("locked");
+    renderGhostBanner();
+    renderLockState();
+    renderCryptoState();
     renderWordCount();
     return;
   }
@@ -517,6 +707,7 @@ function renderEditor() {
   moveCaretToStart(editor);
   renderGhostBanner();
   renderLockState();
+  renderCryptoState();
   renderWordCount();
 }
 
@@ -538,11 +729,19 @@ function renderLockState() {
     renderMicVisibility();
     return;
   }
+  // Encrypted-but-locked: read-only toggle makes no sense (the editor is
+  // already blanked by renderEditor). Hide it; don't touch the editor's
+  // locked-class since renderEditor owns it in this state.
+  if (state.activeDoc.encrypted && !isUnlocked()) {
+    lockToggle.hidden = true;
+    renderMicVisibility();
+    return;
+  }
   lockToggle.hidden = false;
   const locked = !!state.activeDoc.locked;
   lockToggle.setAttribute("data-locked", locked ? "true" : "false");
-  lockToggle.setAttribute("aria-label", locked ? "解锁编辑" : "锁定文档");
-  lockToggle.title = locked ? "解锁编辑" : "锁定（只读）";
+  lockToggle.setAttribute("aria-label", locked ? "解除只读" : "设为只读");
+  lockToggle.title = locked ? "解除只读保护" : "只读保护";
   lockToggle.innerHTML = locked ? ICON_LOCKED : ICON_UNLOCKED;
   // Don't set readOnly — that hides the caret and breaks keyboard nav on
   // some browsers (Quest included). Instead we mark a class and block
@@ -551,6 +750,411 @@ function renderLockState() {
   titleInput.classList.toggle("locked", locked);
   renderMicVisibility();
 }
+
+function renderCryptoState() {
+  if (!cryptoToggle) return;
+  // Hidden whenever the toggle makes no sense in current state:
+  //  - no active doc           → nothing to encrypt
+  //  - not signed in           → salt/verifier need OneDrive
+  //  - encrypted + locked      → user must unlock before they can re-encrypt
+  //    (clicking would open the unlock prompt — handled below; we still show
+  //    the button so the user has an obvious entry point to unlock)
+  if (!state.activeDoc || !state.authSignedIn) {
+    cryptoToggle.hidden = true;
+    return;
+  }
+  cryptoToggle.hidden = false;
+  const encrypted = !!state.activeDoc.encrypted;
+  cryptoToggle.setAttribute("data-encrypted", encrypted ? "true" : "false");
+  cryptoToggle.innerHTML = encrypted ? ICON_KEY_ON : ICON_KEY_OFF;
+  if (encrypted) {
+    cryptoToggle.title = isUnlocked() ? "解密为明文" : "解锁加密";
+    cryptoToggle.setAttribute("aria-label", isUnlocked() ? "解密为明文" : "解锁加密");
+  } else {
+    cryptoToggle.title = "加密此文档";
+    cryptoToggle.setAttribute("aria-label", "加密此文档");
+  }
+}
+
+// ── Passphrase modal ──────────────────────────────────────────────────────
+//
+// One modal, three modes: setup (two-passphrase confirm), unlock (single),
+// and decrypt-confirm (single, with red warning text). Each call returns a
+// Promise that resolves to a string (the passphrase) or null (cancelled).
+
+let modalResolver = null;
+
+function showPassphraseModal({ title, hint, hintWarning = false, withConfirm = false, submitLabel = "确定" }) {
+  if (!cryptoModal) return Promise.resolve(null);
+  if (modalResolver) {
+    // Some prior modal is still open — close it as cancelled first.
+    modalResolver(null);
+    modalResolver = null;
+  }
+  cryptoModalTitle.textContent = title;
+  cryptoModalHint.textContent = hint;
+  cryptoModalHint.classList.toggle("warning", !!hintWarning);
+  cryptoPassphrase.value = "";
+  cryptoPassphraseConfirm.value = "";
+  cryptoPassphraseConfirm.hidden = !withConfirm;
+  cryptoModalError.textContent = "";
+  cryptoModalError.classList.add("hidden");
+  cryptoModalSubmit.textContent = submitLabel;
+  cryptoModalSubmit.disabled = false;
+  cryptoModal.classList.remove("hidden");
+  setTimeout(() => cryptoPassphrase.focus(), 0);
+  return new Promise((resolve) => {
+    modalResolver = (result) => resolve(result);
+  });
+}
+
+function hidePassphraseModal() {
+  if (!cryptoModal) return;
+  cryptoModal.classList.add("hidden");
+  cryptoPassphrase.value = "";
+  cryptoPassphraseConfirm.value = "";
+  cryptoModalError.textContent = "";
+}
+
+function showModalError(message) {
+  if (!cryptoModalError) return;
+  cryptoModalError.textContent = message;
+  cryptoModalError.classList.remove("hidden");
+}
+
+async function submitPassphraseModal() {
+  if (!modalResolver) return;
+  const value = cryptoPassphrase.value;
+  if (!value) {
+    showModalError("请输入密码");
+    return;
+  }
+  if (!cryptoPassphraseConfirm.hidden) {
+    if (cryptoPassphraseConfirm.value !== value) {
+      showModalError("两次输入不一致");
+      return;
+    }
+    if (value.length < 8) {
+      showModalError("密码至少 8 位");
+      return;
+    }
+  }
+  const resolver = modalResolver;
+  modalResolver = null;
+  hidePassphraseModal();
+  resolver(value);
+}
+
+function cancelPassphraseModal() {
+  if (!modalResolver) {
+    hidePassphraseModal();
+    return;
+  }
+  const resolver = modalResolver;
+  modalResolver = null;
+  hidePassphraseModal();
+  resolver(null);
+}
+
+cryptoModalSubmit?.addEventListener("click", () => {
+  submitPassphraseModal().catch((err) => console.warn("submit:", err));
+});
+cryptoModalCancel?.addEventListener("click", cancelPassphraseModal);
+cryptoPassphrase?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (cryptoPassphraseConfirm.hidden) {
+      submitPassphraseModal().catch(() => {});
+    } else {
+      cryptoPassphraseConfirm.focus();
+    }
+  } else if (event.key === "Escape") {
+    cancelPassphraseModal();
+  }
+});
+cryptoPassphraseConfirm?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPassphraseModal().catch(() => {});
+  } else if (event.key === "Escape") {
+    cancelPassphraseModal();
+  }
+});
+
+// ── Crypto flows ──────────────────────────────────────────────────────────
+
+async function probeCryptoSetup() {
+  if (!state.authSignedIn) {
+    state.cryptoExists = null;
+    return;
+  }
+  try {
+    const setup = await loadCryptoSetup();
+    state.cryptoExists = !!setup.exists;
+  } catch (error) {
+    console.warn("probeCryptoSetup:", error);
+    state.cryptoExists = null;
+  }
+}
+
+async function runFirstTimeSetup() {
+  while (true) {
+    const passphrase = await showPassphraseModal({
+      title: "设置加密密码",
+      hint: "这个密码用于本账号下所有加密文件。忘了就找不回 — 没有任何后门。",
+      withConfirm: true,
+      submitLabel: "设置",
+    });
+    if (passphrase === null) return false;
+    try {
+      cryptoModalSubmit.disabled = true;
+      showBusyOverlay("派生加密密钥…", "PBKDF2 60 万次，1–2 秒");
+      await setupCrypto(passphrase);
+      hideBusyOverlay();
+      state.cryptoExists = true;
+      return true;
+    } catch (error) {
+      hideBusyOverlay();
+      // setupCrypto might say "已经设置过" if a parallel device wrote first.
+      showPassphraseModal({
+        title: "设置加密密码",
+        hint: error.message ?? String(error),
+        hintWarning: true,
+        withConfirm: true,
+        submitLabel: "设置",
+      });
+      // Loop continues; user gets a fresh prompt with the error embedded.
+    }
+  }
+}
+
+async function runUnlock() {
+  while (true) {
+    const passphrase = await showPassphraseModal({
+      title: "解锁加密",
+      hint: "输入密码以解锁加密文件。错了不会污染任何文件。",
+      submitLabel: "解锁",
+    });
+    if (passphrase === null) return false;
+    try {
+      cryptoModalSubmit.disabled = true;
+      showBusyOverlay("验证密码…", "PBKDF2 60 万次，1–2 秒");
+      await unlockCrypto(passphrase);
+      hideBusyOverlay();
+      return true;
+    } catch (error) {
+      hideBusyOverlay();
+      showPassphraseModal({
+        title: "解锁加密",
+        hint: error.message ?? "密码错误",
+        hintWarning: true,
+        submitLabel: "解锁",
+      });
+    }
+  }
+}
+
+// Public entry: ensure crypto is unlocked. Probes setup, kicks off either
+// first-time setup or unlock flow. Returns true on success, false if user
+// cancelled.
+async function ensureUnlocked() {
+  if (isUnlocked()) return true;
+  if (!state.authSignedIn) {
+    setSaveStatus("请先登录 OneDrive 以使用加密", true);
+    return false;
+  }
+  // Force-refresh the setup probe — another device may have set up crypto
+  // since the last probe. Avoids "已经设置过" race during first-time flow.
+  try {
+    const fresh = await loadCryptoSetup({ force: true });
+    state.cryptoExists = !!fresh.exists;
+  } catch (error) {
+    console.warn("loadCryptoSetup:", error);
+  }
+  if (!state.cryptoExists) {
+    const ok = await runFirstTimeSetup();
+    if (!ok) return false;
+  } else {
+    const ok = await runUnlock();
+    if (!ok) return false;
+  }
+  await refreshTitleCacheForAll();
+  renderCryptoState();
+  renderAuthRow();   // expose the "锁定加密" button now that we're unlocked
+  renderEditor();
+  if (state.drawerView !== "closed") await renderDocList();
+  return true;
+}
+
+// Walk every encrypted doc, decrypt the blob, harvest the title + createdAt
+// into the in-memory cache so the doc list can render. Plaintext bodies are
+// NOT cached — only title + createdAt, which are needed for display.
+async function refreshTitleCacheForAll() {
+  if (!isUnlocked()) {
+    titleCache.clear();
+    return;
+  }
+  const docs = await listDocs({ includeTrashed: true });
+  for (const doc of docs) {
+    if (!doc.encrypted) continue;
+    if (!doc.encryptedBlob) continue;
+    try {
+      const decoded = await decryptDoc(doc.encryptedBlob);
+      titleCache.set(doc.id, {
+        title: decoded.title ?? "",
+        createdAt: decoded.createdAt ?? doc.modifiedAt ?? Date.now(),
+      });
+    } catch (error) {
+      // Corrupt blob? Skip — UI shows it as locked placeholder.
+      console.warn("title cache decrypt failed for", doc.id, error);
+    }
+  }
+}
+
+// Unlock (if needed) and decrypt the currently-active encrypted doc into
+// in-memory plaintext + the editor. Used both by the doc-list re-click
+// path and by the auto-prompt at app startup when the user lands on an
+// encrypted doc.
+async function unlockAndDecryptActive() {
+  if (!state.activeDoc?.encrypted) return false;
+  const ok = await ensureUnlocked();
+  if (!ok) return false;
+  // Re-read in case ensureUnlocked already populated things via switchDoc.
+  const fresh = await getDoc(state.activeDocId);
+  if (!fresh) return false;
+  state.activeDoc = fresh;
+  // If the blob isn't in IDB yet (stub from merge with no prefetch), pull it.
+  if (!state.activeDoc.encryptedBlob && state.authSignedIn && state.activeDoc.onedriveItemId) {
+    try {
+      await hydrateStub(state.activeDocId);
+    } catch (err) {
+      console.warn("unlockAndDecryptActive hydrate:", err);
+    }
+    const reread = await getDoc(state.activeDocId);
+    if (reread) state.activeDoc = reread;
+  }
+  if (!state.activeDoc.encryptedBlob) {
+    setSaveStatus("加密内容缺失，无法解密", true);
+    return false;
+  }
+  try {
+    const decoded = await decryptDoc(state.activeDoc.encryptedBlob);
+    state.activeDoc.title = decoded.title ?? "";
+    state.activeDoc.content = decoded.content ?? "";
+    state.activeDoc.createdAt = decoded.createdAt ?? Date.now();
+    titleCache.set(state.activeDocId, {
+      title: state.activeDoc.title,
+      createdAt: state.activeDoc.createdAt,
+    });
+  } catch (error) {
+    setSaveStatus(`解密失败：${error.message ?? error}`, true);
+    return false;
+  }
+  renderEditor();
+  setSaveStatus(statusForDoc(state.activeDoc));
+  return true;
+}
+
+async function lockCryptoNow() {
+  // Flush any in-flight edits to the IDB blob BEFORE wiping the key — otherwise
+  // the user's last few typed seconds are stuck in the textarea with no way
+  // to encrypt them on the next session.
+  await flushSaves();
+  if (state.activeDoc?.encrypted) {
+    state.activeDoc.content = "";
+    state.activeDoc.title = "";
+    state.activeDoc.createdAt = 0;
+  }
+  lockCrypto();
+  titleCache.clear();
+  renderCryptoState();
+  renderEditor();
+  if (state.drawerView !== "closed") await renderDocList();
+  setSaveStatus("加密已锁定");
+}
+
+// Per-doc encrypt/decrypt toggle (the cryptoToggle button click).
+async function onCryptoToggle() {
+  if (!state.activeDocId || !state.activeDoc) return;
+  if (!state.authSignedIn) {
+    setSaveStatus("请先登录 OneDrive", true);
+    return;
+  }
+  // Encrypted doc, no key in memory yet → unlock first. After unlocking the
+  // user might want to *decrypt* — they'll click the toggle again. We don't
+  // chain actions automatically since that'd be surprising.
+  if (state.activeDoc.encrypted && !isUnlocked()) {
+    await ensureUnlocked();
+    return;
+  }
+
+  // Plaintext → encrypted
+  if (!state.activeDoc.encrypted) {
+    const ok = await ensureUnlocked();
+    if (!ok) return;
+    await flushSaves();
+    showBusyOverlay("加密中…", "请勿关闭页面");
+    try {
+      setSaveStatus("加密中…");
+      await encryptDocAction(state.activeDocId);
+      const fresh = await getDoc(state.activeDocId);
+      if (fresh) {
+        // Active doc just had its plaintext wiped from IDB; restore the
+        // in-memory plaintext from the editor so the user can keep typing.
+        state.activeDoc = {
+          ...fresh,
+          title: titleInput.value,
+          content: editor.value,
+          createdAt: state.activeDoc.createdAt,
+        };
+        titleCache.set(state.activeDocId, {
+          title: state.activeDoc.title,
+          createdAt: state.activeDoc.createdAt,
+        });
+      }
+      renderCryptoState();
+      renderEditor();
+      setSaveStatus(`已加密 ${formatTime(Date.now())}`);
+      if (state.drawerView !== "closed") await renderDocList();
+    } catch (error) {
+      setSaveStatus(`加密失败：${error.message ?? error}`, true);
+    } finally {
+      hideBusyOverlay();
+    }
+    return;
+  }
+
+  // Encrypted → plaintext (warning required)
+  if (state.activeDoc.encrypted && isUnlocked()) {
+    const confirmed = confirm(
+      "解密会把明文上传到 OneDrive — 即使你之后再次加密，这一次的明文有可能已被云端扫描。\n\n确定要解密吗？",
+    );
+    if (!confirmed) return;
+    await flushSaves();
+    showBusyOverlay("解密中…", "请勿关闭页面");
+    try {
+      setSaveStatus("解密中…");
+      await decryptDocAction(state.activeDocId);
+      const fresh = await getDoc(state.activeDocId);
+      if (fresh) {
+        state.activeDoc = fresh;
+        titleCache.delete(state.activeDocId);
+      }
+      renderCryptoState();
+      renderEditor();
+      setSaveStatus(`已解密 ${formatTime(Date.now())}`);
+      if (state.drawerView !== "closed") await renderDocList();
+    } catch (error) {
+      setSaveStatus(`解密失败：${error.message ?? error}`, true);
+    } finally {
+      hideBusyOverlay();
+    }
+  }
+}
+
+cryptoToggle?.addEventListener("click", () => {
+  onCryptoToggle().catch((err) => console.warn("onCryptoToggle:", err));
+});
 
 async function toggleLock() {
   if (!state.activeDocId || !state.activeDoc) return;
@@ -580,6 +1184,56 @@ async function switchDoc(id) {
   state.activeDocId = doc.id;
   state.activeDoc = doc;
   await setActiveDocId(doc.id);
+
+  // Encrypted doc path: try to decrypt now if we have the blob and the key.
+  // If we have the blob but no key, prompt for unlock. If unlock succeeds,
+  // decrypt and continue. Either way the editor renders LAST so the user
+  // never sees stale plaintext from the previous doc.
+  if (doc.encrypted) {
+    if (!isUnlocked()) {
+      renderEditor();           // shows locked state, blank editor
+      setSaveStatus("已加密，需要解锁");
+      const ok = await ensureUnlocked();
+      if (!ok) return;
+      // ensureUnlocked refreshed titleCache; re-read the doc since blob may
+      // have changed if a parallel fetch ran.
+      const reread = await getDoc(id);
+      if (!reread || id !== state.activeDocId) return;
+      state.activeDoc = reread;
+    }
+    // Need the blob to decrypt. If it's a stub from list-merge, fetch it first.
+    if (!state.activeDoc.encryptedBlob && state.authSignedIn && state.activeDoc.onedriveItemId) {
+      await hydrateStub(id).catch((err) => console.warn("hydrate enc:", err));
+    }
+    // Decrypt blob into the in-memory active doc. Plaintext NEVER goes back
+    // to IDB — it lives only here.
+    if (state.activeDoc.encryptedBlob) {
+      try {
+        const decoded = await decryptDoc(state.activeDoc.encryptedBlob);
+        state.activeDoc.title = decoded.title ?? "";
+        state.activeDoc.content = decoded.content ?? "";
+        state.activeDoc.createdAt = decoded.createdAt ?? state.activeDoc.modifiedAt ?? Date.now();
+        titleCache.set(id, {
+          title: state.activeDoc.title,
+          createdAt: state.activeDoc.createdAt,
+        });
+      } catch (error) {
+        setSaveStatus(`解密失败：${error.message ?? error}`, true);
+        renderEditor();
+        return;
+      }
+    }
+    renderEditor();
+    setSaveStatus(statusForDoc(state.activeDoc));
+    if (state.authSignedIn) {
+      checkActiveDocFreshness().catch(() => {});
+      if (state.activeDoc.onedriveItemId) {
+        pushLastActiveItemId(state.activeDoc.onedriveItemId).catch(() => {});
+      }
+    }
+    return;
+  }
+
   renderEditor();
   setSaveStatus(statusForDoc(doc));
   // Stub doc → fetch content; otherwise → freshness check. Both async.
@@ -602,6 +1256,34 @@ async function hydrateStub(docId) {
     const fresh = await getDoc(docId);
     if (fresh && docId === state.activeDocId) {
       state.activeDoc = fresh;
+      if (fresh.encrypted) {
+        // Encrypted stub just turned into an encrypted doc with blob in
+        // hand. Decrypt for the active editor view if we have the key.
+        if (isUnlocked() && fresh.encryptedBlob) {
+          try {
+            const decoded = await decryptDoc(fresh.encryptedBlob);
+            state.activeDoc.title = decoded.title ?? "";
+            state.activeDoc.content = decoded.content ?? "";
+            state.activeDoc.createdAt = decoded.createdAt ?? Date.now();
+            titleCache.set(docId, {
+              title: state.activeDoc.title,
+              createdAt: state.activeDoc.createdAt,
+            });
+            if (!contentSaveTimer && !titleSaveTimer) {
+              editor.value = state.activeDoc.content;
+              titleInput.value = state.activeDoc.title;
+              moveCaretToStart(editor);
+              renderWordCount();
+            }
+          } catch (error) {
+            setSaveStatus(`解密失败：${error.message ?? error}`, true);
+            return;
+          }
+        }
+        setSaveStatus(`已加载 ${formatTime(Date.now())}`);
+        renderGhostBanner();
+        return;
+      }
       if (!contentSaveTimer && !titleSaveTimer) {
         editor.value = fresh.content ?? "";
         titleInput.value = fresh.title ?? "";
@@ -619,12 +1301,17 @@ async function hydrateStub(docId) {
 // An auto-generated blank doc: user clicked "新建" then walked away without
 // typing anything. Safe to purge on next app boot — they were never pushed
 // to OneDrive (no onedriveItemId), have no title, no content.
+//
+// Encrypted docs always carry an encryptedBlob (their actual content); they
+// are never "auto-empty" even if title/content fields look blank, since
+// those are wiped to plaintext-zero by design.
 function isAutoEmpty(doc) {
   return (
     !doc.title &&
     !doc.content &&
     !doc.onedriveItemId &&
-    !doc.deletedAt
+    !doc.deletedAt &&
+    !doc.encrypted
   );
 }
 
@@ -779,8 +1466,22 @@ async function renderDocList() {
     mainBtn.type = "button";
     mainBtn.className = "doc-main";
 
+    // Name row: optional key prefix, then the title span. Encrypted-but-
+    // locked rows additionally get a monospace 'encrypted-locked' class so
+    // they sort visually apart from titled rows.
+    const nameRow = document.createElement("span");
+    nameRow.className = "doc-name-row";
+    if (doc.encrypted) {
+      const cryptoPrefix = document.createElement("span");
+      cryptoPrefix.className = "doc-crypto-prefix";
+      cryptoPrefix.innerHTML = ICON_KEY_ON;
+      nameRow.appendChild(cryptoPrefix);
+    }
     const nameSpan = document.createElement("span");
-    let nameClass = doc.title ? "doc-name" : "doc-name untitled";
+    let nameClass = doc.title || titleCache.get(doc.id)?.title ? "doc-name" : "doc-name untitled";
+    if (doc.encrypted && !titleCache.has(doc.id)) {
+      nameClass = "doc-name encrypted-locked";
+    }
     if (doc.onedriveItemId && doc.remoteFound === false) {
       nameClass += " ghost";
     } else if (doc.onedriveItemId && !doc.contentLoaded) {
@@ -790,12 +1491,20 @@ async function renderDocList() {
     }
     nameSpan.className = nameClass;
     nameSpan.textContent = nameByDocId.get(doc.id);
-    mainBtn.appendChild(nameSpan);
+    nameRow.appendChild(nameSpan);
+    mainBtn.appendChild(nameRow);
 
     const previewSpan = document.createElement("span");
     previewSpan.className = "doc-preview";
     let previewText;
-    if (doc.onedriveItemId && !doc.contentLoaded) {
+    if (doc.encrypted && !isUnlocked()) {
+      previewText = "（已加密 · 点开输入密码）";
+    } else if (doc.encrypted) {
+      // Unlocked encrypted doc: we don't store plaintext bodies anywhere; only
+      // the title cache. Body preview would require an extra decrypt per row.
+      // Skip — title alone is enough.
+      previewText = "（已加密）";
+    } else if (doc.onedriveItemId && !doc.contentLoaded) {
       previewText = "（云端，未加载）";
     } else {
       const cleaned = (doc.content ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -808,6 +1517,11 @@ async function renderDocList() {
       mainBtn.addEventListener("click", async () => {
         if (doc.id !== state.activeDocId) {
           await switchDoc(doc.id);
+        } else if (doc.encrypted && !isUnlocked()) {
+          // Same doc but it's encrypted-locked — switchDoc was skipped, so
+          // run the unlock+decrypt path manually so the user can actually
+          // open the file they're staring at.
+          await unlockAndDecryptActive();
         }
         closeDrawer();
       });
@@ -960,12 +1674,23 @@ function renderAuthRow() {
   if (!authRow) return;
   if (state.authSignedIn && state.authAccount) {
     const label = state.authAccount.username || state.authAccount.name || "已登录";
+    // Show "锁定" when crypto is currently unlocked, so the user has an
+    // explicit way to wipe the session key without closing the tab.
+    const lockBtn = isUnlocked()
+      ? `<button class="auth-action" id="cryptoLockButton" title="清除内存中的密钥">锁定加密</button>`
+      : "";
     authRow.innerHTML = `
       <span class="auth-account" title="${escapeHtml(label)}">已登录 · ${escapeHtml(label)}</span>
+      ${lockBtn}
       <button class="auth-action" id="signOutButton">退出</button>
     `;
-    const btn = authRow.querySelector("#signOutButton");
-    if (btn) btn.addEventListener("click", onSignOut);
+    const out = authRow.querySelector("#signOutButton");
+    if (out) out.addEventListener("click", onSignOut);
+    const lock = authRow.querySelector("#cryptoLockButton");
+    if (lock) lock.addEventListener("click", () => {
+      lockCryptoNow().catch((err) => console.warn("lockCryptoNow:", err));
+      renderAuthRow();
+    });
     return;
   }
   if (state.authError) {
@@ -1000,6 +1725,11 @@ async function onSignOut() {
   await flushSaves();
   try {
     await signOut();
+    // Drop the crypto key + title cache too — sign-out implies leaving this
+    // device. Bookkeeping only; the key was never persisted anyway.
+    lockCrypto();
+    titleCache.clear();
+    state.cryptoExists = null;
     state.authSignedIn = false;
     state.authAccount = null;
     state.authError = null;
@@ -1007,6 +1737,7 @@ async function onSignOut() {
     renderAuthRow();
     renderVoiceConfigForm();
     renderMicVisibility();
+    renderCryptoState();
     setSaveStatus(`已退出 ${formatTime(Date.now())}`);
   } catch (error) {
     setSaveStatus(`退出失败：${error.message ?? error}`, true);
@@ -1031,6 +1762,18 @@ async function initializeAuthFlow() {
     // Don't block the editor on the network. Let it idle a moment so the
     // initial render is instant, then sync the active doc + start the merge.
     setTimeout(() => {
+      // Probe but never auto-prompt. The passphrase modal only opens when
+      // the user actively asks for encryption (clicks the key toggle, picks
+      // an encrypted doc from the drawer, etc.). Anyone who doesn't use the
+      // feature should never see the prompt at all.
+      probeCryptoSetup()
+        .then(() => {
+          renderCryptoState();
+          if (state.activeDoc?.encrypted && !isUnlocked()) {
+            setSaveStatus("已加密 · 点钥匙图标解锁");
+          }
+        })
+        .catch(() => {});
       checkActiveDocFreshness().catch(() => {});
       loadVoiceConfig().catch((err) => console.warn("loadVoiceConfig:", err));
       mergeRemoteList()
@@ -1067,6 +1810,9 @@ async function maybeSwitchToRemoteLastActive() {
   const all = await listDocs({ includeTrashed: false });
   const target = all.find((d) => d.onedriveItemId === remoteItemId);
   if (!target) return;
+  // Don't yank the user into a passphrase prompt on cold start — encrypted
+  // last-active is silently ignored until the user picks it themselves.
+  if (target.encrypted && !isUnlocked()) return;
   // Re-check the typing guard right before we actually switch — the pull
   // call had latency and the user may have started typing in between.
   if (contentSaveTimer || titleSaveTimer) return;
@@ -1090,10 +1836,12 @@ function setupImeOn(inputEl, onCommitSchedule) {
     }
     shiftCleanPress = false;
 
-    // Locked doc: don't run IME at all. User can still navigate / select /
-    // copy via the browser's built-in keyboard handling. (We don't use the
-    // textarea's own readOnly attribute because that hides the caret.)
+    // Locked doc / encrypted-but-unkeyed: don't run IME at all. User can
+    // still navigate / select / copy via the browser's built-in keyboard
+    // handling. (We don't use the textarea's own readOnly attribute because
+    // that hides the caret.)
     if (state.activeDoc?.locked) return;
+    if (state.activeDoc?.encrypted && !isUnlocked()) return;
 
     const result = await ime.onKeydown(event);
 
@@ -1173,8 +1921,23 @@ function pickSpeechLang() {
 // written yet, default to Web Speech (it just works, no key needed).
 function resolvedVoiceProvider(config) {
   const p = config?.provider;
-  if (p === "webspeech" || p === "groq" || p === "openai") return p;
+  if (p === "webspeech" || p === "groq" || p === "openai" || p === "selfhosted") return p;
   return "webspeech";
+}
+
+// True iff the resolved voice backend keeps audio entirely under the user's
+// control (no upload to a third party). Used as the gate for "may I dictate
+// into an encrypted doc?" — webspeech routes to the browser's vendor STT
+// (Chrome→Google, Edge→MS), groq/openai upload to those services. Only a
+// user-run self-hosted Whisper qualifies as local.
+//
+// NOTE: 'selfhosted' is a placeholder for an upcoming backend; the UI gates
+// on this predicate today so encrypted-doc mic is greyed in every existing
+// configuration. When the self-hosted backend lands, it just has to return
+// provider="selfhosted" from voiceConfig and the mic re-enables.
+function voiceProviderIsLocal() {
+  const p = resolvedVoiceProvider(voiceConfig);
+  return p === "selfhosted";
 }
 
 const speechSession = isSpeechSupported()
@@ -1258,11 +2021,25 @@ function renderMicVisibility() {
     !state.activeDoc ||
     !!state.activeDoc?.locked;
   micButton.hidden = hidden;
+  if (hidden) return;
+  // Encrypted doc + cloud STT = audio uploads to a third party, which would
+  // defeat the encryption. Show the button so the user can see it exists,
+  // but greyed and non-functional. Click handler / PTT trigger also short-
+  // circuit when this guard is on.
+  const blockedForCrypto = state.activeDoc?.encrypted && !voiceProviderIsLocal();
+  micButton.classList.toggle("disabled", blockedForCrypto);
+  micButton.title = blockedForCrypto
+    ? "加密文档下禁用云端语音（避免音频上传给第三方）"
+    : "";
 }
 
 if (micButton) {
   micButton.addEventListener("click", () => {
     if (state.activeDoc?.locked) return;
+    if (state.activeDoc?.encrypted && !voiceProviderIsLocal()) {
+      setSaveStatus("加密文档下禁用云端语音", true);
+      return;
+    }
     const backend = activeVoiceBackend();
     if (!backend) return;
     // Pending IME composition would inject extra text mid-dictation — clear it.
@@ -1384,6 +2161,12 @@ voiceProviderSelect?.addEventListener("change", () => {
 // Lock = block content-changing events, leave selection/navigation alone.
 function blockIfLocked(event) {
   if (state.activeDoc?.locked) {
+    event.preventDefault();
+    return;
+  }
+  // Encrypted-but-unkeyed: editor is visually blank; typing into it would
+  // be lost on the next render. Hard-block input until the user unlocks.
+  if (state.activeDoc?.encrypted && !isUnlocked()) {
     event.preventDefault();
   }
 }
@@ -1512,6 +2295,8 @@ document.addEventListener(
     if (event.shiftKey || event.altKey || event.metaKey) return;
     if (document.activeElement !== editor) return;
     if (state.activeDoc?.locked) return;
+    if (state.activeDoc?.encrypted && !isUnlocked()) return;
+    if (state.activeDoc?.encrypted && !voiceProviderIsLocal()) return;
     if (pttTimer || pttBackend) return;
     pttTimer = setTimeout(() => {
       pttTimer = null;
@@ -1555,19 +2340,22 @@ document.addEventListener("visibilitychange", () => {
 
 async function pushOnTabHidden() {
   if (!state.authSignedIn || !state.activeDocId) return;
-  // 1) Force-flush any pending DOM → IDB before pushing.
+  // 1) Force-flush any pending DOM → IDB before pushing. Encrypted doc:
+  //    skip if locked (no plaintext to read from anyway).
   if (state.activeDoc) {
+    if (state.activeDoc.encrypted && !isUnlocked()) {
+      return; // can't encrypt without key, nothing to flush
+    }
     const editorDivergent = editor.value !== (state.activeDoc.content ?? "");
     const titleDivergent = titleInput.value !== (state.activeDoc.title ?? "");
     if (editorDivergent || titleDivergent) {
       if (contentSaveTimer) { clearTimeout(contentSaveTimer); contentSaveTimer = null; }
       if (titleSaveTimer) { clearTimeout(titleSaveTimer); titleSaveTimer = null; }
       try {
-        const updated = await updateDoc(state.activeDocId, {
+        await persistActiveDocEdit({
           content: editor.value,
           title: titleInput.value,
         });
-        state.activeDoc = updated;
       } catch (err) {
         console.warn("flush on hidden:", err);
       }
@@ -1783,10 +2571,15 @@ window.addEventListener("beforeunload", () => {
   // Last-ditch DOC push via keepalive fetch — survives the unload that
   // would otherwise abort an ordinary fetch. The body cap is 64KB which
   // covers any reasonable .txt chapter.
+  //
+  // Encrypted doc: we'd need an async encrypt step here, but beforeunload
+  // doesn't await. Skip — the autosave path already wrote the latest
+  // ciphertext to IDB; the next session will push it when online.
   if (
     state.authSignedIn &&
     state.activeDocId &&
     state.activeDoc?.onedriveItemId &&
+    !state.activeDoc.encrypted &&
     editor.value !== (state.activeDoc.content ?? "")
   ) {
     updateItemContentKeepalive(

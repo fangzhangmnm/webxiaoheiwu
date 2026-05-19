@@ -114,6 +114,32 @@ body {
   color: var(--accent);
 }
 
+.crypto-toggle {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms, background 120ms;
+}
+
+.crypto-toggle:hover,
+.crypto-toggle:focus-visible {
+  color: var(--ink);
+  background: var(--bg-2);
+  outline: none;
+}
+
+.crypto-toggle[data-encrypted="true"] {
+  color: var(--accent);
+}
+
 .menu-button:hover,
 .menu-button:focus-visible {
   color: var(--ink);
@@ -263,6 +289,34 @@ body {
   font-size: 11px;
 }
 
+/* Encryption indicator: small key glyph rendered as SVG prefix injected by
+   renderDocList. Lives inside the same .doc-main as the name. */
+
+.doc-row .doc-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.doc-row .doc-crypto-prefix {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.doc-row .doc-crypto-prefix svg {
+  width: 12px;
+  height: 12px;
+}
+
+.doc-row .doc-name.encrypted-locked {
+  color: var(--ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
 .body {
   flex: 1 1 auto;
   border: 0;
@@ -386,6 +440,21 @@ body {
 }
 
 .mic-button[hidden] { display: none !important; }
+
+/* Disabled state: visible (so the user knows the feature exists) but greyed
+   and click-through-blocked. Used when the active doc is encrypted and the
+   chosen voice backend would ship audio to a third party — encrypting the
+   draft but dictating it through cloud STT would defeat the point. */
+
+.mic-button.disabled,
+.mic-button.disabled:hover {
+  opacity: 0.35;
+  cursor: not-allowed;
+  color: var(--ink-muted);
+  background: rgba(241, 230, 207, 0.7);
+  border-color: var(--line);
+  transform: none;
+}
 
 .mic-button:hover,
 .mic-button:focus-visible {
@@ -976,6 +1045,15 @@ body {
   to { opacity: 1; }
 }
 
+/* Busy overlay — same chrome as .idle-overlay but used during synchronous
+   crypto work (encrypt / decrypt / setup / unlock). Click-through is
+   disabled so the user can't fire follow-up actions mid-work. */
+
+.busy-overlay {
+  cursor: default;
+  z-index: 35;
+}
+
 /* New-version toast (SW signaled an asset update) */
 
 .update-toast {
@@ -1073,4 +1151,128 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .drawer { transition: none; }
+}
+
+/* Crypto modal — centred card for setup / unlock / decrypt-confirm */
+
+.crypto-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(45, 27, 15, 0.5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.crypto-modal.hidden { display: none; }
+
+.crypto-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 20px;
+  width: min(360px, 100%);
+  box-shadow: 0 16px 40px rgba(58, 40, 24, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crypto-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.crypto-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.crypto-hint.warning {
+  color: var(--danger);
+}
+
+.crypto-input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-1);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  outline: none;
+}
+
+.crypto-input:focus {
+  border-color: var(--accent);
+}
+
+.crypto-input[hidden] {
+  display: none;
+}
+
+.crypto-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+  min-height: 16px;
+}
+
+.crypto-error.hidden {
+  display: none;
+}
+
+.crypto-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.crypto-button {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+.crypto-button:hover,
+.crypto-button:focus-visible {
+  background: var(--bg-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.crypto-button.primary {
+  background: var(--accent-soft);
+  border-color: rgba(160, 88, 38, 0.4);
+  color: var(--accent-strong);
+}
+
+.crypto-button.primary:hover {
+  background: rgba(160, 88, 38, 0.22);
+}
+
+.crypto-button.danger {
+  color: var(--danger);
+  border-color: rgba(157, 46, 33, 0.4);
+}
+
+.crypto-button.danger:hover {
+  background: var(--danger-soft);
 }

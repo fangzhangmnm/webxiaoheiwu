@@ -25,15 +25,25 @@ import {
 import {
   listAppFolderChildren,
   getItemContent,
+  getItemBytes,
   getItemMetadata,
   createTxtAtRoot,
+  createBinaryAtPath,
   updateItemContent,
+  updateBinaryContent,
   renameItem,
   moveItemToFolder,
   deleteItem,
   ensureSubfolder,
   getAppFolderRootId,
+  graphFetch,
 } from "./onedrive.js";
+import {
+  encryptDoc,
+  decryptDoc,
+  newEncryptedFilename,
+  isUnlocked,
+} from "./crypto.js";
 
 const PREFETCH_SIZE_LIMIT = 5 * 1024 * 1024;
 
@@ -150,6 +160,16 @@ export async function pushDoc(docId) {
     if (!doc) return { ok: false, missing: true };
     if (doc.deletedAt) return { ok: false, skipped: "trashed" };
 
+    if (doc.encrypted) {
+      if (!doc.encryptedBlob) {
+        // Edit happened but blob never got written — caller bug. Don't push
+        // anything; bail loudly enough for the console.
+        return { ok: false, skipped: "no-blob" };
+      }
+      if (!doc.onedriveItemId) return await pushAsNewEncrypted(doc);
+      return await pushUpdateEncrypted(doc);
+    }
+
     if (!doc.onedriveItemId) {
       return await pushAsNew(doc);
     }
@@ -212,6 +232,140 @@ async function pushUpdate(doc) {
     if (error.status === 404) return await handle404OnPush(doc);
     throw error;
   }
+}
+
+// ── Encrypted push helpers ───────────────────────────────────────────────
+
+const ENC_FOLDER = ".enc";
+const ENC_TRASH_FOLDER = ".enc/.trash";
+
+async function createEncryptedWithCollisionRetry(blob) {
+  for (let n = 0; n < 50; n += 1) {
+    const name = newEncryptedFilename();
+    try {
+      return await createBinaryAtPath(`${ENC_FOLDER}/${name}`, blob);
+    } catch (error) {
+      if (error.status === 409) continue;
+      throw error;
+    }
+  }
+  throw new Error("too many filename collisions creating encrypted file");
+}
+
+async function pushAsNewEncrypted(doc) {
+  const pushedBlob = doc.encryptedBlob;
+  // Make sure the .enc/ folder exists before the first PUT — Graph creates
+  // intermediate folders for path-based PUTs but only if the parent already
+  // exists. Cheap idempotent call after the cache warms up.
+  await ensureSubfolder(ENC_FOLDER);
+  const item = await createEncryptedWithCollisionRetry(pushedBlob);
+  const current = await getDoc(doc.id);
+  const stillSame =
+    current &&
+    current.encryptedBlob &&
+    bytesEqual(current.encryptedBlob, pushedBlob);
+  const patch = {
+    onedriveItemId: item.id,
+    etag: item.eTag,
+    lastSyncedAt: Date.now(),
+    contentLoaded: true,
+    remoteFound: true,
+    remoteName: item.name,
+  };
+  if (stillSame) patch.dirty = false;
+  await applySyncPatch(doc.id, patch);
+  return { ok: true, action: "created", item, encrypted: true };
+}
+
+async function pushUpdateEncrypted(doc) {
+  const pushedBlob = doc.encryptedBlob;
+  try {
+    const item = await updateBinaryContent(doc.onedriveItemId, pushedBlob, doc.etag);
+    const current = await getDoc(doc.id);
+    const stillSame =
+      current &&
+      current.encryptedBlob &&
+      bytesEqual(current.encryptedBlob, pushedBlob);
+    const patch = {
+      etag: item.eTag,
+      lastSyncedAt: Date.now(),
+      remoteName: item.name,
+      remoteFound: true,
+    };
+    if (stillSame) patch.dirty = false;
+    await applySyncPatch(doc.id, patch);
+    return { ok: true, action: "updated", item, encrypted: true };
+  } catch (error) {
+    if (error.status === 412) return await handleEtagConflictEncrypted(doc);
+    if (error.status === 404) return await handle404OnPush(doc);
+    throw error;
+  }
+}
+
+function bytesEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+// Encrypted analog of handleEtagConflict. Local dirty ciphertext preserved
+// as a sibling in `.enc/`, remote re-pulled into the original doc.
+async function handleEtagConflictEncrypted(doc) {
+  const siblingId = newId();
+  const siblingBlob = doc.encryptedBlob;
+  let siblingItem;
+  try {
+    siblingItem = await createEncryptedWithCollisionRetry(siblingBlob);
+  } catch (error) {
+    console.warn("encrypted conflict: failed to create sibling", error);
+    throw error;
+  }
+
+  const siblingDoc = {
+    id: siblingId,
+    title: "",
+    content: "",
+    createdAt: Date.now(),  // we don't decrypt at sync layer; UI will refresh after unlock
+    modifiedAt: Date.now(),
+    deletedAt: null,
+    onedriveItemId: siblingItem.id,
+    etag: siblingItem.eTag,
+    lastSyncedAt: Date.now(),
+    dirty: false,
+    contentLoaded: true,
+    remoteFound: true,
+    remoteName: siblingItem.name,
+    locked: true,
+    encrypted: true,
+    encryptedBlob: siblingBlob,
+  };
+  await insertSyncedDoc(siblingDoc);
+
+  // Reload remote into the original doc (ciphertext only — no decrypt here).
+  try {
+    const meta = await getItemMetadata(doc.onedriveItemId);
+    const bytes = await getItemBytes(doc.onedriveItemId);
+    await applySyncPatch(doc.id, {
+      encryptedBlob: bytes,
+      etag: meta.eTag,
+      lastSyncedAt: Date.now(),
+      dirty: false,
+      contentLoaded: true,
+      remoteFound: true,
+      remoteName: meta.name,
+    });
+  } catch (error) {
+    console.warn("encrypted conflict: sibling created but reload failed", error);
+  }
+
+  return {
+    ok: false,
+    conflict: "sibling-created",
+    siblingDocId: siblingDoc.id,
+    siblingName: siblingItem.name,
+    encrypted: true,
+  };
 }
 
 async function tryRenameRemote(docId, itemId, etag, desiredBaseName) {
@@ -325,6 +479,25 @@ export async function checkRemoteFreshness(docId) {
     return { ok: true, changed: false };
   }
 
+  if (doc.encrypted) {
+    if (doc.dirty) return await handleEtagConflictEncrypted(doc);
+    const bytes = await getItemBytes(doc.onedriveItemId);
+    const applyResult = await applySyncPatchIfClean(docId, {
+      encryptedBlob: bytes,
+      etag: meta.eTag,
+      remoteName: meta.name,
+      lastSyncedAt: Date.now(),
+      contentLoaded: true,
+      remoteFound: true,
+    });
+    if (!applyResult.applied) {
+      const reread = await getDoc(docId);
+      if (reread?.dirty) return await handleEtagConflictEncrypted(reread);
+      return { ok: true, changed: false };
+    }
+    return { ok: true, changed: true, contentChanged: true, encrypted: true };
+  }
+
   if (doc.dirty) {
     return await handleEtagConflict(doc);
   }
@@ -394,10 +567,14 @@ async function reuploadAsUtf8(docId) {
 export async function mergeRemoteList() {
   let rootItems;
   let trashItems;
+  let encItems;
+  let encTrashItems;
   try {
-    [rootItems, trashItems] = await Promise.all([
+    [rootItems, trashItems, encItems, encTrashItems] = await Promise.all([
       listAppFolderChildren(""),
       listAppFolderChildren(".trash"),
+      listAppFolderChildren(".enc"),
+      listAppFolderChildren(".enc/.trash"),
     ]);
   } catch (error) {
     throw error; // bail; do not mutate local state on partial list
@@ -406,12 +583,22 @@ export async function mergeRemoteList() {
   const remoteById = new Map();
   for (const item of rootItems) {
     if (item.file && /\.txt$/i.test(item.name ?? "")) {
-      remoteById.set(item.id, { ...item, _location: "root" });
+      remoteById.set(item.id, { ...item, _location: "root", _encrypted: false });
     }
   }
   for (const item of trashItems) {
     if (item.file && /\.txt$/i.test(item.name ?? "")) {
-      remoteById.set(item.id, { ...item, _location: "trash" });
+      remoteById.set(item.id, { ...item, _location: "trash", _encrypted: false });
+    }
+  }
+  for (const item of encItems) {
+    if (item.file && /\.bin$/i.test(item.name ?? "")) {
+      remoteById.set(item.id, { ...item, _location: "enc", _encrypted: true });
+    }
+  }
+  for (const item of encTrashItems) {
+    if (item.file && /\.bin$/i.test(item.name ?? "")) {
+      remoteById.set(item.id, { ...item, _location: "enc-trash", _encrypted: true });
     }
   }
 
@@ -435,9 +622,10 @@ export async function mergeRemoteList() {
       remoteName: remote.name,
     };
 
-    if (remote._location === "trash" && !doc.deletedAt) {
+    const inTrash = remote._location === "trash" || remote._location === "enc-trash";
+    if (inTrash && !doc.deletedAt) {
       patch.deletedAt = Date.parse(remote.lastModifiedDateTime ?? "") || Date.now();
-    } else if (remote._location === "root" && doc.deletedAt) {
+    } else if (!inTrash && doc.deletedAt) {
       patch.deletedAt = null;
     }
 
@@ -448,17 +636,21 @@ export async function mergeRemoteList() {
   let stubsCreated = 0;
   for (const [itemId, item] of remoteById) {
     if (localItemIds.has(itemId)) continue;
-    const parsed = parseRemoteFilename(item.name);
+    const encrypted = item._encrypted;
+    const inTrash = item._location === "trash" || item._location === "enc-trash";
+    const parsed = encrypted ? { canonical: false, title: "", createdAt: null } : parseRemoteFilename(item.name);
     const createdAt = parsed.canonical
       ? parsed.createdAt
       : Date.parse(item.createdDateTime ?? "") || Date.now();
     const stub = {
       id: newId(),
-      title: parsed.title,
+      // Encrypted stub: leave title/content/createdAt empty so plaintext can
+      // never leak from a stub that's never been unlocked.
+      title: encrypted ? "" : parsed.title,
       content: "",
-      createdAt,
+      createdAt: encrypted ? 0 : createdAt,
       modifiedAt: Date.parse(item.lastModifiedDateTime ?? "") || createdAt,
-      deletedAt: item._location === "trash"
+      deletedAt: inTrash
         ? Date.parse(item.lastModifiedDateTime ?? "") || Date.now()
         : null,
       onedriveItemId: item.id,
@@ -469,6 +661,8 @@ export async function mergeRemoteList() {
       remoteFound: true,
       remoteName: item.name,
       locked: true,  // docs that appear from OneDrive default to locked
+      encrypted,
+      encryptedBlob: null,
     };
     await insertSyncedDoc(stub);
     stubsCreated += 1;
@@ -477,6 +671,8 @@ export async function mergeRemoteList() {
   return {
     rootCount: rootItems.length,
     trashCount: trashItems.length,
+    encCount: encItems.length,
+    encTrashCount: encTrashItems.length,
     stubsCreated,
   };
 }
@@ -505,18 +701,29 @@ export async function prefetchPendingContents({ onProgress } = {}) {
           onProgress?.({ done, total, skipped: doc.id });
           continue;
         }
-        const { text: content, encoding } = await getItemContent(doc.onedriveItemId);
-        await applySyncPatch(doc.id, {
-          content,
-          contentLoaded: true,
-          etag: meta.eTag,
-          remoteName: meta.name,
-          remoteFound: true,
-        });
-        if (encoding && encoding !== "utf-8" && encoding !== "utf-8-bom") {
-          await reuploadAsUtf8(doc.id).catch((err) =>
-            console.warn("prefetch encoding re-upload:", err),
-          );
+        if (doc.encrypted) {
+          const bytes = await getItemBytes(doc.onedriveItemId);
+          await applySyncPatch(doc.id, {
+            encryptedBlob: bytes,
+            contentLoaded: true,
+            etag: meta.eTag,
+            remoteName: meta.name,
+            remoteFound: true,
+          });
+        } else {
+          const { text: content, encoding } = await getItemContent(doc.onedriveItemId);
+          await applySyncPatch(doc.id, {
+            content,
+            contentLoaded: true,
+            etag: meta.eTag,
+            remoteName: meta.name,
+            remoteFound: true,
+          });
+          if (encoding && encoding !== "utf-8" && encoding !== "utf-8-bom") {
+            await reuploadAsUtf8(doc.id).catch((err) =>
+              console.warn("prefetch encoding re-upload:", err),
+            );
+          }
         }
       } catch (error) {
         if (error.status === 404) {
@@ -541,6 +748,18 @@ export async function fetchContentForDoc(docId) {
   if (!doc || !doc.onedriveItemId) return null;
   try {
     const meta = await getItemMetadata(doc.onedriveItemId);
+    if (doc.encrypted) {
+      const bytes = await getItemBytes(doc.onedriveItemId);
+      await applySyncPatch(docId, {
+        encryptedBlob: bytes,
+        etag: meta.eTag,
+        remoteName: meta.name,
+        remoteFound: true,
+        contentLoaded: true,
+        lastSyncedAt: Date.now(),
+      });
+      return { encrypted: true, bytes };
+    }
     const { text: content, encoding } = await getItemContent(doc.onedriveItemId);
     await applySyncPatch(docId, {
       content,
@@ -577,7 +796,7 @@ export async function moveDocToTrash(docId) {
   }
 
   try {
-    const trashId = await ensureSubfolder(".trash");
+    const trashId = await ensureSubfolder(doc.encrypted ? ENC_TRASH_FOLDER : ".trash");
     await moveItemToFolder(doc.onedriveItemId, trashId);
     const meta = await getItemMetadata(doc.onedriveItemId);
     await applySyncPatch(docId, {
@@ -607,8 +826,10 @@ export async function restoreDocFromTrash(docId) {
   if (!doc.onedriveItemId) return { ok: true, localOnly: true };
 
   try {
-    const rootId = await getAppFolderRootId();
-    await moveItemToFolder(doc.onedriveItemId, rootId);
+    const targetFolderId = doc.encrypted
+      ? await ensureSubfolder(ENC_FOLDER)
+      : await getAppFolderRootId();
+    await moveItemToFolder(doc.onedriveItemId, targetFolderId);
     const meta = await getItemMetadata(doc.onedriveItemId);
     await applySyncPatch(docId, {
       remoteName: meta.name,
@@ -639,6 +860,165 @@ export async function purgeDocPermanent(docId) {
   }
   await purgeDoc(docId);
   return { ok: true };
+}
+
+// ── Encrypt / decrypt actions (per-doc toggle) ───────────────────────────
+//
+// Both actions follow "write new before delete old" so an interrupted run
+// leaves two files (visible, manually mergeable) rather than zero. Caller
+// must hold the session key (crypto unlocked).
+
+// Turn a plaintext doc into an encrypted one. Encrypts current title +
+// content into an `.enc/enc-*.bin` blob and removes the plaintext .txt.
+export async function encryptDocAction(docId) {
+  if (!isUnlocked()) throw new Error("加密未解锁");
+  const doc = await getDoc(docId);
+  if (!doc) throw new Error("文档不存在");
+  if (doc.encrypted) return { ok: true, already: true };
+
+  const payload = {
+    title: doc.title ?? "",
+    content: doc.content ?? "",
+    createdAt: doc.createdAt,
+    modifiedAt: doc.modifiedAt ?? Date.now(),
+  };
+  const blob = await encryptDoc(payload);
+
+  const oldItemId = doc.onedriveItemId;
+
+  if (oldItemId) {
+    // Online: create new ciphertext file on OneDrive, then delete the old
+    // plaintext file. New ID becomes the doc's onedriveItemId.
+    await ensureSubfolder(ENC_FOLDER);
+    const newItem = await createEncryptedWithCollisionRetry(blob);
+    await applySyncPatch(docId, {
+      encrypted: true,
+      encryptedBlob: blob,
+      title: "",
+      content: "",
+      createdAt: 0,
+      onedriveItemId: newItem.id,
+      etag: newItem.eTag,
+      remoteName: newItem.name,
+      lastSyncedAt: Date.now(),
+      dirty: false,
+      contentLoaded: true,
+      remoteFound: true,
+      locked: false,
+    });
+    try {
+      await deleteItem(oldItemId);
+    } catch (error) {
+      if (error.status !== 404) {
+        console.warn("encryptDocAction: failed to delete old plaintext", error);
+      }
+    }
+    return { ok: true, item: newItem };
+  }
+
+  // Local-only: encrypt in IDB now; the next push will land it in `.enc/`.
+  await applySyncPatch(docId, {
+    encrypted: true,
+    encryptedBlob: blob,
+    title: "",
+    content: "",
+    createdAt: 0,
+    dirty: true,
+    contentLoaded: true,
+    remoteFound: true,
+    locked: false,
+  });
+  return { ok: true, localOnly: true };
+}
+
+// Reverse: decrypt and re-upload as plaintext .txt. Plaintext WILL appear on
+// OneDrive — caller is responsible for confirming with the user first.
+export async function decryptDocAction(docId) {
+  if (!isUnlocked()) throw new Error("加密未解锁");
+  const doc = await getDoc(docId);
+  if (!doc) throw new Error("文档不存在");
+  if (!doc.encrypted) return { ok: true, already: true };
+  if (!doc.encryptedBlob) throw new Error("加密内容缺失，请先拉取");
+
+  const decoded = await decryptDoc(doc.encryptedBlob);
+  const newDoc = {
+    title: decoded.title ?? "",
+    content: decoded.content ?? "",
+    createdAt: decoded.createdAt ?? Date.now(),
+    modifiedAt: Date.now(),
+  };
+
+  const oldItemId = doc.onedriveItemId;
+
+  if (oldItemId) {
+    // Upload new plaintext file; then delete old ciphertext.
+    const tentative = {
+      title: newDoc.title,
+      createdAt: newDoc.createdAt,
+    };
+    const newItem = await createWithCollisionRetry(tentative, newDoc.content);
+    await applySyncPatch(docId, {
+      encrypted: false,
+      encryptedBlob: null,
+      title: newDoc.title,
+      content: newDoc.content,
+      createdAt: newDoc.createdAt,
+      modifiedAt: newDoc.modifiedAt,
+      onedriveItemId: newItem.id,
+      etag: newItem.eTag,
+      remoteName: newItem.name,
+      lastSyncedAt: Date.now(),
+      dirty: false,
+      contentLoaded: true,
+      remoteFound: true,
+      locked: false,
+    });
+    try {
+      await deleteItem(oldItemId);
+    } catch (error) {
+      if (error.status !== 404) {
+        console.warn("decryptDocAction: failed to delete old ciphertext", error);
+      }
+    }
+    return { ok: true, item: newItem };
+  }
+
+  // Local-only encrypted doc — just swap fields. No upload yet.
+  await applySyncPatch(docId, {
+    encrypted: false,
+    encryptedBlob: null,
+    title: newDoc.title,
+    content: newDoc.content,
+    createdAt: newDoc.createdAt,
+    modifiedAt: newDoc.modifiedAt,
+    dirty: true,
+    contentLoaded: true,
+    remoteFound: true,
+    locked: false,
+  });
+  return { ok: true, localOnly: true };
+}
+
+// Convenience: re-encrypt and save the active doc's current plaintext under
+// the session key. Called by app.js on every autosave for an encrypted doc.
+// Caller passes the in-memory plaintext (which is the only place it lives).
+export async function saveEncryptedActive(docId, { title, content, createdAt }) {
+  if (!isUnlocked()) throw new Error("加密未解锁");
+  const doc = await getDoc(docId);
+  if (!doc || !doc.encrypted) throw new Error("不是加密文档");
+  const payload = {
+    title: title ?? "",
+    content: content ?? "",
+    createdAt: createdAt ?? doc.createdAt ?? Date.now(),
+    modifiedAt: Date.now(),
+  };
+  const blob = await encryptDoc(payload);
+  return await applySyncPatch(docId, {
+    encryptedBlob: blob,
+    modifiedAt: payload.modifiedAt,
+    dirty: true,
+    contentLoaded: true,
+  });
 }
 
 // ── Last-active doc pointer (cross-device "continue where I left off") ──

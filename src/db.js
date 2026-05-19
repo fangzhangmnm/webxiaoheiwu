@@ -1,5 +1,5 @@
 const DB_NAME = "WebXiaoHeiWu";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const DOCS_STORE = "docs";
 const SETTINGS_STORE = "settings";
 const LEGACY_STORE = "documents";
@@ -28,6 +28,12 @@ function blankDoc({ title = "", content = "", createdAt = Date.now() } = {}) {
     remoteFound: true,     // until proven otherwise by a list-merge
     remoteName: null,      // actual OneDrive filename (may differ from computed)
     locked: false,         // read-only guard; doesn't sync (per-device choice)
+    // Encryption (v3+): when `encrypted=true`, `content`/`title`/`createdAt`
+    // are NEVER persisted in plaintext — they live only inside encryptedBlob,
+    // which holds the same ciphertext bytes that go to OneDrive. The plaintext
+    // is reconstructed into in-memory state only after a successful decrypt.
+    encrypted: false,
+    encryptedBlob: null,   // Uint8Array | null
   };
 }
 

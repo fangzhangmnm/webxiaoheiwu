@@ -10,7 +10,7 @@ function encodePathSegment(name) {
   return encodeURIComponent(name).replace(/'/g, "%27");
 }
 
-async function graphFetch(method, pathOrUrl, { headers = {}, body = null } = {}) {
+export async function graphFetch(method, pathOrUrl, { headers = {}, body = null } = {}) {
   const token = await getToken();
   const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${GRAPH_BASE}${pathOrUrl}`;
   const init = {
@@ -18,7 +18,17 @@ async function graphFetch(method, pathOrUrl, { headers = {}, body = null } = {})
     headers: { Authorization: `Bearer ${token}`, ...headers },
   };
   if (body != null) {
-    if (typeof body === "string" || body instanceof ArrayBuffer || body instanceof Blob) {
+    // Pass through anything `fetch` can already use as a body. Critically
+    // ArrayBuffer.isView(x) catches Uint8Array / DataView / other TypedArrays —
+    // otherwise the `else` branch JSON.stringify's the bytes into a giant
+    // `{"0":byte,"1":byte,...}` object, which is what shipped 178KB of
+    // garbage to OneDrive for what should have been a 16KB encrypted blob.
+    if (
+      typeof body === "string" ||
+      body instanceof ArrayBuffer ||
+      body instanceof Blob ||
+      ArrayBuffer.isView(body)
+    ) {
       init.body = body;
     } else {
       init.body = JSON.stringify(body);
@@ -110,6 +120,14 @@ export async function getItemContent(itemId) {
   return decodeBytes(buf);
 }
 
+// Raw byte download for encrypted blobs — no UTF-8/GBK decode would ever
+// make sense on ciphertext. Returns a Uint8Array.
+export async function getItemBytes(itemId) {
+  const response = await graphFetch("GET", `/me/drive/items/${itemId}/content`);
+  const buf = await response.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
 export async function getItemMetadata(itemId) {
   const response = await graphFetch(
     "GET",
@@ -144,6 +162,39 @@ export async function updateItemContent(itemId, content, etag = null) {
     headers,
     body: content,
   });
+  return response.json();
+}
+
+// Binary uploader for encrypted blobs. Caller passes a Uint8Array (or
+// ArrayBuffer); we mark Content-Type as octet-stream so OneDrive doesn't
+// try to sniff it as text. Uses If-Match for conflict detection same as
+// the text variant.
+export async function updateBinaryContent(itemId, bytes, etag = null) {
+  const headers = { "Content-Type": "application/octet-stream" };
+  if (etag) headers["If-Match"] = etag;
+  const body = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const response = await graphFetch("PUT", `/me/drive/items/${itemId}/content`, {
+    headers,
+    body,
+  });
+  return response.json();
+}
+
+// Create a new file at an AppFolder-relative path (e.g. `.enc/enc-3a9f.bin`)
+// with binary content. Uses conflictBehavior=fail so caller can retry with
+// a new filename on 409 — same pattern as createTxtAtRoot.
+export async function createBinaryAtPath(relativePath, bytes) {
+  const body = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  // Each path segment must be URL-encoded individually (preserving '/').
+  const encodedPath = relativePath.split("/").map(encodePathSegment).join("/");
+  const response = await graphFetch(
+    "PUT",
+    `/me/drive/special/approot:/${encodedPath}:/content?@microsoft.graph.conflictBehavior=fail`,
+    {
+      headers: { "Content-Type": "application/octet-stream" },
+      body,
+    },
+  );
   return response.json();
 }
 
@@ -192,12 +243,39 @@ export async function readJsonFromAppFolder(filename) {
 }
 
 export async function writeJsonToAppFolder(filename, obj) {
+  const encodedPath = filename.split("/").map(encodePathSegment).join("/");
   const response = await graphFetch(
     "PUT",
-    `/me/drive/special/approot:/${encodePathSegment(filename)}:/content?@microsoft.graph.conflictBehavior=replace`,
+    `/me/drive/special/approot:/${encodedPath}:/content?@microsoft.graph.conflictBehavior=replace`,
     {
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify(obj, null, 2),
+    },
+  );
+  return response.json();
+}
+
+// Binary read/write for small auxiliary blobs (e.g. crypto verifier). Path
+// is AppFolder-relative and may contain '/' for nested locations. Returns a
+// Uint8Array on read; throws with .status=404 if missing.
+export async function readBinaryFromAppFolder(relativePath) {
+  const encodedPath = relativePath.split("/").map(encodePathSegment).join("/");
+  const response = await graphFetch(
+    "GET",
+    `/me/drive/special/approot:/${encodedPath}:/content`,
+  );
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+export async function writeBinaryFromAppFolder(relativePath, bytes) {
+  const body = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const encodedPath = relativePath.split("/").map(encodePathSegment).join("/");
+  const response = await graphFetch(
+    "PUT",
+    `/me/drive/special/approot:/${encodedPath}:/content?@microsoft.graph.conflictBehavior=replace`,
+    {
+      headers: { "Content-Type": "application/octet-stream" },
+      body,
     },
   );
   return response.json();
@@ -243,34 +321,58 @@ export async function getAppFolderRootId() {
   return appFolderRootIdCache;
 }
 
-// ── Subfolder ensure (used for .trash/) ───────────────────────────────────
+// ── Subfolder ensure (used for .trash/, .enc/, .enc/.trash/) ──────────────
 
 const subfolderIdCache = new Map();
 
-export async function ensureSubfolder(name) {
-  if (subfolderIdCache.has(name)) return subfolderIdCache.get(name);
+// Accepts either a single segment ("foo") or a nested path ("a/b/c"). Walks
+// the path one segment at a time, creating any segment that doesn't exist.
+// Returns the leaf folder's id and caches every intermediate id we touch.
+export async function ensureSubfolder(pathOrName) {
+  const path = String(pathOrName);
+  if (subfolderIdCache.has(path)) return subfolderIdCache.get(path);
+
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length === 0) return getAppFolderRootId();
+
+  let currentPath = "";
+  let parentId = null;
+  for (const seg of segments) {
+    currentPath = currentPath ? `${currentPath}/${seg}` : seg;
+    if (subfolderIdCache.has(currentPath)) {
+      parentId = subfolderIdCache.get(currentPath);
+      continue;
+    }
+    parentId = await ensureSingleSegment(currentPath, seg, parentId);
+    subfolderIdCache.set(currentPath, parentId);
+  }
+  return parentId;
+}
+
+async function ensureSingleSegment(fullPath, segName, parentId) {
+  const encoded = fullPath.split("/").map(encodePathSegment).join("/");
   try {
     const response = await graphFetch(
       "GET",
-      `/me/drive/special/approot:/${encodePathSegment(name)}?$select=id,name,folder`,
+      `/me/drive/special/approot:/${encoded}?$select=id,name,folder`,
     );
     const item = await response.json();
-    if (item.folder) {
-      subfolderIdCache.set(name, item.id);
-      return item.id;
-    }
-    throw new Error(`${name} exists but is not a folder`);
+    if (item.folder) return item.id;
+    throw new Error(`${fullPath} exists but is not a folder`);
   } catch (error) {
     if (error.status !== 404) throw error;
-    const response = await graphFetch("POST", "/me/drive/special/approot/children", {
-      body: {
-        name,
-        folder: {},
-        "@microsoft.graph.conflictBehavior": "fail",
-      },
-    });
-    const item = await response.json();
-    subfolderIdCache.set(name, item.id);
-    return item.id;
   }
+  // Create under parentId (or approot when first level).
+  const createPath = parentId
+    ? `/me/drive/items/${parentId}/children`
+    : "/me/drive/special/approot/children";
+  const response = await graphFetch("POST", createPath, {
+    body: {
+      name: segName,
+      folder: {},
+      "@microsoft.graph.conflictBehavior": "fail",
+    },
+  });
+  const item = await response.json();
+  return item.id;
 }

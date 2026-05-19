@@ -1,7 +1,7 @@
 // Bump CACHE_VERSION whenever any precached asset changes. The activate
 // handler wipes older caches; skipWaiting + clientsClaim make the new SW
 // take over on the next reload (no need to close all tabs).
-const CACHE_VERSION = "v70-2026-05-19-left-ctrl-ptt-restored";
+const CACHE_VERSION = "v74-2026-05-19-no-auto-unlock-prompt";
 const CACHE_NAME = `xiaoheiwu-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -13,6 +13,7 @@ const PRECACHE_URLS = [
   "./icon-512.png",
   "./src/app.js",
   "./src/auth.js",
+  "./src/crypto.js",
   "./src/db.js",
   "./src/ime.js",
   "./src/onedrive.js",
