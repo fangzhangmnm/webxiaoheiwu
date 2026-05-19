@@ -366,7 +366,7 @@ body {
 .mic-button {
   position: absolute;
   right: 14px;
-  bottom: 14px;
+  bottom: calc(14px + var(--kb-offset, 0px));
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -505,37 +505,6 @@ body {
 }
 
 .settings-build:empty { display: none; }
-
-.ptt-debug-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.ptt-debug-display {
-  margin: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  background: var(--bg-1);
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  line-height: 1.4;
-  color: var(--ink);
-  white-space: pre-wrap;
-  word-break: break-all;
-  scrollbar-width: thin;
-  scrollbar-color: var(--bg-3) transparent;
-}
-
-.ptt-debug-display::-webkit-scrollbar { width: 6px; }
-.ptt-debug-display::-webkit-scrollbar-thumb {
-  background: var(--bg-3);
-  border-radius: 3px;
-}
 
 .icon-button {
   width: 32px;

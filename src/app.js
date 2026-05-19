@@ -43,17 +43,32 @@ import {
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
 
-// On Quest the OS-level IME runs alongside our Rime adapter and composes the
-// held PTT key into a multi-` insertCompositionText event (which is non-
-// cancelable per spec — preventDefault is a no-op). Telling the browser
-// "the page implements its own keyboard input" via inputmode=none skips that
-// composition path entirely. Phones without a physical keyboard would also
-// lose the virtual keyboard from inputmode=none, so gate on the Quest UA.
+// On Quest the OS-level IME composes the held PTT key into a non-cancelable
+// insertCompositionText event — preventDefault is a no-op for that path.
+// inputmode=none tells the browser the page handles keyboard input itself,
+// which skips OS-IME composition entirely. Our Rime adapter still works
+// because it intercepts JS keydown events directly. Gated on the Quest UA
+// since inputmode=none would also hide the virtual keyboard on phones.
 const IS_QUEST_BROWSER = /OculusBrowser|Quest|Wolvic/i.test(navigator.userAgent || "");
 if (IS_QUEST_BROWSER) {
   console.log("[app] Quest browser detected → inputmode=none on editor + title");
   editor.setAttribute("inputmode", "none");
   titleInput.setAttribute("inputmode", "none");
+}
+
+// iOS Safari doesn't reflow `.page`'s 100dvh height when the soft keyboard
+// pops, so the mic button (absolute bottom: 14px) ends up under the keyboard.
+// Expose the keyboard height as a CSS variable and let the mic-button CSS
+// shift up via calc(). visualViewport is the only reliable API for this.
+if (window.visualViewport) {
+  const updateKbOffset = () => {
+    const vv = window.visualViewport;
+    const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty("--kb-offset", `${offset}px`);
+  };
+  window.visualViewport.addEventListener("resize", updateKbOffset);
+  window.visualViewport.addEventListener("scroll", updateKbOffset);
+  updateKbOffset();
 }
 const saveStatus = document.querySelector("#saveStatus");
 const imeStatus = document.querySelector("#imeStatus");
@@ -91,145 +106,12 @@ const voiceVocabField = document.querySelector("#voiceVocabField");
 const voiceVocabInput = document.querySelector("#voiceVocabInput");
 const voiceConfigSaveButton = document.querySelector("#voiceConfigSaveButton");
 const settingsBuild = document.querySelector("#settingsBuild");
-const pttDebugDisplay = document.querySelector("#pttDebugDisplay");
-const pttDebugRefreshButton = document.querySelector("#pttDebugRefreshButton");
-const pttDebugClearButton = document.querySelector("#pttDebugClearButton");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v66-2026-05-19-quest-inputmode-none";
+const APP_VERSION = "v67-2026-05-19-left-alt-ptt-cleanup";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
-
-// --- PTT diagnostic log ---
-//
-// Visible buffer of every ` / ~ -touching keyboard / input event, regardless
-// of whether our filters matched. Quest doesn't have great remote-debug
-// affordances; this lets the user open Settings → PTT 调试 to see the
-// actual event sequence (code, key, repeat, inputType) and tell us which
-// event path is leaking a stray ` past the suppressors.
-
-const PTT_DEBUG_MAX = 80;
-const pttDebugBuffer = [];
-
-function pttLog(label, fields) {
-  const ts = new Date().toISOString().slice(11, 23);
-  const detail = Object.entries(fields ?? {})
-    .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
-    .join(" ");
-  const line = `${ts} ${label} ${detail}`.trim();
-  pttDebugBuffer.push(line);
-  if (pttDebugBuffer.length > PTT_DEBUG_MAX) pttDebugBuffer.shift();
-  console.debug("[ptt]", line);
-}
-
-function renderPttDebug() {
-  if (!pttDebugDisplay) return;
-  pttDebugDisplay.textContent = pttDebugBuffer.join("\n") || "（无事件）";
-  pttDebugDisplay.scrollTop = pttDebugDisplay.scrollHeight;
-}
-
-pttDebugRefreshButton?.addEventListener("click", renderPttDebug);
-pttDebugClearButton?.addEventListener("click", () => {
-  pttDebugBuffer.length = 0;
-  renderPttDebug();
-});
-
-function isInterestingKeyEvent(e) {
-  return e.code === "Backquote" || e.key === "`" || e.key === "~";
-}
-function isInterestingInputEvent(e) {
-  return e.data === "`" || e.data === "~";
-}
-
-// Verbose log window: when any ` keydown is seen, log EVERY editor event
-// (regardless of code / data) for the next N ms so a leak via a non-`
-// inputType or different key still shows up.
-const PTT_VERBOSE_WINDOW_MS = 5000;
-let pttVerboseUntil = 0;
-function armPttVerbose() {
-  pttVerboseUntil = Date.now() + PTT_VERBOSE_WINDOW_MS;
-}
-function pttVerbose() {
-  return Date.now() < pttVerboseUntil;
-}
-
-// Pure observers — capture phase, do nothing but log. Run BEFORE our actual
-// suppression handlers so we record even events that the suppressors then
-// reject.
-document.addEventListener(
-  "keydown",
-  (e) => {
-    if (isInterestingKeyEvent(e)) {
-      armPttVerbose();
-      pttLog("kd", {
-        code: e.code,
-        key: e.key,
-        repeat: e.repeat,
-        shift: e.shiftKey,
-        ae: document.activeElement?.id || document.activeElement?.tagName,
-      });
-    } else if (pttVerbose()) {
-      pttLog("kd*", { code: e.code, key: e.key });
-    }
-  },
-  { capture: true },
-);
-document.addEventListener(
-  "keyup",
-  (e) => {
-    if (isInterestingKeyEvent(e)) {
-      pttLog("ku", { code: e.code, key: e.key });
-    } else if (pttVerbose()) {
-      pttLog("ku*", { code: e.code, key: e.key });
-    }
-  },
-  { capture: true },
-);
-document.addEventListener(
-  "keypress",
-  (e) => {
-    if (isInterestingKeyEvent(e)) {
-      pttLog("kp", { code: e.code, key: e.key });
-    } else if (pttVerbose()) {
-      pttLog("kp*", { code: e.code, key: e.key });
-    }
-  },
-  { capture: true },
-);
-editor.addEventListener(
-  "beforeinput",
-  (e) => {
-    if (isInterestingInputEvent(e) || pttVerbose()) {
-      pttLog("bi", { inputType: e.inputType, data: e.data, defaultPrevented: e.defaultPrevented });
-    }
-  },
-  { capture: true },
-);
-editor.addEventListener(
-  "input",
-  (e) => {
-    if (isInterestingInputEvent(e) || pttVerbose()) {
-      pttLog("in", { inputType: e.inputType, data: e.data });
-    }
-  },
-  { capture: true },
-);
-editor.addEventListener(
-  "compositionstart",
-  (e) => { if (pttVerbose()) pttLog("cs", { data: e.data }); },
-  { capture: true },
-);
-editor.addEventListener(
-  "compositionupdate",
-  (e) => { if (pttVerbose()) pttLog("cu", { data: e.data }); },
-  { capture: true },
-);
-editor.addEventListener(
-  "compositionend",
-  (e) => { if (pttVerbose()) pttLog("ce", { data: e.data }); },
-  { capture: true },
-);
 
 const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
 const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0"></path></svg>`;
@@ -797,7 +679,6 @@ async function openDrawer(view = "active") {
   if (isSettings) {
     docListEmpty.classList.add("hidden");
     renderVoiceConfigForm();
-    renderPttDebug();
     return;
   }
   await renderDocList();
@@ -1333,7 +1214,6 @@ function backendIsUsable(backend) {
 }
 
 function onVoiceInsert() {
-  if (pttVerbose()) pttLog("ins", { tail: editor.value.slice(-30) });
   setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
   renderWordCount();
   scheduleContentSave();
@@ -1343,9 +1223,6 @@ function onVoiceInsert() {
 }
 
 function onVoiceState(next, error) {
-  if (pttVerbose() || next === "error") {
-    pttLog("st", { state: next, err: error?.message });
-  }
   if (!micButton) return;
   micButton.setAttribute("data-state", next);
   if (next === "recording") {
@@ -1600,180 +1477,54 @@ document.addEventListener("keydown", async (event) => {
   }
 });
 
-// --- Backtick-hold push-to-talk ---
+// --- Left Alt push-to-talk ---
 //
-// Hold ` (Backquote) in the editor for ≥250ms → start recording. Release →
-// stop. Short tap (<250ms) inserts the appropriate char (` or ~) at the
-// caret, routed through the IME so Rime's punctuation table still maps it
-// to fullwidth Chinese when the IME is on (e.g. ~ → ～).
-// Auto-repeat keydowns and IME-side handling are both suppressed by
-// stopImmediatePropagation on the capture phase, so the held key produces
-// neither a typed char nor a Rime commit until we decide what it meant.
-// Uses start()/stop() (not toggle) so a session you began via the mic
-// button isn't accidentally cancelled by an unrelated ` tap.
+// Hold Left Alt in the editor for ≥250ms → start recording, release → stop.
+// Alt is a modifier: it doesn't produce a character and Quest's OS IME
+// doesn't compose it, so we don't need any suppression / synthetic-insert
+// machinery. Bare Alt is treated as ours; Alt+anything (Alt-Tab, Alt-F4,
+// chord shortcuts) passes through untouched.
 
 const PTT_HOLD_MS = 250;
-const PTT_INPUT_GRACE_MS = 200; // suppress ` beforeinput for this long after keyup
 let pttTimer = null;
-let pttBackend = null;        // non-null while a PTT session is running
-let pttActive = false;        // true once timer fired & PTT actually started
-let pttPressedKey = "";       // captured event.key from the original keydown
-let pttPressedShift = false;  // captured event.shiftKey from the original keydown
-let pttSuppressInputUntil = 0; // see beforeinput listener below
+let pttBackend = null;
+let pttActive = false;
 
-function isBacktickKeyEvent(event) {
-  // Quest's BT keyboard sometimes reports key but not the standard code,
-  // so accept either. Modifiers are checked elsewhere.
-  return event.code === "Backquote" || event.key === "`" || event.key === "~";
+function isPttKeyEvent(event) {
+  return event.code === "AltLeft";
 }
 
-function isPttSuppressing() {
-  return pttTimer !== null || pttActive || Date.now() < pttSuppressInputUntil;
-}
+document.addEventListener("keydown", (event) => {
+  if (!isPttKeyEvent(event)) return;
+  if (event.repeat) return;
+  if (event.ctrlKey || event.shiftKey || event.metaKey) return;
+  if (document.activeElement !== editor) return;
+  if (state.activeDoc?.locked) return;
+  if (pttTimer || pttBackend) return;
+  pttTimer = setTimeout(() => {
+    pttTimer = null;
+    const backend = activeVoiceBackend();
+    if (!backend) return;
+    if (backend.state !== "idle") return; // don't yank a mic-button session
+    pttActive = true;
+    backend.start(pickSpeechLang());
+    pttBackend = backend;
+  }, PTT_HOLD_MS);
+});
 
-// Quest's BT-keyboard input system runs the held ` key through an IME
-// composition: every keydown adds another ` to the composition buffer, and
-// when the user releases, compositionend fires which the textarea inserts
-// via beforeinput inputType=insertCompositionText, data="``" / "```" / etc.
-// My earlier `data === "`"` filter only matched single chars and missed
-// this. Drop any beforeinput whose data is a run of ` / ~ regardless of
-// inputType — the user has bound ` to PTT, so they have no reason to type
-// a bare-` composition in the writing editor.
-editor.addEventListener(
-  "beforeinput",
-  (event) => {
-    if (typeof event.data !== "string" || event.data.length === 0) return;
-    if (!/^[`~]+$/.test(event.data)) return;
-    pttLog("bi-block", { inputType: event.inputType, data: event.data });
-    event.preventDefault();
-  },
-  { capture: true },
-);
-
-// Legacy keypress: deprecated, but Quest's older Chromium variants still
-// dispatch it for character keys and it's what classically inserts the char.
-document.addEventListener(
-  "keypress",
-  (event) => {
-    if (!isBacktickKeyEvent(event)) return;
-    if (!isPttSuppressing()) return;
-    console.debug("[ptt] keypress suppressed:", event.key, event.code);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  },
-  { capture: true },
-);
-
-document.addEventListener(
-  "keydown",
-  (event) => {
-    if (!isBacktickKeyEvent(event)) return;
-    if (document.activeElement !== editor) return;
-    if (state.activeDoc?.locked) return;
-    // Stop the textarea's native insert AND the setupImeOn keydown listener
-    // (which would otherwise route ~ through Rime as ～ on every repeat).
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if (event.repeat) return; // already swallowed; nothing else to do.
-    pttPressedKey = event.key;
-    pttPressedShift = !!event.shiftKey;
+document.addEventListener("keyup", (event) => {
+  if (!isPttKeyEvent(event)) return;
+  if (pttTimer) {
+    clearTimeout(pttTimer);
+    pttTimer = null;
+    return;
+  }
+  if (pttActive && pttBackend) {
+    pttBackend.stop();
+    pttBackend = null;
     pttActive = false;
-    if (pttTimer) clearTimeout(pttTimer);
-    pttTimer = setTimeout(() => {
-      pttTimer = null;
-      const backend = activeVoiceBackend();
-      if (!backend) return;
-      // Don't yank a session the user already started via the mic button.
-      if (backend.state !== "idle") return;
-      pttActive = true;
-      backend.start(pickSpeechLang());
-      pttBackend = backend;
-    }, PTT_HOLD_MS);
-  },
-  { capture: true },
-);
-
-document.addEventListener(
-  "keyup",
-  (event) => {
-    // Normal case: clean Backquote / ` / ~ keyup.
-    let matched = isBacktickKeyEvent(event);
-    // Quest IME path: when the held key was eaten by composition, keyup
-    // arrives as code="" key="Unidentified". If we're in the middle of a
-    // PTT session that we know we started, treat that as our release.
-    if (!matched && (pttActive || pttTimer) && event.key === "Unidentified") {
-      matched = true;
-      pttLog("ku-unid", { code: event.code, key: event.key });
-    }
-    if (!matched) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if (pttTimer) {
-      // Short tap — never reached the hold threshold. Emit the char that
-      // would have appeared if we hadn't intercepted, by feeding the IME
-      // a synthesized keydown so Rime gets its chance to map ~ → ～.
-      clearTimeout(pttTimer);
-      pttTimer = null;
-      if (!state.activeDoc?.locked) {
-        feedSyntheticPunctuation(pttPressedKey, pttPressedShift);
-      }
-      return;
-    }
-    if (pttActive && pttBackend) {
-      pttBackend.stop();
-      pttBackend = null;
-      pttActive = false;
-    }
-    // The browser may emit a deferred beforeinput right after keyup; the
-    // suppression flag above only checks pttActive/pttTimer (now both
-    // cleared), so extend the window for a short grace period.
-    pttSuppressInputUntil = Date.now() + PTT_INPUT_GRACE_MS;
-  },
-  { capture: true },
-);
-
-// Synthesize a keydown for the IME, then mirror the commit / passthrough
-// handling that setupImeOn does for real events.
-async function feedSyntheticPunctuation(key, shiftKey) {
-  const synth = {
-    key,
-    code: "Backquote",
-    shiftKey,
-    ctrlKey: false,
-    altKey: false,
-    metaKey: false,
-    repeat: false,
-    preventDefault() {},
-  };
-  let result;
-  try {
-    result = await ime.onKeydown(synth);
-  } catch (err) {
-    console.warn("[ptt] ime.onKeydown:", err);
-    insertAtCursor(editor, key);
-    onVoiceInsert();
-    return;
   }
-  if (
-    result.type === "toggle" ||
-    result.type === "clear" ||
-    result.type === "composing"
-  ) {
-    renderImeState();
-    return;
-  }
-  if (result.type === "commit") {
-    stripGhostBuffer(editor, result.consumedBuffer);
-    insertAtCursor(editor, result.text);
-    renderImeState();
-    onVoiceInsert();
-    maybePushUserDict();
-    return;
-  }
-  // Passthrough — IME didn't claim the key. Insert literal char.
-  insertAtCursor(editor, key);
-  onVoiceInsert();
-}
+});
 
 // Quest waking from standby, network reconnect, or tab regaining focus —
 // good moments to ask OneDrive if the active doc changed under us.
