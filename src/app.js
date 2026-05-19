@@ -84,7 +84,7 @@ const pttDebugClearButton = document.querySelector("#pttDebugClearButton");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v63-2026-05-19-ptt-verbose-window";
+const APP_VERSION = "v64-2026-05-19-quest-ime-composition-fix";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
@@ -1618,16 +1618,20 @@ function isPttSuppressing() {
   return pttTimer !== null || pttActive || Date.now() < pttSuppressInputUntil;
 }
 
-// Belt-and-suspenders for Quest: even with keydown preventDefault'd and
-// stopImmediatePropagation, the browser occasionally dispatches a deferred
-// `beforeinput` (insertText / insertCompositionText / etc with data "`" or
-// "~") around keyup time. Catch any inputType whose data is one of those.
+// Quest's BT-keyboard input system runs the held ` key through an IME
+// composition: every keydown adds another ` to the composition buffer, and
+// when the user releases, compositionend fires which the textarea inserts
+// via beforeinput inputType=insertCompositionText, data="``" / "```" / etc.
+// My earlier `data === "`"` filter only matched single chars and missed
+// this. Drop any beforeinput whose data is a run of ` / ~ regardless of
+// inputType — the user has bound ` to PTT, so they have no reason to type
+// a bare-` composition in the writing editor.
 editor.addEventListener(
   "beforeinput",
   (event) => {
-    if (event.data !== "`" && event.data !== "~") return;
-    if (!isPttSuppressing()) return;
-    console.debug("[ptt] beforeinput suppressed:", event.inputType, JSON.stringify(event.data));
+    if (typeof event.data !== "string" || event.data.length === 0) return;
+    if (!/^[`~]+$/.test(event.data)) return;
+    pttLog("bi-block", { inputType: event.inputType, data: event.data });
     event.preventDefault();
   },
   { capture: true },
@@ -1679,7 +1683,16 @@ document.addEventListener(
 document.addEventListener(
   "keyup",
   (event) => {
-    if (!isBacktickKeyEvent(event)) return;
+    // Normal case: clean Backquote / ` / ~ keyup.
+    let matched = isBacktickKeyEvent(event);
+    // Quest IME path: when the held key was eaten by composition, keyup
+    // arrives as code="" key="Unidentified". If we're in the middle of a
+    // PTT session that we know we started, treat that as our release.
+    if (!matched && (pttActive || pttTimer) && event.key === "Unidentified") {
+      matched = true;
+      pttLog("ku-unid", { code: event.code, key: event.key });
+    }
+    if (!matched) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (pttTimer) {
