@@ -109,7 +109,7 @@ const settingsBuild = document.querySelector("#settingsBuild");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v67-2026-05-19-left-alt-ptt-cleanup";
+const APP_VERSION = "v68-2026-05-19-left-ctrl-ptt";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
@@ -1477,13 +1477,16 @@ document.addEventListener("keydown", async (event) => {
   }
 });
 
-// --- Left Alt push-to-talk ---
+// --- Left Ctrl push-to-talk ---
 //
-// Hold Left Alt in the editor for ≥250ms → start recording, release → stop.
-// Alt is a modifier: it doesn't produce a character and Quest's OS IME
-// doesn't compose it, so we don't need any suppression / synthetic-insert
-// machinery. Bare Alt is treated as ours; Alt+anything (Alt-Tab, Alt-F4,
-// chord shortcuts) passes through untouched.
+// Hold Left Ctrl in the editor for ≥250ms → start recording, release → stop.
+// Ctrl is a modifier: it doesn't produce a character and the OS IME doesn't
+// compose it, so we don't need any suppression / synthetic-insert machinery.
+// Chord guard accepts ctrlKey=true on the Ctrl keydown itself (Ctrl IS the
+// trigger), but bails if Shift/Alt/Meta are also held — leaves chord
+// shortcuts (Ctrl+S, Ctrl+Shift+anything, etc.) alone. Any non-Ctrl key
+// pressed during the hold also cancels the timer so e.g. quick Ctrl+S
+// doesn't briefly arm recording.
 
 const PTT_HOLD_MS = 250;
 let pttTimer = null;
@@ -1491,26 +1494,37 @@ let pttBackend = null;
 let pttActive = false;
 
 function isPttKeyEvent(event) {
-  return event.code === "AltLeft";
+  return event.code === "ControlLeft";
 }
 
-document.addEventListener("keydown", (event) => {
-  if (!isPttKeyEvent(event)) return;
-  if (event.repeat) return;
-  if (event.ctrlKey || event.shiftKey || event.metaKey) return;
-  if (document.activeElement !== editor) return;
-  if (state.activeDoc?.locked) return;
-  if (pttTimer || pttBackend) return;
-  pttTimer = setTimeout(() => {
-    pttTimer = null;
-    const backend = activeVoiceBackend();
-    if (!backend) return;
-    if (backend.state !== "idle") return; // don't yank a mic-button session
-    pttActive = true;
-    backend.start(pickSpeechLang());
-    pttBackend = backend;
-  }, PTT_HOLD_MS);
-});
+document.addEventListener(
+  "keydown",
+  (event) => {
+    // Any other key during a pending PTT timer = the user is starting a
+    // chord shortcut. Cancel the timer so we don't begin recording.
+    if (pttTimer && !isPttKeyEvent(event)) {
+      clearTimeout(pttTimer);
+      pttTimer = null;
+      return;
+    }
+    if (!isPttKeyEvent(event)) return;
+    if (event.repeat) return;
+    if (event.shiftKey || event.altKey || event.metaKey) return;
+    if (document.activeElement !== editor) return;
+    if (state.activeDoc?.locked) return;
+    if (pttTimer || pttBackend) return;
+    pttTimer = setTimeout(() => {
+      pttTimer = null;
+      const backend = activeVoiceBackend();
+      if (!backend) return;
+      if (backend.state !== "idle") return; // don't yank a mic-button session
+      pttActive = true;
+      backend.start(pickSpeechLang());
+      pttBackend = backend;
+    }, PTT_HOLD_MS);
+  },
+  { capture: true },
+);
 
 document.addEventListener("keyup", (event) => {
   if (!isPttKeyEvent(event)) return;
