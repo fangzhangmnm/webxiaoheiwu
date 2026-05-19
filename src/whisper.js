@@ -293,6 +293,12 @@ export class WhisperSession {
       }
       const data = await response.json();
       let text = (data.text ?? "").trim();
+      // Whisper-large-v3 has a known habit of appending a stray ` or ~ when
+      // the audio is short, silent, or contains mechanical-keyboard click
+      // noise — exactly the conditions of a PTT release. Strip any leading
+      // or trailing run of those before we ship the transcript to the
+      // editor; the user never wants a backtick tail on a Chinese sentence.
+      text = text.replace(/^[`~]+|[`~]+$/g, "").trim();
       if (text && config.lang === "zh") {
         text = chineseifyPunctuation(text);
       }

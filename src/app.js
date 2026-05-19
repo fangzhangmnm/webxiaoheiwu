@@ -84,7 +84,7 @@ const pttDebugClearButton = document.querySelector("#pttDebugClearButton");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v64-2026-05-19-quest-ime-composition-fix";
+const APP_VERSION = "v65-2026-05-19-whisper-strip-backtick-tail";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
