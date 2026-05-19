@@ -1455,11 +1455,28 @@ document.addEventListener("keydown", async (event) => {
 // button isn't accidentally cancelled by an unrelated ` tap.
 
 const PTT_HOLD_MS = 250;
+const PTT_INPUT_GRACE_MS = 200; // suppress ` beforeinput for this long after keyup
 let pttTimer = null;
 let pttBackend = null;        // non-null while a PTT session is running
 let pttActive = false;        // true once timer fired & PTT actually started
 let pttPressedKey = "";       // captured event.key from the original keydown
 let pttPressedShift = false;  // captured event.shiftKey from the original keydown
+let pttSuppressInputUntil = 0; // see beforeinput listener below
+
+// Belt-and-suspenders for Quest: even with keydown preventDefault'd and
+// stopImmediatePropagation, the browser occasionally dispatches a deferred
+// `beforeinput` (insertText "`" or "~") around keyup time. Catch that here.
+editor.addEventListener(
+  "beforeinput",
+  (event) => {
+    if (event.inputType !== "insertText") return;
+    if (event.data !== "`" && event.data !== "~") return;
+    if (pttTimer || pttActive || Date.now() < pttSuppressInputUntil) {
+      event.preventDefault();
+    }
+  },
+  { capture: true },
+);
 
 document.addEventListener(
   "keydown",
@@ -1512,6 +1529,10 @@ document.addEventListener(
       pttBackend = null;
       pttActive = false;
     }
+    // The browser may emit a deferred beforeinput right after keyup; the
+    // suppression flag above only checks pttActive/pttTimer (now both
+    // cleared), so extend the window for a short grace period.
+    pttSuppressInputUntil = Date.now() + PTT_INPUT_GRACE_MS;
   },
   { capture: true },
 );
