@@ -109,7 +109,7 @@ const settingsBuild = document.querySelector("#settingsBuild");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v68-2026-05-19-left-ctrl-ptt";
+const APP_VERSION = "v70-2026-05-19-left-ctrl-ptt-restored";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
