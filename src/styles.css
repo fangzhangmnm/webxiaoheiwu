@@ -494,6 +494,18 @@ body {
   letter-spacing: 0.06em;
 }
 
+.settings-build {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+  user-select: text;
+}
+
+.settings-build:empty { display: none; }
+
 .icon-button {
   width: 32px;
   height: 32px;

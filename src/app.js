@@ -77,6 +77,13 @@ const voiceKeyInput = document.querySelector("#voiceKeyInput");
 const voiceVocabField = document.querySelector("#voiceVocabField");
 const voiceVocabInput = document.querySelector("#voiceVocabInput");
 const voiceConfigSaveButton = document.querySelector("#voiceConfigSaveButton");
+const settingsBuild = document.querySelector("#settingsBuild");
+
+// Bumped in lockstep with the service worker's CACHE_VERSION so opening
+// Settings on the device tells you which build you're actually running.
+const APP_VERSION = "v61-2026-05-19-broader-ptt-traps";
+console.log("[app] build:", APP_VERSION);
+if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
 const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
 const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0"></path></svg>`;
@@ -1463,17 +1470,41 @@ let pttPressedKey = "";       // captured event.key from the original keydown
 let pttPressedShift = false;  // captured event.shiftKey from the original keydown
 let pttSuppressInputUntil = 0; // see beforeinput listener below
 
+function isBacktickKeyEvent(event) {
+  // Quest's BT keyboard sometimes reports key but not the standard code,
+  // so accept either. Modifiers are checked elsewhere.
+  return event.code === "Backquote" || event.key === "`" || event.key === "~";
+}
+
+function isPttSuppressing() {
+  return pttTimer !== null || pttActive || Date.now() < pttSuppressInputUntil;
+}
+
 // Belt-and-suspenders for Quest: even with keydown preventDefault'd and
 // stopImmediatePropagation, the browser occasionally dispatches a deferred
-// `beforeinput` (insertText "`" or "~") around keyup time. Catch that here.
+// `beforeinput` (insertText / insertCompositionText / etc with data "`" or
+// "~") around keyup time. Catch any inputType whose data is one of those.
 editor.addEventListener(
   "beforeinput",
   (event) => {
-    if (event.inputType !== "insertText") return;
     if (event.data !== "`" && event.data !== "~") return;
-    if (pttTimer || pttActive || Date.now() < pttSuppressInputUntil) {
-      event.preventDefault();
-    }
+    if (!isPttSuppressing()) return;
+    console.debug("[ptt] beforeinput suppressed:", event.inputType, JSON.stringify(event.data));
+    event.preventDefault();
+  },
+  { capture: true },
+);
+
+// Legacy keypress: deprecated, but Quest's older Chromium variants still
+// dispatch it for character keys and it's what classically inserts the char.
+document.addEventListener(
+  "keypress",
+  (event) => {
+    if (!isBacktickKeyEvent(event)) return;
+    if (!isPttSuppressing()) return;
+    console.debug("[ptt] keypress suppressed:", event.key, event.code);
+    event.preventDefault();
+    event.stopImmediatePropagation();
   },
   { capture: true },
 );
@@ -1481,7 +1512,7 @@ editor.addEventListener(
 document.addEventListener(
   "keydown",
   (event) => {
-    if (event.code !== "Backquote") return;
+    if (!isBacktickKeyEvent(event)) return;
     if (document.activeElement !== editor) return;
     if (state.activeDoc?.locked) return;
     // Stop the textarea's native insert AND the setupImeOn keydown listener
@@ -1510,7 +1541,7 @@ document.addEventListener(
 document.addEventListener(
   "keyup",
   (event) => {
-    if (event.code !== "Backquote") return;
+    if (!isBacktickKeyEvent(event)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (pttTimer) {
