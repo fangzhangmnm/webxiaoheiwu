@@ -125,6 +125,49 @@
 
       <div class="auth-row" id="authRow"></div>
 
+      <details class="voice-config" id="voiceConfigSection" hidden>
+        <summary class="voice-config-summary">
+          <span class="voice-config-title">语音 API</span>
+          <span class="voice-config-status" id="voiceConfigStatus">未配置</span>
+        </summary>
+        <div class="voice-config-form">
+          <div class="voice-config-row">
+            <label class="voice-config-radio">
+              <input type="radio" name="voiceProvider" value="webspeech" />
+              <span>浏览器 · Web Speech（免费，受网络/浏览器后端影响）</span>
+            </label>
+            <label class="voice-config-radio">
+              <input type="radio" name="voiceProvider" value="groq" />
+              <span>Groq · whisper-large-v3（快，便宜）</span>
+            </label>
+            <label class="voice-config-radio">
+              <input type="radio" name="voiceProvider" value="openai" />
+              <span>OpenAI · gpt-4o-transcribe（质量略优）</span>
+            </label>
+          </div>
+          <input
+            type="password"
+            id="voiceGroqKey"
+            class="voice-config-key"
+            placeholder="Groq key (gsk_...)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <input
+            type="password"
+            id="voiceOpenaiKey"
+            class="voice-config-key"
+            placeholder="OpenAI key (sk-...)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="voice-config-actions">
+            <button class="voice-config-save" id="voiceConfigSaveButton" type="button">保存</button>
+            <span class="voice-config-hint">写入 OneDrive AppFolder/voice.json（明文，仅你可见）</span>
+          </div>
+        </div>
+      </details>
+
       <div class="drawer-actions" id="drawerActions">
         <button class="drawer-action" id="newDocButton">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

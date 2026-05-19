@@ -12,6 +12,13 @@ import {
 } from "./db.js";
 import { NaturalCodeIMEAdapter } from "./ime.js";
 import { isSpeechSupported, SpeechSession } from "./speech.js";
+import { isWhisperSupported, WhisperSession } from "./whisper.js";
+import {
+  readJsonFromAppFolder,
+  writeJsonToAppFolder,
+  updateItemContentKeepalive,
+  deleteItem,
+} from "./onedrive.js";
 import {
   initializeAuth,
   signIn,
@@ -32,7 +39,6 @@ import {
   pushLastActiveItemId,
   pullLastActiveItemId,
 } from "./sync.js";
-import { updateItemContentKeepalive, deleteItem } from "./onedrive.js";
 
 const editor = document.querySelector("#editor");
 const titleInput = document.querySelector("#titleInput");
@@ -61,6 +67,11 @@ const ghostReuploadButton = document.querySelector("#ghostReuploadButton");
 const wordCount = document.querySelector("#wordCount");
 const lockToggle = document.querySelector("#lockToggle");
 const micButton = document.querySelector("#micButton");
+const voiceConfigSection = document.querySelector("#voiceConfigSection");
+const voiceConfigStatus = document.querySelector("#voiceConfigStatus");
+const voiceGroqKeyInput = document.querySelector("#voiceGroqKey");
+const voiceOpenaiKeyInput = document.querySelector("#voiceOpenaiKey");
+const voiceConfigSaveButton = document.querySelector("#voiceConfigSaveButton");
 
 const ICON_LOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0v4"></path></svg>`;
 const ICON_UNLOCKED = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 1 1 8 0"></path></svg>`;
@@ -484,6 +495,7 @@ function renderLockState() {
     lockToggle.hidden = true;
     editor.classList.remove("locked");
     titleInput.classList.remove("locked");
+    renderMicVisibility();
     return;
   }
   lockToggle.hidden = false;
@@ -497,10 +509,7 @@ function renderLockState() {
   // mutation events below. Caret, selection, arrow nav, Ctrl+C all work.
   editor.classList.toggle("locked", locked);
   titleInput.classList.toggle("locked", locked);
-  // Voice input would inject text past the lock — hide the mic outright.
-  if (micButton && !micButton.hidden) {
-    micButton.style.visibility = locked ? "hidden" : "";
-  }
+  renderMicVisibility();
 }
 
 async function toggleLock() {
@@ -947,7 +956,10 @@ async function onSignOut() {
     state.authSignedIn = false;
     state.authAccount = null;
     state.authError = null;
+    voiceConfig = null;
     renderAuthRow();
+    renderVoiceConfigForm();
+    renderMicVisibility();
     setSaveStatus(`已退出 ${formatTime(Date.now())}`);
   } catch (error) {
     setSaveStatus(`退出失败：${error.message ?? error}`, true);
@@ -967,11 +979,13 @@ async function initializeAuthFlow() {
     console.warn("Auth init failed:", error);
   }
   renderAuthRow();
+  renderVoiceConfigForm();
   if (state.authSignedIn) {
     // Don't block the editor on the network. Let it idle a moment so the
     // initial render is instant, then sync the active doc + start the merge.
     setTimeout(() => {
       checkActiveDocFreshness().catch(() => {});
+      loadVoiceConfig().catch((err) => console.warn("loadVoiceConfig:", err));
       mergeRemoteList()
         .then(async () => {
           startBackgroundPrefetch();
@@ -1085,11 +1099,22 @@ function setupImeOn(inputEl, onCommitSchedule) {
 setupImeOn(editor, scheduleContentSave);
 setupImeOn(titleInput, scheduleTitleSave);
 
-// --- Voice input (Web Speech API) ---
+// --- Voice input ---
+//
+// Two backends behind one button:
+//  - Whisper (Groq default, OpenAI optional) when the user has saved a key in
+//    OneDrive AppFolder/voice.json. Cloud STT, vendor-controlled, but stable.
+//  - Web Speech API as the no-config fallback. Free, in-browser, but Chrome/
+//    Edge backends have been flaky in 2026 — see commit log for details.
+//
+// Both expose the same surface (state / toggle / abort / notifyExternalInput)
+// so the rest of the editor doesn't care which one is active.
 
-// Browser-native, free, no infra. On Chrome/Edge/Quest the audio is routed to
-// Google's servers; Firefox has no implementation so we hide the button there.
-// Language follows the IME: Chinese mode → zh-CN, ASCII mode or IME off → en-US.
+const VOICE_CONFIG_FILENAME = "voice.json";
+
+// In-memory copy of OneDrive voice.json. Loaded once after sign-in; refreshed
+// by the user editing the form. Shape: { provider, groqKey, openaiKey, model }
+let voiceConfig = null;
 
 function pickSpeechLang() {
   const imeState = ime.getState();
@@ -1097,53 +1122,202 @@ function pickSpeechLang() {
   return "en-US";
 }
 
+// "Resolved" provider — never returns undefined. If voice.json hasn't been
+// written yet, default to Web Speech (it just works, no key needed).
+function resolvedVoiceProvider(config) {
+  const p = config?.provider;
+  if (p === "webspeech" || p === "groq" || p === "openai") return p;
+  return "webspeech";
+}
+
 const speechSession = isSpeechSupported()
   ? new SpeechSession({
       target: editor,
-      onChange: () => {
-        setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
-        renderWordCount();
-        scheduleContentSave();
-        // Counts as activity — long dictations shouldn't trigger the idle
-        // overlay just because no key/pointer events landed.
-        scheduleIdleOverlay();
-      },
-      onState: (next, error) => {
-        if (!micButton) return;
-        micButton.setAttribute("data-state", next);
-        if (next === "error" && error) {
-          setSaveStatus(`语音失败：${error.message ?? error}`, true);
-        }
-      },
+      onChange: onVoiceInsert,
+      onState: onVoiceState,
     })
   : null;
 
-if (micButton) {
-  if (speechSession) {
-    micButton.hidden = false;
-    micButton.addEventListener("click", () => {
-      if (state.activeDoc?.locked) return;
-      // Make sure pending IME composition isn't sitting underneath — committing
-      // it would inject extra text mid-dictation.
-      if (ime.isComposing()) {
-        ime.backend?.resetState?.();
-        renderImeState();
-      }
-      editor.focus();
-      speechSession.toggle(pickSpeechLang());
-    });
-  } else {
-    // Firefox / unsupported — keep the button hidden so users aren't misled.
-    micButton.hidden = true;
+const whisperSession = isWhisperSupported()
+  ? new WhisperSession({
+      target: editor,
+      getConfig: () => voiceConfig,
+      onChange: onVoiceInsert,
+      onState: onVoiceState,
+    })
+  : null;
+
+function activeVoiceBackend() {
+  // Provider choice is explicit (settings → radio). 'webspeech' uses the
+  // browser; 'groq'/'openai' use Whisper-via-fetch. Picking a Whisper provider
+  // without a key is allowed — the session will surface 'missing-key' on tap.
+  const provider = resolvedVoiceProvider(voiceConfig);
+  if (provider === "webspeech") return speechSession;
+  if (provider === "groq" || provider === "openai") return whisperSession;
+  return null;
+}
+
+function backendIsUsable(backend) {
+  if (!backend) return false;
+  if (backend === whisperSession) {
+    const provider = resolvedVoiceProvider(voiceConfig);
+    return !!voiceConfig?.[`${provider}Key`];
   }
+  return true; // Web Speech is always usable when supported.
+}
+
+function onVoiceInsert() {
+  setSaveStatus("未同步", state.authSignedIn ? { unsynced: true } : {});
+  renderWordCount();
+  scheduleContentSave();
+  // Dictation counts as activity — don't let the idle overlay pop up
+  // mid-paragraph just because no key/pointer events landed.
+  scheduleIdleOverlay();
+}
+
+function onVoiceState(next, error) {
+  if (!micButton) return;
+  micButton.setAttribute("data-state", next);
+  if (next === "recording") {
+    setSaveStatus("录音中…");
+  } else if (next === "transcribing") {
+    setSaveStatus("识别中…");
+  } else if (next === "error" && error) {
+    const raw = error.message ?? String(error);
+    // Translate the most common machine-readable error to actionable Chinese
+    // so the user knows to go fill in a key rather than retry blindly.
+    const friendly = raw === "missing-key"
+      ? "未填 API key（抽屉 → 语音 API）"
+      : raw;
+    setSaveStatus(`语音失败：${friendly}`, true);
+  } else if (next === "idle") {
+    // Don't smash a fresh status line if save scheduling already wrote one;
+    // only restore the doc status when the bar is still showing our message.
+    const txt = saveStatus.textContent;
+    if (txt === "录音中…" || txt === "识别中…") {
+      setSaveStatus(statusForDoc(state.activeDoc));
+    }
+  }
+}
+
+function renderMicVisibility() {
+  if (!micButton) return;
+  // Hidden cases (in order of severity):
+  //  - no backend at all (Firefox without MediaRecorder + no Web Speech) → can't dictate
+  //  - no active doc → nowhere to put the text
+  //  - doc is locked → dictation would write past the lock
+  const hidden =
+    !activeVoiceBackend() ||
+    !state.activeDoc ||
+    !!state.activeDoc?.locked;
+  micButton.hidden = hidden;
+}
+
+if (micButton) {
+  micButton.addEventListener("click", () => {
+    if (state.activeDoc?.locked) return;
+    const backend = activeVoiceBackend();
+    if (!backend) return;
+    // Pending IME composition would inject extra text mid-dictation — clear it.
+    if (ime.isComposing()) {
+      ime.backend?.resetState?.();
+      renderImeState();
+    }
+    editor.focus();
+    backend.toggle(pickSpeechLang());
+  });
 }
 
 editor.addEventListener("input", () => {
   speechSession?.notifyExternalInput();
+  whisperSession?.notifyExternalInput();
 });
 editor.addEventListener("pointerdown", () => {
-  // Caret moves on click — anchor would be stale, just abort cleanly.
+  // Caret moves on click — anchor would be stale, abort whichever is running.
   if (speechSession?.state === "listening") speechSession.abort();
+  if (whisperSession?.state === "recording") whisperSession.abort();
+});
+
+// --- Voice config (Groq / OpenAI key, stored in OneDrive AppFolder) ---
+
+function renderVoiceConfigForm() {
+  if (!voiceConfigSection) return;
+  const visible = state.authSignedIn;
+  voiceConfigSection.hidden = !visible;
+  if (!visible) return;
+
+  const provider = resolvedVoiceProvider(voiceConfig);
+  for (const radio of voiceConfigSection.querySelectorAll('input[name="voiceProvider"]')) {
+    radio.checked = radio.value === provider;
+  }
+  // Both keys are stored regardless of which provider is currently selected,
+  // so the user can switch back later without re-pasting.
+  voiceGroqKeyInput.value = voiceConfig?.groqKey ?? "";
+  voiceOpenaiKeyInput.value = voiceConfig?.openaiKey ?? "";
+
+  // Status chip: label the currently-selected backend, flag missing key for
+  // the Whisper providers.
+  if (provider === "webspeech") {
+    voiceConfigStatus.textContent = "浏览器";
+    voiceConfigStatus.classList.add("configured");
+  } else {
+    const hasKey = !!voiceConfig?.[`${provider}Key`];
+    const label = provider === "openai" ? "OpenAI" : "Groq";
+    voiceConfigStatus.textContent = hasKey ? label : `${label} · 未填 key`;
+    voiceConfigStatus.classList.toggle("configured", hasKey);
+  }
+}
+
+async function loadVoiceConfig() {
+  if (!state.authSignedIn) {
+    voiceConfig = null;
+    renderVoiceConfigForm();
+    renderMicVisibility();
+    return;
+  }
+  try {
+    voiceConfig = await readJsonFromAppFolder(VOICE_CONFIG_FILENAME);
+  } catch (error) {
+    // Missing file is normal first-run; bubble surprises to console only.
+    console.warn("loadVoiceConfig:", error);
+    voiceConfig = null;
+  }
+  renderVoiceConfigForm();
+  renderMicVisibility();
+}
+
+async function saveVoiceConfig() {
+  if (!state.authSignedIn) return;
+  const provider =
+    voiceConfigSection.querySelector('input[name="voiceProvider"]:checked')?.value
+    ?? "groq";
+  const next = {
+    provider,
+    groqKey: voiceGroqKeyInput.value.trim(),
+    openaiKey: voiceOpenaiKeyInput.value.trim(),
+  };
+  voiceConfigSaveButton.disabled = true;
+  const prevLabel = voiceConfigSaveButton.textContent;
+  voiceConfigSaveButton.textContent = "保存中…";
+  try {
+    await writeJsonToAppFolder(VOICE_CONFIG_FILENAME, next);
+    voiceConfig = next;
+    renderVoiceConfigForm();
+    renderMicVisibility();
+    voiceConfigSaveButton.textContent = "已保存";
+    setTimeout(() => {
+      voiceConfigSaveButton.textContent = prevLabel;
+      voiceConfigSaveButton.disabled = false;
+    }, 1200);
+  } catch (error) {
+    setSaveStatus(`保存语音配置失败：${error.message ?? error}`, true);
+    voiceConfigSaveButton.textContent = prevLabel;
+    voiceConfigSaveButton.disabled = false;
+  }
+}
+
+voiceConfigSaveButton?.addEventListener("click", () => {
+  saveVoiceConfig().catch((err) => console.warn("saveVoiceConfig:", err));
 });
 
 // Lock = block content-changing events, leave selection/navigation alone.

@@ -394,11 +394,18 @@ body {
   outline: none;
 }
 
-.mic-button[data-state="listening"] {
+.mic-button[data-state="listening"],
+.mic-button[data-state="recording"] {
   color: #faf2e2;
   background: var(--accent);
   border-color: var(--accent);
   transform: scale(1.04);
+}
+
+.mic-button[data-state="transcribing"] {
+  color: var(--accent-strong);
+  background: var(--bg-1);
+  border-color: var(--accent);
 }
 
 .mic-button[data-state="error"] {
@@ -420,8 +427,14 @@ body {
   pointer-events: none;
 }
 
-.mic-button[data-state="listening"] .mic-pulse {
+.mic-button[data-state="listening"] .mic-pulse,
+.mic-button[data-state="recording"] .mic-pulse {
   animation: mic-pulse 1.4s ease-out infinite;
+}
+
+.mic-button[data-state="transcribing"] .mic-pulse {
+  animation: mic-pulse 2.2s ease-out infinite;
+  border-color: var(--ink-muted);
 }
 
 @keyframes mic-pulse {
@@ -553,6 +566,116 @@ body {
 
 .auth-action.primary:hover {
   background: rgba(160, 88, 38, 0.22);
+}
+
+/* Voice API config — collapsed by default; shows under auth-row when signed in */
+
+.voice-config {
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.voice-config[hidden] { display: none; }
+
+.voice-config-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  color: var(--ink-soft);
+  user-select: none;
+}
+
+.voice-config-summary::-webkit-details-marker { display: none; }
+
+.voice-config-summary::before {
+  content: "▸";
+  font-size: 10px;
+  color: var(--ink-muted);
+  transition: transform 120ms;
+  display: inline-block;
+}
+
+.voice-config[open] .voice-config-summary::before { transform: rotate(90deg); }
+
+.voice-config-title { flex: 1 1 auto; }
+
+.voice-config-status {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.voice-config-status.configured { color: var(--accent); }
+
+.voice-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 10px 12px;
+}
+
+.voice-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voice-config-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.voice-config-radio input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.voice-config-key {
+  border: 1px solid var(--line-strong);
+  background: var(--bg-1);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  outline: none;
+}
+
+.voice-config-key:focus { border-color: var(--accent); }
+
+.voice-config-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-config-save {
+  flex: 0 0 auto;
+  background: var(--accent-soft);
+  border: 1px solid rgba(160, 88, 38, 0.4);
+  color: var(--accent-strong);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.voice-config-save:hover { background: rgba(160, 88, 38, 0.22); }
+.voice-config-save:disabled { opacity: 0.5; cursor: default; }
+
+.voice-config-hint {
+  margin: 0;
+  font-size: 10px;
+  color: var(--ink-muted);
+  line-height: 1.35;
 }
 
 .drawer-actions {

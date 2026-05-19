@@ -169,6 +169,40 @@ export async function updateItemContentKeepalive(itemId, content, etag = null) {
   }).catch(() => {});
 }
 
+// ── JSON config files (e.g. voice provider + API keys) ───────────────────
+// Stored directly in the AppFolder root alongside the user's .txt drafts.
+// Auto-synced across devices for free since OneDrive owns sync; deliberately
+// plaintext — user agreed to the tradeoff when they chose "user-supplied key"
+// over "central server". Single small file, no etag dance needed (last write
+// wins is fine for an effectively single-author config).
+
+export async function readJsonFromAppFolder(filename) {
+  try {
+    const response = await graphFetch(
+      "GET",
+      `/me/drive/special/approot:/${encodePathSegment(filename)}:/content`,
+    );
+    const buf = await response.arrayBuffer();
+    const { text } = decodeBytes(buf);
+    return JSON.parse(text);
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function writeJsonToAppFolder(filename, obj) {
+  const response = await graphFetch(
+    "PUT",
+    `/me/drive/special/approot:/${encodePathSegment(filename)}:/content?@microsoft.graph.conflictBehavior=replace`,
+    {
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify(obj, null, 2),
+    },
+  );
+  return response.json();
+}
+
 // ── Rename / move / delete ─────────────────────────────────────────────────
 
 export async function renameItem(itemId, newName, etag = null) {
