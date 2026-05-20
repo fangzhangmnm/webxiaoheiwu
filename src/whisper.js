@@ -64,6 +64,7 @@ export class WhisperSession {
 
     this.abortController = null;
     this.discardOnStop = false;
+    this.cancelled = false;
   }
 
   toggle(langHint) {
@@ -84,6 +85,8 @@ export class WhisperSession {
       return;
     }
 
+    this.cancelled = false;
+
     // Anchor the insertion point right now — before the perm prompt or audio
     // start, while we still know what the user clicked at.
     const caret = this.target.selectionStart ?? this.target.value.length;
@@ -96,6 +99,14 @@ export class WhisperSession {
     } catch (err) {
       console.warn("[whisper] getUserMedia:", err);
       this._setState("error", err);
+      return;
+    }
+    // The caller may have aborted (e.g. PTT released before getUserMedia
+    // resolved). Release the freshly-acquired stream and leave state as idle.
+    if (this.cancelled) {
+      for (const track of stream.getTracks()) {
+        try { track.stop(); } catch { /* ignore */ }
+      }
       return;
     }
     this.stream = stream;
@@ -138,6 +149,13 @@ export class WhisperSession {
       this._transcribe(blob, config);
     };
 
+    // One more cancel check — VAD setup is sync but mediaRecorder construction
+    // can in principle defer; either way, last chance to bail cleanly before
+    // we transition state to "recording".
+    if (this.cancelled) {
+      this._teardown();
+      return;
+    }
     this.mediaRecorder.start();
     this.startedAt = Date.now();
     this.lastVoiceAt = this.startedAt;
@@ -156,6 +174,9 @@ export class WhisperSession {
   }
 
   abort() {
+    // Always signal cancellation — start() may still be awaiting getUserMedia
+    // when the caller decides to bail (PTT released before the mic was ready).
+    this.cancelled = true;
     if (this.state === "recording") {
       this.discardOnStop = true;
       try { this.mediaRecorder?.stop(); } catch { /* ignore */ }

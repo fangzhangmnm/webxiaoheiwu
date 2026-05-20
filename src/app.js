@@ -131,6 +131,9 @@ const micButton = document.querySelector("#micButton");
 const settingsView = document.querySelector("#settingsView");
 const openSettingsButton = document.querySelector("#openSettingsButton");
 const voiceConfigSection = document.querySelector("#voiceConfigSection");
+const voiceEnabledToggle = document.querySelector("#voiceEnabledToggle");
+const voiceConfigBackend = document.querySelector("#voiceConfigBackend");
+const voiceConfigHint = document.querySelector("#voiceConfigHint");
 const voiceProviderSelect = document.querySelector("#voiceProviderSelect");
 const voiceKeyField = document.querySelector("#voiceKeyField");
 const voiceKeyLabel = document.querySelector("#voiceKeyLabel");
@@ -142,7 +145,7 @@ const settingsBuild = document.querySelector("#settingsBuild");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v74-2026-05-19-no-auto-unlock-prompt";
+const APP_VERSION = "v76-2026-05-19-voice-opt-in";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
@@ -1911,6 +1914,12 @@ const VOICE_CONFIG_FILENAME = "voice.json";
 // by the user editing the form. Shape: { provider, groqKey, openaiKey, model }
 let voiceConfig = null;
 
+// Per-device opt-in. We default to OFF so a user who never touches voice
+// doesn't get a mic permission prompt the first time they tap Ctrl. Lives
+// in IDB (getSetting/setSetting) — not voice.json — so it's available
+// without OneDrive sign-in.
+let voiceEnabled = false;
+
 function pickSpeechLang() {
   const imeState = ime.getState();
   if (imeState.enabled && !imeState.asciiMode) return "zh-CN";
@@ -1958,6 +1967,9 @@ const whisperSession = isWhisperSupported()
   : null;
 
 function activeVoiceBackend() {
+  // Opt-in: voice stays completely dormant — no mic permission prompt, no
+  // PTT, no mic button — until the user flips the toggle in Settings.
+  if (!voiceEnabled) return null;
   // Provider choice is explicit (settings → radio). 'webspeech' uses the
   // browser; 'groq'/'openai' use Whisper-via-fetch. Picking a Whisper provider
   // without a key is allowed — the session will surface 'missing-key' on tap.
@@ -2066,14 +2078,29 @@ editor.addEventListener("pointerdown", () => {
 
 function renderVoiceConfigForm() {
   if (!voiceConfigSection) return;
-  const visible = state.authSignedIn;
-  voiceConfigSection.hidden = !visible;
-  if (!visible) return;
+  // Section is always visible (drives the enable toggle). Backend fields
+  // below are gated separately: only meaningful when voice is enabled AND
+  // the user is signed in (since Whisper keys persist to OneDrive).
+  voiceConfigSection.hidden = false;
+  if (voiceEnabledToggle) voiceEnabledToggle.checked = voiceEnabled;
+  const showBackend = voiceEnabled && state.authSignedIn;
+  if (voiceConfigBackend) voiceConfigBackend.hidden = !showBackend;
+  if (!showBackend) {
+    if (voiceConfigHint) {
+      voiceConfigHint.textContent = voiceEnabled
+        ? "登录 OneDrive 才能保存 Whisper API key（Web Speech 不需要 key）"
+        : "";
+    }
+    return;
+  }
 
   const provider = resolvedVoiceProvider(voiceConfig);
   voiceProviderSelect.value = provider;
   renderVoiceConfigKeyField(provider);
   voiceVocabInput.value = voiceConfig?.vocab ?? "";
+  if (voiceConfigHint) {
+    voiceConfigHint.textContent = "写入 OneDrive AppFolder/voice.json（明文，仅你可见）";
+  }
 }
 
 // Single key input that swaps placeholder/value based on the selected provider.
@@ -2156,6 +2183,15 @@ voiceConfigSaveButton?.addEventListener("click", () => {
 
 voiceProviderSelect?.addEventListener("change", () => {
   renderVoiceConfigKeyField(voiceProviderSelect.value);
+});
+
+voiceEnabledToggle?.addEventListener("change", () => {
+  voiceEnabled = !!voiceEnabledToggle.checked;
+  setSetting("voiceEnabled", voiceEnabled).catch((err) =>
+    console.warn("setSetting voiceEnabled:", err),
+  );
+  renderVoiceConfigForm();
+  renderMicVisibility();
 });
 
 // Lock = block content-changing events, leave selection/navigation alone.
@@ -2262,32 +2298,45 @@ document.addEventListener("keydown", async (event) => {
 
 // --- Left Ctrl push-to-talk ---
 //
-// Hold Left Ctrl in the editor for ≥250ms → start recording, release → stop.
-// Ctrl is a modifier: it doesn't produce a character and the OS IME doesn't
-// compose it, so we don't need any suppression / synthetic-insert machinery.
+// Hold Left Ctrl in the editor → start recording immediately. Release before
+// the 250ms threshold → discard the brief clip; release after → transcribe.
+// Starting on keydown (instead of waiting for the threshold) preserves the
+// pre-roll audio: users tend to begin speaking right after they press the
+// key, and the ~250ms wait used to swallow the first syllable.
+//
 // Chord guard accepts ctrlKey=true on the Ctrl keydown itself (Ctrl IS the
-// trigger), but bails if Shift/Alt/Meta are also held — leaves chord
-// shortcuts (Ctrl+S, Ctrl+Shift+anything, etc.) alone. Any non-Ctrl key
-// pressed during the hold also cancels the timer so e.g. quick Ctrl+S
-// doesn't briefly arm recording.
+// trigger), but bails if Shift/Alt/Meta are also held — leaves Ctrl+Shift
+// shortcuts alone. Any non-Ctrl keydown while PTT is armed aborts the
+// session (Ctrl+S to save discards the just-started recording cleanly).
 
 const PTT_HOLD_MS = 250;
-let pttTimer = null;
-let pttBackend = null;
-let pttActive = false;
+let pttBackend = null;        // non-null while a PTT-initiated session is live
+let pttCommitted = false;     // true once the hold has crossed the threshold
+let pttCommitTimer = null;
 
 function isPttKeyEvent(event) {
   return event.code === "ControlLeft";
 }
 
+function pttAbort() {
+  if (pttCommitTimer) {
+    clearTimeout(pttCommitTimer);
+    pttCommitTimer = null;
+  }
+  if (pttBackend) {
+    pttBackend.abort();
+    pttBackend = null;
+  }
+  pttCommitted = false;
+}
+
 document.addEventListener(
   "keydown",
   (event) => {
-    // Any other key during a pending PTT timer = the user is starting a
-    // chord shortcut. Cancel the timer so we don't begin recording.
-    if (pttTimer && !isPttKeyEvent(event)) {
-      clearTimeout(pttTimer);
-      pttTimer = null;
+    // Any other key with PTT armed = chord shortcut; discard the brief mic
+    // session we just started (or were about to).
+    if (pttBackend && !isPttKeyEvent(event)) {
+      pttAbort();
       return;
     }
     if (!isPttKeyEvent(event)) return;
@@ -2297,15 +2346,19 @@ document.addEventListener(
     if (state.activeDoc?.locked) return;
     if (state.activeDoc?.encrypted && !isUnlocked()) return;
     if (state.activeDoc?.encrypted && !voiceProviderIsLocal()) return;
-    if (pttTimer || pttBackend) return;
-    pttTimer = setTimeout(() => {
-      pttTimer = null;
-      const backend = activeVoiceBackend();
-      if (!backend) return;
-      if (backend.state !== "idle") return; // don't yank a mic-button session
-      pttActive = true;
-      backend.start(pickSpeechLang());
-      pttBackend = backend;
+    if (pttBackend) return;
+    const backend = activeVoiceBackend();
+    if (!backend) return;
+    if (backend.state !== "idle") return; // don't yank a mic-button session
+    pttBackend = backend;
+    pttCommitted = false;
+    // Fire-and-forget — backend.start() is async (getUserMedia) and the abort
+    // path inside WhisperSession handles the case where we ask to stop while
+    // getUserMedia is still in flight.
+    backend.start(pickSpeechLang());
+    pttCommitTimer = setTimeout(() => {
+      pttCommitTimer = null;
+      pttCommitted = true;
     }, PTT_HOLD_MS);
   },
   { capture: true },
@@ -2313,16 +2366,18 @@ document.addEventListener(
 
 document.addEventListener("keyup", (event) => {
   if (!isPttKeyEvent(event)) return;
-  if (pttTimer) {
-    clearTimeout(pttTimer);
-    pttTimer = null;
-    return;
+  if (!pttBackend) return;
+  if (pttCommitTimer) {
+    clearTimeout(pttCommitTimer);
+    pttCommitTimer = null;
   }
-  if (pttActive && pttBackend) {
+  if (pttCommitted) {
     pttBackend.stop();
-    pttBackend = null;
-    pttActive = false;
+  } else {
+    pttBackend.abort();
   }
+  pttBackend = null;
+  pttCommitted = false;
 });
 
 // Quest waking from standby, network reconnect, or tab regaining focus —
@@ -2609,6 +2664,12 @@ async function initialize() {
   } else {
     ime.enabled = false;
   }
+
+  // Voice also defaults to OFF — first-time Ctrl-tap shouldn't surprise the
+  // user with a mic permission prompt. Same per-device IDB persistence as IME.
+  voiceEnabled = (await getSetting("voiceEnabled")) === true;
+  renderVoiceConfigForm();
+  renderMicVisibility();
 
   try {
     await cleanupAutoEmptyDocs();

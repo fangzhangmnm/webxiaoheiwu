@@ -729,6 +729,34 @@ body {
   gap: 10px;
 }
 
+.voice-config-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink);
+  user-select: none;
+}
+
+.voice-config-toggle input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.voice-config-backend[hidden] { display: none; }
+
+.voice-config-backend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
 .voice-config-field {
   display: flex;
   flex-direction: column;

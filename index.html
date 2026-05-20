@@ -163,45 +163,52 @@
 
         <div class="settings-build" id="settingsBuild" title="构建版本"></div>
 
-        <details class="settings-section" id="voiceConfigSection" hidden>
+        <details class="settings-section" id="voiceConfigSection">
           <summary class="settings-section-title">语音输入</summary>
           <div class="voice-config-form">
-            <label class="voice-config-field">
-              <span class="voice-config-label">后端</span>
-              <select id="voiceProviderSelect" class="voice-config-select">
-                <option value="webspeech">浏览器 · Web Speech（免费）</option>
-                <option value="groq">Groq · whisper-large-v3（快、便宜）</option>
-                <option value="openai">OpenAI · gpt-4o-transcribe（质量略优）</option>
-              </select>
+            <label class="voice-config-toggle">
+              <input type="checkbox" id="voiceEnabledToggle" />
+              <span>启用语音输入</span>
             </label>
 
-            <label class="voice-config-field" id="voiceKeyField" hidden>
-              <span class="voice-config-label" id="voiceKeyLabel">API key</span>
-              <input
-                type="password"
-                id="voiceKeyInput"
-                class="voice-config-key"
-                placeholder=""
-                autocomplete="off"
-                spellcheck="false"
-              />
-            </label>
+            <div class="voice-config-backend" id="voiceConfigBackend" hidden>
+              <label class="voice-config-field">
+                <span class="voice-config-label">后端</span>
+                <select id="voiceProviderSelect" class="voice-config-select">
+                  <option value="webspeech">浏览器 · Web Speech（免费）</option>
+                  <option value="groq">Groq · whisper-large-v3（快、便宜）</option>
+                  <option value="openai">OpenAI · gpt-4o-transcribe（质量略优）</option>
+                </select>
+              </label>
 
-            <label class="voice-config-field" id="voiceVocabField" hidden>
-              <span class="voice-config-label">词表（Whisper prompt，可选）</span>
-              <textarea
-                id="voiceVocabInput"
-                class="voice-config-vocab"
-                placeholder="例：小黑屋, 黑泽明, 林平之"
-                rows="2"
-                autocomplete="off"
-                spellcheck="false"
-              ></textarea>
-            </label>
+              <label class="voice-config-field" id="voiceKeyField" hidden>
+                <span class="voice-config-label" id="voiceKeyLabel">API key</span>
+                <input
+                  type="password"
+                  id="voiceKeyInput"
+                  class="voice-config-key"
+                  placeholder=""
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
 
-            <div class="voice-config-actions">
-              <button class="voice-config-save" id="voiceConfigSaveButton" type="button">保存</button>
-              <span class="voice-config-hint">写入 OneDrive AppFolder/voice.json（明文，仅你可见）</span>
+              <label class="voice-config-field" id="voiceVocabField" hidden>
+                <span class="voice-config-label">词表（Whisper prompt，可选）</span>
+                <textarea
+                  id="voiceVocabInput"
+                  class="voice-config-vocab"
+                  placeholder="例：小黑屋, 黑泽明, 林平之"
+                  rows="2"
+                  autocomplete="off"
+                  spellcheck="false"
+                ></textarea>
+              </label>
+
+              <div class="voice-config-actions">
+                <button class="voice-config-save" id="voiceConfigSaveButton" type="button">保存</button>
+                <span class="voice-config-hint" id="voiceConfigHint">写入 OneDrive AppFolder/voice.json（明文，仅你可见）</span>
+              </div>
             </div>
           </div>
         </details>
