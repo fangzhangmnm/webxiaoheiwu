@@ -145,7 +145,7 @@ const settingsBuild = document.querySelector("#settingsBuild");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v76-2026-05-19-voice-opt-in";
+const APP_VERSION = "v77-2026-05-19-voice-opt-in-fix";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
@@ -2078,28 +2078,19 @@ editor.addEventListener("pointerdown", () => {
 
 function renderVoiceConfigForm() {
   if (!voiceConfigSection) return;
-  // Section is always visible (drives the enable toggle). Backend fields
-  // below are gated separately: only meaningful when voice is enabled AND
-  // the user is signed in (since Whisper keys persist to OneDrive).
   voiceConfigSection.hidden = false;
   if (voiceEnabledToggle) voiceEnabledToggle.checked = voiceEnabled;
-  const showBackend = voiceEnabled && state.authSignedIn;
-  if (voiceConfigBackend) voiceConfigBackend.hidden = !showBackend;
-  if (!showBackend) {
-    if (voiceConfigHint) {
-      voiceConfigHint.textContent = voiceEnabled
-        ? "登录 OneDrive 才能保存 Whisper API key（Web Speech 不需要 key）"
-        : "";
-    }
-    return;
-  }
+  if (voiceConfigBackend) voiceConfigBackend.hidden = !voiceEnabled;
+  if (!voiceEnabled) return;
 
   const provider = resolvedVoiceProvider(voiceConfig);
   voiceProviderSelect.value = provider;
   renderVoiceConfigKeyField(provider);
   voiceVocabInput.value = voiceConfig?.vocab ?? "";
   if (voiceConfigHint) {
-    voiceConfigHint.textContent = "写入 OneDrive AppFolder/voice.json（明文，仅你可见）";
+    voiceConfigHint.textContent = state.authSignedIn
+      ? "写入 OneDrive AppFolder/voice.json（明文，仅你可见）"
+      : "登录 OneDrive 后才能保存 Whisper key（浏览器后端无需 key）";
   }
 }
 
@@ -2144,7 +2135,10 @@ async function loadVoiceConfig() {
 }
 
 async function saveVoiceConfig() {
-  if (!state.authSignedIn) return;
+  if (!state.authSignedIn) {
+    setSaveStatus("请先登录 OneDrive 后再保存语音配置", true);
+    return;
+  }
   const provider = voiceProviderSelect.value || "webspeech";
   // Preserve both keys: switching provider via the dropdown shouldn't wipe
   // the other backend's saved key. Only the currently-shown key is editable.

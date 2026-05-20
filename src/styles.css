@@ -732,30 +732,33 @@ body {
 .voice-config-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--ink);
   user-select: none;
+  padding: 2px 0;
 }
 
 .voice-config-toggle input {
   margin: 0;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   accent-color: var(--accent);
+  cursor: pointer;
 }
-
-.voice-config-backend[hidden] { display: none; }
 
 .voice-config-backend {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 6px;
-  padding-top: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px dashed var(--line);
 }
+
+.voice-config-backend[hidden] { display: none; }
 
 .voice-config-field {
   display: flex;
