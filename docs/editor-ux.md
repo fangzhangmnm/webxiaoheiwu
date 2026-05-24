@@ -1,0 +1,143 @@
+# Editor UX: caret, lock, status, optimistic UI
+
+The textarea-as-editor has a stack of small gotchas. None are individually big; collectively they're the difference between "feels like an editor" and "feels like a textarea."
+
+## Caret-on-load: Chrome puts it at the end
+
+Setting `editor.value = doc.content` and then `editor.focus()` makes Chrome scroll to and place the caret at `value.length`. For a multi-thousand-character chapter that means the user opens a doc and lands in the middle of nowhere.
+
+Fix: call a `moveCaretToStart(editor)` helper (`editor.setSelectionRange(0, 0)` + `editor.scrollTop = 0`) **after every** assignment to `editor.value`. There's no `defaultValue` workaround that survives focus.
+
+## Lock-without-readOnly preserves the caret
+
+The `readOnly` attribute on a textarea removes the caret entirely in Chromium. The user wants: "can use keyboard to select text, but can't edit." Solution: leave the textarea writable, block edits via event handlers:
+
+```js
+function preventEdit(e) { e.preventDefault(); }
+for (const evt of ["beforeinput", "paste", "cut", "drop"]) {
+  editor.addEventListener(evt, preventEdit);
+}
+```
+
+`beforeinput` covers typing, autocomplete, IME commit, etc. — preventing it stops the edit before it lands. The caret remains, selection still works, no surprise lockout.
+
+## Optimistic UI for destructive actions
+
+The trash button was making users double-tap because the row only disappeared after the OneDrive MOVE completed (200-500ms over flaky networks). The fix: mark the IDB row immediately, re-render the drawer, then run the remote MOVE in the background.
+
+Pattern:
+
+```js
+async function onTrashDoc(id) {
+  await flushSaves();
+  await applySyncPatch(id, { deletedAt: Date.now() });  // local first
+  if (id === state.activeDocId) await pickNextActive();
+  await renderDocList();                                 // instant UI
+  if (state.authSignedIn) {
+    moveDocToTrash(id)                                   // background remote
+      .catch((error) => setSaveStatus(`...失败：${error}`, true))
+      .finally(() => renderDocList());                   // re-render on settle
+  }
+}
+```
+
+Two critical details:
+- **`.finally(renderDocList)`** — re-render after the background call settles so dirty/etag changes and error toasts appear.
+- **For purge (true delete)**, snag the `onedriveItemId` BEFORE the local IDB purge wipes the row, otherwise you can't fire the remote DELETE.
+
+The user asked specifically for this re-on-settle behavior: "如果删除失败或者成功或者各种反馈是不是应该刷新一下list."
+
+## Status text: stable labels beat moving counters
+
+I tried a live countdown ("将在 23 秒后保存…") for the save indicator. The user vetoed it immediately: "very distracting because it is moving." Replaced with a static label that flips through a small set of states: `未同步` / `同步中…` / `已保存`. No countdown. No tween.
+
+Also — early version showed `编辑中…` on input then `未同步` on debounce-fire, which "flickered." Collapsed to just `未同步` on the input event. Two states is enough; three is noise.
+
+## Wake-up stuck in `同步中…`
+
+If the idle overlay's sync triggers but the user dismisses before it returns, the status bar gets stuck at `同步中…`. Fix: at the end of the dismiss handler, explicitly call `setSaveStatus(statusForDoc(state.activeDoc))` to reconcile from the current IDB state.
+
+This is a general lesson: status text should always be **derivable from state**, never set imperatively as a side effect that can be missed.
+
+## Word count: separate CN and EN
+
+Chinese counts by character (字), English counts by word (words). Mixing them as a single number is wrong; the user's instinct was "838 字 · 0 词 misleading."
+
+Final form: show whichever count is nonzero. `838 字` (Chinese only), `120 words` (English only), `838 字 · 120 words` (mixed). When the doc is empty, show `0 字` as a placeholder.
+
+```js
+const parts = [];
+if (cjk > 0) parts.push(`${cjk} 字`);
+if (en > 0) parts.push(`${en} words`);
+wordCount.textContent = parts.length > 0 ? parts.join(" · ") : "0 字";
+```
+
+## flushSaves: only write if pending
+
+Early `flushSaves` always called `updateDoc(activeDoc, editor.value)`. This marked every doc as `dirty` on every doc switch, even untouched ones. Fix: only write if there's a pending debounce timer:
+
+```js
+function flushSaves() {
+  if (!pendingSaveTimer) return;
+  clearTimeout(pendingSaveTimer);
+  pendingSaveTimer = null;
+  return updateDoc(...);
+}
+```
+
+Generalizable rule: flushes should be **idempotent no-ops when nothing is pending**.
+
+## Center the content column, don't max-width the page
+
+The user pushed back on full-width editing: "我觉得像 GPT 做的关键不是字体宽度，而是说它的页宽不是占满整个屏幕，而是有一个box." A centered max-width column (around 720px) is the reading width of a book. Full-width editing fatigues eyes.
+
+The frame around the column should be a thin line, not a heavy border. Warm-wood palette (`#d8c8a8` desk, `#f1e6cf` paper, `#a05826` accent, `#6f5538` ink-soft text) — picked by the user after rejecting the default ChatGPT-ish gray.
+
+## Body text color matches header text
+
+Pure black body text on cream paper is too high-contrast and "uncomfortable." Use the same ink color as the header (`#6f5538`-ish) for body text. The page feels of a piece.
+
+## iOS soft-keyboard mic-button collision
+
+The floating mic button is `position: absolute; right: 14px; bottom: 14px`
+inside `.page`. The page height is `100dvh` which is supposed to shrink
+when the iOS soft keyboard pops, taking the bottom-anchored button up
+with it. In practice iOS Safari doesn't reliably reflow `dvh` units when
+the keyboard appears — the button ends up *under* the keyboard.
+
+Fix with `visualViewport`, which is the only API that reliably reports
+the area visible above the keyboard. Expose the keyboard height as a CSS
+custom property, the button's `bottom` uses `calc()`:
+
+```js
+if (window.visualViewport) {
+  const updateKbOffset = () => {
+    const vv = window.visualViewport;
+    const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty("--kb-offset", `${offset}px`);
+  };
+  window.visualViewport.addEventListener("resize", updateKbOffset);
+  window.visualViewport.addEventListener("scroll", updateKbOffset);
+  updateKbOffset();
+}
+```
+
+```css
+.mic-button {
+  position: absolute;
+  right: 14px;
+  bottom: calc(14px + var(--kb-offset, 0px));
+}
+```
+
+No keyboard → `--kb-offset` is 0 → bottom stays at 14px. Keyboard up →
+`--kb-offset` becomes the keyboard's pixel height → button rides above.
+
+Generic pattern: any **fixed/absolute UI anchored to the viewport bottom**
+needs this on iOS. The pattern is small enough that one-off `calc(14px +
+var(--kb-offset, 0px))` is cleaner than introducing an "above the
+keyboard" utility class — but if you have multiple such elements, factor
+it out.
+
+`visualViewport` is supported everywhere modern (incl. Quest's
+Chromium). Feature-detect anyway in case of unusual browsers.
