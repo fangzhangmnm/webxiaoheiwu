@@ -21,9 +21,21 @@
   --font-editor: -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
 
-  /* Mobile-reading-anchored editor font: aim ~22 hanzi per line. */
+  /* Reading mode — two presets that retune box width, font cap, line-height.
+     novel (default): narrow box + 22px cap + airy 1.9 leading. Forces short
+       lines on desktop so dialogue-per-line feels like a phone reader app.
+     classic: paperback width + 19px cap + 1.6 leading. ~30 hanzi/line on
+       desktop, matching 32开 Chinese paperback (三联/人文社) typesetting. */
   --target-chars: 22;
-  --box-max: 720px;
+  --box-max: 520px;
+  --editor-line-height: 1.9;
+  --editor-font-max: 22px;
+}
+
+body.reading-classic {
+  --box-max: 660px;
+  --editor-line-height: 1.6;
+  --editor-font-max: 19px;
 }
 
 * { box-sizing: border-box; }
@@ -322,8 +334,8 @@ body {
   border: 0;
   background: transparent;
   font-family: var(--font-editor);
-  font-size: clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), 22px);
-  line-height: 1.65;
+  font-size: clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max));
+  line-height: var(--editor-line-height);
   color: var(--ink-soft);
   caret-color: var(--accent);
   outline: none;
@@ -830,6 +842,69 @@ body {
 .voice-config-hint {
   flex: 1 1 100%;
   margin: 0;
+  font-size: 10px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+}
+
+/* Reading mode — segmented picker. Same chrome as voice section but
+   non-collapsible since it's just two options. */
+
+.settings-section.is-flat {
+  padding-top: 14px;
+}
+
+.settings-section.is-flat > .settings-section-title {
+  cursor: default;
+  margin-bottom: 8px;
+}
+
+.settings-section.is-flat > .settings-section-title::before {
+  content: none;
+}
+
+.reading-mode-picker {
+  display: flex;
+  gap: 6px;
+}
+
+.reading-mode-option {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg-1);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.reading-mode-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reading-mode-option:hover {
+  background: var(--bg-2);
+}
+
+.reading-mode-option.is-selected {
+  background: var(--accent-soft);
+  border-color: rgba(160, 88, 38, 0.55);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.reading-mode-hint {
+  margin: 8px 0 0;
   font-size: 10px;
   color: var(--ink-muted);
   line-height: 1.4;

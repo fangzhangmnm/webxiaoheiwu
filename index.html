@@ -163,6 +163,21 @@
 
         <div class="settings-build" id="settingsBuild" title="构建版本"></div>
 
+        <section class="settings-section is-flat" id="readingModeSection">
+          <h3 class="settings-section-title">阅读节奏</h3>
+          <div class="reading-mode-picker" id="readingModePicker" role="radiogroup" aria-label="阅读节奏">
+            <label class="reading-mode-option is-selected" data-mode="novel">
+              <input type="radio" name="readingMode" value="novel" checked />
+              <span>轻小说 · 短行</span>
+            </label>
+            <label class="reading-mode-option" data-mode="classic">
+              <input type="radio" name="readingMode" value="classic" />
+              <span>标准 · 宽行</span>
+            </label>
+          </div>
+          <p class="reading-mode-hint">短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。</p>
+        </section>
+
         <details class="settings-section" id="voiceConfigSection">
           <summary class="settings-section-title">语音输入</summary>
           <div class="voice-config-form">

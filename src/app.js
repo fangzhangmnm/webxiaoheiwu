@@ -142,10 +142,11 @@ const voiceVocabField = document.querySelector("#voiceVocabField");
 const voiceVocabInput = document.querySelector("#voiceVocabInput");
 const voiceConfigSaveButton = document.querySelector("#voiceConfigSaveButton");
 const settingsBuild = document.querySelector("#settingsBuild");
+const readingModePicker = document.querySelector("#readingModePicker");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v77-2026-05-19-voice-opt-in-fix";
+const APP_VERSION = "v79-2026-05-24-reading-mode-classic-tune";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 
@@ -2188,6 +2189,30 @@ voiceEnabledToggle?.addEventListener("change", () => {
   renderMicVisibility();
 });
 
+// Reading mode — body class drives CSS vars (box width + line-height).
+// "novel" (default) = narrow + airy, "classic" = wider + tighter.
+function applyReadingMode(mode) {
+  const next = mode === "classic" ? "classic" : "novel";
+  document.body.classList.toggle("reading-classic", next === "classic");
+  if (readingModePicker) {
+    for (const opt of readingModePicker.querySelectorAll(".reading-mode-option")) {
+      const selected = opt.dataset.mode === next;
+      opt.classList.toggle("is-selected", selected);
+      const input = opt.querySelector("input");
+      if (input) input.checked = selected;
+    }
+  }
+}
+
+readingModePicker?.addEventListener("change", (event) => {
+  const value = event.target?.value;
+  if (value !== "novel" && value !== "classic") return;
+  applyReadingMode(value);
+  setSetting("readingMode", value).catch((err) =>
+    console.warn("setSetting readingMode:", err),
+  );
+});
+
 // Lock = block content-changing events, leave selection/navigation alone.
 function blockIfLocked(event) {
   if (state.activeDoc?.locked) {
@@ -2664,6 +2689,11 @@ async function initialize() {
   voiceEnabled = (await getSetting("voiceEnabled")) === true;
   renderVoiceConfigForm();
   renderMicVisibility();
+
+  // Reading mode defaults to novel (the narrow web-novel rhythm the app is
+  // tuned around). Apply before first paint so the page box opens at the
+  // right width and the editor doesn't visibly reflow.
+  applyReadingMode((await getSetting("readingMode")) ?? "novel");
 
   try {
     await cleanupAutoEmptyDocs();
