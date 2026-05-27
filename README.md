@@ -65,7 +65,8 @@ All runtime dependencies are vendored locally — no CDN fetches at runtime:
 - `src/vendor/rime-contrib/luna-pinyin/` — dict + base schema (`@rime-contrib/luna-pinyin@0.1.1`)
 - `src/vendor/rime-contrib/double-pinyin/` — Natural Code prism/schema (`@rime-contrib/double-pinyin@0.1.1`)
 - `src/vendor/rime-contrib/stroke/` — required by `luna_pinyin` reverse lookup (`@rime-contrib/stroke@0.1.3`)
+- `src/vendor/msal/msal-browser.min.js` — `@azure/msal-browser@3.27.0` (reversed from the original CDN-loading decision — see [docs/msal-onedrive.md](docs/msal-onedrive.md))
 
 The starter-map fallback in `src/ime.js` remains in case the worker fails to boot.
 
-Future cloud sync (OneDrive via Microsoft Graph) is the only intended runtime network dependency.
+Sign-in still talks to `login.microsoftonline.com` and `graph.microsoft.com` at request time — only the SDK itself is local.

@@ -19,7 +19,7 @@ Used [my-rime](https://github.com/LibreService/my-rime) — RIME core compiled t
 Vendored locally because:
 - The WASM blob is ~5MB; precaching it once is fine.
 - RIME schemas/dicts change rarely.
-- We want zero CDN dependencies for the core writing flow (sign-in is the exception; see [msal-onedrive.md](msal-onedrive.md)).
+- We want zero CDN dependencies for the entire app shell, including sign-in (MSAL is also vendored — see [msal-onedrive.md](msal-onedrive.md)).
 
 ## Shuangpin (双拼) is what serious writers want
 

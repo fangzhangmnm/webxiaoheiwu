@@ -1,10 +1,10 @@
 // Microsoft Entra (Azure AD) authentication via MSAL.js.
 //
-// Per the project's "no vendoring cloud SDKs" rule, MSAL is loaded lazily
-// from Microsoft's official CDN at runtime so it can evolve with the cloud.
-// The service worker's same-origin filter lets cross-origin requests
-// (alcdn.msftauth.net, graph.microsoft.com, login.microsoftonline.com) pass
-// through without caching.
+// MSAL is vendored at src/vendor/msal/msal-browser.min.js and loaded
+// lazily on first sign-in attempt. Offline-first: precached by the service
+// worker so the app can boot and sign in without network reachability to
+// any CDN. Graph and login.microsoftonline.com itself still need the network
+// at sign-in time; only the SDK shell is local.
 
 const AUTH_CLIENT_ID = "39d8afca-f47b-43cb-b962-0803f556520f";
 const AUTHORITY = "https://login.microsoftonline.com/common";
@@ -13,14 +13,9 @@ const AUTHORITY = "https://login.microsoftonline.com/common";
 // don't request User.Read.
 export const SCOPES = ["Files.ReadWrite.AppFolder", "offline_access"];
 
-// Microsoft's own CDN (alcdn.msftauth.net) only hosts MSAL v2; MSAL v3 ships
-// via npm. Use jsDelivr as the primary mirror, with unpkg as fallback in case
-// the primary is blocked from the user's network.
-const MSAL_VERSION = "3.27.0";
-const MSAL_URLS = [
-  `https://cdn.jsdelivr.net/npm/@azure/msal-browser@${MSAL_VERSION}/lib/msal-browser.min.js`,
-  `https://unpkg.com/@azure/msal-browser@${MSAL_VERSION}/lib/msal-browser.min.js`,
-];
+// Vendored MSAL v3.27.0 — see docs/msal-onedrive.md for the vendoring
+// rationale. Resolved via import.meta.url so it works under any base path.
+const MSAL_URL = new URL("./vendor/msal/msal-browser.min.js", import.meta.url).href;
 
 let msalLoadPromise = null;
 let pca = null;
@@ -45,20 +40,16 @@ function loadMsal() {
   if (window.msal) return Promise.resolve(window.msal);
   if (msalLoadPromise) return msalLoadPromise;
   msalLoadPromise = (async () => {
-    let lastError = null;
-    for (const url of MSAL_URLS) {
-      try {
-        await loadScript(url);
-        if (window.msal) return window.msal;
-        lastError = new Error("MSAL loaded but global not exposed");
-      } catch (error) {
-        lastError = error;
-      }
+    try {
+      await loadScript(MSAL_URL);
+      if (window.msal) return window.msal;
+      throw new Error("MSAL loaded but global not exposed");
+    } catch (error) {
+      msalLoadPromise = null;
+      throw new Error(
+        `无法加载 Microsoft 登录脚本（${error?.message ?? "unknown"})`,
+      );
     }
-    msalLoadPromise = null;
-    throw new Error(
-      `无法加载 Microsoft 登录脚本，请检查网络（${lastError?.message ?? "unknown"})`,
-    );
   })();
   return msalLoadPromise;
 }

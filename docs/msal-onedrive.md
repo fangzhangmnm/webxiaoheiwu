@@ -6,13 +6,35 @@ Hard-won notes from wiring Microsoft Graph into a static-hosted PWA.
 
 `Files.ReadWrite.AppFolder` + `offline_access`. Nothing else. The user audited the consent screen and asked "看下权限对不对，有没有不该拿的多余的不必要的权限." Dropped `User.Read` because the access token already carries the username via the ID token. The user's strong principle: **don't touch the user's main OneDrive**. AppFolder is a sandboxed subtree (`Apps/<AppName>/`) that the app can't escape from. Use it.
 
-## Lazy-load MSAL from a CDN, with fallback
+## Vendor MSAL into the precache (reversed: previously CDN-loaded)
 
-MSAL.js v3 from `jsdelivr` primary, `unpkg` fallback. The app shell loads from precache and starts up offline; MSAL only matters when the user clicks "sign in." Lazy-loading means cold start isn't blocked on a CDN reachable.
+MSAL.js v3 (`@azure/msal-browser@3.27.0`, ~300KB minified) lives at
+`src/vendor/msal/msal-browser.min.js` and is registered in the service
+worker's `PRECACHE_URLS`. `auth.js` resolves it via `new URL("./vendor/msal/...", import.meta.url)` and injects it as a `<script>` tag on first
+sign-in attempt — still lazy, just from a local URL instead of a CDN.
 
-Failure message on both CDN timeouts: `"登录失败：无法加载 Microsoft 登录脚本，请检查网络"` — explicit, not a stack trace.
+**Why this flipped.** The original rule was "don't vendor cloud SDKs, they
+version frequently." In practice the downsides of the CDN path won out:
 
-Cloud SDKs are intentionally NOT vendored. They version frequently and getting an old copy in your precache is worse than depending on the CDN. Local-first applies to your assets, not third-party SDKs.
+- jsdelivr / unpkg are blocked or slow on networks where the user actually
+  reaches for this app (校园网, hotel WiFi, mobile in low-signal areas).
+  The two-CDN fallback chain still ate seconds and sometimes timed out,
+  producing a "登录失败" toast for a user who was definitely online — they
+  just couldn't reach an npm mirror.
+- MSAL v3 is stable. `acquireTokenSilent` / `loginRedirect` haven't moved
+  in years. We don't actually want the version drifting unattended in a
+  PWA that may sit unupgraded on someone's homescreen for months.
+- The precache already holds the wasm RIME engine and dictionary blobs
+  (multiple MB). Another 300KB to make sign-in deterministic is cheap.
+
+Bump the vendored copy by hand when there's a reason (CVE, breaking Graph
+change). Bump `CACHE_VERSION` in `service-worker.js` in the same commit.
+
+Failure message stays explicit: `"无法加载 Microsoft 登录脚本"` — though in
+practice this should now only fire if the precache itself is corrupted.
+
+Graph and `login.microsoftonline.com` still need real network at sign-in
+time — only the SDK shell is offline-deterministic.
 
 ## Tenant blocks
 

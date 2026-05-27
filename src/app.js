@@ -146,7 +146,7 @@ const readingModePicker = document.querySelector("#readingModePicker");
 
 // Bumped in lockstep with the service worker's CACHE_VERSION so opening
 // Settings on the device tells you which build you're actually running.
-const APP_VERSION = "v79-2026-05-24-reading-mode-classic-tune";
+const APP_VERSION = "v80-2026-05-27-vendor-msal";
 console.log("[app] build:", APP_VERSION);
 if (settingsBuild) settingsBuild.textContent = APP_VERSION;
 

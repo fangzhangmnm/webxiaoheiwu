@@ -1,7 +1,7 @@
 // Bump CACHE_VERSION whenever any precached asset changes. The activate
 // handler wipes older caches; skipWaiting + clientsClaim make the new SW
 // take over on the next reload (no need to close all tabs).
-const CACHE_VERSION = "v79-2026-05-24-reading-mode-classic-tune";
+const CACHE_VERSION = "v80-2026-05-27-vendor-msal";
 const CACHE_NAME = `xiaoheiwu-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -22,6 +22,7 @@ const PRECACHE_URLS = [
   "./src/sync.js",
   "./src/whisper.js",
   "./src/zh-punct.js",
+  "./src/vendor/msal/msal-browser.min.js",
   "./src/vendor/my-rime/worker.js",
   "./src/vendor/my-rime/dist/rime.js",
   "./src/vendor/my-rime/dist/rime.wasm",
