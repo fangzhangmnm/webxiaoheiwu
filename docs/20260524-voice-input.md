@@ -4,7 +4,7 @@ Optional dictation layer for the editor. Two interchangeable backends behind
 one mic button + one PTT key. Default-off so a user who never wants voice
 never gets surprised by a mic permission prompt.
 
-The PTT key mechanics are big enough to live in [push-to-talk.md](push-to-talk.md);
+The PTT key mechanics are big enough to live in [20260524-push-to-talk.md](20260524-push-to-talk.md);
 this doc is about everything else: opt-in, backend choice, transcript
 post-processing, and the encryption interaction.
 
@@ -23,7 +23,7 @@ accident and got a mic permission prompt." Fix:
   enabled. Per-device because the user explicitly didn't want a OneDrive
   round-trip to gate the toggle.
 
-The encryption opt-in pattern in [encryption.md](encryption.md) was the
+The encryption opt-in pattern in [20260524-encryption.md](20260524-encryption.md) was the
 template — both rules are "if the user never asks, never show." Apply this
 to any feature that costs the user a permission grant, a paywall click, or
 even a long-running modal.
@@ -187,7 +187,7 @@ The mic button is `position: absolute` inside `.page`, `bottom: 14px;
 right: 14px`. On iOS, the soft keyboard pops without shrinking the layout
 viewport, so the button ends up *under* the keyboard.
 
-Fix lives in [editor-ux.md](editor-ux.md#ios-soft-keyboard-mic-button-collision)
+Fix lives in [20260524-editor-ux.md](20260524-editor-ux.md#ios-soft-keyboard-mic-button-collision)
 — `visualViewport` listener writes the keyboard height to a CSS
 `--kb-offset` variable, and the button's `bottom` is `calc(14px +
 var(--kb-offset, 0px))`.
@@ -198,7 +198,7 @@ Voice transcription ships audio to a cloud service (Web Speech → Google,
 Whisper → Groq/OpenAI). For docs that the user has chosen to encrypt
 on-OneDrive, this defeats the whole point. The mic button and PTT trigger
 both gate on `!state.activeDoc.encrypted || voiceProviderIsLocal()`. See
-[encryption.md](encryption.md#voice-input-on-encrypted-docs) for the
+[20260524-encryption.md](20260524-encryption.md#voice-input-on-encrypted-docs) for the
 predicate.
 
 A self-hosted Whisper backend is the planned long-term answer for

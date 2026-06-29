@@ -122,7 +122,7 @@ Don't use emoji for either. SVG inline, recolorable via `currentColor`.
 
 ## Block input when locked-no-key
 
-The textarea's `readOnly` attribute hides the caret (per [editor-ux.md](editor-ux.md)). Same trick as the read-only flag: block edits via `beforeinput`/`paste`/`cut`/`drop` event preventDefault. Extend the existing `blockIfLocked` handler to also check `encrypted && !isUnlocked()`. Same for the IME keydown gate and the PTT trigger.
+The textarea's `readOnly` attribute hides the caret (per [20260524-editor-ux.md](20260524-editor-ux.md)). Same trick as the read-only flag: block edits via `beforeinput`/`paste`/`cut`/`drop` event preventDefault. Extend the existing `blockIfLocked` handler to also check `encrypted && !isUnlocked()`. Same for the IME keydown gate and the PTT trigger.
 
 If you forget this, the user can type into a "blank" editor; the keystrokes have nowhere to land (autosave gated on `isUnlocked()`), so the text vanishes on next render. Brutally confusing.
 
@@ -170,4 +170,4 @@ Lesson: any generic "body or JSON?" helper should accept `ArrayBuffer.isView()` 
 ## Discipline reminders
 
 - **`APP_VERSION` (in `src/app.js`) and `CACHE_VERSION` (in `service-worker.js`) must be bumped together.** I bumped CACHE_VERSION three times during this work and forgot APP_VERSION every time. The user noticed when the settings drawer kept showing the old version label. Lockstep them in your head; consider adding a CI check.
-- **Don't write to the user's OneDrive folder, even for "obviously safe" cleanup.** See [working-with-this-user.md](working-with-this-user.md). Reading is fine; offering a `rm -rf` is not.
+- **Don't write to the user's OneDrive folder, even for "obviously safe" cleanup.** See [20260524-working-with-this-user.md](20260524-working-with-this-user.md). Reading is fine; offering a `rm -rf` is not.

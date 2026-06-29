@@ -4,9 +4,9 @@ PTT for voice dictation. The mic button works on every platform; PTT is the
 "don't move my hand off the keyboard" alternative. Most of this doc is a
 record of the dead ends — the final code is short, but the search wasn't.
 
-For voice backend architecture see [voice-input.md](voice-input.md); for
+For voice backend architecture see [20260524-voice-input.md](20260524-voice-input.md); for
 why we disable Quest's OS IME at all see
-[quest-ime.md](quest-ime.md#disabling-the-os-ime-for-the-textarea-inputmodenone).
+[20260524-quest-ime.md](20260524-quest-ime.md#disabling-the-os-ime-for-the-textarea-inputmodenone).
 
 ## Final shape
 
@@ -165,7 +165,7 @@ Things I tried, in order, none of which fully worked on Quest:
 
 The actual fix was elsewhere: **disable the OS IME on the editor entirely
 via `inputmode="none"`** (Quest-only, see
-[quest-ime.md](quest-ime.md#disabling-the-os-ime-for-the-textarea-inputmodenone)),
+[20260524-quest-ime.md](20260524-quest-ime.md#disabling-the-os-ime-for-the-textarea-inputmodenone)),
 and **switch the PTT key to a modifier (Ctrl)** so there's no character to
 compose in the first place. Both changes together; either alone is
 incomplete.

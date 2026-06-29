@@ -49,7 +49,7 @@ Not perfect (same-length edits slip through) but good enough for a writing app's
 
 ## Same-origin only
 
-Skip cross-origin requests entirely in the fetch handler. Microsoft Graph and `login.microsoftonline.com` must pass through to the browser. Filter on `url.origin !== self.location.origin` and `return` (no `event.respondWith`). (MSAL itself is now vendored — see [msal-onedrive.md](msal-onedrive.md) — so it's a same-origin request and gets precached like any other module.)
+Skip cross-origin requests entirely in the fetch handler. Microsoft Graph and `login.microsoftonline.com` must pass through to the browser. Filter on `url.origin !== self.location.origin` and `return` (no `event.respondWith`). (MSAL itself is now vendored — see [20260524-msal-onedrive.md](20260524-msal-onedrive.md) — so it's a same-origin request and gets precached like any other module.)
 
 ## skipWaiting message
 
@@ -63,4 +63,4 @@ Listen for `{type: "skip-waiting"}` so the page's "reload now" button can trigge
 
 - Don't precache `index.html` and rely on cache-busting query strings — bumping `CACHE_VERSION` is cleaner.
 - Don't try to do diff-merge on conflicting assets. Cache-first only works because we're not trying to be clever.
-- If you do depend on a CDN at runtime (we no longer do), don't precache it. CDN cache headers and your SW lifecycle don't compose well — let the browser HTTP cache handle them. The cleaner answer is to vendor the asset and precache it like any first-party file (this is what we ended up doing for MSAL — see [msal-onedrive.md](msal-onedrive.md)).
+- If you do depend on a CDN at runtime (we no longer do), don't precache it. CDN cache headers and your SW lifecycle don't compose well — let the browser HTTP cache handle them. The cleaner answer is to vendor the asset and precache it like any first-party file (this is what we ended up doing for MSAL — see [20260524-msal-onedrive.md](20260524-msal-onedrive.md)).

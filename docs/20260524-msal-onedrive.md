@@ -67,7 +67,7 @@ Return `{text, encoding}` so the caller can show the detected encoding if needed
 
 ## Optimistic concurrency
 
-`If-Match: <etag>` on every PUT/PATCH/MOVE. On 412, fetch fresh and use the sibling-copy pattern (see [sync-design.md](sync-design.md)). On 404, mark `remoteFound: false` and offer the "re-upload as new" flow rather than silently re-creating.
+`If-Match: <etag>` on every PUT/PATCH/MOVE. On 412, fetch fresh and use the sibling-copy pattern (see [20260524-sync-design.md](20260524-sync-design.md)). On 404, mark `remoteFound: false` and offer the "re-upload as new" flow rather than silently re-creating.
 
 ## graphFetch body must accept TypedArrays
 

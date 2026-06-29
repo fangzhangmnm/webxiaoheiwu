@@ -13,7 +13,7 @@ const AUTHORITY = "https://login.microsoftonline.com/common";
 // don't request User.Read.
 export const SCOPES = ["Files.ReadWrite.AppFolder", "offline_access"];
 
-// Vendored MSAL v3.27.0 — see docs/msal-onedrive.md for the vendoring
+// Vendored MSAL v3.27.0 — see docs/20260524-msal-onedrive.md for the vendoring
 // rationale. Resolved via import.meta.url so it works under any base path.
 const MSAL_URL = new URL("./vendor/msal/msal-browser.min.js", import.meta.url).href;
 
