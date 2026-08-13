@@ -12,3 +12,5 @@ node_modules/
 
 # Local notes (not for GitHub)
 journals/
+journal/
+.claude/
