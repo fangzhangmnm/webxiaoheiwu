@@ -7,7 +7,7 @@
 // at sign-in time; only the SDK shell is local.
 
 const AUTH_CLIENT_ID = "39d8afca-f47b-43cb-b962-0803f556520f";
-const AUTHORITY = "https://login.microsoftonline.com/common";
+const AUTHORITY = "https://login.microsoftonline.com/consumers";
 // Minimum scopes: AppFolder for sandboxed storage, offline_access for refresh
 // tokens. ID token alone supplies the email we show in the drawer, so we
 // don't request User.Read.
