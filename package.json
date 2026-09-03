@@ -1,0 +1,20 @@
+{
+  "name": "webxiaoheiwu",
+  "private": true,
+  "type": "module",
+  "comment": "依赖全 vendor：@internal/store + @internal/encryption 走 file:vendor-pkgs/*.tgz（tgz 物理在仓，断网可装；升级=库仓 scripts/pull-package.sh）。esbuild 把它们打进 dist bundle，部署零 node_modules。devDependencies 只供开发期（tsc --noEmit 类型门 + 借 WeebPaint 的 playwright 跑 boot smoke）。",
+  "scripts": {
+    "test": "node test/run.mjs",
+    "build": "bash scripts/build.sh",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke": "node test/boot-smoke.mjs",
+    "api": "bash scripts/gen-api.sh"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  },
+  "dependencies": {
+    "@internal/store": "file:./vendor-pkgs/internal-store-0.11.3.tgz",
+    "@internal/encryption": "file:./vendor-pkgs/internal-encryption-0.1.0.tgz"
+  }
+}

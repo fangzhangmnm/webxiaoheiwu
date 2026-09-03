@@ -1,0 +1,512 @@
+// 组合根：把 store 接缝 / 编辑器 / 抽屉 / IME / 语音 / 闲置锁屏 / PWA 壳接成一个 app。created 2026-09-03 by Claude Fable 5.1
+// 这里只有接线与事件编排，没有业务规则（规则住各模块头注释）。
+import { APP_VERSION } from "./version.ts";
+import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
+import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
+import { initErrorBadge, reportError, errorLog } from "./error-badge.ts";
+import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy, showBusy, hideBusy } from "./sheets.ts";
+import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
+import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, type VerifierRecord } from "./crypto-state.ts";
+import { createEditor } from "./editor.ts";
+import { createDrawer } from "./drawer.ts";
+import { initIdleGate } from "./idle-gate.ts";
+import { initPwaShell } from "./pwa-shell.ts";
+import { NaturalCodeIME, type UserDictDump } from "./ime.ts";
+import { isSpeechSupported, SpeechSession, type VoiceSession, type VoiceState } from "./voice/speech.ts";
+import { isWhisperSupported, WhisperSession, type WhisperProvider } from "./voice/whisper.ts";
+import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
+import { importLegacyPrefsAndDict, importLegacyEncrypted, countLegacyEncrypted, legacyEncryptedImported } from "./legacy-import.ts";
+import { parseDocName } from "./doc-model.ts";
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+
+// ── 早期初始化（DOM 已就绪：module 默认 deferred）──
+initI18n();
+const saveStatusEl = $("saveStatus");
+function setStatus(text: string, opts: { error?: boolean; unsynced?: boolean } = {}): void {
+  saveStatusEl.textContent = text;
+  saveStatusEl.classList.toggle("error", !!opts.error);
+  saveStatusEl.classList.toggle("unsynced", !!opts.unsynced);
+}
+initErrorBadge({ status: (text) => setStatus(text), dismissHint: () => t("err.dismissHint") });
+initSheets({ ok: t("common.ok"), cancel: t("common.cancel") });
+console.log("[xhw] build:", APP_VERSION);
+$("settingsBuild").textContent = APP_VERSION;
+
+const editorEl = $<HTMLTextAreaElement>("editor");
+const titleInput = $<HTMLInputElement>("titleInput");
+if (IS_QUEST_BROWSER) { editorEl.setAttribute("inputmode", "none"); titleInput.setAttribute("inputmode", "none"); }
+if (window.visualViewport) {   // iOS 软键盘：把键盘高度暴露成 CSS 变量，麦克风钮往上挪
+  const vv = window.visualViewport;
+  const upd = () => document.documentElement.style.setProperty("--kb-offset", `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
+  vv.addEventListener("resize", upd); vv.addEventListener("scroll", upd); upd();
+}
+
+// ── 密码政策接线（弹窗 = 输入 sheet；verifier 住 synced-app-state）──
+wireCryptoState({
+  prompt: (o) => openInputSheet(o.title, {
+    message: o.message, password: true, confirmField: o.confirmField, error: o.error, okLabel: o.okLabel,
+    validate: o.confirmField ? (v, v2) => (v !== v2 ? t("pw.mismatch") : null) : undefined,
+  }),
+  verifiers: { get: () => (appState.getItem("passwordVerifier") as VerifierRecord | undefined) ?? null, set: (rec) => appState.setItem("passwordVerifier", rec) },
+});
+const ensureUnlocked = () => cryptoEnsureUnlocked({
+  unlockTitle: t("pw.unlockTitle"), unlockHint: t("pw.unlockHint"), setupTitle: t("pw.setupTitle"), setupHint: t("pw.setupHint"),
+  wrong: t("pw.wrong"), mismatch: t("pw.mismatch"), tooShort: t("pw.tooShort"), okUnlock: t("pw.unlock"), okSetup: t("pw.set"),
+});
+
+// ── 编辑器 / 抽屉 ──
+const ime = new NaturalCodeIME();
+const editor = createEditor({
+  editor: editorEl, titleInput, wordCount: $("wordCount"), setStatus,
+  isSignedIn: () => auth.isSignedIn(),
+  onDocChanged: () => { renderTopbar(); drawer.refresh(); rememberLastActive(); },
+  ensureUnlocked,
+});
+const drawer = createDrawer({
+  drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
+  docList: $("docList"), docListEmpty: $("docListEmpty"), docActions: $("drawerActions"), trashActions: $("trashActions"), settingsView: $("settingsView"),
+  activeName: () => editor.state.name,
+  onOpenDoc: async (name) => { await editor.open(name); },
+  onActiveTrashed: async () => { await editor.flushLocal(); editor.clear(); },
+  onSettingsShown: () => renderSettings(),
+  focusEditor: () => editorEl.focus(),
+  setStatus,
+});
+
+// ── 顶栏（加密钮 / 只读钮）──
+const cryptoToggle = $<HTMLButtonElement>("cryptoToggle");
+const lockToggle = $<HTMLButtonElement>("lockToggle");
+const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`; };
+function renderTopbar(): void {
+  const st = editor.state;
+  const hasDoc = !!st.name || !!st.pendingDate;
+  cryptoToggle.hidden = !hasDoc;
+  useIcon(cryptoToggle, st.encrypted ? "lock" : "unlock");
+  cryptoToggle.setAttribute("data-encrypted", st.encrypted ? "true" : "false");
+  cryptoToggle.title = st.encrypted ? (st.locked ? t("top.unlockDoc") : t("top.decryptDoc")) : t("top.encryptDoc");
+  cryptoToggle.setAttribute("aria-label", cryptoToggle.title);
+  lockToggle.hidden = !st.name || st.locked;
+  useIcon(lockToggle, st.readOnly ? "edit-disabled" : "edit-enabled");
+  lockToggle.title = st.readOnly ? t("top.readOnlyOff") : t("top.readOnlyOn");
+  lockToggle.setAttribute("aria-label", lockToggle.title);
+  renderMicVisibility();
+}
+cryptoToggle.addEventListener("click", () => {
+  void editor.toggleEncryption(
+    () => openConfirmSheet(t("enc.decryptTitle"), t("enc.decryptWarning"), { danger: true, okLabel: t("enc.decryptAction"), warning: true }),
+    withBusy,
+  );
+});
+lockToggle.addEventListener("click", () => editor.toggleReadOnly());
+
+// ── 跨设备 lastActive 指针（Separated 模式：只在冷启动尊重远端，不在 session 中途切）──
+function rememberLastActive(): void {
+  if (!editor.state.name || !auth.isSignedIn()) return;
+  appState.setItem("lastActive", { name: editor.state.name, savedAt: Date.now(), device: deviceLabel() });
+}
+function deviceLabel(): string {
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes("quest") || ua.includes("oculusbrowser")) return "Quest";
+  if (ua.includes("ipad")) return "iPad"; if (ua.includes("iphone")) return "iPhone"; if (ua.includes("android")) return "Android";
+  return "PC";
+}
+
+// ── IME 接线 ──
+const imeStatus = $("imeStatus");
+const candidateBar = $("candidateBar");
+let shiftCleanPress = false;
+function renderImeState(): void {
+  const s = ime.getState();
+  imeStatus.textContent = !s.enabled ? t("ime.system") : `${s.engine === "rime-double_pinyin" ? "Natural Code" : "Natural Code (fallback)"} · ${s.asciiMode ? t("ime.modeEn") : t("ime.modeZh")}`;
+  if (!s.enabled || !s.buffer) { candidateBar.classList.add("hidden"); candidateBar.innerHTML = ""; return; }
+  candidateBar.classList.remove("hidden");
+  const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+  candidateBar.innerHTML = `<span class="buffer-chip">${esc(s.buffer)}</span>` + s.candidates.slice(0, 9).map((w, i) => `<span class="candidate-chip"><span class="index">${i + 1}</span>${esc(w)}</span>`).join("");
+}
+async function toggleIme(): Promise<void> {
+  if (!ime.enabled) {
+    if (!ime.initialized) { imeStatus.textContent = t("ime.loading"); await ime.initialize(); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
+    ime.enabled = true;
+  } else { ime.enabled = false; ime.resetComposition(); }
+  deviceKvSet("imeEnabled", ime.enabled ? "1" : "0");
+  renderImeState();
+}
+imeStatus.addEventListener("click", () => { void toggleIme(); });
+
+function insertAtCursor(target: HTMLTextAreaElement | HTMLInputElement, text: string): void {
+  const start = target.selectionStart ?? target.value.length, end = target.selectionEnd ?? target.value.length;
+  target.value = target.value.slice(0, start) + text + target.value.slice(end);
+  try { target.selectionStart = target.selectionEnd = start + text.length; } catch { /* ignore */ }
+}
+function stripGhostBuffer(target: HTMLTextAreaElement | HTMLInputElement, consumed: string): void {
+  if (!consumed) return;
+  const start = target.selectionStart, end = target.selectionEnd;
+  if (start == null || start !== end || start < consumed.length) return;
+  const before = target.value.slice(0, start);
+  if (!before.endsWith(consumed)) return;
+  target.value = before.slice(0, -consumed.length) + target.value.slice(end);
+  try { target.selectionStart = target.selectionEnd = start - consumed.length; } catch { /* ignore */ }
+}
+function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
+  const node: HTMLElement = el;   // 联合类型上 addEventListener 的重载退化成 Event；收窄到 HTMLElement 拿回 KeyboardEvent
+  node.addEventListener("keydown", async (event: KeyboardEvent) => {
+    if (event.key === "Shift") {
+      if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && ime.enabled) shiftCleanPress = true;
+      return;
+    }
+    shiftCleanPress = false;
+    if (!editor.canEdit()) return;
+    const r = await ime.onKeydown(event);
+    if (r.type === "commit") {
+      stripGhostBuffer(el, r.consumedBuffer);
+      insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
+      if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
+      void maybePushUserDict();
+    }
+    renderImeState();
+  });
+  node.addEventListener("keyup", async (event: KeyboardEvent) => {
+    if (event.key !== "Shift" || !shiftCleanPress) return;
+    shiftCleanPress = false;
+    const r = await ime.toggleAsciiMode();
+    if (r.type === "commit") {
+      stripGhostBuffer(el, r.consumedBuffer);
+      insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
+      if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
+    }
+    renderImeState();
+  });
+  node.addEventListener("blur", () => { shiftCleanPress = false; });
+  node.addEventListener("beforeinput", (event: Event) => {
+    if (!ime.isComposing()) return;
+    const ie = event as InputEvent;
+    if (ie.inputType !== "insertText" || !ie.data) return;
+    if (/^[a-z0-9 ]$/i.test(ie.data)) event.preventDefault();
+  });
+}
+setupImeOn(editorEl); setupImeOn(titleInput);
+
+// RIME 用户词库 ↔ collection（事件驱动节流；idle/unload 无条件 flush）
+let lastDictPushAt = 0, dictPushInFlight = false;
+async function pushUserDict(): Promise<void> {
+  if (dictPushInFlight || !ime.initialized) return;
+  dictPushInFlight = true;
+  try { const dump = await ime.dumpUserDir(); if (dump?.files?.length) { rimeDict.setItem("dump", { ...dump, savedAt: Date.now(), device: deviceLabel() }); lastDictPushAt = Date.now(); } }
+  finally { dictPushInFlight = false; }
+}
+function maybePushUserDict(): Promise<void> { return Date.now() - lastDictPushAt < USER_DICT_PUSH_INTERVAL_MS ? Promise.resolve() : pushUserDict(); }
+let dictRestoredSavedAt = 0;
+async function pullUserDict(): Promise<void> {
+  const dump = rimeDict.getItem<UserDictDump>("dump");
+  if (!dump?.files?.length || !ime.initialized) return;
+  if ((dump.savedAt ?? 0) <= dictRestoredSavedAt) return;
+  dictRestoredSavedAt = dump.savedAt ?? Date.now();
+  await ime.restoreUserDir(dump);
+}
+rimeDict.onChange("dump", () => { void pullUserDict(); });
+
+// ── 语音 ──
+const micButton = $<HTMLButtonElement>("micButton");
+let voiceEnabled = deviceKvGet("voiceEnabled") === "1";
+type VoiceProviderName = "webspeech" | WhisperProvider | "selfhosted";
+const voiceProvider = (): VoiceProviderName => { const p = prefs.getItem<string>("voiceProvider"); return p === "groq" || p === "openai" || p === "selfhosted" ? p : "webspeech"; };
+const voiceProviderIsLocal = () => voiceProvider() === "selfhosted";
+const whisperConfig = () => {
+  const p = voiceProvider();
+  if (p !== "groq" && p !== "openai") return null;
+  const key = prefs.getItem<string>(p === "groq" ? "voiceGroqKey" : "voiceOpenaiKey") ?? "";
+  return { provider: p, key, vocab: prefs.getItem<string>("voiceVocab") ?? "" };
+};
+const onVoiceInsert = () => { editor.noteExternalEdit(); idle.poke(); };
+const onVoiceState = (next: VoiceState, error?: unknown) => {
+  micButton.setAttribute("data-state", next);
+  if (next === "recording" || next === "listening") setStatus(t("voice.recording"));
+  else if (next === "transcribing") setStatus(t("voice.transcribing"));
+  else if (next === "error" && error) { const raw = error instanceof Error ? error.message : String(error); setStatus(t("voice.failed", { e: raw === "missing-key" ? t("voice.missingKey") : raw }), { error: true }); }
+  else if (next === "idle") { const txt = saveStatusEl.textContent; if (txt === t("voice.recording") || txt === t("voice.transcribing")) setStatus(editor.statusForDoc()); }
+};
+const speechSession: VoiceSession | null = isSpeechSupported() ? new SpeechSession({ target: editorEl, onChange: onVoiceInsert, onState: onVoiceState }) : null;
+const whisperSession: VoiceSession | null = isWhisperSupported() ? new WhisperSession({ target: editorEl, getConfig: whisperConfig, onChange: onVoiceInsert, onState: onVoiceState }) : null;
+function activeVoiceBackend(): VoiceSession | null {
+  if (!voiceEnabled) return null;
+  const p = voiceProvider();
+  if (p === "webspeech") return speechSession;
+  if (p === "groq" || p === "openai") return whisperSession;
+  return null;
+}
+function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
+function renderMicVisibility(): void {
+  const st = editor.state;
+  const hidden = !activeVoiceBackend() || (!st.name && !st.pendingDate) || st.readOnly || st.locked;
+  micButton.hidden = hidden;
+  if (hidden) return;
+  const blocked = st.encrypted && !voiceProviderIsLocal();
+  micButton.classList.toggle("disabled", blocked);
+  micButton.title = blocked ? t("voice.blockedEncrypted") : t("voice.mic");
+}
+micButton.addEventListener("click", () => {
+  if (!editor.canEdit()) return;
+  if (editor.state.encrypted && !voiceProviderIsLocal()) { setStatus(t("voice.blockedEncrypted"), { error: true }); return; }
+  const backend = activeVoiceBackend(); if (!backend) return;
+  if (ime.isComposing()) { ime.resetComposition(); renderImeState(); }
+  editorEl.focus();
+  backend.toggle(pickSpeechLang());
+});
+editorEl.addEventListener("input", () => { speechSession?.notifyExternalInput(); whisperSession?.notifyExternalInput(); });
+editorEl.addEventListener("pointerdown", () => { if (speechSession?.state === "listening") speechSession.abort(); if (whisperSession?.state === "recording") whisperSession.abort(); });
+
+// Left Ctrl push-to-talk（docs/20260524-push-to-talk.md 终形：keydown 立即起录，250ms 门决定留/丢，其它键 = 和弦 → 弃）
+let pttBackend: VoiceSession | null = null, pttCommitted = false, pttTimer: ReturnType<typeof setTimeout> | null = null;
+const isPttKey = (e: KeyboardEvent) => e.code === "ControlLeft";
+function pttAbort(): void { if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } pttBackend?.abort(); pttBackend = null; pttCommitted = false; }
+document.addEventListener("keydown", (event) => {
+  if (pttBackend && !isPttKey(event)) { pttAbort(); return; }
+  if (!isPttKey(event) || event.repeat || event.shiftKey || event.altKey || event.metaKey) return;
+  if (document.activeElement !== editorEl || !editor.canEdit()) return;
+  if (editor.state.encrypted && !voiceProviderIsLocal()) return;
+  if (pttBackend) return;
+  const backend = activeVoiceBackend();
+  if (!backend || backend.state !== "idle") return;
+  pttBackend = backend; pttCommitted = false;
+  void backend.start(pickSpeechLang());
+  pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; }, PTT_HOLD_MS);
+}, { capture: true });
+document.addEventListener("keyup", (event) => {
+  if (!isPttKey(event) || !pttBackend) return;
+  if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; }
+  if (pttCommitted) pttBackend.stop(); else pttBackend.abort();
+  pttBackend = null; pttCommitted = false;
+});
+
+// ── 阅读节奏 ──
+function applyReadingMode(mode: string | undefined): void {
+  const next = mode === "classic" ? "classic" : "novel";
+  document.body.classList.toggle("reading-classic", next === "classic");
+  for (const opt of document.querySelectorAll<HTMLElement>("#readingModePicker .reading-mode-option")) {
+    const sel = opt.dataset.mode === next; opt.classList.toggle("is-selected", sel);
+    const input = opt.querySelector("input"); if (input) input.checked = sel;
+  }
+}
+$("readingModePicker").addEventListener("change", (event) => {
+  const v = (event.target as HTMLInputElement | null)?.value;
+  if (v !== "novel" && v !== "classic") return;
+  applyReadingMode(v); prefs.setItem("readingMode", v);
+});
+prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("readingMode")));
+
+// ── 设置视图 ──
+const authRow = $("authRow");
+function renderAuthRow(): void {
+  const stt = auth.getAuthState();
+  authRow.innerHTML = "";
+  if (stt.signedIn && stt.account) {
+    const label = (stt.account as { username?: string; name?: string }).username || (stt.account as { name?: string }).name || t("auth.signedIn");
+    const span = document.createElement("span"); span.className = "auth-account"; span.title = label; span.textContent = t("auth.signedInAs", { name: label });
+    authRow.appendChild(span);
+    if (isUnlocked()) { const b = document.createElement("button"); b.className = "auth-action"; b.textContent = t("auth.lockCrypto"); b.title = t("auth.lockCryptoHint"); b.addEventListener("click", () => { void lockCryptoNow(); }); authRow.appendChild(b); }
+    const out = document.createElement("button"); out.className = "auth-action"; out.textContent = t("auth.signOut"); out.addEventListener("click", () => { void onSignOut(); }); authRow.appendChild(out);
+    return;
+  }
+  const btn = document.createElement("button"); btn.className = "auth-action primary"; btn.textContent = t("auth.signIn");
+  btn.addEventListener("click", () => { void onSignIn(); });
+  authRow.appendChild(btn);
+}
+async function onSignIn(): Promise<void> {
+  await editor.flushLocal();
+  setStatus(t("auth.redirecting"));
+  try { void requestStoragePersistence(); await auth.signIn({ prompt: "select_account" }); }   // 手势里：persist 申请 + 账号选择器（user 2026-08-23 建议）
+  catch (e) { reportError(e); setStatus(t("auth.signInFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+}
+async function onSignOut(): Promise<void> {
+  if (!(await openConfirmSheet(t("auth.signOutTitle"), t("auth.signOutMsg")))) return;
+  await editor.flushLocal();
+  try { await flushCollections(); cryptoLock(); await auth.signOut(); setStatus(t("auth.signedOut")); }
+  catch (e) { reportError(e); }
+  renderAuthRow(); renderTopbar();
+}
+async function lockCryptoNow(): Promise<void> {
+  await editor.flushLocal();    // 先把最后几秒的字加密落盘，再丢密码
+  cryptoLock();
+  if (editor.state.name && editor.state.encrypted) await editor.reload(editor.state.name);
+  renderAuthRow(); renderTopbar(); drawer.refresh();
+  setStatus(t("enc.lockedNow"));
+}
+
+const voiceEnabledToggle = $<HTMLInputElement>("voiceEnabledToggle");
+const voiceProviderSelect = $<HTMLSelectElement>("voiceProviderSelect");
+const voiceKeyInput = $<HTMLInputElement>("voiceKeyInput");
+const voiceVocabInput = $<HTMLTextAreaElement>("voiceVocabInput");
+function renderVoiceConfig(): void {
+  voiceEnabledToggle.checked = voiceEnabled;
+  $("voiceConfigBackend").hidden = !voiceEnabled;
+  const p = voiceProvider(); voiceProviderSelect.value = p === "selfhosted" ? "webspeech" : p;
+  renderVoiceKeyField(voiceProviderSelect.value);
+  voiceVocabInput.value = prefs.getItem<string>("voiceVocab") ?? "";
+  $("voiceConfigHint").textContent = auth.isSignedIn() ? t("voice.hintSynced") : t("voice.hintSignIn");
+}
+function renderVoiceKeyField(provider: string): void {
+  const keyed = provider === "groq" || provider === "openai";
+  $("voiceKeyField").hidden = !keyed; $("voiceVocabField").hidden = !keyed;
+  if (!keyed) return;
+  $("voiceKeyLabel").textContent = provider === "openai" ? "OpenAI key" : "Groq key";
+  voiceKeyInput.placeholder = provider === "openai" ? "sk-..." : "gsk_...";
+  voiceKeyInput.value = prefs.getItem<string>(provider === "openai" ? "voiceOpenaiKey" : "voiceGroqKey") ?? "";
+}
+voiceEnabledToggle.addEventListener("change", () => { voiceEnabled = voiceEnabledToggle.checked; deviceKvSet("voiceEnabled", voiceEnabled ? "1" : "0"); renderVoiceConfig(); renderMicVisibility(); });
+voiceProviderSelect.addEventListener("change", () => renderVoiceKeyField(voiceProviderSelect.value));
+$("voiceConfigSaveButton").addEventListener("click", () => {
+  const p = voiceProviderSelect.value;
+  prefs.setItem("voiceProvider", p);
+  if (p === "groq") prefs.setItem("voiceGroqKey", voiceKeyInput.value.trim());
+  if (p === "openai") prefs.setItem("voiceOpenaiKey", voiceKeyInput.value.trim());
+  prefs.setItem("voiceVocab", voiceVocabInput.value.trim());
+  const btn = $("voiceConfigSaveButton"); const prev = btn.textContent; btn.textContent = t("common.saved");
+  setTimeout(() => { btn.textContent = prev; }, 1200);
+  renderMicVisibility();
+});
+
+const langSelect = $<HTMLSelectElement>("langSelect");
+for (const l of LANGS) { const o = document.createElement("option"); o.value = l; o.textContent = LANG_NAME[l]; langSelect.appendChild(o); }
+langSelect.value = lang();
+langSelect.addEventListener("change", () => setLang(langSelect.value as Lang));
+
+const legacySection = $("legacySection");
+async function renderLegacySection(): Promise<void> {
+  legacySection.hidden = true;
+  if (!auth.isSignedIn() || legacyEncryptedImported()) return;
+  const n = await countLegacyEncrypted();
+  if (!n) return;
+  legacySection.hidden = false;
+  $("legacyCount").textContent = t("legacy.found", { n });
+}
+$("legacyImportButton").addEventListener("click", () => { void onLegacyImport(); });
+async function onLegacyImport(): Promise<void> {
+  if (!(await ensureUnlocked())) return;
+  const old = await openInputSheet(t("legacy.oldPasswordTitle"), { message: t("legacy.oldPasswordHint"), password: true, okLabel: t("legacy.importAction") });
+  if (old == null) return;
+  drawer.close();
+  showBusy(t("legacy.importing"), "");
+  try {
+    const r = await importLegacyEncrypted(old, (p) => showBusy(t("legacy.importing"), `${p.done}/${p.total}`));
+    if (r.status === "wrong-password") setStatus(t("pw.wrong"), { error: true });
+    else if (r.status === "no-setup" || r.status === "nothing") setStatus(t("legacy.nothing"));
+    else setStatus(t("legacy.done", { n: r.imported, failed: r.failed.length }), { error: r.failed.length > 0 });
+  } catch (e) { reportError(e); }
+  finally { hideBusy(); }
+}
+
+$("forceUpdateButton").addEventListener("click", () => {
+  void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await editor.flushLocal(); await flushCollections(); await shell.forceReset(); } })();
+});
+$("diagButton").addEventListener("click", () => {
+  const pre = $("diagLog"); pre.hidden = !pre.hidden; pre.textContent = errorLog().join("\n") || t("settings.diagEmpty");
+});
+function renderSettings(): void { renderAuthRow(); renderVoiceConfig(); void renderLegacySection(); }
+
+// ── 抽屉按钮 ──
+$("menuButton").addEventListener("click", () => { if (drawer.currentView() === "closed") drawer.open("active"); else drawer.close(); });
+$("drawerCloseButton").addEventListener("click", () => drawer.close());
+$("drawerBackButton").addEventListener("click", () => drawer.open("active"));
+$("drawerBackdrop").addEventListener("click", () => drawer.close());
+$("newDocButton").addEventListener("click", () => { void editor.newDoc().then(() => drawer.close()); });
+$("openTrashButton").addEventListener("click", () => drawer.open("trash"));
+$("openSettingsButton").addEventListener("click", () => drawer.open("settings"));
+$("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
+$("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && drawer.currentView() !== "closed") { drawer.close(); return; }
+  if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) {
+    event.preventDefault();
+    saveStatusEl.classList.add("flash"); setTimeout(() => saveStatusEl.classList.remove("flash"), 500);
+    void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
+    void editor.pushNow();
+  }
+});
+
+// ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
+async function resumeSync(): Promise<void> {
+  if (!auth.isSignedIn()) return;
+  setStatus(t("st.syncing"));
+  await editor.pushNow();
+  await requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
+  await editor.refreshIfClean();
+  await reconcileCollections();
+  drawer.refresh();
+  setStatus(editor.statusForDoc());
+}
+const idle = initIdleGate({
+  overlay: $("idleOverlay"),
+  onIdle: () => { if (auth.isSignedIn()) { void editor.pushNow(); void pushUserDict(); rememberLastActive(); } else void editor.flushLocal(); },
+  onResume: resumeSync,
+  focusEditor: () => editorEl.focus(),
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { void editor.flushLocal().then(() => { if (auth.isSignedIn()) return editor.pushNow(); }); void pushUserDict(); void flushCollections(); }
+});
+window.addEventListener("pagehide", () => { void editor.flushLocal(); void flushCollections(); });
+window.addEventListener("online", () => { setStatus(t("st.online")); void resumeSync(); });
+setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) void editor.refreshIfClean(); }, FOREGROUND_POLL_MS);
+
+// ── PWA 壳 ──
+const updateToast = $("updateToast");
+const shell = initPwaShell({
+  onUpdateAvailable: () => updateToast.classList.remove("hidden"),
+  onForeground: () => { if (!idle.isShown()) { void editor.refreshIfClean(); void reconcileCollections().then(() => drawer.refresh()); } },
+  onBeforeReload: async () => { await editor.flushLocal(); await flushCollections(); },
+});
+$("updateReloadButton").addEventListener("click", () => { void shell.reload(); });
+$("updateDismissButton").addEventListener("click", () => updateToast.classList.add("hidden"));
+if (shell.isDevRoute) $("settingsBuild").textContent += " · dev";
+
+// ── boot ──
+async function boot(): Promise<void> {
+  await initCollections();
+  applyReadingMode(prefs.getItem<string>("readingMode"));
+  if (deviceKvGet("imeEnabled") === "1") { await ime.initialize(); ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }
+  renderImeState();
+  drawer.subscribe();
+
+  // auth（后台探测，不挡首帧）
+  auth.onAuthChanged((st) => { renderAuthRow(); renderTopbar(); if (st.signedIn) void afterSignIn(); });
+  void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning"));
+
+  // 续写：本机上次打开的稿 → 否则最新一篇 → 否则新稿
+  const last = editor.lastOpenName();
+  if (last) await editor.open(last);
+  else {
+    const first = await new Promise<string | null>((resolve) => { const stop = setTimeout(() => resolve(null), 1500); const items = drawer.items(); if (items.length) { clearTimeout(stop); resolve(items[0]!.name); } });
+    if (first) await editor.open(first); else await editor.newDoc();
+  }
+  renderTopbar();
+  setStatus(editor.statusForDoc());
+  editorEl.focus();
+}
+let signInHandled = false;
+async function afterSignIn(): Promise<void> {
+  if (signInHandled) return;
+  signInHandled = true;
+  try {
+    await reconcileCollections();
+    const imported = await importLegacyPrefsAndDict();
+    if (imported.dict) await pullUserDict();
+    if (imported.voice) renderVoiceConfig();
+    void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
+    // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切
+    const remote = appState.getItem<{ name?: string }>("lastActive");
+    if (remote?.name && remote.name !== editor.state.name && !editor.isDirty() && !editor.state.pendingDate) {
+      const known = drawer.findByName(remote.name);
+      if (known && !known.encrypted) await editor.open(remote.name);
+    }
+    await editor.refreshIfClean();
+    drawer.refresh();
+  } catch (e) { reportError(e, "warning"); }
+}
+
+window.addEventListener("error", (event) => { reportError(new Error(`[window] ${(event.message || "").slice(0, 160)}`)); });
+window.addEventListener("unhandledrejection", (event) => { reportError(event.reason instanceof Error ? event.reason : new Error(String(event.reason))); });
+
+void boot();
+
+// 供 boot smoke / 调试台探针（非 API）
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet };

@@ -1,0 +1,45 @@
+export interface StatusOpts {
+    error?: boolean;
+    unsynced?: boolean;
+}
+export interface EditorDeps {
+    editor: HTMLTextAreaElement;
+    titleInput: HTMLInputElement;
+    wordCount: HTMLElement;
+    setStatus: (text: string, opts?: StatusOpts) => void;
+    isSignedIn: () => boolean;
+    /** 当前稿变了（身份/加密态/只读态）→ 抽屉/顶栏重画。 */
+    onDocChanged: () => void;
+    /** 解锁循环（busy 外）；返回是否已解锁。 */
+    ensureUnlocked: () => Promise<boolean>;
+}
+export interface EditorState {
+    name: string | null;
+    pendingDate: string | null;
+    encrypted: boolean;
+    locked: boolean;
+    readOnly: boolean;
+    unavailable: boolean;
+}
+export declare function createEditor(d: EditorDeps): {
+    state: EditorState;
+    open: (name: string, opts?: {
+        keepCaret?: boolean;
+    }) => Promise<boolean>;
+    newDoc: () => Promise<void>;
+    clear: () => void;
+    reload: (name: string) => Promise<void>;
+    flushLocal: () => Promise<void>;
+    pushNow: () => Promise<void>;
+    refreshIfClean: () => Promise<void>;
+    toggleReadOnly: () => void;
+    toggleEncryption: (confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
+    noteExternalEdit: () => void;
+    canEdit: () => boolean;
+    statusForDoc: () => string;
+    renderWordCount: () => void;
+    isDirty: () => boolean;
+    isUnlockedDoc: () => boolean;
+    lastOpenName: () => string | null;
+};
+export type Editor = ReturnType<typeof createEditor>;
