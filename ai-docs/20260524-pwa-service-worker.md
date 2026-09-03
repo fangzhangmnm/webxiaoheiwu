@@ -1,5 +1,8 @@
 # PWA service worker
 
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：`CACHE_VERSION`/`APP_VERSION` 双写制退役 → content-hash bundle（`scripts/build.sh`）+ `src/version.ts` 单一版本；SW 抄 WeebPaint 形（prod cache-first / dev network-first）；页面侧 4 路更新检测在 `src/pwa-shell.ts`。**仍有效**：不自动 reload、更新 toast。
+
+
 Pattern that worked for a single-author writing app served from GitHub Pages.
 
 ## Cache-first with background revalidate

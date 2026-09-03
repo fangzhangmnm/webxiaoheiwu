@@ -1,5 +1,8 @@
 # Sync design (OneDrive as SSOT)
 
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：同步层已整体换成 `@internal/store` 0.11.3（`src/app-store.ts` 单接缝）。**退役**：itemId(GUID) 身份、sibling-copy 冲突、手写 If-Match/412/list-merge/prefetch。**仍有效**：15s+30s 推送节律、idle 锁屏必复查、never trust remote filenames、编码探测。冲突现形 = 库 sheet（keepMine/takeCloud，败方进 .backup），见 adr/0003。
+
+
 Lessons from building the OneDrive sync layer for a local-first multi-doc editor.
 
 ## Model: cloud is SSOT, IDB is cache

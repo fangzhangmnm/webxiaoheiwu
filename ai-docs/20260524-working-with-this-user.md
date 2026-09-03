@@ -1,5 +1,8 @@
 # Working with this user
 
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：「ask before commit」已被家族规范取代（dev 自动 build+commit+push，prod 必问；user 2026-09-01/09-03 拍板「dev 自动 push，不要在这上面负担我」）。其余（no browser testing→现在有 headless smoke、never trust users、纯中文 UI、短回复、风险报告式）仍有效。
+
+
 Notes for future AI collaborators on this project. The user is the sole author of a Chinese novel-writing PWA and has a specific working style.
 
 ## Ask before committing

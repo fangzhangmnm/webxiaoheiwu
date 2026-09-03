@@ -1,5 +1,8 @@
 # Voice input (STT)
 
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：有效，实现 = `src/voice/`；`voice.json` → `synced-user-preference` collection（旧文件由 legacy-import 一次性搬，不改不删）；voiceEnabled 仍 per-device（device-kv）。
+
+
 Optional dictation layer for the editor. Two interchangeable backends behind
 one mic button + one PTT key. Default-off so a user who never wants voice
 never gets surprised by a mic permission prompt.

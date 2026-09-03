@@ -1,5 +1,8 @@
 # MSAL + OneDrive AppFolder integration
 
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：MSAL/Graph 全在 `@internal/store` 库内，app 零裸调用（`test/redline-guard.test.mjs` 守）。scope/authority 见 `src/config.ts`（AppFolder only；/consumers personal-only，家规 #6/#7）。**仍有效**：AppFolder 原则、signOut=clearCache、编码探测（现在在 `src/doc-model.ts`）。
+
+
 Hard-won notes from wiring Microsoft Graph into a static-hosted PWA.
 
 ## Scope: AppFolder only

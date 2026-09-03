@@ -1,5 +1,8 @@
 # Filename and sort conventions
 
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：全部有效，实现 = `src/doc-model.ts`（解析/生成/排序）+ `src/docs.ts`（碰撞后缀 `createDoc`/`renameDoc`）；`.trash/` 由库管（两端聚合回收站）。
+
+
 The naming scheme went through three iterations before landing.
 
 ## Final format: `YYYYMMDD title.txt`

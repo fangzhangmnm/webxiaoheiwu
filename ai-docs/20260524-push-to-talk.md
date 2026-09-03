@@ -1,5 +1,8 @@
 # Push-to-talk key design
 
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：有效，实现 = `src/app.ts` PTT 段。
+
+
 PTT for voice dictation. The mic button works on every platform; PTT is the
 "don't move my hand off the keyboard" alternative. Most of this doc is a
 record of the dead ends — the final code is short, but the search wasn't.
