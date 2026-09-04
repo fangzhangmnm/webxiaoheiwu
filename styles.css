@@ -1322,6 +1322,8 @@ body {
   border-color: var(--accent);
 }
 
+/* sheets.ts 用 class="hidden" 切换各部件（2026-09-03 修：之前只有 [hidden] 属性规则，导致「强制更新？」确认框也露出两个密码输入框） */
+.crypto-input.hidden, .crypto-hint.hidden, .crypto-error.hidden, .sheet-choices.hidden { display: none; }
 .crypto-input[hidden] {
   display: none;
 }

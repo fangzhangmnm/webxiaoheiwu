@@ -29,16 +29,6 @@ export declare const MODEL_CACHE_NAME = "pwa-models";
 export declare const ASR_WASM_DIR = "vendor/sherpa-onnx-wasm/";
 /** Quest 浏览器：编辑区 inputmode=none 关掉 OS IME 组合路径（docs/20260524-quest-ime.md）。 */
 export declare const IS_QUEST_BROWSER: boolean;
-/** v1 时代（≤v81）云端布局——只读遗留，新 app 永不写这些路径（legacy-import.ts 一次性读）。 */
-export declare const LEGACY: {
-    readonly ENC_FOLDER: ".enc";
-    readonly ENC_TRASH_FOLDER: ".enc/.trash";
-    readonly SALT_PATH: ".crypto/salt.json";
-    readonly VERIFIER_PATH: ".crypto/verifier.bin";
-    readonly VOICE_JSON: "voice.json";
-    readonly RIME_DICT: ".userdata/rime-user-dir.json";
-    readonly LAST_ACTIVE: ".userdata/last-active.json";
-};
 /** collection 名（云端 `.webxiaoheiwu/<name>.json`；库自动追加 .json）。 */
 export declare const COLLECTIONS: {
     readonly prefs: "synced-user-preference";

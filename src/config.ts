@@ -40,20 +40,9 @@ export const ASR_WASM_DIR = "vendor/sherpa-onnx-wasm/";
 /** Quest 浏览器：编辑区 inputmode=none 关掉 OS IME 组合路径（docs/20260524-quest-ime.md）。 */
 export const IS_QUEST_BROWSER = /OculusBrowser|Quest|Wolvic/i.test(globalThis.navigator?.userAgent ?? "");
 
-/** v1 时代（≤v81）云端布局——只读遗留，新 app 永不写这些路径（legacy-import.ts 一次性读）。 */
-export const LEGACY = {
-  ENC_FOLDER: ".enc",
-  ENC_TRASH_FOLDER: ".enc/.trash",
-  SALT_PATH: ".crypto/salt.json",
-  VERIFIER_PATH: ".crypto/verifier.bin",
-  VOICE_JSON: "voice.json",
-  RIME_DICT: ".userdata/rime-user-dir.json",
-  LAST_ACTIVE: ".userdata/last-active.json",
-} as const;
-
 /** collection 名（云端 `.webxiaoheiwu/<name>.json`；库自动追加 .json）。 */
 export const COLLECTIONS = {
   prefs: "synced-user-preference",   // 跨设备偏好：readingMode / voice provider+keys+vocab / lang
-  appState: "synced-app-state",      // 跨设备 app 态：lastActive 指针 / 密码 verifier / legacyImport 记账
+  appState: "synced-app-state",      // 跨设备 app 态：lastActive 指针 / 密码 verifier（旧 legacyImport.* 记账键为死数据，不读不删）
   rimeDict: "rime-user-dict",        // RIME 用户词库 dump（单 item "dump"，uat-LWW；可再生）
 } as const;

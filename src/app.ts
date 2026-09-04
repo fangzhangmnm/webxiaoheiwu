@@ -18,7 +18,6 @@ import { asr } from "./asr/engine.ts";
 import { MODELS, modelKeyFrom, type ModelKey } from "./asr/packs.ts";
 import { MODEL_SOURCE_DEFAULT } from "./config.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
-import { importLegacyPrefsAndDict, importLegacyEncrypted, countLegacyEncrypted, legacyEncryptedImported } from "./legacy-import.ts";
 import { parseDocName } from "./doc-model.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -382,38 +381,13 @@ for (const l of LANGS) { const o = document.createElement("option"); o.value = l
 langSelect.value = lang();
 langSelect.addEventListener("change", () => setLang(langSelect.value as Lang));
 
-const legacySection = $("legacySection");
-async function renderLegacySection(): Promise<void> {
-  legacySection.hidden = true;
-  if (!auth.isSignedIn() || legacyEncryptedImported()) return;
-  const n = await countLegacyEncrypted();
-  if (!n) return;
-  legacySection.hidden = false;
-  $("legacyCount").textContent = t("legacy.found", { n });
-}
-$("legacyImportButton").addEventListener("click", () => { void onLegacyImport(); });
-async function onLegacyImport(): Promise<void> {
-  if (!(await ensureUnlocked())) return;
-  const old = await openInputSheet(t("legacy.oldPasswordTitle"), { message: t("legacy.oldPasswordHint"), password: true, okLabel: t("legacy.importAction") });
-  if (old == null) return;
-  drawer.close();
-  showBusy(t("legacy.importing"), "");
-  try {
-    const r = await importLegacyEncrypted(old, (p) => showBusy(t("legacy.importing"), `${p.done}/${p.total}`));
-    if (r.status === "wrong-password") setStatus(t("pw.wrong"), { error: true });
-    else if (r.status === "no-setup" || r.status === "nothing") setStatus(t("legacy.nothing"));
-    else setStatus(t("legacy.done", { n: r.imported, failed: r.failed.length }), { error: r.failed.length > 0 });
-  } catch (e) { reportError(e); }
-  finally { hideBusy(); }
-}
-
 $("forceUpdateButton").addEventListener("click", () => {
   void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await editor.flushLocal(); await flushCollections(); await shell.forceReset(); } })();
 });
 $("diagButton").addEventListener("click", () => {
   const pre = $("diagLog"); pre.hidden = !pre.hidden; pre.textContent = errorLog().join("\n") || t("settings.diagEmpty");
 });
-function renderSettings(): void { renderAuthRow(); renderVoiceConfig(); void renderLegacySection(); }
+function renderSettings(): void { renderAuthRow(); renderVoiceConfig(); }
 
 // ── 抽屉按钮 ──
 $("menuButton").addEventListener("click", () => { if (drawer.currentView() === "closed") drawer.open("active"); else drawer.close(); });
@@ -499,9 +473,7 @@ async function afterSignIn(): Promise<void> {
   signInHandled = true;
   try {
     await reconcileCollections();
-    const imported = await importLegacyPrefsAndDict();
-    if (imported.dict) await pullUserDict();
-    if (imported.voice) renderVoiceConfig();
+    await pullUserDict();
     void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
     // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切
     const remote = appState.getItem<{ name?: string }>("lastActive");
@@ -520,4 +492,4 @@ window.addEventListener("unhandledrejection", (event) => { reportError(event.rea
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, asr, models: MODELS };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS };

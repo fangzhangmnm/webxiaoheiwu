@@ -21,8 +21,6 @@ import { looksLikeTextDoc } from "./doc-model.ts";
 const od = createOneDriveProvider({ clientId: CLIENT_ID, scopes: SCOPES, authority: AUTHORITY, msalUrl: MSAL_URL });
 /** OneDrive auth 面（signIn/signOut/isSignedIn/onAuthChanged）。 */
 export const auth: OneDriveAuth = od.auth;
-/** provider 低层面——**只给 legacy-import 一次性只读**旧布局用（.enc/.crypto/.userdata），其余一律走 store。 */
-export const legacyReadProvider: CloudProvider = od.provider;
 
 let _activeFileName: string | null = null;
 /** 当前打开的稿（全名）：cloud-gone 去抖 trash 绝不碰它。 */

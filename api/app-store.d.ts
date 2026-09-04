@@ -1,9 +1,7 @@
 import { requestStoragePersistence, isCached, isDirty } from "@internal/store";
-import type { Store, Collection, OneDriveAuth, CloudProvider } from "@internal/store";
+import type { Store, Collection, OneDriveAuth } from "@internal/store";
 /** OneDrive auth 面（signIn/signOut/isSignedIn/onAuthChanged）。 */
 export declare const auth: OneDriveAuth;
-/** provider 低层面——**只给 legacy-import 一次性只读**旧布局用（.enc/.crypto/.userdata），其余一律走 store。 */
-export declare const legacyReadProvider: CloudProvider;
 /** 当前打开的稿（全名）：cloud-gone 去抖 trash 绝不碰它。 */
 export declare function setActiveFileName(name: string | null): void;
 export declare function requireStore(): Store;

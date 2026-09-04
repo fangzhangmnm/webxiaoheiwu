@@ -8,6 +8,6 @@ ADR（决策与否决，防 re-litigate）：
 - [adr/0001](adr/0001-identity-is-path-name.md) 身份 = 路径/名
 - [adr/0002](adr/0002-encryption-via-internal-encryption.md) 加密走 @internal/encryption（标题可见性取舍）
 - [adr/0003](adr/0003-conflict-is-library-sheet-not-sibling-copy.md) 冲突 = 库 sheet + .backup
-- [adr/0004](adr/0004-legacy-v1-layout-read-only-import.md) v1 布局只读导入
+- [adr/0004](adr/0004-legacy-v1-layout-read-only-import.md) v1 布局只读导入（superseded 2026-09-03：不做 backward compatibility）
 
 v1 时代 how-doc（2026-05，顶部戳标明哪些仍有效）：sync-design · encryption · msal-onedrive · pwa-service-worker · filename-conventions · editor-ux · quest-ime · voice-input · push-to-talk · working-with-this-user。

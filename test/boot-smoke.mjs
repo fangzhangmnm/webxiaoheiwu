@@ -75,6 +75,16 @@ try {
     return await p;
   });
   check("choice sheet 可用", picked === 1, String(picked));
+  // 确认 sheet：只有标题+文案+两个钮，输入框必须真的不显示（2026-09-03 user 截图：「强制更新？」露出两个密码框）
+  const confirmShape = await page.evaluate(async () => {
+    const p = window.__xhw.confirm("t", "m");
+    await new Promise((r) => setTimeout(r, 50));
+    const disp = (id) => getComputedStyle(document.getElementById(id)).display;
+    const shape = { input: disp("sheetInput"), input2: disp("sheetInput2"), message: disp("sheetMessage"), choices: disp("sheetChoices") };
+    document.getElementById("sheetCancel").click();
+    return { ...shape, result: await p };
+  });
+  check("confirm sheet 形状：输入框隐藏、文案可见、取消→false", confirmShape.input === "none" && confirmShape.input2 === "none" && confirmShape.message !== "none" && confirmShape.choices === "none" && confirmShape.result === false, JSON.stringify(confirmShape));
   // 加密：设置密码（sheet 两次输入）→ 文档被加密（isEncrypted）
   const encOk = await page.evaluate(async () => {
     const st = window.__xhw.editor.state;

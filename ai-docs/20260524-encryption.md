@@ -1,6 +1,6 @@
 # Per-file encryption (AES-GCM)
 
-> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：容器换成 `@internal/encryption`（明文 zip 壳 + 7z AES-256，7-Zip 可开），云端 at-rest 名 = `YYYYMMDD 标题.txt.zip`（标题可见——与 v1 随机名不同，见 adr/0002）；统一密码 + verifier 记录住 synced collection；`.crypto/` `.enc/` 只读遗留（`src/legacy-import.ts` 一次性导入）。**仍有效**：威胁模型、不自动弹框、错密码不污染任何文件、解密需警告、加密稿禁云端语音、明文永不落持久层（库 seal 保证）。
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：容器换成 `@internal/encryption`（明文 zip 壳 + 7z AES-256，7-Zip 可开），云端 at-rest 名 = `YYYYMMDD 标题.txt.zip`（标题可见——与 v1 随机名不同，见 adr/0002）；统一密码 + verifier 记录住 synced collection；`.crypto/` `.enc/` 不读不删（2026-09-03 起不做 backward compatibility，adr/0004 superseded）。**仍有效**：威胁模型、不自动弹框、错密码不污染任何文件、解密需警告、加密稿禁云端语音、明文永不落持久层（库 seal 保证）。
 
 
 Optional per-doc encryption added on top of the existing sync layer. Goal: make encrypted drafts opaque to Microsoft server-side scanning, while a user who never touches the feature sees zero friction.

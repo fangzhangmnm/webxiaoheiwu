@@ -51,9 +51,6 @@ export const S = {
   "ui.voice.import":     { zh: "从文件导入…", en: "Import from file…" },
   "ui.voice.delete":     { zh: "删除语音包", en: "Delete voice pack" },
   "ui.voice.source":     { zh: "模型源（可换镜像；字节到手都先校验）", en: "Model source (any mirror; bytes are verified on arrival)" },
-  "ui.sec.legacy":       { zh: "旧版数据", en: "Legacy data" },
-  "ui.legacy.hint":      { zh: "旧版（v81 前）的加密稿还在 .enc/ 里。输入旧密码可一次性导入为新格式加密稿；旧文件不会被改动或删除。", en: "Encrypted drafts from the old app (pre-v81) are still in .enc/. Enter the old password to import them as new-format encrypted drafts; the old files are left untouched." },
-  "ui.legacy.import":    { zh: "导入旧加密稿…", en: "Import legacy encrypted drafts…" },
   "ui.sec.maintenance":  { zh: "维护", en: "Maintenance" },
   "ui.forceUpdate":      { zh: "强制更新（清缓存重启）", en: "Force update (clear cache & restart)" },
   "ui.diag":             { zh: "诊断日志", en: "Diagnostics" },
@@ -218,13 +215,6 @@ export const S = {
   "auth.lockCryptoHint": { zh: "清除内存中的密码", en: "Forget the password held in memory" },
 
   // ── 旧版导入 / 维护 ──
-  "legacy.found":        { zh: "发现 {n} 份旧版加密稿", en: "{n} legacy encrypted drafts found" },
-  "legacy.oldPasswordTitle": { zh: "旧版密码", en: "Old password" },
-  "legacy.oldPasswordHint": { zh: "输入旧版（v81 前）设置的加密密码。错了不会碰任何文件。", en: "Enter the encryption password used by the old app (pre-v81). A wrong password touches nothing." },
-  "legacy.importAction": { zh: "导入", en: "Import" },
-  "legacy.importing":    { zh: "正在导入旧加密稿…", en: "Importing legacy encrypted drafts…" },
-  "legacy.nothing":      { zh: "没有可导入的旧加密稿", en: "No legacy encrypted drafts to import" },
-  "legacy.done":         { zh: "已导入 {n} 份（失败 {failed}）", en: "Imported {n} ({failed} failed)" },
   "settings.forceUpdateTitle": { zh: "强制更新？", en: "Force update?" },
   "settings.forceUpdateMsg": { zh: "清掉 app 壳缓存并重启；文档缓存不受影响。需要联网。", en: "Clears the app shell cache and restarts; document cache is untouched. Requires network." },
   "settings.diagEmpty":  { zh: "（没有记录）", en: "(nothing logged)" },

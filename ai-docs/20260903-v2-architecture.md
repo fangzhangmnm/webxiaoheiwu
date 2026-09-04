@@ -14,7 +14,7 @@
 | 接缝 | `src/app-store.ts`（唯一 `@internal/store` 值级 import）· `src/store-ui.ts` · `src/encryption.ts`（唯一 `@internal/encryption` 值级 import）· `src/crypto-state.ts` | createStore 装配 + collections · StoreUI 回调束 · 加密器官 · 密码政策 |
 | 平台 | `src/pwa-shell.ts` `src/device-kv.ts` `src/error-badge.ts` `src/i18n/` `src/load-script.ts` | SW 注册+4 路更新 · localStorage 唯一器官 · 错误汇拢 · 文案 SSoT · 惰性 UMD 注入 |
 | 输入 | `src/ime.ts` `src/voice/local.ts` + `src/asr/{engine,worker,packs}.ts` | RIME 双拼 · 本机离线听写（sherpa-onnx WASM worker，硬规则 #8；详 20260903-offline-voice.md） |
-| 遗留 | `src/legacy-import.ts` | v1 布局一次性只读导入 |
+| 遗留 | （无）| v1 `.enc/` `.crypto/` `.userdata/` `voice.json` 不读不删（adr/0004 superseded，2026-09-03 不做 backward compatibility） |
 
 `scripts/build.sh` 守：tsc 门 · 接缝 lint（值级 import 只准两处；禁 deep import）· sprite 内联对账 · 裸中文扫描。`test/redline-guard.test.mjs` 守：接缝之外零裸 localStorage/IDB/MSAL/Graph。
 
@@ -26,7 +26,7 @@
 | 加密稿 | 同名，库透明容器；云端 at-rest `….txt.zip` | adr/0002；`crypt.ext="txt"`、peek 空（verifyPassword 靠它） |
 | 回收站 | 库 `.trash`（两端聚合）| v1 的 `.trash/*.txt` 直接可见 |
 | 跨设备偏好 | collection `synced-user-preference`：readingMode / voiceProvider（`local-sensevoice`｜`local-zh14m`；旧值 webspeech/groq/openai 落默认）；`voiceGroqKey`/`voiceOpenaiKey`/`voiceVocab` 为遗留死键（不读不删） | v1 `voice.json` 不再搬（2026-09-03） |
-| 跨设备 app 态 | collection `synced-app-state`：lastActive{name,savedAt,device} / passwordVerifier / legacyImport.* 记账 | lastActive 只在冷启动尊重（Separated 指针模式） |
+| 跨设备 app 态 | collection `synced-app-state`：lastActive{name,savedAt,device} / passwordVerifier（`legacyImport.*` 为死键） | lastActive 只在冷启动尊重（Separated 指针模式） |
 | RIME 用户词库 | collection `rime-user-dict` item `dump` | uat-LWW，可再生；2min 节流推、idle/unload flush |
 | per-device | device-kv：imeEnabled / voiceEnabled / voiceModelSource（模型源镜像，默认空=官方源）/ lang / last-open / readonly-names | user 拍板 IME/语音开关不跟云 |
 | 第三方派生缓存 | RIME worker 自持 IDB（词典下载缓存 + IDBFS /rime） | **需 user 追认**（家规 2026-08-15 逐案）；可再生 |
@@ -43,7 +43,7 @@ createStore 表态：`persistence:"app-managed"`（登录手势 / Ctrl+S 手势�
 |---|---|
 | IDB `WebXiaoHeiWu` 自研缓存，身份 = OneDrive itemId | 库 IDB `webxiaoheiwu.defaultStore`，身份 = 名；旧库不读不删（孤儿，几 MB） |
 | sibling-copy 冲突（「不要 diff」） | 库 sheet 二选一 + 败方 .backup（仍不 diff，adr/0003） |
-| `.enc/enc-*.bin` AES-GCM + `.crypto/salt.json` | 同名 `.txt.zip` 容器 + verifier 进 collection；旧件只读导入（adr/0004） |
+| `.enc/enc-*.bin` AES-GCM + `.crypto/salt.json` | 同名 `.txt.zip` 容器 + verifier 进 collection；旧件**不导入**（adr/0004 superseded 2026-09-03） |
 | `CACHE_VERSION`/`APP_VERSION` 双写 | content-hash bundle + `src/version.ts` |
 | 系统 `confirm()` ×5、emoji ×2 | in-app sheet；共享 sprite（缺 `settings`/`microphone` 已登记图标库 TODO，stopgap 烤字） |
 | 裸中文 | i18n SSoT（zh 默认，en 备）；logging 英文 |

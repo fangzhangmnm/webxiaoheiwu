@@ -168,18 +168,6 @@ export declare const S: {
         readonly zh: "模型源（可换镜像；字节到手都先校验）";
         readonly en: "Model source (any mirror; bytes are verified on arrival)";
     };
-    readonly "ui.sec.legacy": {
-        readonly zh: "旧版数据";
-        readonly en: "Legacy data";
-    };
-    readonly "ui.legacy.hint": {
-        readonly zh: "旧版（v81 前）的加密稿还在 .enc/ 里。输入旧密码可一次性导入为新格式加密稿；旧文件不会被改动或删除。";
-        readonly en: "Encrypted drafts from the old app (pre-v81) are still in .enc/. Enter the old password to import them as new-format encrypted drafts; the old files are left untouched.";
-    };
-    readonly "ui.legacy.import": {
-        readonly zh: "导入旧加密稿…";
-        readonly en: "Import legacy encrypted drafts…";
-    };
     readonly "ui.sec.maintenance": {
         readonly zh: "维护";
         readonly en: "Maintenance";
@@ -763,34 +751,6 @@ export declare const S: {
     readonly "auth.lockCryptoHint": {
         readonly zh: "清除内存中的密码";
         readonly en: "Forget the password held in memory";
-    };
-    readonly "legacy.found": {
-        readonly zh: "发现 {n} 份旧版加密稿";
-        readonly en: "{n} legacy encrypted drafts found";
-    };
-    readonly "legacy.oldPasswordTitle": {
-        readonly zh: "旧版密码";
-        readonly en: "Old password";
-    };
-    readonly "legacy.oldPasswordHint": {
-        readonly zh: "输入旧版（v81 前）设置的加密密码。错了不会碰任何文件。";
-        readonly en: "Enter the encryption password used by the old app (pre-v81). A wrong password touches nothing.";
-    };
-    readonly "legacy.importAction": {
-        readonly zh: "导入";
-        readonly en: "Import";
-    };
-    readonly "legacy.importing": {
-        readonly zh: "正在导入旧加密稿…";
-        readonly en: "Importing legacy encrypted drafts…";
-    };
-    readonly "legacy.nothing": {
-        readonly zh: "没有可导入的旧加密稿";
-        readonly en: "No legacy encrypted drafts to import";
-    };
-    readonly "legacy.done": {
-        readonly zh: "已导入 {n} 份（失败 {failed}）";
-        readonly en: "Imported {n} ({failed} failed)";
     };
     readonly "settings.forceUpdateTitle": {
         readonly zh: "强制更新？";
