@@ -12,7 +12,7 @@ import { verifyDocPassword, decryptDoc, encryptDoc, moveDoc, dirtyDocCount, dele
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import { initPwaShell } from "./pwa-shell.ts";
-import { NaturalCodeIME, type UserDictDump } from "./ime.ts";
+import { NaturalCodeIME, DEFAULT_SCHEMA, isImeSchema, type ImeSchema, type UserDictDump } from "./ime.ts";
 import type { VoiceSession, VoiceState } from "./voice/session.ts";
 import { isLocalVoiceSupported, LocalSession } from "./voice/local.ts";
 import { asr } from "./asr/engine.ts";
@@ -43,7 +43,10 @@ $("settingsBuild").textContent = APP_VERSION;
 
 const editorEl = $<HTMLTextAreaElement>("editor");
 const titleInput = $<HTMLInputElement>("titleInput");
-if (IS_QUEST_BROWSER) { editorEl.setAttribute("inputmode", "none"); titleInput.setAttribute("inputmode", "none"); }
+// 内置 IME 开着时全平台 inputmode=none：不弹系统软键盘、系统输入法不碰字节（2026-09-03 user「直接不用系统输入法」；Quest 一直如此，见 20260524-quest-ime.md）。
+function applyInputMode(builtinIme: boolean): void {
+  for (const el of [editorEl, titleInput]) { if (builtinIme) el.setAttribute("inputmode", "none"); else el.removeAttribute("inputmode"); }
+}
 if (window.visualViewport) {   // iOS 软键盘：把键盘高度暴露成 CSS 变量，麦克风钮往上挪
   const vv = window.visualViewport;
   const upd = () => document.documentElement.style.setProperty("--kb-offset", `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
@@ -151,22 +154,26 @@ function deviceLabel(): string {
 const imeStatus = $("imeStatus");
 const candidateBar = $("candidateBar");
 let shiftCleanPress = false;
+const imeSchemaPref = (): ImeSchema => { const v = deviceKvGet("imeSchema"); return isImeSchema(v) ? v : DEFAULT_SCHEMA; };
+const schemaName = (s: ImeSchema) => (s === "double_pinyin_mspy" ? t("ime.schema.mspy") : s === "wubi86" ? t("ime.schema.wubi") : t("ime.schema.luna"));
 function renderImeState(): void {
   const s = ime.getState();
-  imeStatus.textContent = !s.enabled ? t("ime.system") : `${s.engine === "rime-double_pinyin" ? t("ime.name") : t("ime.nameFallback")} · ${s.asciiMode ? t("ime.modeEn") : t("ime.modeZh")}`;
+  imeStatus.textContent = !s.enabled ? t("ime.system") : `${s.engine === "rime" ? schemaName(ime.schema) : t("ime.nameFallback")} · ${s.asciiMode ? t("ime.modeEn") : t("ime.modeZh")}`;
+  applyInputMode(s.enabled);
   if (!s.enabled || !s.buffer) { candidateBar.classList.add("hidden"); candidateBar.innerHTML = ""; return; }
   candidateBar.classList.remove("hidden");
   const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
   candidateBar.innerHTML = `<span class="buffer-chip">${esc(s.buffer)}</span>` + s.candidates.slice(0, 9).map((w, i) => `<span class="candidate-chip"><span class="index">${i + 1}</span>${esc(w)}</span>`).join("");
 }
-async function toggleIme(): Promise<void> {
-  if (!ime.enabled) {
-    if (!ime.initialized) { imeStatus.textContent = t("ime.loading"); await ime.initialize(); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
+async function setImeEnabled(on: boolean): Promise<void> {
+  if (on) {
+    if (!ime.initialized) { imeStatus.textContent = t("ime.loading"); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
     ime.enabled = true;
   } else { ime.enabled = false; ime.resetComposition(); }
-  deviceKvSet("imeEnabled", ime.enabled ? "1" : "0");
+  deviceKvSet("imeEnabled", ime.enabled ? "1" : "0");   // 默认开：键缺省 = 开；"0" = 逃生开关「用系统输入法」
   renderImeState();
 }
+async function toggleIme(): Promise<void> { await setImeEnabled(!ime.enabled); }
 imeStatus.addEventListener("click", () => { void toggleIme(); });
 
 function insertAtCursor(target: HTMLTextAreaElement | HTMLInputElement, text: string): void {
@@ -213,6 +220,19 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     renderImeState();
   });
   node.addEventListener("blur", () => { shiftCleanPress = false; });
+  // 系统输入法插手探测：内置 IME 开着却收到系统组合（桌面系统输入法在中文态）→ 撤掉那段、提示切英文。
+  //   insertCompositionText 不可 preventDefault（PTT doc 血泪），只能事后 splice。
+  node.addEventListener("compositionend", (event: Event) => {
+    if (!ime.enabled) return;
+    const data = (event as CompositionEvent).data ?? "";
+    if (!data) return;
+    const end = el.selectionEnd ?? el.value.length, start = Math.max(0, end - data.length);
+    if (el.value.slice(start, end) === data) {
+      el.value = el.value.slice(0, start) + el.value.slice(end);
+      try { el.selectionStart = el.selectionEnd = start; } catch { /* ignore */ }
+    }
+    setStatus(t("ime.systemIntrusion"), { error: true });
+  });
   node.addEventListener("beforeinput", (event: Event) => {
     if (!ime.isComposing()) return;
     const ie = event as InputEvent;
@@ -503,6 +523,16 @@ async function resetPasswordFlow(): Promise<void> {
   renderTopbar(); drawer.refresh();
   setStatus(t("rp.done"));
 }
+// ── 设置页：输入法（方案 per-device + 「用系统输入法」逃生开关）──
+const imeSchemaSelect = $<HTMLSelectElement>("imeSchemaSelect");
+const systemImeToggle = $<HTMLInputElement>("systemImeToggle");
+function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; }
+imeSchemaSelect.addEventListener("change", () => {
+  const v = imeSchemaSelect.value; if (!isImeSchema(v)) return;
+  deviceKvSet("imeSchema", v);
+  void ime.setSchema(v).then(() => { renderImeState(); setStatus(t("ime.schemaSwitched", { name: schemaName(v) })); });
+});
+systemImeToggle.addEventListener("change", () => { void setImeEnabled(!systemImeToggle.checked).then(renderImeSection); });
 $("changePasswordButton").addEventListener("click", () => { void changePasswordFlow(); });
 $("resetPasswordButton").addEventListener("click", () => { void resetPasswordFlow(); });
 $("lockNowButton").addEventListener("click", () => { void lockCryptoNow(); });
@@ -522,7 +552,7 @@ $("factoryResetButton").addEventListener("click", () => { void factoryReset(); }
 $("diagButton").addEventListener("click", () => {
   const pre = $("diagLog"); pre.hidden = !pre.hidden; pre.textContent = errorLog().join("\n") || t("settings.diagEmpty");
 });
-function renderSettings(): void { renderAuthRow(); renderPasswordSection(); renderVoiceConfig(); }
+function renderSettings(): void { renderAuthRow(); renderImeSection(); renderPasswordSection(); renderVoiceConfig(); }
 
 // ── 抽屉按钮 ──
 $("menuButton").addEventListener("click", () => { if (drawer.currentView() === "closed") drawer.open("active"); else drawer.close(); });
@@ -585,7 +615,7 @@ if (shell.isDevRoute) $("settingsBuild").textContent += " · dev";
 async function boot(): Promise<void> {
   await initCollections();
   applyReadingMode(prefs.getItem<string>("readingMode"));
-  if (deviceKvGet("imeEnabled") === "1") { await ime.initialize(); ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }
+  if (deviceKvGet("imeEnabled") !== "0") { await ime.initialize(imeSchemaPref()); ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）
   renderImeState();
   drawer.subscribe();
 
@@ -634,4 +664,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled };

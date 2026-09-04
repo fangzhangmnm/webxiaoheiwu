@@ -28,6 +28,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); c
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
+  await page.addInitScript(() => { try { localStorage.setItem("webxiaoheiwu-7c2e9a41b3d05f68:imeEnabled", "0"); } catch {} });   // 内置 IME 默认开（2026-09-03）：无头打字走裸字母，先用逃生开关关掉
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 page.on("console", (m) => { if (m.type() === "error") pageErrors.push("console.error: " + m.text()); });
@@ -181,6 +182,24 @@ try {
     return deleted || (err ? "refused-loudly" : "silent");
   });
   check("多文件夹：建夹 → 夹内新稿 → 移回根 → 删夹（离线拒删须响亮）", folderFlow === "deleted" || folderFlow === "refused-loudly", String(folderFlow));
+  // 内置 IME 三方案真跑（全拼 / 微软双拼 / 五笔86）：worker + wasm + 词典从本地服务加载，候选里必须有「你」
+  const imeRun = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const { ime, setImeEnabled, editor } = window.__xhw;
+    await editor.newDoc();
+    await setImeEnabled(true);
+    if (!ime.initialized || ime.initializeError) return "init failed: " + ime.initializeError;
+    const ed = document.getElementById("editor"); ed.focus();
+    const typeKeys = async (keys) => { for (const k of keys) { ed.dispatchEvent(new KeyboardEvent("keydown", { key: k, code: "Key" + k.toUpperCase(), bubbles: true, cancelable: true })); await wait(120); } await wait(400); };
+    const cands = () => [...document.querySelectorAll("#candidateBar .candidate-chip")].map((c) => c.textContent.replace(/^\d/, ""));
+    const out = {};
+    await typeKeys(["n", "i"]); out.luna = cands().slice(0, 5); await ime.resetComposition();
+    await ime.setSchema("double_pinyin_mspy"); await typeKeys(["n", "i"]); out.mspy = cands().slice(0, 5); await ime.resetComposition();
+    await ime.setSchema("wubi86"); await typeKeys(["w", "q"]); out.wubi = cands().slice(0, 5); await ime.resetComposition();
+    await ime.setSchema("luna_pinyin"); await setImeEnabled(false);
+    return out;
+  });
+  check("内置 IME 三方案：全拼 ni→你 / 微软双拼 ni→你 / 五笔 wq→你", typeof imeRun === "object" && imeRun.luna?.includes("你") && imeRun.mspy?.includes("你") && imeRun.wubi?.includes("你"), JSON.stringify(imeRun));
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
   const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("saveStatus").textContent; });
   check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);
@@ -188,6 +207,7 @@ try {
   check("零页面错误", pageErrors.length === 0, pageErrors.join(" | "));
   // 还原出厂真跑：新 context（无稿）→ 两道 sheet → wipe → reload → 残留归零
   const ctx2 = await browser.newContext(); const page2 = await ctx2.newPage();
+  await page2.addInitScript(() => { try { localStorage.setItem("webxiaoheiwu-7c2e9a41b3d05f68:imeEnabled", "0"); } catch {} });   // 关内置 IME：reload 后 boot 不重建 RIME 库，残留检查才有意义
   await page2.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
   await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
   await page2.waitForTimeout(800);

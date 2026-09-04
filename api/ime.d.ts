@@ -1,3 +1,7 @@
+export type ImeSchema = "luna_pinyin" | "double_pinyin_mspy" | "wubi86";
+export declare const IME_SCHEMAS: ImeSchema[];
+export declare const DEFAULT_SCHEMA: ImeSchema;
+export declare const isImeSchema: (v: unknown) => v is ImeSchema;
 export type ImeResult = {
     type: "passthrough" | "composing" | "clear" | "toggle";
 } | {
@@ -46,7 +50,10 @@ export declare class NaturalCodeIME {
     initializeError: string | null;
     initialized: boolean;
     private initPromise;
-    initialize(): Promise<void>;
+    schema: ImeSchema;
+    initialize(schema?: ImeSchema): Promise<void>;
+    /** 换方案（全拼 ↔ 微软双拼）；未初始化时只记下，初始化时生效。 */
+    setSchema(schema: ImeSchema): Promise<void>;
     /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
     dispose(): void;
     getState(): ImeState;

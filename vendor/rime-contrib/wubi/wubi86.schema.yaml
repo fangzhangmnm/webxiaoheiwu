@@ -1,22 +1,6 @@
 __build_info:
   rime_version: 1.8.5
-custom_phrase:
-  db_class: stabledb
-  dictionary: ""
-  enable_completion: false
-  enable_sentence: false
-  initial_quality: 1
-  user_dict: custom_phrase
-emoji_suggestion:
-  inherit_comment: false
-  opencc_config: emoji.json
-  option_name: emoji_suggestion
-  tips: none
 engine:
-  filters:
-    - "simplifier@emoji_suggestion"
-    - simplifier
-    - uniquifier
   processors:
     - ascii_composer
     - recognizer
@@ -34,9 +18,8 @@ engine:
     - fallback_segmentor
   translators:
     - punct_translator
-    - "table_translator@custom_phrase"
     - reverse_lookup_translator
-    - script_translator
+    - table_translator
 key_binder:
   bindings:
     - {accept: "Control+p", send: Up, when: composing}
@@ -349,57 +332,49 @@ recognizer:
   patterns:
     email: "^[A-Za-z][-_.0-9A-Za-z]*@.*$"
     punct: "^/([0-9]0?|[A-Za-z]+)$"
-    reverse_lookup: "`[a-z]*'?$"
+    reverse_lookup: "^z[a-z]*'?$"
     uppercase: "[A-Z][-_+.'0-9A-Za-z]*$"
     url: "^(www[.]|https?:|ftp[.:]|mailto:|file:).*$|^[a-z]+[.].+$"
 reverse_lookup:
-  comment_format:
-    - "xform/([nl])v/$1ü/"
-  dictionary: stroke
-  enable_completion: true
+  dictionary: pinyin_simp
   preedit_format:
-    - "xlit/hspnz/一丨丿丶乙/"
-  prefix: "`"
+    - "xform/([nl])v/$1ü/"
+    - "xform/([nl])ue/$1üe/"
+    - "xform/([jqxy])v/$1u/"
+  prefix: z
   suffix: "'"
-  tips: "〔筆畫〕"
+  tips: "〔拼音〕"
 schema:
   author:
-    - "佛振 <chen.sst@gmail.com>"
+    - "發明人 王永民先生"
   dependencies:
-    - stroke
+    - pinyin_simp
   description: |
-    所謂「全拼」，其實是去除聲調的漢語拼音。
-    供形碼用作拼音反查。
+    五筆字型86版
+    碼表源自 ibus-table
+    敲 z 鍵進入拼音反查
 
-  name: "全拼"
-  schema_id: luna_quanpin
-  version: 0.2
+  name: "五笔86"
+  schema_id: wubi86
+  version: 0.21
 speller:
-  algebra:
-    - "derive/^([nl])ve$/$1ue/"
-    - "derive/^([jqxy])u/$1v/"
-    - "derive/un$/uen/"
-    - "derive/ui$/uei/"
-    - "derive/iu$/iou/"
-  alphabet: zyxwvutsrqponmlkjihgfedcba
-  delimiter: " '"
+  delimiter: " ;'"
 switches:
   - name: ascii_mode
     reset: 0
     states: ["中文", "西文"]
   - name: full_shape
     states: ["半角", "全角"]
-  - name: simplification
-    states: ["漢字", "汉字"]
+  - name: extended_charset
+    states: ["常用", "增廣"]
   - name: ascii_punct
     states: ["。，", "．，"]
-  - name: emoji_suggestion
-    reset: 1
-    states: ["🈚︎", "🈶️"]
 translator:
-  dictionary: luna_pinyin
-  preedit_format:
-    - "xform/([nl])v/$1ü/"
-    - "xform/([nl])ue/$1üe/"
-    - "xform/([jqxy])v/$1u/"
-  prism: luna_quanpin
+  dictionary: wubi86
+  disable_user_dict_for_patterns:
+    - "^z.*$"
+  enable_charset_filter: true
+  enable_encoder: true
+  enable_sentence: true
+  encode_commit_history: true
+  max_phrase_length: 4

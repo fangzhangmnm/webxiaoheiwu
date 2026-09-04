@@ -240,6 +240,23 @@
           <p class="reading-mode-hint" data-i18n="ui.reading.hint">短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。</p>
         </section>
 
+        <section class="settings-section is-flat" id="imeSection">
+          <h3 class="settings-section-title" data-i18n="ui.sec.ime">输入法</h3>
+          <p class="reading-mode-hint" data-i18n="ui.ime.hint">内置输入法在本机运行（RIME），你敲的每个字不经过任何系统或云端输入法；会自动学习词汇并跨设备同步。</p>
+          <label class="voice-config-field">
+            <span class="voice-config-label" data-i18n="ui.ime.schema">输入方案</span>
+            <select id="imeSchemaSelect" class="voice-config-select">
+              <option value="luna_pinyin" data-i18n="ime.schema.luna">全拼</option>
+              <option value="double_pinyin_mspy" data-i18n="ime.schema.mspy">微软双拼</option>
+              <option value="wubi86" data-i18n="ime.schema.wubi">五笔 86</option>
+            </select>
+          </label>
+          <label class="voice-config-toggle">
+            <input type="checkbox" id="systemImeToggle" />
+            <span data-i18n="ui.ime.useSystem">改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）</span>
+          </label>
+        </section>
+
         <section class="settings-section is-flat" id="passwordSection">
           <h3 class="settings-section-title" data-i18n="ui.sec.password">加密密码</h3>
           <p class="reading-mode-hint" id="passwordStatus"></p>
@@ -328,6 +345,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-ac7d137e2c3e.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-5efebd4ee20c.mjs"></script>
   </body>
 </html>

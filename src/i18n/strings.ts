@@ -248,8 +248,16 @@ export const S = {
 
   // ── IME / 语音 ──
   "ime.system":          { zh: "系统输入法", en: "System IME" },
-  "ime.name":            { zh: "自然码", en: "Natural Code" },
-  "ime.nameFallback":    { zh: "自然码（备用）", en: "Natural Code (fallback)" },
+  "ime.schema.luna":     { zh: "全拼", en: "Pinyin" },
+  "ime.schema.mspy":     { zh: "微软双拼", en: "Microsoft double pinyin" },
+  "ime.schema.wubi":     { zh: "五笔 86", en: "Wubi 86" },
+  "ime.nameFallback":    { zh: "拼音（备用）", en: "Pinyin (fallback)" },
+  "ime.schemaSwitched":  { zh: "已切换到「{name}」", en: "Switched to {name}" },
+  "ime.systemIntrusion": { zh: "系统输入法在插手——请把它切到英文（内置输入法用 Shift 切中英）", en: "The system IME intervened — switch it to English (the built-in IME toggles with Shift)" },
+  "ui.sec.ime":          { zh: "输入法", en: "Input method" },
+  "ui.ime.hint":         { zh: "内置输入法在本机运行（RIME），你敲的每个字不经过任何系统或云端输入法；会自动学习词汇并跨设备同步。", en: "The built-in IME (RIME) runs on this device; nothing you type passes through a system or cloud IME. It learns vocabulary and syncs it across devices." },
+  "ui.ime.schema":       { zh: "输入方案", en: "Scheme" },
+  "ui.ime.useSystem":    { zh: "改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）", en: "Use the system IME instead (disables the built-in one; system/cloud IMEs may upload keystrokes)" },
   "ime.modeZh":          { zh: "中", en: "中" },
   "ime.modeEn":          { zh: "EN", en: "EN" },
   "ime.loading":         { zh: "加载中…", en: "Loading…" },

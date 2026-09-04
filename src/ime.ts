@@ -1,6 +1,7 @@
-// 自然码双拼 IME 适配器：RIME(WASM worker) 后端 + starter-map 降级后端。created 2026-09-03 by Claude Fable 5.1（自 v1 src/ime.js 移植）。
-// 人类钉死的行为（docs/20260524-quest-ime.md）：opt-in（per-device）、只在组合中才吃按键（Ctrl+C/V/X 永远放行）、
-//   Shift 单击切中英（app 层）、状态栏点击是唯一开关、双拼 = 自然码（double_pinyin）。
+// 内置中文 IME 适配器：RIME(WASM worker) 后端 + starter-map 降级后端。created 2026-09-03 by Claude Fable 5.1（自 v1 src/ime.js 移植）。
+// 人类钉死的行为（docs/20260524-quest-ime.md + 2026-09-03 修订）：**默认开、全平台**（user：「直接不用系统输入法了…也是一层隐私 paranoid」），
+//   逃生开关 per-device（「用系统输入法」）；只在组合中才吃按键（Ctrl+C/V/X 永远放行）；Shift 单击切中英（app 层）；
+//   方案 = 全拼（luna_pinyin，默认）/ 微软双拼（double_pinyin_mspy）（user 2026-09-03「就全拼微软」；不开笔画——但 stroke 文件必须留：worker 清单里全拼反查硬依赖它）。
 // worker 内部自持两个 IDB（"ime" 词典下载缓存 + IDBFS /rime 用户词库）——第三方派生缓存，可再生（词典来自 vendored 文件；
 //   用户词库经 rime-user-dict collection 跨设备同步）。
 
@@ -11,7 +12,10 @@ const NATURAL_CODE_STARTER_MAP: Record<string, string[]> = {
   wen: ["文", "问", "闻"], xie: ["写", "谢", "鞋"], xiaoshuo: ["小说"],
 };
 const RIME_WORKER_URL = "./vendor/my-rime/worker.js";
-const NATURAL_CODE_SCHEMA = "double_pinyin";
+export type ImeSchema = "luna_pinyin" | "double_pinyin_mspy" | "wubi86";
+export const IME_SCHEMAS: ImeSchema[] = ["luna_pinyin", "double_pinyin_mspy", "wubi86"];   // 五笔86：user 2026-09-03「加一个五笔玩玩」（依赖 pinyin_simp 反查 → stroke）
+export const DEFAULT_SCHEMA: ImeSchema = "luna_pinyin";
+export const isImeSchema = (v: unknown): v is ImeSchema => v === "luna_pinyin" || v === "double_pinyin_mspy" || v === "wubi86";
 const PUNCTUATION_KEYS = new Set([",", ".", ";", ":", "?", "!", '"', "'", "(", ")", "<", ">", "{", "}", "[", "]", "\\", "~", "@", "#", "$", "&", "*", "|"]);
 
 export type ImeResult = { type: "passthrough" | "composing" | "clear" | "toggle" } | { type: "commit"; text: string; consumedBuffer: string };
@@ -68,17 +72,23 @@ const b64 = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.lengt
 const unb64 = (s: string) => { const bin = atob(s); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
 
 class RimeWorkerBackend implements Backend {
-  engine = "rime-double_pinyin";
+  engine = "rime";
+  schema: ImeSchema = DEFAULT_SCHEMA;
   worker: Worker | null = null;
   queue: Promise<unknown> = Promise.resolve();
   buffer = "";
   candidates: string[] = [];
 
-  async initialize(): Promise<void> {
+  async initialize(schema: ImeSchema): Promise<void> {
     this.worker = new Worker(RIME_WORKER_URL);
-    await this.call("setIME", NATURAL_CODE_SCHEMA);
+    await this.setSchema(schema);
+  }
+  async setSchema(schema: ImeSchema): Promise<void> {
+    this.schema = schema;
+    await this.call("setIME", schema);
     await this.call("setOption", "simplification", 1);
     await this.call("setOption", "ascii_punct", 0);
+    this.resetState();
   }
   getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine }; }
   resetState() { this.buffer = ""; this.candidates = []; }
@@ -153,7 +163,7 @@ class RimeWorkerBackend implements Backend {
       try { await this.call("fsOperate", "writeFile", `${root}/${entry.path}`, unb64(entry.data)); }
       catch (e) { console.warn("[ime] restoreUserDir write failed", entry.path, e); }
     }
-    try { await this.call("setIME", NATURAL_CODE_SCHEMA); await this.call("setOption", "simplification", 1); await this.call("setOption", "ascii_punct", 0); }
+    try { await this.call("setIME", this.schema); await this.call("setOption", "simplification", 1); await this.call("setOption", "ascii_punct", 0); }
     catch (e) { console.warn("[ime] restoreUserDir re-init failed", e); }
   }
 }
@@ -166,15 +176,23 @@ export class NaturalCodeIME {
   initialized = false;
 
   private initPromise: Promise<void> | null = null;
-  async initialize(): Promise<void> {
+  schema: ImeSchema = DEFAULT_SCHEMA;
+  async initialize(schema: ImeSchema = this.schema): Promise<void> {
+    this.schema = schema;
     if (this.initialized) return;
     if (!this.initPromise) this.initPromise = (async () => {   // 加载中连点不起第二个 worker（审计 UI-21）
       const rime = new RimeWorkerBackend();
-      try { await rime.initialize(); this.backend = rime; this.initializeError = null; }
+      try { await rime.initialize(schema); this.backend = rime; this.initializeError = null; }
       catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
       this.initialized = true;
     })();
     await this.initPromise;
+  }
+  /** 换方案（全拼 ↔ 微软双拼）；未初始化时只记下，初始化时生效。 */
+  async setSchema(schema: ImeSchema): Promise<void> {
+    this.schema = schema;
+    const b = this.backend as { setSchema?: (s: ImeSchema) => Promise<void> };
+    if (b.setSchema) { try { await b.setSchema(schema); } catch (e) { console.warn("[ime] setSchema failed", e); } }
   }
   /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
   dispose(): void {

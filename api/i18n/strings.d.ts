@@ -900,13 +900,45 @@ export declare const S: {
         readonly zh: "系统输入法";
         readonly en: "System IME";
     };
-    readonly "ime.name": {
-        readonly zh: "自然码";
-        readonly en: "Natural Code";
+    readonly "ime.schema.luna": {
+        readonly zh: "全拼";
+        readonly en: "Pinyin";
+    };
+    readonly "ime.schema.mspy": {
+        readonly zh: "微软双拼";
+        readonly en: "Microsoft double pinyin";
+    };
+    readonly "ime.schema.wubi": {
+        readonly zh: "五笔 86";
+        readonly en: "Wubi 86";
     };
     readonly "ime.nameFallback": {
-        readonly zh: "自然码（备用）";
-        readonly en: "Natural Code (fallback)";
+        readonly zh: "拼音（备用）";
+        readonly en: "Pinyin (fallback)";
+    };
+    readonly "ime.schemaSwitched": {
+        readonly zh: "已切换到「{name}」";
+        readonly en: "Switched to {name}";
+    };
+    readonly "ime.systemIntrusion": {
+        readonly zh: "系统输入法在插手——请把它切到英文（内置输入法用 Shift 切中英）";
+        readonly en: "The system IME intervened — switch it to English (the built-in IME toggles with Shift)";
+    };
+    readonly "ui.sec.ime": {
+        readonly zh: "输入法";
+        readonly en: "Input method";
+    };
+    readonly "ui.ime.hint": {
+        readonly zh: "内置输入法在本机运行（RIME），你敲的每个字不经过任何系统或云端输入法；会自动学习词汇并跨设备同步。";
+        readonly en: "The built-in IME (RIME) runs on this device; nothing you type passes through a system or cloud IME. It learns vocabulary and syncs it across devices.";
+    };
+    readonly "ui.ime.schema": {
+        readonly zh: "输入方案";
+        readonly en: "Scheme";
+    };
+    readonly "ui.ime.useSystem": {
+        readonly zh: "改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）";
+        readonly en: "Use the system IME instead (disables the built-in one; system/cloud IMEs may upload keystrokes)";
     };
     readonly "ime.modeZh": {
         readonly zh: "中";

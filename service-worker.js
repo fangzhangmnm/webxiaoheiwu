@@ -1,6 +1,6 @@
 // SW（v2，抄 WeebPaint service-worker.js，家族 content-hash 形）：整个站只剩 1 个 hash-named bundle，缓存失效自动通过文件名差异解决。
 // created 2026-09-03 by Claude Fable 5.1
-//   - install：fetch index.html → 抠出当前 bundle 文件名 → precache 入口 + bundle + statics（含 RIME 词典 ~20MB：Quest 离线写作是产品前提）
+//   - install：fetch index.html → 抠出当前 bundle 文件名 → precache 入口 + bundle + statics（含 RIME 词典 ~15MB：离线写作是产品前提；stroke 6MB 是全拼反查的硬依赖，worker 清单要它）
 //   - cache name = "xiaoheiwu-<bundleHash>"。新 bundle = 新 cache name；activate 清老的（含 v1 的 "xiaoheiwu-v81-…"）。
 //   - prod(scope=/)：cache-first + 后台 revalidate（ETag 变了通知 page）；dev(scope 含 /dev/)：network-first（改完即见，离线回退缓存）。
 //   - 7z-wasm / zip.js 不预缓存：用到才下，fetch handler 运行时缓存 → 用过一次即离线可用。
@@ -22,8 +22,8 @@ const STATIC_PRECACHE = [
   "./vendor/rime-contrib/luna-pinyin/luna_pinyin.reverse.bin",
   "./vendor/rime-contrib/luna-pinyin/luna_pinyin.schema.yaml",
   "./vendor/rime-contrib/luna-pinyin/luna_pinyin.table.bin",
-  "./vendor/rime-contrib/double-pinyin/double_pinyin.prism.bin",
-  "./vendor/rime-contrib/double-pinyin/double_pinyin.schema.yaml",
+  "./vendor/rime-contrib/double-pinyin/double_pinyin_mspy.prism.bin",
+  "./vendor/rime-contrib/double-pinyin/double_pinyin_mspy.schema.yaml",
   "./vendor/rime-contrib/stroke/stroke.prism.bin",
   "./vendor/rime-contrib/stroke/stroke.reverse.bin",
   "./vendor/rime-contrib/stroke/stroke.schema.yaml",
