@@ -1426,3 +1426,7 @@ body {
 .voice-config-save[hidden] { display: none; }
 .voice-config-save.is-danger { border-color: rgba(255, 96, 96, 0.5); color: #ff8a8a; }
 .voice-config-hint { font-size: 0.85em; opacity: 0.8; line-height: 1.4; }
+
+/* 「这篇用的不是当前密码」横幅（复用 ghost-banner 视觉；[hidden] 必须真隐藏） */
+.key-banner[hidden] { display: none; }
+.key-banner { justify-content: space-between; }

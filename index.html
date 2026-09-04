@@ -108,6 +108,10 @@
         </div>
       </header>
 
+      <div class="ghost-banner key-banner" id="keyBanner" hidden>
+        <span data-i18n="ui.key.otherPw">这篇用的不是当前密码（保存仍用它自己的密码）</span>
+        <button class="auth-action" id="rekeyButton" type="button" data-i18n="ui.key.rekey">换成当前密码</button>
+      </div>
       <article class="page">
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
@@ -247,6 +251,8 @@
         <section class="settings-section is-flat">
           <h3 class="settings-section-title" data-i18n="ui.sec.maintenance">维护</h3>
           <div class="settings-row">
+            <button class="auth-action" id="changePasswordButton" type="button" data-i18n="ui.pw.change">更改加密密码…</button>
+            <button class="auth-action" id="resetPasswordButton" type="button" data-i18n="ui.pw.reset">忘记密码，重置…</button>
             <button class="auth-action" id="forceUpdateButton" type="button" data-i18n="ui.forceUpdate">强制更新（清缓存重启）</button>
             <button class="auth-action danger" id="factoryResetButton" type="button" data-i18n="ui.factoryReset">还原出厂设置（清本机全部数据）…</button>
             <button class="auth-action" id="diagButton" type="button" data-i18n="ui.diag">诊断日志</button>
@@ -288,6 +294,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-052df8265eae.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-146cf4db30ca.mjs"></script>
   </body>
 </html>

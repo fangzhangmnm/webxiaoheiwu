@@ -12,6 +12,8 @@ export interface EditorDeps {
     onDocChanged: () => void;
     /** 解锁循环（busy 外）；返回是否已解锁。 */
     ensureUnlocked: () => Promise<boolean>;
+    /** 「这篇稿用的不是当前密码」循环（app 注入：弹框 + verifyDocPassword）。 */
+    ensureFileUnlocked: (name: string) => Promise<boolean>;
 }
 export interface EditorState {
     name: string | null;
@@ -36,6 +38,7 @@ export declare function createEditor(d: EditorDeps): {
     refreshIfClean: () => Promise<void>;
     toggleReadOnly: () => void;
     toggleEncryption: (confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
+    rekeyToCurrent: (busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
     noteExternalEdit: () => void;
     canEdit: () => boolean;
     statusForDoc: () => string;

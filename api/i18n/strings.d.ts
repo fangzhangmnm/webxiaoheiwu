@@ -596,6 +596,102 @@ export declare const S: {
         readonly zh: "设置";
         readonly en: "Set";
     };
+    readonly "fp.title": {
+        readonly zh: "这篇稿的密码";
+        readonly en: "This draft's password";
+    };
+    readonly "fp.hint": {
+        readonly zh: "「{name}」用的不是当前密码。输入它自己的密码；错了不会碰任何文件。";
+        readonly en: "\"{name}\" was not encrypted with the current password. Enter its own password; a wrong one touches nothing.";
+    };
+    readonly "st.otherPasswordHint": {
+        readonly zh: "这篇用的不是当前密码";
+        readonly en: "This draft uses a different password";
+    };
+    readonly "ui.key.otherPw": {
+        readonly zh: "这篇用的不是当前密码（保存仍用它自己的密码）";
+        readonly en: "This draft uses a different password (saves keep using its own)";
+    };
+    readonly "ui.key.rekey": {
+        readonly zh: "换成当前密码";
+        readonly en: "Re-key to current password";
+    };
+    readonly "busy.rekeying": {
+        readonly zh: "正在换成当前密码…";
+        readonly en: "Re-keying…";
+    };
+    readonly "st.rekeyed": {
+        readonly zh: "已换成当前密码";
+        readonly en: "Re-keyed to the current password";
+    };
+    readonly "st.rekeyFailed": {
+        readonly zh: "换密码失败：{e}";
+        readonly en: "Re-key failed: {e}";
+    };
+    readonly "ui.pw.change": {
+        readonly zh: "更改加密密码…";
+        readonly en: "Change encryption password…";
+    };
+    readonly "ui.pw.reset": {
+        readonly zh: "忘记密码，重置…";
+        readonly en: "Forgot password — reset…";
+    };
+    readonly "cp.newTitle": {
+        readonly zh: "新密码";
+        readonly en: "New password";
+    };
+    readonly "cp.newHint": {
+        readonly zh: "之后新建的加密稿用这个密码。已有的稿下一步决定。";
+        readonly en: "New encrypted drafts will use this password. Existing drafts are decided next.";
+    };
+    readonly "cp.same": {
+        readonly zh: "和当前密码一样，没改";
+        readonly en: "Same as the current password — nothing changed";
+    };
+    readonly "cp.migrateTitle": {
+        readonly zh: "已有的加密稿怎么办？";
+        readonly en: "What about existing encrypted drafts?";
+    };
+    readonly "cp.migrateMsg": {
+        readonly zh: "「同时换成新密码」会逐篇解开再用新密码重封（能碰到的都换；用别的密码封的、拿不到的仍保持原样，打开时会单独问）。「保留」= 每篇仍用它自己的密码。";
+        readonly en: "\"Migrate\" re-encrypts each reachable draft with the new password (drafts with another password or unreachable ones stay as they are and prompt when opened). \"Keep\" leaves every draft on its own password.";
+    };
+    readonly "cp.migrate": {
+        readonly zh: "同时换成新密码（推荐）";
+        readonly en: "Migrate them too (recommended)";
+    };
+    readonly "cp.keep": {
+        readonly zh: "保留各自的旧密码";
+        readonly en: "Keep their own passwords";
+    };
+    readonly "busy.migrating": {
+        readonly zh: "正在更换密码…";
+        readonly en: "Changing password…";
+    };
+    readonly "cp.done": {
+        readonly zh: "密码已更改：{n} 篇已换成新密码，{m} 篇仍用旧密码";
+        readonly en: "Password changed: {n} draft(s) re-keyed, {m} still on an old password";
+    };
+    readonly "cp.doneKeep": {
+        readonly zh: "密码已更改；已有的加密稿仍用各自旧密码";
+        readonly en: "Password changed; existing drafts keep their own passwords";
+    };
+    readonly "rp.title": {
+        readonly zh: "忘记密码，重置？";
+        readonly en: "Forgot password — reset?";
+    };
+    readonly "rp.msg": {
+        readonly zh: "重置后下次加密时设新密码。已有的加密稿仍是旧密码——只有想起旧密码才能打开，没有后门。";
+        readonly en: "After reset you set a new password next time you encrypt. Existing encrypted drafts keep the old password — only remembering it opens them; there is no backdoor.";
+    };
+    readonly "rp.action": {
+        readonly zh: "重置";
+        readonly en: "Reset";
+    };
+    readonly "rp.done": {
+        readonly zh: "已重置。下次加密时设置新密码";
+        readonly en: "Reset. Set a new password next time you encrypt";
+    };
     readonly "top.encryptDoc": {
         readonly zh: "加密这篇";
         readonly en: "Encrypt this draft";

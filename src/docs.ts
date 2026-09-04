@@ -62,7 +62,8 @@ export function watchDocs(cb: (frame: DocListFrame) => void, opts?: { onError?: 
 // ── 读 ──
 export type ReadDocResult =
   | { kind: "ok"; text: string; encoding: TextEncodingName; encrypted: boolean }
-  | { kind: "locked" }          // 加密件且未解锁（或密码不对）：不弹窗，由调用方走解锁循环
+  | { kind: "locked" }          // 加密件且未解锁：不弹窗，由调用方走解锁循环
+  | { kind: "other-password" }  // 加密件、已解锁，但当前/已记密码开不了 → 这篇用的是别的密码，调用方走「这篇稿的密码」循环
   | { kind: "unavailable" };    // 本地无且云端不可达
 
 export async function readDoc(name: string): Promise<ReadDocResult> {
@@ -70,7 +71,7 @@ export async function readDoc(name: string): Promise<ReadDocResult> {
   const encrypted = await f.isEncrypted().catch(() => false);
   if (encrypted && !isUnlocked()) return { kind: "locked" };
   const blob = await f.open();
-  if (!blob) return encrypted ? { kind: "locked" } : { kind: "unavailable" };
+  if (!blob) return encrypted ? { kind: "other-password" } : { kind: "unavailable" };
   const { text, encoding } = decodeTextBytes(new Uint8Array(await blob.arrayBuffer()));
   return { kind: "ok", text, encoding, encrypted };
 }

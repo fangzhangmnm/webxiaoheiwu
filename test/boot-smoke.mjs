@@ -121,6 +121,32 @@ try {
     return st.encrypted && enc ? "born-encrypted" : `flag=${st.encrypted} file=${enc}`;
   });
   check("新建即加密：物化那一刻就是密文", bornEncrypted === "born-encrypted", String(bornEncrypted));
+  // 每篇密码（user 2026-09-03）：改密码但「保留各自旧密码」→ 重开这篇时问「这篇稿的密码」→ 输旧密码开 → 横幅 → 「换成当前密码」→ 文件换钥匙
+  const perFile = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const sheet = document.getElementById("sheet"), input = document.getElementById("sheetInput"), input2 = document.getElementById("sheetInput2"), choices = document.getElementById("sheetChoices");
+    const vis = (el) => !el.classList.contains("hidden");
+    const waitSheet = async () => { for (let i = 0; i < 100; i++) { if (vis(sheet) && (vis(input) || vis(choices))) return; await wait(100); } throw new Error("sheet never showed"); };
+    const name = window.__xhw.editor.state.name;
+    const p = window.__xhw.changePassword();
+    await waitSheet(); if (!vis(input)) return "step1 expected input sheet";        // 新密码（两次）
+    input.value = "smoke-password-2"; input2.value = "smoke-password-2"; document.getElementById("sheetConfirm").click(); await wait(300);
+    await waitSheet(); if (!vis(choices)) return "step2 expected choice sheet";      // 已有稿怎么办 → 保留
+    choices.querySelectorAll("button")[1].click(); await wait(300);
+    await waitSheet(); if (!vis(input)) return "step3 expected file-password sheet"; // 重开这篇 → 这篇稿的密码
+    input.value = "smoke-password-1"; document.getElementById("sheetConfirm").click();
+    await p; await wait(300);
+    const st = window.__xhw.editor.state;
+    if (!(st.encrypted && !st.locked && document.getElementById("editor").value.includes("born encrypted"))) return "doc not reopened with own password";
+    if (document.getElementById("keyBanner").hidden) return "banner hidden";
+    const oldOk = await window.__xhw.verifyDocPassword(name, "smoke-password-1"), newOk = await window.__xhw.verifyDocPassword(name, "smoke-password-2");
+    if (!(oldOk && !newOk)) return `before rekey: old=${oldOk} new=${newOk}`;
+    document.getElementById("rekeyButton").click();
+    for (let i = 0; i < 100; i++) { await wait(200); if (document.getElementById("keyBanner").hidden && !document.getElementById("busyOverlay").classList.contains("hidden") === false) break; }
+    const oldOk2 = await window.__xhw.verifyDocPassword(name, "smoke-password-1"), newOk2 = await window.__xhw.verifyDocPassword(name, "smoke-password-2");
+    return !oldOk2 && newOk2 && document.getElementById("keyBanner").hidden ? "ok" : `after rekey: old=${oldOk2} new=${newOk2} banner=${document.getElementById("keyBanner").hidden}`;
+  });
+  check("每篇密码：改密码保留旧密码 → 问这篇的密码 → 横幅 → 换成当前密码", perFile === "ok", String(perFile));
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
   const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("saveStatus").textContent; });
   check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);

@@ -6,8 +6,9 @@ import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/
 import { initErrorBadge, reportError, errorLog } from "./error-badge.ts";
 import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy, showBusy, hideBusy } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
-import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, type VerifierRecord } from "./crypto-state.ts";
+import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
+import { verifyDocPassword, decryptDoc, encryptDoc } from "./docs.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import { initPwaShell } from "./pwa-shell.ts";
@@ -60,11 +61,14 @@ const ensureUnlocked = () => cryptoEnsureUnlocked({
 
 // ── 编辑器 / 抽屉 ──
 const ime = new NaturalCodeIME();
+const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
+  { title: t("fp.title"), hint: t("fp.hint", { name: parseDocName(name).title }), wrong: t("pw.wrong"), ok: t("pw.unlock") },
+  (pw) => verifyDocPassword(name, pw));
 const editor = createEditor({
   editor: editorEl, titleInput, wordCount: $("wordCount"), setStatus,
   isSignedIn: () => auth.isSignedIn(),
   onDocChanged: () => { renderTopbar(); drawer.refresh(); rememberLastActive(); },
-  ensureUnlocked,
+  ensureUnlocked, ensureFileUnlocked,
 });
 const drawer = createDrawer({
   drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
@@ -93,8 +97,11 @@ function renderTopbar(): void {
   useIcon(lockToggle, st.readOnly ? "edit-disabled" : "edit-enabled");
   lockToggle.title = st.readOnly ? t("top.readOnlyOff") : t("top.readOnlyOn");
   lockToggle.setAttribute("aria-label", lockToggle.title);
+  keyBanner.hidden = !(st.name && st.encrypted && !st.locked && fileUsesOtherPassword(st.name));
   renderMicVisibility();
 }
+const keyBanner = $("keyBanner");
+$("rekeyButton").addEventListener("click", () => { void editor.rekeyToCurrent(withBusy); });
 cryptoToggle.addEventListener("click", () => {
   void editor.toggleEncryption(
     () => openConfirmSheet(t("enc.decryptTitle"), t("enc.decryptWarning"), { danger: true, okLabel: t("enc.decryptAction"), warning: true }),
@@ -385,6 +392,46 @@ langSelect.addEventListener("change", () => setLang(langSelect.value as Lang));
 $("forceUpdateButton").addEventListener("click", () => {
   void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await editor.flushLocal(); await flushCollections(); await shell.forceReset(); } })();
 });
+// ── 加密密码：更改（可迁移已有稿）/ 忘记重置 ──
+async function changePasswordFlow(): Promise<void> {
+  if (!(await ensureUnlocked())) return;
+  const old = currentPassword()!;
+  const next = await openInputSheet(t("cp.newTitle"), { message: t("cp.newHint"), password: true, confirmField: true, okLabel: t("pw.set"), validate: (v, v2) => (v !== v2 ? t("pw.mismatch") : null) });
+  if (next == null) return;
+  if (next === old) { setStatus(t("cp.same")); return; }
+  const mode = await openChoiceSheet<"migrate" | "keep">(t("cp.migrateTitle"), t("cp.migrateMsg"), [{ label: t("cp.migrate"), value: "migrate" }, { label: t("cp.keep"), value: "keep" }]);
+  if (mode == null) return;
+  await editor.flushLocal();
+  const openName = editor.state.name;
+  let moved = 0, kept = 0;
+  await withBusy(t("busy.migrating"), async () => {
+    await setCurrentPassword(next);
+    if (mode === "migrate") {
+      for (const it of drawer.items()) {
+        if (it.encrypted === false) continue;
+        try {
+          if (!(await verifyDocPassword(it.name, old))) { if (it.encrypted) kept++; continue; }   // 别的密码 / 其实不是加密件
+          rememberFilePassword(it.name, old);
+          await decryptDoc(it.name); forgetFilePassword(it.name); await encryptDoc(it.name);
+          moved++;
+        } catch (e) { reportError(e, "warning"); kept++; }
+      }
+    }
+  });
+  if (openName && editor.state.name === openName) await editor.reload(openName);
+  setStatus(mode === "migrate" ? t("cp.done", { n: String(moved), m: String(kept) }) : t("cp.doneKeep"));
+  drawer.refresh();
+}
+async function resetPasswordFlow(): Promise<void> {
+  if (!(await openConfirmSheet(t("rp.title"), t("rp.msg"), { danger: true, warning: true, okLabel: t("rp.action") }))) return;
+  resetVerifier();
+  if (editor.state.name && editor.state.encrypted) await editor.reload(editor.state.name);
+  renderTopbar(); drawer.refresh();
+  setStatus(t("rp.done"));
+}
+$("changePasswordButton").addEventListener("click", () => { void changePasswordFlow(); });
+$("resetPasswordButton").addEventListener("click", () => { void resetPasswordFlow(); });
+
 const factoryReset = () => runFactoryReset({
   setStatus,
   unsyncedCount: async () => { await editor.flushLocal(); return drawer.items().filter((i) => i.dirty || i.syncState === "local-only").length + (editor.isDirty() ? 1 : 0); },
@@ -500,4 +547,4 @@ window.addEventListener("unhandledrejection", (event) => { reportError(event.rea
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword };

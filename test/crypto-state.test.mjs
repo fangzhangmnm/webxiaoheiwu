@@ -1,6 +1,6 @@
 // crypto-state：verifier 记录（错密码 = GCM 不过 = false，不碰任何文件）+ 解锁循环（prompt 注入、verifier 注入）。created 2026-09-03 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
-import { createVerifierRecord, verifyRecord, wireCryptoState, ensureUnlocked, isUnlocked, lock, getPassword, hasVerifier } from "../src/crypto-state.ts";
+import { createVerifierRecord, verifyRecord, wireCryptoState, ensureUnlocked, isUnlocked, lock, getPassword, hasVerifier, rememberFilePassword, forgetFilePassword, renameFilePassword, fileUsesOtherPassword, setCurrentPassword, currentPassword, resetVerifier } from "../src/crypto-state.ts";
 
 const LABELS = { unlockTitle: "u", unlockHint: "", setupTitle: "s", setupHint: "", wrong: "WRONG", mismatch: "MM", okUnlock: "ok", okSetup: "ok" };
 
@@ -34,5 +34,29 @@ describe("crypto-state · 解锁循环", () => {
     wireCryptoState({ prompt: async () => "real pw", verifiers: { get: () => store, set: (r) => { store = r; } } });
     eq(await ensureUnlocked(LABELS), true);
     lock();
+  }, { timeout: 30_000 });
+});
+
+describe("crypto-state · 每篇密码表", () => {
+  it("getPassword(name)：这篇自己的优先；等于当前的不记；rename 跟随；lock 清表", async () => {
+    let store = await createVerifierRecord("cur");
+    wireCryptoState({ prompt: async () => "cur", verifiers: { get: () => store, set: (r) => { store = r; } } });
+    lock(); assert(await ensureUnlocked(LABELS)); eq(currentPassword(), "cur");
+    eq(getPassword("a.txt"), "cur");
+    rememberFilePassword("a.txt", "old"); eq(getPassword("a.txt"), "old"); eq(getPassword("b.txt"), "cur"); assert(fileUsesOtherPassword("a.txt"));
+    rememberFilePassword("b.txt", "cur"); assert(!fileUsesOtherPassword("b.txt"));
+    renameFilePassword("a.txt", "a2.txt"); eq(getPassword("a2.txt"), "old"); eq(getPassword("a.txt"), "cur");
+    forgetFilePassword("a2.txt"); eq(getPassword("a2.txt"), "cur");
+    rememberFilePassword("c.txt", "old"); lock(); assert(!fileUsesOtherPassword("c.txt")); eq(getPassword("c.txt"), null);
+  }, { timeout: 30_000 });
+  it("setCurrentPassword：新 verifier + 表里等于新密码的条目消掉；resetVerifier：清 verifier 并锁定", async () => {
+    let store = await createVerifierRecord("cur");
+    wireCryptoState({ prompt: async () => "cur", verifiers: { get: () => store, set: (r) => { store = r; } } });
+    lock(); assert(await ensureUnlocked(LABELS));
+    rememberFilePassword("x.txt", "next"); rememberFilePassword("y.txt", "other");
+    await setCurrentPassword("next");
+    eq(currentPassword(), "next"); assert(!fileUsesOtherPassword("x.txt")); assert(fileUsesOtherPassword("y.txt"));
+    assert(await verifyRecord(store, "next")); assert(!(await verifyRecord(store, "cur")));
+    resetVerifier(); assert(!hasVerifier()); assert(!isUnlocked());
   }, { timeout: 30_000 });
 });

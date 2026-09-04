@@ -9,7 +9,7 @@
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS, RENAME_DEBOUNCE_MS } from "./config.ts";
 import { formatDate, parseDocName, statsForText } from "./doc-model.ts";
 import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc } from "./docs.ts";
-import { isUnlocked, onLockChange } from "./crypto-state.ts";
+import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword } from "./crypto-state.ts";
 import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { t } from "./i18n/index.ts";
@@ -25,6 +25,8 @@ export interface EditorDeps {
   onDocChanged: () => void;
   /** 解锁循环（busy 外）；返回是否已解锁。 */
   ensureUnlocked: () => Promise<boolean>;
+  /** 「这篇稿用的不是当前密码」循环（app 注入：弹框 + verifyDocPassword）。 */
+  ensureFileUnlocked: (name: string) => Promise<boolean>;
 }
 
 const KV_READONLY = "readonly-names";
@@ -172,6 +174,7 @@ export function createEditor(d: EditorDeps) {
       if (newName !== st.name) {
         const roNames = readOnlyNames();
         if (roNames.includes(st.name)) deviceKvSetJson(KV_READONLY, roNames.map((n) => (n === st.name ? newName : n)));
+        renameFilePassword(st.name, newName);
         st.name = newName; setActiveDoc(newName); deviceKvSet(KV_LAST_OPEN, newName);
       }
       savedTitle = parseDocName(newName).title;
@@ -205,6 +208,17 @@ export function createEditor(d: EditorDeps) {
       r = await readDoc(name);
       if (gen !== loadGen) return false;
     }
+    if (r.kind === "other-password") {
+      st.encrypted = true; st.locked = true;
+      d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedTitle = d.titleInput.value; savedText = "";
+      applyGuards(); renderWordCount(); d.onDocChanged();
+      d.setStatus(t("st.otherPasswordHint"));
+      const ok = await d.ensureFileUnlocked(name);
+      if (gen !== loadGen) return false;
+      if (!ok) return true;
+      r = await readDoc(name);
+      if (gen !== loadGen) return false;
+    }
     if (r.kind === "ok") {
       st.encrypted = r.encrypted; st.locked = false;
       d.editor.value = r.text; savedText = r.text;
@@ -219,7 +233,7 @@ export function createEditor(d: EditorDeps) {
       }
       return true;
     }
-    if (r.kind === "locked") { d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }
+    if (r.kind === "locked" || r.kind === "other-password") { d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }
     st.unavailable = true;
     d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedText = ""; savedTitle = d.titleInput.value;
     applyGuards(); renderWordCount(); d.onDocChanged();
@@ -320,6 +334,19 @@ export function createEditor(d: EditorDeps) {
     d.onDocChanged();
   }
 
+  /** 显式换钥匙：这篇（用别的密码封的）→ 解开 → 用当前密码重封。规则①的唯一例外入口（横幅按钮）。 */
+  async function rekeyToCurrent(busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
+    if (!st.name || !st.encrypted || st.locked || !fileUsesOtherPassword(st.name)) return;
+    if (!(await d.ensureUnlocked())) return;
+    await flushLocal();
+    const name = st.name;
+    try {
+      await busy(t("busy.rekeying"), async () => { await decryptDoc(name); forgetFilePassword(name); await encryptDoc(name); });
+      d.setStatus(t("st.rekeyed"));
+    } catch (e) { reportError(e); d.setStatus(t("st.rekeyFailed", { e: errMsg(e) }), { error: true }); }
+    d.onDocChanged();
+  }
+
   // ── DOM 接线 ──
   const blockIfGuarded = (e: Event) => { if (!canEdit()) e.preventDefault(); };
   for (const el of [d.editor, d.titleInput]) for (const evt of ["beforeinput", "paste", "cut", "drop"]) el.addEventListener(evt, blockIfGuarded);
@@ -357,7 +384,7 @@ export function createEditor(d: EditorDeps) {
     state: st,
     open, newDoc, clear, reload,
     flushLocal, pushNow, refreshIfClean,
-    toggleReadOnly, toggleEncryption, noteExternalEdit,
+    toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit,
     canEdit, statusForDoc, renderWordCount,
     isDirty: () => !!localTimer || pushPending || d.editor.value !== savedText,
     isUnlockedDoc: () => st.encrypted && isUnlocked(),

@@ -30,6 +30,8 @@ export type ReadDocResult = {
 } | {
     kind: "locked";
 } | {
+    kind: "other-password";
+} | {
     kind: "unavailable";
 };
 export declare function readDoc(name: string): Promise<ReadDocResult>;
