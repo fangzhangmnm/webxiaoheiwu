@@ -2,7 +2,7 @@
 import { describe, it, eq, assert } from "./runner.mjs";
 import { createVerifierRecord, verifyRecord, wireCryptoState, ensureUnlocked, isUnlocked, lock, getPassword, hasVerifier } from "../src/crypto-state.ts";
 
-const LABELS = { unlockTitle: "u", unlockHint: "", setupTitle: "s", setupHint: "", wrong: "WRONG", mismatch: "MM", tooShort: "SHORT", okUnlock: "ok", okSetup: "ok" };
+const LABELS = { unlockTitle: "u", unlockHint: "", setupTitle: "s", setupHint: "", wrong: "WRONG", mismatch: "MM", okUnlock: "ok", okSetup: "ok" };
 
 describe("crypto-state · verifier", () => {
   it("对的密码 true，错的 false，篡改记录 false", async () => {
@@ -14,14 +14,15 @@ describe("crypto-state · verifier", () => {
 });
 
 describe("crypto-state · 解锁循环", () => {
-  it("无 verifier → 首次设密码（短密码被拒、再来一次成功）→ 之后 getPassword 有值；lock 清空", async () => {
+  it("无 verifier → 首次设密码（无最少位数检查：短密码一次通过，user 2026-09-03）→ 之后 getPassword 有值；lock 清空", async () => {
     let store = null;
-    const answers = ["short", "long enough pw"];
-    wireCryptoState({ prompt: async (o) => { if (o.error === "SHORT") return answers[1]; return answers[0]; }, verifiers: { get: () => store, set: (r) => { store = r; } } });
+    let prompts = 0;
+    wireCryptoState({ prompt: async (o) => { prompts++; assert(!o.error, "no rejection expected"); return "ab"; }, verifiers: { get: () => store, set: (r) => { store = r; } } });
     lock();
     assert(!hasVerifier());
     assert(await ensureUnlocked(LABELS));
-    assert(isUnlocked()); eq(getPassword("x"), "long enough pw"); assert(hasVerifier());
+    eq(prompts, 1, "short password accepted on first prompt");
+    assert(isUnlocked()); eq(getPassword("x"), "ab"); assert(hasVerifier());
     lock(); assert(!isUnlocked()); eq(getPassword("x"), null);
   }, { timeout: 30_000 });
   it("有 verifier → 错密码重问、取消返回 false、对的返回 true", async () => {
