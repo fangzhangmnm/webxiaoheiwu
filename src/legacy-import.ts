@@ -26,23 +26,13 @@ async function readBytes(path: string): Promise<Uint8Array | null> {
   return new Uint8Array(await (await legacyReadProvider.download(item.ref)).arrayBuffer());
 }
 
-export interface LegacyVoiceJson { provider?: string; groqKey?: string; openaiKey?: string; vocab?: string }
-
 /** 偏好 + 词库：登录后静默跑一次（幂等，marker 守卫；只填新家里**没有**的值）。返回导入了什么。 */
 export async function importLegacyPrefsAndDict(): Promise<{ voice: boolean; dict: boolean }> {
   const out = { voice: false, dict: false };
   if (!appState.getItem(MARK_PREFS)) {
-    try {
-      const v = await readJson<LegacyVoiceJson>(LEGACY.VOICE_JSON);
-      if (v) {
-        if (prefs.getItem("voiceProvider") == null && v.provider) prefs.setItem("voiceProvider", v.provider);
-        if (prefs.getItem("voiceGroqKey") == null && v.groqKey) prefs.setItem("voiceGroqKey", v.groqKey);
-        if (prefs.getItem("voiceOpenaiKey") == null && v.openaiKey) prefs.setItem("voiceOpenaiKey", v.openaiKey);
-        if (prefs.getItem("voiceVocab") == null && v.vocab) prefs.setItem("voiceVocab", v.vocab);
-        out.voice = true;
-      }
-      appState.setItem(MARK_PREFS, { at: Date.now(), found: !!v });
-    } catch (e) { console.warn("[legacy] voice.json import failed", e); }
+    // v1 voice.json（Web Speech/Groq/OpenAI 的 provider + key）**不再搬**：云语音 2026-09-03 sunset（家规硬规则 #8），
+    // 没理由把旧 API key 复制进新家的 synced 偏好。只落 marker 保持幂等；文件本身只读遗留、不删（ADR-0004）。
+    appState.setItem(MARK_PREFS, { at: Date.now(), found: false, skipped: "voice.json (cloud voice sunset 2026-09-03)" });
   }
   if (!appState.getItem(MARK_DICT)) {
     try {

@@ -6,6 +6,8 @@
 //   onForeground **无条件挂**（不寄生在 SW 注册成功路径上——WeebPaint v409 坑）。
 //   模块顶层调用（不进 window.load：type=module 时 load 可能早已过去——RealHome 坑 #0）。
 
+import { MODEL_CACHE_NAME } from "./config.ts";
+
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", ""]);
 
 export interface PwaShellOptions {
@@ -17,7 +19,7 @@ export interface PwaShell {
   readonly isDevRoute: boolean;
   /** 应用等待中的新 SW 并 reload（toast「刷新」按钮调）。 */
   reload: () => Promise<void>;
-  /** 清缓存重启（PWA 卡旧版的逃生舱）：unregister 全部 SW + 清 Cache Storage + reload。IDB（文档缓存）不碰。 */
+  /** 清缓存重启（PWA 卡旧版的逃生舱）：unregister 全部 SW + 清 Cache Storage（模型包缓存 pwa-models 除外）+ reload。IDB（文档缓存）不碰。 */
   forceReset: () => Promise<void>;
 }
 
@@ -40,7 +42,7 @@ export function initPwaShell(opts: PwaShellOptions): PwaShell {
     try { await opts.onBeforeReload?.(); } catch { /* best-effort */ }
     try {
       if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister().catch(() => {});
-      if (typeof caches !== "undefined") for (const k of await caches.keys()) await caches.delete(k).catch(() => {});
+      if (typeof caches !== "undefined") for (const k of await caches.keys()) { if (k === MODEL_CACHE_NAME) continue; await caches.delete(k).catch(() => {}); }   // 语音包 229MB 不陪葬（设置里有专门的删除钮）
     } catch { /* best-effort — reload anyway */ }
     setTimeout(() => location.reload(), 150);
   }

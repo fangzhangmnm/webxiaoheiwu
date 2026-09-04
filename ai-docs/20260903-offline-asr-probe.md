@@ -44,6 +44,6 @@ sherpa-onnx v1.13.7 `wasm/web` 目标（`MODULARIZE` + `EXPORT_NAME=SherpaOnnx` 
 
 `https://fangzhangmnm.github.io/webxiaoheiwu/dev/probe/asr/index.html` → 点一档 → 等就绪 → 点内置 wav → 🎤 录 5 秒 → 「复制全部日志」贴回。要的四个数：下载秒数、建识别器 ms、wasm 堆 MB、RTF；外加 tab 有没有崩、麦克风文本准不准。三档都点一遍最好（每换一档建议刷新页，wasm 堆不缩）。
 
-## 6. 下一步（等 Quest 数再定杯型）
+## 6. 下一步（2026-09-03 晚 user 拍板：理智杯为主 + 小杯实验选项，不等 Quest 先做进产品——**已落地 v0.1.1**，见 20260903-offline-voice.md；本节保留为当时计划）
 
 产品接入：settings「下载离线语音包」（per-device、SW Cache 独立前缀活过版本更新、按 pack id 键、可删）→ `src/voice/local.ts` 新 backend（形状 = WhisperSession：start/stop/abort，松键后一次插入；流式 zipformer 则套 SpeechSession 的 anchor 重写）→ `voiceProviderIsLocal()` 对 local 返 true（加密稿开语音）→ 三通道（curl / 自传 / OneDrive dump-load 走 store）→ 署名行。HF 镜像需 user 自己的 HF 账号上传。wasm 裁 TTS 重编。

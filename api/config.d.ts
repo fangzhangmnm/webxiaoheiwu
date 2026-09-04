@@ -21,6 +21,12 @@ export declare const USER_DICT_PUSH_INTERVAL_MS: number;
 export declare const PTT_HOLD_MS = 250;
 /** 冷首帧后，前台轮询云端新鲜度的周期（reconcilePolicy:"app-driven"）。 */
 export declare const FOREGROUND_POLL_MS = 60000;
+/** 模型包默认源（黄线区白名单：只读、逐片 sha256 校验、可被用户在设置里改成任何镜像——网址不写死是反弃坑要求）。 */
+export declare const MODEL_SOURCE_DEFAULT = "https://fangzhangmnm.github.io/pwa-models";
+/** 模型包 Cache Storage 名：**家族共享**（同 origin 兄弟 PWA 各自 SW 只清自己前缀，已核实；forceReset 也跳过它）。可再生派生缓存，user 2026-09-03 批。 */
+export declare const MODEL_CACHE_NAME = "pwa-models";
+/** sherpa-onnx WASM 运行时目录（相对 app 根；worker 里按 self.location 解析）。 */
+export declare const ASR_WASM_DIR = "vendor/sherpa-onnx-wasm/";
 /** Quest 浏览器：编辑区 inputmode=none 关掉 OS IME 组合路径（docs/20260524-quest-ime.md）。 */
 export declare const IS_QUEST_BROWSER: boolean;
 /** v1 时代（≤v81）云端布局——只读遗留，新 app 永不写这些路径（legacy-import.ts 一次性读）。 */

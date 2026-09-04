@@ -1,9 +1,3 @@
-export interface LegacyVoiceJson {
-    provider?: string;
-    groqKey?: string;
-    openaiKey?: string;
-    vocab?: string;
-}
 /** 偏好 + 词库：登录后静默跑一次（幂等，marker 守卫；只填新家里**没有**的值）。返回导入了什么。 */
 export declare function importLegacyPrefsAndDict(): Promise<{
     voice: boolean;

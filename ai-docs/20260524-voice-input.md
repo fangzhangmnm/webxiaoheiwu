@@ -1,6 +1,6 @@
 # Voice input (STT)
 
-> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：有效，实现 = `src/voice/`；`voice.json` → `synced-user-preference` collection（旧文件由 legacy-import 一次性搬，不改不删）；voiceEnabled 仍 per-device（device-kv）。
+> ⚠ **SUPERSEDED 2026-09-03（v0.1.1，edited by Claude Fable 5.1）**：Web Speech / Groq / OpenAI 三个后端全部 sunset（家规硬规则 #8「语音字节永不离开设备」，user 2026-09-03 拍板）。现行实现 = `src/voice/local.ts` + `src/asr/`，SSoT = [20260903-offline-voice.md](20260903-offline-voice.md)。本文只剩史料价值：**默认关 + per-device 开关**、**锚点插入模型**、**zh-punct 后处理**三节仍然有效（local 后端照用）；后端矩阵 / key 存储 / Whisper prompt / 加密稿禁云语音四节已死。
 
 
 Optional dictation layer for the editor. Two interchangeable backends behind

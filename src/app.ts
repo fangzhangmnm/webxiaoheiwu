@@ -12,8 +12,11 @@ import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import { initPwaShell } from "./pwa-shell.ts";
 import { NaturalCodeIME, type UserDictDump } from "./ime.ts";
-import { isSpeechSupported, SpeechSession, type VoiceSession, type VoiceState } from "./voice/speech.ts";
-import { isWhisperSupported, WhisperSession, type WhisperProvider } from "./voice/whisper.ts";
+import type { VoiceSession, VoiceState } from "./voice/session.ts";
+import { isLocalVoiceSupported, LocalSession } from "./voice/local.ts";
+import { asr } from "./asr/engine.ts";
+import { MODELS, modelKeyFrom, type ModelKey } from "./asr/packs.ts";
+import { MODEL_SOURCE_DEFAULT } from "./config.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { importLegacyPrefsAndDict, importLegacyEncrypted, countLegacyEncrypted, legacyEncryptedImported } from "./legacy-import.ts";
 import { parseDocName } from "./doc-model.ts";
@@ -206,55 +209,44 @@ async function pullUserDict(): Promise<void> {
 }
 rimeDict.onChange("dump", () => { void pullUserDict(); });
 
-// ── 语音 ──
+// ── 语音（全本机：硬规则 #8 声音不出设备；Web Speech / Groq / OpenAI 2026-09-03 sunset）──
 const micButton = $<HTMLButtonElement>("micButton");
 let voiceEnabled = deviceKvGet("voiceEnabled") === "1";
-type VoiceProviderName = "webspeech" | WhisperProvider | "selfhosted";
-const voiceProvider = (): VoiceProviderName => { const p = prefs.getItem<string>("voiceProvider"); return p === "groq" || p === "openai" || p === "selfhosted" ? p : "webspeech"; };
-const voiceProviderIsLocal = () => voiceProvider() === "selfhosted";
-const whisperConfig = () => {
-  const p = voiceProvider();
-  if (p !== "groq" && p !== "openai") return null;
-  const key = prefs.getItem<string>(p === "groq" ? "voiceGroqKey" : "voiceOpenaiKey") ?? "";
-  return { provider: p, key, vocab: prefs.getItem<string>("voiceVocab") ?? "" };
-};
+const voiceModel = (): ModelKey => modelKeyFrom(prefs.getItem<string>("voiceProvider"));   // 旧值 webspeech/groq/openai → 默认 SenseVoice
+const voiceSource = (): string => (deviceKvGet("voiceModelSource") || MODEL_SOURCE_DEFAULT).replace(/\/+$/, "");
 const onVoiceInsert = () => { editor.noteExternalEdit(); idle.poke(); };
+const voiceErrorText = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (raw === "pack-missing") return t("voice.pack.missing");
+  if (/NotAllowedError|Permission|denied/i.test(raw)) return t("voice.micDenied");
+  return t("voice.failed", { e: raw });
+};
 const onVoiceState = (next: VoiceState, error?: unknown) => {
   micButton.setAttribute("data-state", next);
   if (next === "recording" || next === "listening") setStatus(t("voice.recording"));
   else if (next === "transcribing") setStatus(t("voice.transcribing"));
-  else if (next === "error" && error) { const raw = error instanceof Error ? error.message : String(error); setStatus(t("voice.failed", { e: raw === "missing-key" ? t("voice.missingKey") : raw }), { error: true }); }
-  else if (next === "idle") { const txt = saveStatusEl.textContent; if (txt === t("voice.recording") || txt === t("voice.transcribing")) setStatus(editor.statusForDoc()); }
+  else if (next === "error" && error) setStatus(voiceErrorText(error), { error: true });
+  else if (next === "idle") { const txt = saveStatusEl.textContent; if (txt === t("voice.recording") || txt === t("voice.transcribing") || txt === t("voice.loadingModel")) setStatus(editor.statusForDoc()); }
 };
-const speechSession: VoiceSession | null = isSpeechSupported() ? new SpeechSession({ target: editorEl, onChange: onVoiceInsert, onState: onVoiceState }) : null;
-const whisperSession: VoiceSession | null = isWhisperSupported() ? new WhisperSession({ target: editorEl, getConfig: whisperConfig, onChange: onVoiceInsert, onState: onVoiceState }) : null;
-function activeVoiceBackend(): VoiceSession | null {
-  if (!voiceEnabled) return null;
-  const p = voiceProvider();
-  if (p === "webspeech") return speechSession;
-  if (p === "groq" || p === "openai") return whisperSession;
-  return null;
-}
+const localSession: VoiceSession | null = isLocalVoiceSupported()
+  ? new LocalSession({ target: editorEl, onChange: onVoiceInsert, onState: onVoiceState, getModel: () => MODELS[voiceModel()], onLoading: (on) => { if (on) setStatus(t("voice.loadingModel")); } })
+  : null;
+function activeVoiceBackend(): VoiceSession | null { return voiceEnabled ? localSession : null; }
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
   const st = editor.state;
-  const hidden = !activeVoiceBackend() || (!st.name && !st.pendingDate) || st.readOnly || st.locked;
-  micButton.hidden = hidden;
-  if (hidden) return;
-  const blocked = st.encrypted && !voiceProviderIsLocal();
-  micButton.classList.toggle("disabled", blocked);
-  micButton.title = blocked ? t("voice.blockedEncrypted") : t("voice.mic");
+  micButton.hidden = !activeVoiceBackend() || (!st.name && !st.pendingDate) || st.readOnly || st.locked;
+  micButton.title = t("voice.mic");
 }
 micButton.addEventListener("click", () => {
   if (!editor.canEdit()) return;
-  if (editor.state.encrypted && !voiceProviderIsLocal()) { setStatus(t("voice.blockedEncrypted"), { error: true }); return; }
   const backend = activeVoiceBackend(); if (!backend) return;
   if (ime.isComposing()) { ime.resetComposition(); renderImeState(); }
   editorEl.focus();
   backend.toggle(pickSpeechLang());
 });
-editorEl.addEventListener("input", () => { speechSession?.notifyExternalInput(); whisperSession?.notifyExternalInput(); });
-editorEl.addEventListener("pointerdown", () => { if (speechSession?.state === "listening") speechSession.abort(); if (whisperSession?.state === "recording") whisperSession.abort(); });
+editorEl.addEventListener("input", () => { localSession?.notifyExternalInput(); });
+editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "recording") localSession.abort(); });
 
 // Left Ctrl push-to-talk（docs/20260524-push-to-talk.md 终形：keydown 立即起录，250ms 门决定留/丢，其它键 = 和弦 → 弃）
 let pttBackend: VoiceSession | null = null, pttCommitted = false, pttTimer: ReturnType<typeof setTimeout> | null = null;
@@ -264,7 +256,6 @@ document.addEventListener("keydown", (event) => {
   if (pttBackend && !isPttKey(event)) { pttAbort(); return; }
   if (!isPttKey(event) || event.repeat || event.shiftKey || event.altKey || event.metaKey) return;
   if (document.activeElement !== editorEl || !editor.canEdit()) return;
-  if (editor.state.encrypted && !voiceProviderIsLocal()) return;
   if (pttBackend) return;
   const backend = activeVoiceBackend();
   if (!backend || backend.state !== "idle") return;
@@ -334,36 +325,56 @@ async function lockCryptoNow(): Promise<void> {
 }
 
 const voiceEnabledToggle = $<HTMLInputElement>("voiceEnabledToggle");
-const voiceProviderSelect = $<HTMLSelectElement>("voiceProviderSelect");
-const voiceKeyInput = $<HTMLInputElement>("voiceKeyInput");
-const voiceVocabInput = $<HTMLTextAreaElement>("voiceVocabInput");
+const voiceModelSelect = $<HTMLSelectElement>("voiceModelSelect");
+const voicePackStatus = $("voicePackStatus");
+const voicePackProgress = $<HTMLProgressElement>("voicePackProgress");
+const voicePackDownload = $<HTMLButtonElement>("voicePackDownload");
+const voicePackImport = $<HTMLButtonElement>("voicePackImport");
+const voicePackDelete = $<HTMLButtonElement>("voicePackDelete");
+const voicePackFile = $<HTMLInputElement>("voicePackFile");
+const voiceSourceInput = $<HTMLInputElement>("voiceSourceInput");
+const mbOf = (n: number) => String(Math.round(n / 1048576));
+let packBusy = false;
 function renderVoiceConfig(): void {
   voiceEnabledToggle.checked = voiceEnabled;
   $("voiceConfigBackend").hidden = !voiceEnabled;
-  const p = voiceProvider(); voiceProviderSelect.value = p === "selfhosted" ? "webspeech" : p;
-  renderVoiceKeyField(voiceProviderSelect.value);
-  voiceVocabInput.value = prefs.getItem<string>("voiceVocab") ?? "";
-  $("voiceConfigHint").textContent = auth.isSignedIn() ? t("voice.hintSynced") : t("voice.hintSignIn");
+  voiceModelSelect.value = voiceModel();
+  voiceSourceInput.value = voiceSource();
+  $("voiceAttribution").textContent = t(MODELS[voiceModel()].attrKey);
+  void renderPackStatus();
 }
-function renderVoiceKeyField(provider: string): void {
-  const keyed = provider === "groq" || provider === "openai";
-  $("voiceKeyField").hidden = !keyed; $("voiceVocabField").hidden = !keyed;
-  if (!keyed) return;
-  $("voiceKeyLabel").textContent = provider === "openai" ? "OpenAI key" : "Groq key";
-  voiceKeyInput.placeholder = provider === "openai" ? "sk-..." : "gsk_...";
-  voiceKeyInput.value = prefs.getItem<string>(provider === "openai" ? "voiceOpenaiKey" : "voiceGroqKey") ?? "";
+async function renderPackStatus(): Promise<void> {
+  const m = MODELS[voiceModel()];
+  voicePackProgress.hidden = !packBusy;
+  voicePackDownload.disabled = voicePackImport.disabled = voicePackDelete.disabled = packBusy;
+  if (packBusy) return;
+  try {
+    const st = await asr.status(m.slug);
+    voicePackStatus.textContent = st.ready ? t("voice.pack.ready", { mb: mbOf(st.bytesTotal) }) : st.bytesCached > 0 ? t("voice.pack.partial", { done: mbOf(st.bytesCached), total: mbOf(st.bytesTotal) }) : t("voice.pack.none", { mb: mbOf(st.bytesTotal) });
+    voicePackDownload.hidden = st.ready; voicePackImport.hidden = st.ready; voicePackDelete.hidden = !st.ready && st.bytesCached === 0;
+  } catch (e) { voicePackStatus.textContent = t("voice.pack.failed", { e: e instanceof Error ? e.message : String(e) }); }
+}
+async function runPackJob(job: (onProgress: (p: { done: number; total: number }) => void) => Promise<unknown>): Promise<void> {
+  if (packBusy) return;
+  packBusy = true; voicePackProgress.value = 0; void renderPackStatus();
+  try {
+    await job((p) => { voicePackProgress.value = p.total ? p.done / p.total : 0; voicePackStatus.textContent = t("voice.pack.downloading", { done: mbOf(p.done), total: mbOf(p.total) }); });
+    setStatus(t("voice.pack.readyToast"));
+  } catch (e) { reportError(e, "warning"); voicePackStatus.textContent = t("voice.pack.failed", { e: e instanceof Error ? e.message : String(e) }); }
+  finally { packBusy = false; void renderPackStatus(); }
 }
 voiceEnabledToggle.addEventListener("change", () => { voiceEnabled = voiceEnabledToggle.checked; deviceKvSet("voiceEnabled", voiceEnabled ? "1" : "0"); renderVoiceConfig(); renderMicVisibility(); });
-voiceProviderSelect.addEventListener("change", () => renderVoiceKeyField(voiceProviderSelect.value));
-$("voiceConfigSaveButton").addEventListener("click", () => {
-  const p = voiceProviderSelect.value;
-  prefs.setItem("voiceProvider", p);
-  if (p === "groq") prefs.setItem("voiceGroqKey", voiceKeyInput.value.trim());
-  if (p === "openai") prefs.setItem("voiceOpenaiKey", voiceKeyInput.value.trim());
-  prefs.setItem("voiceVocab", voiceVocabInput.value.trim());
-  const btn = $("voiceConfigSaveButton"); const prev = btn.textContent; btn.textContent = t("common.saved");
-  setTimeout(() => { btn.textContent = prev; }, 1200);
-  renderMicVisibility();
+voiceModelSelect.addEventListener("change", () => { prefs.setItem("voiceProvider", modelKeyFrom(voiceModelSelect.value)); void asr.unload().catch(() => {}); renderVoiceConfig(); });
+voiceSourceInput.addEventListener("change", () => { const v = voiceSourceInput.value.trim(); deviceKvSet("voiceModelSource", v && v !== MODEL_SOURCE_DEFAULT ? v : null); voiceSourceInput.value = voiceSource(); });
+voicePackDownload.addEventListener("click", () => { const m = MODELS[voiceModel()]; void runPackJob((p) => asr.download(m.slug, voiceSource(), p)); });
+voicePackImport.addEventListener("click", () => { voicePackFile.value = ""; voicePackFile.click(); });
+voicePackFile.addEventListener("change", () => { const files = Array.from(voicePackFile.files ?? []); if (!files.length) return; const m = MODELS[voiceModel()]; void runPackJob((p) => asr.importFiles(m.slug, files, p)); });
+voicePackDelete.addEventListener("click", () => {
+  void (async () => {
+    const m = MODELS[voiceModel()];
+    if (!(await openConfirmSheet(t("voice.pack.deleteTitle"), t("voice.pack.deleteMsg", { mb: mbOf(m.bytes) }), { danger: true }))) return;
+    await runPackJob(async () => { await asr.delete(m.slug); });
+  })();
 });
 
 const langSelect = $<HTMLSelectElement>("langSelect");
@@ -509,4 +520,4 @@ window.addEventListener("unhandledrejection", (event) => { reportError(event.rea
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, asr, models: MODELS };

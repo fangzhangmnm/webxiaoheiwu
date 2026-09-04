@@ -15,7 +15,7 @@ const SKIP_FILES = new Set([
   "src/i18n/index.ts",     // LANG_NAME endonym 表（各语言自称，不翻译）
   "src/ime.ts",            // 自然码 starter-map 词典数据（不是 UI 文案）
   "src/zh-punct.ts",       // 全角标点映射表（数据）
-  "src/voice/whisper.ts",  // 喂给 Whisper 的中文 prompt（模型输入，不是 UI 文案）
+  "src/asr/packs.generated.ts",  // 模型仓 manifest 原样内嵌（name/notes 是数据，不是 UI 文案；生成物）
 ]);
 
 function* walk(dir) {

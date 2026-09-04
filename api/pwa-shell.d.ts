@@ -7,7 +7,7 @@ export interface PwaShell {
     readonly isDevRoute: boolean;
     /** 应用等待中的新 SW 并 reload（toast「刷新」按钮调）。 */
     reload: () => Promise<void>;
-    /** 清缓存重启（PWA 卡旧版的逃生舱）：unregister 全部 SW + 清 Cache Storage + reload。IDB（文档缓存）不碰。 */
+    /** 清缓存重启（PWA 卡旧版的逃生舱）：unregister 全部 SW + 清 Cache Storage（模型包缓存 pwa-models 除外）+ reload。IDB（文档缓存）不碰。 */
     forceReset: () => Promise<void>;
 }
 export declare function initPwaShell(opts: PwaShellOptions): PwaShell;

@@ -56,6 +56,20 @@ if [ -x "./node_modules/.bin/tsc" ]; then
 fi
 
 mkdir -p "$OUT_DIR"
+
+# 0.9 ASR worker（第二入口；classic worker 脚本，content-hash，URL 经 index.html <meta name="asr-worker"> 交给主 bundle）
+WORKER_TMP="$OUT_DIR/asr-worker-tmp.js"
+"$ESBUILD" ./src/asr/worker.ts --bundle --format=iife --target=es2020 --minify --sourcemap=linked --outfile="$WORKER_TMP"
+WHASH=$(sha256sum "$WORKER_TMP" | awk '{print substr($1, 1, 12)}')
+WOUT="$OUT_DIR/asr-worker-$WHASH.js"
+mv "$WORKER_TMP" "$WOUT"; mv "$WORKER_TMP.map" "$WOUT.map"
+sed -i "s|sourceMappingURL=$(basename "$WORKER_TMP").map|sourceMappingURL=asr-worker-$WHASH.js.map|" "$WOUT"
+find "$OUT_DIR" -maxdepth 1 -name 'asr-worker-*.js' -not -name "asr-worker-$WHASH.js" -delete
+find "$OUT_DIR" -maxdepth 1 -name 'asr-worker-*.js.map' -not -name "asr-worker-$WHASH.js.map" -delete
+sed -i -E "s|<meta name=\"asr-worker\" content=\"\./dist/asr-worker-[a-z0-9-]+\.js\" />|<meta name=\"asr-worker\" content=\"./dist/asr-worker-$WHASH.js\" />|" index.html
+grep -q "asr-worker-$WHASH.js" index.html || { echo "[build] ✗ index.html asr-worker meta not updated" >&2; exit 1; }
+echo "[build] $WOUT ($(stat -c%s "$WOUT") bytes)"
+
 TMP_OUT="$OUT_DIR/xiaoheiwu-tmp.mjs"
 
 # 1. esbuild bundle

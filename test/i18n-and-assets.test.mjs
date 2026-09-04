@@ -44,5 +44,8 @@ describe("assets", () => {
     const m = html.match(/src="\.\/dist\/(xiaoheiwu-[a-z0-9-]+\.mjs)"/);
     assert(m, "index.html has no bundle reference");
     if (m[1] !== "xiaoheiwu-boot.mjs") assert(existsSync(join("dist", m[1])), `bundle missing: dist/${m[1]} (run scripts/build.sh)`);
+    const w = html.match(/<meta name="asr-worker" content="\.\/dist\/(asr-worker-[a-z0-9-]+\.js)"/);
+    assert(w, "index.html has no asr-worker meta");
+    if (w[1] !== "asr-worker-boot.js") assert(existsSync(join("dist", w[1])), `asr worker bundle missing: dist/${w[1]} (run scripts/build.sh)`);
   });
 });

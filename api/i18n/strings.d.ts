@@ -136,33 +136,37 @@ export declare const S: {
         readonly zh: "启用语音输入";
         readonly en: "Enable voice input";
     };
-    readonly "ui.voice.backend": {
-        readonly zh: "后端";
-        readonly en: "Backend";
+    readonly "ui.voice.localHint": {
+        readonly zh: "识别在本机运行，声音不出设备；加密稿也能用。按住左 Ctrl 说话，或点右下角话筒。";
+        readonly en: "Recognition runs on this device; audio never leaves it, so it works on encrypted drafts too. Hold Left Ctrl to talk, or tap the mic.";
     };
-    readonly "ui.voice.webspeech": {
-        readonly zh: "浏览器 · Web Speech（免费）";
-        readonly en: "Browser · Web Speech (free)";
+    readonly "ui.voice.model": {
+        readonly zh: "识别模型";
+        readonly en: "Model";
     };
-    readonly "ui.voice.groq": {
-        readonly zh: "Groq · whisper-large-v3（快、便宜）";
-        readonly en: "Groq · whisper-large-v3 (fast, cheap)";
+    readonly "ui.voice.model.sensevoice": {
+        readonly zh: "SenseVoice（推荐 · 229 MB · 带标点）";
+        readonly en: "SenseVoice (recommended · 229 MB · punctuation)";
     };
-    readonly "ui.voice.openai": {
-        readonly zh: "OpenAI · gpt-4o-transcribe（质量略优）";
-        readonly en: "OpenAI · gpt-4o-transcribe (slightly better)";
+    readonly "ui.voice.model.zh14m": {
+        readonly zh: "极限小杯 zh-14M（30 MB · 流式 · 实验）";
+        readonly en: "Tiny zh-14M (30 MB · streaming · experimental)";
     };
-    readonly "ui.voice.vocab": {
-        readonly zh: "词表（Whisper prompt，可选）";
-        readonly en: "Vocabulary (Whisper prompt, optional)";
+    readonly "ui.voice.download": {
+        readonly zh: "下载语音包";
+        readonly en: "Download voice pack";
     };
-    readonly "ui.voice.vocabPh": {
-        readonly zh: "例：小黑屋, 黑泽明, 林平之";
-        readonly en: "e.g. character names, jargon";
+    readonly "ui.voice.import": {
+        readonly zh: "从文件导入…";
+        readonly en: "Import from file…";
     };
-    readonly "ui.voice.save": {
-        readonly zh: "保存";
-        readonly en: "Save";
+    readonly "ui.voice.delete": {
+        readonly zh: "删除语音包";
+        readonly en: "Delete voice pack";
+    };
+    readonly "ui.voice.source": {
+        readonly zh: "模型源（可换镜像；字节到手都先校验）";
+        readonly en: "Model source (any mirror; bytes are verified on arrival)";
     };
     readonly "ui.sec.legacy": {
         readonly zh: "旧版数据";
@@ -668,21 +672,57 @@ export declare const S: {
         readonly zh: "语音失败：{e}";
         readonly en: "Voice failed: {e}";
     };
-    readonly "voice.missingKey": {
-        readonly zh: "未填 API key（设置 → 语音输入）";
-        readonly en: "No API key (Settings → Voice input)";
+    readonly "voice.micDenied": {
+        readonly zh: "没拿到麦克风权限";
+        readonly en: "Microphone permission denied";
     };
-    readonly "voice.blockedEncrypted": {
-        readonly zh: "加密稿下禁用云端语音（避免音频上传给第三方）";
-        readonly en: "Cloud voice is disabled on encrypted drafts (audio would leave your device)";
+    readonly "voice.loadingModel": {
+        readonly zh: "加载识别模型…";
+        readonly en: "Loading model…";
     };
-    readonly "voice.hintSynced": {
-        readonly zh: "写入 OneDrive 的设置文件（明文，仅你可见）";
-        readonly en: "Stored in your OneDrive settings file (plaintext, only you can see it)";
+    readonly "voice.pack.missing": {
+        readonly zh: "语音包未下载（设置 → 语音输入）";
+        readonly en: "Voice pack not downloaded (Settings → Voice input)";
     };
-    readonly "voice.hintSignIn": {
-        readonly zh: "登录 OneDrive 后 key 才会跨设备同步（浏览器后端无需 key）";
-        readonly en: "Sign in to OneDrive to sync keys across devices (the browser backend needs no key)";
+    readonly "voice.pack.none": {
+        readonly zh: "未下载（约 {mb} MB，一次下载，离线可用）";
+        readonly en: "Not downloaded (~{mb} MB, one-time, works offline)";
+    };
+    readonly "voice.pack.partial": {
+        readonly zh: "下载了一部分（{done}/{total} MB），可续传";
+        readonly en: "Partially downloaded ({done}/{total} MB), resumable";
+    };
+    readonly "voice.pack.ready": {
+        readonly zh: "已就绪 · {mb} MB · 本机";
+        readonly en: "Ready · {mb} MB · on this device";
+    };
+    readonly "voice.pack.downloading": {
+        readonly zh: "下载并校验中 {done}/{total} MB…";
+        readonly en: "Downloading & verifying {done}/{total} MB…";
+    };
+    readonly "voice.pack.readyToast": {
+        readonly zh: "语音包已就绪";
+        readonly en: "Voice pack ready";
+    };
+    readonly "voice.pack.failed": {
+        readonly zh: "语音包失败：{e}";
+        readonly en: "Voice pack failed: {e}";
+    };
+    readonly "voice.pack.deleteTitle": {
+        readonly zh: "删除语音包？";
+        readonly en: "Delete voice pack?";
+    };
+    readonly "voice.pack.deleteMsg": {
+        readonly zh: "释放约 {mb} MB；要再用得重新下载。";
+        readonly en: "Frees ~{mb} MB; you will need to download it again to use voice.";
+    };
+    readonly "voice.attr.sensevoice": {
+        readonly zh: "识别模型：SenseVoiceSmall（阿里巴巴通义实验室 / FunAudioLLM，FunASR 模型开源协议 v1.1）；运行时 sherpa-onnx（Apache-2.0）。";
+        readonly en: "Model: SenseVoiceSmall (Alibaba Tongyi Lab / FunAudioLLM, FunASR Model Open Source License v1.1); runtime sherpa-onnx (Apache-2.0).";
+    };
+    readonly "voice.attr.zh14m": {
+        readonly zh: "识别模型：Streaming Zipformer zh-14M（k2-fsa / icefall，Apache-2.0）；运行时 sherpa-onnx（Apache-2.0）。";
+        readonly en: "Model: Streaming Zipformer zh-14M (k2-fsa / icefall, Apache-2.0); runtime sherpa-onnx (Apache-2.0).";
     };
     readonly "auth.signIn": {
         readonly zh: "登录 OneDrive 同步";

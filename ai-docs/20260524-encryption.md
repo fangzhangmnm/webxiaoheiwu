@@ -89,6 +89,8 @@ Don't try to be clever (chunk-and-delta-encrypt) without first asking; chunked e
 
 Web Speech (browser STT) and Whisper-via-Groq/OpenAI both ship audio to a cloud service. Dictating into an encrypted doc through any of them defeats the point of encrypting on OneDrive. So the mic button is **greyed but visible** on encrypted docs unless the voice backend is local. A `voiceProviderIsLocal()` predicate returns `true` only for a `"selfhosted"` provider (placeholder for an upcoming self-hosted Whisper backend); for now it always returns false on encrypted docs.
 
+> **2026-09-03 update (Claude Fable 5.1):** this whole gate is gone — voice is local-only now (family hard rule #8), so encrypted drafts accept dictation like any other draft. See `20260903-offline-voice.md`.
+
 Apply the same gate to PTT (push-to-talk). One predicate, two consumers.
 
 ## UX: don't make non-users see encryption at all

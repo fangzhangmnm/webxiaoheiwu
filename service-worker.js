@@ -40,16 +40,18 @@ async function getCurrentBundleUrl() {
   // <script type="module" src="./dist/xiaoheiwu-<hash>.mjs"></script>（bundle 名与 scripts/build.sh 一致）
   const m = html.match(/src="(\.\/dist\/xiaoheiwu-[a-z0-9-]+\.mjs)"/i);
   if (!m) throw new Error("install: entry ./dist/xiaoheiwu-*.mjs not found in index.html");
-  return { html, bundleUrl: m[1] };
+  // ASR worker（<meta name="asr-worker">，同为 content-hash）：随壳预缓存，模型包另住 Cache "pwa-models"（本 SW 不碰）
+  const w = html.match(/<meta name="asr-worker" content="(\.\/dist\/asr-worker-[a-z0-9-]+\.js)"/i);
+  return { html, bundleUrl: m[1], workerUrl: w ? w[1] : null };
 }
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
-    const { bundleUrl } = await getCurrentBundleUrl();
+    const { bundleUrl, workerUrl } = await getCurrentBundleUrl();
     const bundleHash = bundleUrl.match(/xiaoheiwu-([a-z0-9-]+)\.mjs/i)?.[1] || "boot";
     CACHE_NAME = `xiaoheiwu-${bundleHash}`;
     const cache = await caches.open(CACHE_NAME);
-    const urls = [...STATIC_PRECACHE, bundleUrl, bundleUrl + ".map"];
+    const urls = [...STATIC_PRECACHE, bundleUrl, bundleUrl + ".map", ...(workerUrl ? [workerUrl] : [])];
     await Promise.all(urls.map((u) =>
       fetch(u, { cache: "no-store" })
         .then((r) => (r.ok ? cache.put(u, r) : null))

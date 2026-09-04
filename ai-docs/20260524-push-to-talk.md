@@ -1,6 +1,6 @@
 # Push-to-talk key design
 
-> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：有效，实现 = `src/app.ts` PTT 段。
+> ⚠ as-of v0.1.1 / 2026-09-03（edited by Claude Fable 5.1）：有效，实现 = `src/app.ts` PTT 段；后端已换成 `src/voice/local.ts`（本机离线），「Cancellation race in WhisperSession」一节的 cancelled 旗模式在 LocalSession 里原样保留。加密稿门已删（语音全本机）。
 
 
 PTT for voice dictation. The mic button works on every platform; PTT is the

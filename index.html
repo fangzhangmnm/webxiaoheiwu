@@ -2,7 +2,8 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="asr-worker" content="./dist/asr-worker-480794a92d7d.js" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#d8c8a8" />
     <meta name="color-scheme" content="light" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -216,26 +217,29 @@
               <span data-i18n="ui.voice.enable">启用语音输入</span>
             </label>
             <div class="voice-config-backend" id="voiceConfigBackend" hidden>
+              <p class="voice-config-hint" data-i18n="ui.voice.localHint">识别在本机运行，声音不出设备；加密稿也能用。按住左 Ctrl 说话，或点右下角话筒。</p>
               <label class="voice-config-field">
-                <span class="voice-config-label" data-i18n="ui.voice.backend">后端</span>
-                <select id="voiceProviderSelect" class="voice-config-select">
-                  <option value="webspeech" data-i18n="ui.voice.webspeech">浏览器 · Web Speech（免费）</option>
-                  <option value="groq" data-i18n="ui.voice.groq">Groq · whisper-large-v3（快、便宜）</option>
-                  <option value="openai" data-i18n="ui.voice.openai">OpenAI · gpt-4o-transcribe（质量略优）</option>
+                <span class="voice-config-label" data-i18n="ui.voice.model">识别模型</span>
+                <select id="voiceModelSelect" class="voice-config-select">
+                  <option value="local-sensevoice" data-i18n="ui.voice.model.sensevoice">SenseVoice（推荐 · 229 MB · 带标点）</option>
+                  <option value="local-zh14m" data-i18n="ui.voice.model.zh14m">极限小杯 zh-14M（30 MB · 流式 · 实验）</option>
                 </select>
               </label>
-              <label class="voice-config-field" id="voiceKeyField" hidden>
-                <span class="voice-config-label" id="voiceKeyLabel">API key</span>
-                <input type="password" id="voiceKeyInput" class="voice-config-key" autocomplete="off" spellcheck="false" />
-              </label>
-              <label class="voice-config-field" id="voiceVocabField" hidden>
-                <span class="voice-config-label" data-i18n="ui.voice.vocab">词表（Whisper prompt，可选）</span>
-                <textarea id="voiceVocabInput" class="voice-config-vocab" rows="2" autocomplete="off" spellcheck="false" placeholder="例：小黑屋, 黑泽明, 林平之" data-i18n-ph="ui.voice.vocabPh"></textarea>
-              </label>
-              <div class="voice-config-actions">
-                <button class="voice-config-save" id="voiceConfigSaveButton" type="button" data-i18n="ui.voice.save">保存</button>
-                <span class="voice-config-hint" id="voiceConfigHint"></span>
+              <div class="voice-pack-row">
+                <span class="voice-config-hint" id="voicePackStatus"></span>
+                <progress id="voicePackProgress" class="voice-pack-progress" max="1" value="0" hidden></progress>
+                <div class="voice-config-actions">
+                  <button class="voice-config-save" id="voicePackDownload" type="button" data-i18n="ui.voice.download">下载语音包</button>
+                  <button class="voice-config-save" id="voicePackImport" type="button" data-i18n="ui.voice.import">从文件导入…</button>
+                  <button class="voice-config-save is-danger" id="voicePackDelete" type="button" data-i18n="ui.voice.delete">删除语音包</button>
+                  <input type="file" id="voicePackFile" multiple hidden />
+                </div>
               </div>
+              <label class="voice-config-field">
+                <span class="voice-config-label" data-i18n="ui.voice.source">模型源（可换镜像；字节到手都先校验）</span>
+                <input type="url" id="voiceSourceInput" class="voice-config-key" autocomplete="off" spellcheck="false" />
+              </label>
+              <p class="voice-config-hint" id="voiceAttribution"></p>
             </div>
           </div>
         </details>
@@ -286,6 +290,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-61bca53565e1.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-d4c34cbdb1fa.mjs"></script>
   </body>
 </html>

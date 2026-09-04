@@ -1415,3 +1415,12 @@ body {
 .diag-log { font: 11px/1.4 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; max-height: 40vh; overflow: auto; background: rgba(0,0,0,.05); padding: 8px; border-radius: 8px; margin: 8px 0 0; }
 #langSelect { max-width: 200px; }
 #imeStatus { cursor: pointer; }
+
+/* 语音包（离线模型）行：状态 + 进度 + 三个动作钮 */
+.voice-pack-row { display: flex; flex-direction: column; gap: 8px; }
+.voice-pack-progress { width: 100%; height: 8px; accent-color: var(--accent, #6aa8ff); }
+.voice-pack-progress[hidden] { display: none; }
+.voice-config-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.voice-config-save[hidden] { display: none; }
+.voice-config-save.is-danger { border-color: rgba(255, 96, 96, 0.5); color: #ff8a8a; }
+.voice-config-hint { font-size: 0.85em; opacity: 0.8; line-height: 1.4; }
