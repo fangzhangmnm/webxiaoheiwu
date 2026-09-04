@@ -21,7 +21,7 @@
 | `src/pwa-shell.ts` | Cache（读键/删） | forceReset 清壳缓存，跳过 `pwa-models` |
 | `src/asr/worker.ts` | Cache `pwa-models`（家族共享名） | 语音模型包；可再生派生缓存（批） |
 | `vendor/msal/msal-browser.min.js` | IDB / localStorage / sessionStorage | MSAL token 缓存，由库的 auth 配置驱动，app 不直接调 |
-| `vendor/my-rime/worker.js` | IDB（词典缓存 + IDBFS `/rime`） | RIME 第三方派生缓存，可再生；**user 追认待记** |
+| `vendor/my-rime/worker.js` + `vendor/my-rime/dist/rime.js` | IDB（词典缓存 + IDBFS `/rime`；rime.js 是 emscripten 胶水） | RIME 第三方派生缓存，可再生；**user 追认待记** |
 
 不在表里的任何文件碰 IDB / localStorage / sessionStorage / Cache / `navigator.storage` = 测试红。
 

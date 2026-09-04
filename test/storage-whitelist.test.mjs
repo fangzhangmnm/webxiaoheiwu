@@ -12,6 +12,7 @@ const ALLOW = {
   "service-worker.js": "Cache Storage `xiaoheiwu-<hash>`：app 壳预缓存 + 运行时缓存",
   "vendor/msal/msal-browser.min.js": "MSAL token 缓存（IDB/localStorage/sessionStorage）：由 @internal/store 的 auth 配置驱动，app 不直接调",
   "vendor/my-rime/worker.js": "RIME worker 自持 IDB（词典缓存 + IDBFS /rime）：第三方派生缓存，可再生；user 追认待记",
+  "vendor/my-rime/dist/rime.js": "RIME 的 emscripten 胶水（IDBFS 实现，同上一条）",
 };
 const TOKEN = /\blocalStorage\b|\bsessionStorage\b|\bindexedDB\b|\bIDBFS\b|\bcaches\.(open|keys|delete|match)\b|navigator\.storage\b/;
 const ROOTS = ["src", "vendor", "probe"];
@@ -20,7 +21,11 @@ const FILES = ["service-worker.js"];
 function* walk(dir) { for (const f of readdirSync(dir)) { const p = join(dir, f); if (statSync(p).isDirectory()) yield* walk(p); else if (/\.(ts|js|mjs)$/.test(f) && !f.endsWith(".d.ts")) yield p; } }
 function hitsIn(p) {
   const out = [];
-  readFileSync(p, "utf8").split("\n").forEach((line, i) => { if (/^\s*\/\//.test(line)) return; if (TOKEN.test(line)) out.push(i + 1); });
+  readFileSync(p, "utf8").split("\n").forEach((line, i) => {
+    if (/^\s*\/\//.test(line)) return;
+    const code = line.replace(/\/\/(?![^"'`]*["'`]\s*[,;)]).*$/, "");   // 剥行尾注释（URL 里的 // 在引号内，不剥）
+    if (TOKEN.test(code)) out.push(i + 1);
+  });
   return out;
 }
 
