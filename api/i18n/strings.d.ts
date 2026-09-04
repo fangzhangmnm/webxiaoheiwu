@@ -588,10 +588,6 @@ export declare const S: {
         readonly zh: "两次输入不一致";
         readonly en: "The two entries differ";
     };
-    readonly "pw.tooShort": {
-        readonly zh: "密码至少 8 位";
-        readonly en: "At least 8 characters";
-    };
     readonly "pw.unlock": {
         readonly zh: "解锁";
         readonly en: "Unlock";

@@ -55,7 +55,7 @@ wireCryptoState({
 });
 const ensureUnlocked = () => cryptoEnsureUnlocked({
   unlockTitle: t("pw.unlockTitle"), unlockHint: t("pw.unlockHint"), setupTitle: t("pw.setupTitle"), setupHint: t("pw.setupHint"),
-  wrong: t("pw.wrong"), mismatch: t("pw.mismatch"), tooShort: t("pw.tooShort"), okUnlock: t("pw.unlock"), okSetup: t("pw.set"),
+  wrong: t("pw.wrong"), mismatch: t("pw.mismatch"), okUnlock: t("pw.unlock"), okSetup: t("pw.set"),
 });
 
 // ── 编辑器 / 抽屉 ──

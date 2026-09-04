@@ -38,7 +38,6 @@ export declare function ensureUnlocked(labels: {
     setupHint: string;
     wrong: string;
     mismatch: string;
-    tooShort: string;
     okUnlock: string;
     okSetup: string;
 }): Promise<boolean>;

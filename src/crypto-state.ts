@@ -58,7 +58,7 @@ export function hasVerifier(): boolean { return _verifiers?.get() != null; }
 /** 解锁循环（**busy 外**）：有 verifier → 反复问到对或取消；无 verifier → 首次设密码（两次输入一致、≥8 位）→ 写 verifier。
  *  返回 true = 已解锁。错密码永不碰任何文件（verifier 是唯一被试的东西）。 */
 export async function ensureUnlocked(labels: {
-  unlockTitle: string; unlockHint: string; setupTitle: string; setupHint: string; wrong: string; mismatch: string; tooShort: string; okUnlock: string; okSetup: string;
+  unlockTitle: string; unlockHint: string; setupTitle: string; setupHint: string; wrong: string; mismatch: string; okUnlock: string; okSetup: string;
 }): Promise<boolean> {
   if (_password != null) return true;
   if (!_prompt || !_verifiers) throw new Error("crypto-state not wired (wireCryptoState)");
@@ -73,7 +73,7 @@ export async function ensureUnlocked(labels: {
     } else {
       const pw = await _prompt({ title: labels.setupTitle, message: labels.setupHint, error, confirmField: true, okLabel: labels.okSetup });
       if (pw == null) return false;
-      if (pw.length < 8) { error = labels.tooShort; continue; }
+      // 无最少位数检查（user 2026-09-03：「去掉密码的最少位数检查」——密码强弱归用户自己判断）
       _verifiers.set(await createVerifierRecord(pw));
       _password = pw; _notify(); return true;
     }

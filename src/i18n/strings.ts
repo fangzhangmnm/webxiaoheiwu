@@ -168,7 +168,6 @@ export const S = {
   "pw.setupHint":        { zh: "这个密码用于本账号下所有加密稿。忘了就找不回——没有任何后门。", en: "Used for every encrypted draft in this account. If you forget it, the drafts are gone — there is no backdoor." },
   "pw.wrong":            { zh: "密码错误", en: "Wrong password" },
   "pw.mismatch":         { zh: "两次输入不一致", en: "The two entries differ" },
-  "pw.tooShort":         { zh: "密码至少 8 位", en: "At least 8 characters" },
   "pw.unlock":           { zh: "解锁", en: "Unlock" },
   "pw.set":              { zh: "设置", en: "Set" },
   "top.encryptDoc":      { zh: "加密这篇", en: "Encrypt this draft" },
