@@ -92,6 +92,10 @@ export declare const S: {
         readonly zh: "新建";
         readonly en: "New";
     };
+    readonly "ui.newEncryptedDoc": {
+        readonly zh: "新建加密稿";
+        readonly en: "New encrypted draft";
+    };
     readonly "ui.emptyTrash": {
         readonly zh: "清空回收站";
         readonly en: "Empty trash";
@@ -252,9 +256,13 @@ export declare const S: {
         readonly zh: "此文件在云端已不存在";
         readonly en: "This file no longer exists in the cloud";
     };
-    readonly "st.typeSomethingFirst": {
-        readonly zh: "先写点什么再加密";
-        readonly en: "Write something before encrypting";
+    readonly "st.pendingEncrypted": {
+        readonly zh: "新稿将以加密保存";
+        readonly en: "This new draft will be saved encrypted";
+    };
+    readonly "st.pendingPlain": {
+        readonly zh: "新稿将以明文保存";
+        readonly en: "This new draft will be saved in plaintext";
     };
     readonly "st.encrypted": {
         readonly zh: "已加密 {time}（{status}）";

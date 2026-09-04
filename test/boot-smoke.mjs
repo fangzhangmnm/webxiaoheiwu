@@ -107,6 +107,20 @@ try {
     return await p;
   });
   check("加密流程（设密码 → 7z 容器落地）", encOk === "encrypted", String(encOk));
+  // 新建即加密（user 2026-09-03「加密是一开始就定好的」）：密码已在内存 → newDoc({encrypted}) 直接成 → 打字物化 → 文件落地就是密文
+  const bornEncrypted = await page.evaluate(async () => {
+    const ok = await window.__xhw.editor.newDoc({ encrypted: true });
+    if (!ok) return "newDoc refused";
+    if (!window.__xhw.editor.state.encrypted || window.__xhw.editor.state.name) return "pending state wrong";
+    const ed = document.getElementById("editor"); ed.focus(); ed.value = "born encrypted"; ed.dispatchEvent(new Event("input"));
+    for (let i = 0; i < 50; i++) { await new Promise((r) => setTimeout(r, 200)); if (window.__xhw.editor.state.name) break; }
+    const st = window.__xhw.editor.state;
+    if (!st.name) return "not materialized";
+    let enc = false;
+    for (let i = 0; i < 25 && !enc; i++) { enc = await window.__xhw.store().file(st.name, { isZip: false, mode: "existing" }).isEncrypted(); if (!enc) await new Promise((r) => setTimeout(r, 200)); }
+    return st.encrypted && enc ? "born-encrypted" : `flag=${st.encrypted} file=${enc}`;
+  });
+  check("新建即加密：物化那一刻就是密文", bornEncrypted === "born-encrypted", String(bornEncrypted));
   await page.waitForTimeout(500);
   check("零页面错误", pageErrors.length === 0, pageErrors.join(" | "));
 } catch (e) {

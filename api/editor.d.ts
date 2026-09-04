@@ -26,7 +26,9 @@ export declare function createEditor(d: EditorDeps): {
     open: (name: string, opts?: {
         keepCaret?: boolean;
     }) => Promise<boolean>;
-    newDoc: () => Promise<void>;
+    newDoc: (opts?: {
+        encrypted?: boolean;
+    }) => Promise<boolean>;
     clear: () => void;
     reload: (name: string) => Promise<void>;
     flushLocal: () => Promise<void>;

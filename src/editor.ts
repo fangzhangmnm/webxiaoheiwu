@@ -88,8 +88,12 @@ export function createEditor(d: EditorDeps) {
       if (!st.pendingDate) return;
       if (!text && !title) return;   // 空稿不物化
       const name = await createDoc(title, text, st.pendingDate);
+      // 新建时就定好的加密（user 2026-09-03「加密是一开始就定好的」）：物化即封——先封再把 name 暴露给 UI/抽屉，明文只在本地 IDB 停留这一步，永不推云（createDoc 是 tryPush:false）。
+      let encErr: unknown = null;
+      if (st.encrypted) { try { await encryptDoc(name); } catch (e) { encErr = e; } }
       st.name = name; st.pendingDate = null;
       savedText = text; savedTitle = parseDocName(name).title;
+      if (encErr) { st.encrypted = false; reportError(encErr); d.setStatus(t("st.encryptFailed", { e: errMsg(encErr) }), { error: true }); }   // 失败就诚实：锁图标不撒谎
       setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
       d.onDocChanged();
     }
@@ -223,18 +227,21 @@ export function createEditor(d: EditorDeps) {
     return false;
   }
 
-  async function newDoc(): Promise<void> {
+  /** 新稿。encrypted:true = 一开始就定好加密（先要密码；用户取消 → 不新建，返回 false）。 */
+  async function newDoc(opts: { encrypted?: boolean } = {}): Promise<boolean> {
+    if (opts.encrypted && !(await d.ensureUnlocked())) return false;
     await flushLocal();
     loadGen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false; lastSavedAt = 0;
-    st.name = null; st.pendingDate = formatDate(Date.now()); st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
+    st.name = null; st.pendingDate = formatDate(Date.now()); st.encrypted = !!opts.encrypted; st.locked = false; st.readOnly = false; st.unavailable = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
     d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
     applyGuards(); renderWordCount();
-    d.setStatus(t("st.ready"));
+    d.setStatus(st.encrypted ? t("st.pendingEncrypted") : t("st.ready"));
     d.onDocChanged();
     d.titleInput.focus();
+    return true;
   }
 
   /** 当前稿被移到回收站 / 被别处改名后清空编辑器。 */
@@ -282,7 +289,14 @@ export function createEditor(d: EditorDeps) {
 
   // ── 加密切换 ──
   async function toggleEncryption(confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
-    if (!st.name) { if (st.pendingDate) d.setStatus(t("st.typeSomethingFirst")); return; }
+    if (!st.name) {
+      if (!st.pendingDate) return;
+      // 未物化的新稿：切「预定加密」，物化那一刻兑现（persist）
+      if (!st.encrypted) { if (!(await d.ensureUnlocked())) return; st.encrypted = true; d.setStatus(t("st.pendingEncrypted")); }
+      else { st.encrypted = false; d.setStatus(t("st.pendingPlain")); }
+      d.onDocChanged();
+      return;
+    }
     if (st.locked) { const ok = await d.ensureUnlocked(); if (ok) await reload(st.name); return; }
     await flushLocal();
     const name = st.name;

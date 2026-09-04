@@ -395,6 +395,7 @@ $("drawerCloseButton").addEventListener("click", () => drawer.close());
 $("drawerBackButton").addEventListener("click", () => drawer.open("active"));
 $("drawerBackdrop").addEventListener("click", () => drawer.close());
 $("newDocButton").addEventListener("click", () => { void editor.newDoc().then(() => drawer.close()); });
+$("newEncryptedDocButton").addEventListener("click", () => { void editor.newDoc({ encrypted: true }).then((ok) => { if (ok) drawer.close(); }); });
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
 $("openSettingsButton").addEventListener("click", () => drawer.open("settings"));
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
