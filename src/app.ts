@@ -28,13 +28,26 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 // ── 早期初始化（DOM 已就绪：module 默认 deferred）──
 initI18n();
 const saveStatusEl = $("saveStatus");
-function setStatus(text: string, opts: { error?: boolean; unsynced?: boolean } = {}): void {
+// 状态两通道（zen，user 2026-09-04「还是需要个让用户看见状态 toast 的地方」）：
+//   setState = 粘性稿态（未同步 / 本地草稿 / 不可用 / 加密未成 / 新稿将加密…）→ 顶栏右侧一小行，干净态留白；
+//   setStatus = 瞬时事件（已移到回收站 / 同步失败 / 已加载云端最新…）→ 纸面底部 toast，3s 淡出（错误 8s），空串立即收。
+const toastEl = $("toast");
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+function setState(text: string, opts: { error?: boolean; unsynced?: boolean } = {}): void {
   saveStatusEl.textContent = text;
   saveStatusEl.classList.toggle("error", !!opts.error);
   saveStatusEl.classList.toggle("unsynced", !!opts.unsynced);
-  // 抽屉开着时顶栏被遮罩压住，用户看不到状态（审计 UI-6）：镜像一份到抽屉底部
+}
+function setStatus(text: string, opts: { error?: boolean; unsynced?: boolean } = {}): void {
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  toastEl.textContent = text;
+  toastEl.classList.toggle("error", !!opts.error);
+  toastEl.classList.toggle("show", !!text);
+  // 抽屉开着时纸面被遮罩压住，用户看不到 toast（审计 UI-6）：镜像一份到抽屉底部，随 toast 同步淡出
   const ds = document.getElementById("drawerStatus");
-  if (ds && !document.getElementById("drawer")!.classList.contains("hidden")) { ds.textContent = text; ds.classList.toggle("error", !!opts.error); ds.hidden = false; }
+  const mirror = ds && !document.getElementById("drawer")!.classList.contains("hidden") ? ds : null;
+  if (mirror) { mirror.textContent = text; mirror.classList.toggle("error", !!opts.error); mirror.hidden = !text; }
+  if (text) toastTimer = setTimeout(() => { toastEl.classList.remove("show"); if (mirror) mirror.hidden = true; toastTimer = null; }, opts.error ? 8000 : 3000);
 }
 initErrorBadge({ status: (text) => setStatus(text), dismissHint: () => t("err.dismissHint") });
 initSheets({ ok: t("common.ok"), cancel: t("common.cancel") });
@@ -84,7 +97,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
   { title: t("fp.title"), hint: t("fp.hint", { name: parseDocName(name).title }), wrong: t("pw.wrong"), ok: t("pw.unlock") },
   (pw) => verifyDocPassword(name, pw));
 const editor = createEditor({
-  editor: editorEl, titleInput, wordCount: $("wordCount"), setStatus,
+  editor: editorEl, titleInput, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
   onDocChanged: () => { renderTopbar(); drawer.refresh(); rememberLastActive(); },
   ensureUnlocked, ensureFileUnlocked,
@@ -94,7 +107,7 @@ let voiceAbortHook: (() => void) | null = null;
 const drawer = createDrawer({
   drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
   docList: $("docList"), docListEmpty: $("docListEmpty"), docActions: $("drawerActions"), trashActions: $("trashActions"), settingsView: $("settingsView"),
-  breadcrumb: $("docBreadcrumb"), newFolderButton: $<HTMLButtonElement>("newFolderButton"),
+  breadcrumb: $("docBreadcrumb"),
   activeName: () => editor.state.name,
   currentDir: () => editor.currentDir(),
   onMoveDoc: async (name, toDir) => {
@@ -164,7 +177,9 @@ const SCHEMA_NAME_KEY = { luna_pinyin: "ime.schema.luna", luna_pinyin_fluency: "
 const schemaName = (s: ImeSchema) => t(SCHEMA_NAME_KEY[s]);
 function renderImeState(): void {
   const s = ime.getState();
-  imeStatus.textContent = !s.enabled ? t("ime.system") : `${s.engine === "rime" ? schemaName(ime.schema) : t("ime.nameFallback")} · ${s.asciiMode ? t("ime.modeEn") : t("ime.modeZh")}`;
+  // zen：顶栏只剩「中/英」一字（方案名进 title 悬停 + 设置页；系统输入法时整个不显示）。点它 = 切中/英（同 Shift）；改用系统输入法只在设置页。
+  imeStatus.textContent = !s.enabled ? "" : s.asciiMode ? t("ime.modeEn") : t("ime.modeZh");
+  imeStatus.title = s.enabled ? `${s.engine === "rime" ? schemaName(ime.schema) : t("ime.nameFallback")} · ${t("ime.clickToToggle")}` : "";
   applyInputMode(s.enabled);
   if (!s.enabled || !s.buffer) { candidateBar.classList.add("hidden"); candidateBar.innerHTML = ""; return; }
   candidateBar.classList.remove("hidden");
@@ -180,7 +195,14 @@ async function setImeEnabled(on: boolean): Promise<void> {
   renderImeState();
 }
 async function toggleIme(): Promise<void> { await setImeEnabled(!ime.enabled); }
-imeStatus.addEventListener("click", () => { void toggleIme(); });
+imeStatus.addEventListener("mousedown", (e) => e.preventDefault());   // 别抢编辑器焦点
+imeStatus.addEventListener("click", () => {
+  const target = document.activeElement === titleInput ? titleInput : editorEl;
+  void ime.toggleAsciiMode().then((r) => {
+    if (r.type === "commit") { stripGhostBuffer(target, r.consumedBuffer); insertAtCursor(target, r.text); if (target === editorEl) editor.noteExternalEdit(); else target.dispatchEvent(new Event("input")); }
+    renderImeState();
+  });
+});
 
 function insertAtCursor(target: HTMLTextAreaElement | HTMLInputElement, text: string): void {
   const start = target.selectionStart ?? target.value.length, end = target.selectionEnd ?? target.value.length;
@@ -311,7 +333,7 @@ const onVoiceState = (next: VoiceState, error?: unknown) => {
   if (next === "recording" || next === "listening") setStatus(t("voice.recording"));
   else if (next === "transcribing") setStatus(t("voice.transcribing"));
   else if (next === "error" && error) setStatus(voiceErrorText(error), { error: true });
-  else if (next === "idle") { const txt = saveStatusEl.textContent; if (txt === t("voice.recording") || txt === t("voice.transcribing") || txt === t("voice.loadingModel")) setStatus(editor.statusForDoc()); }
+  else if (next === "idle") { const txt = toastEl.textContent; if (txt === t("voice.recording") || txt === t("voice.transcribing") || txt === t("voice.loadingModel")) setStatus(""); }
 };
 const localSession: VoiceSession | null = isLocalVoiceSupported()
   ? new LocalSession({ target: editorEl, onChange: onVoiceInsert, onState: onVoiceState, getModel: () => MODELS[voiceModel()], onLoading: (on) => { if (on) setStatus(t("voice.loadingModel")); }, onPackMissing: () => setStatus(t("voice.pack.missingHint")) })
@@ -383,6 +405,12 @@ $("readingModePicker").addEventListener("change", (event) => {
   applyReadingMode(v); prefs.setItem("readingMode", v);
 });
 prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("readingMode")));
+// 写字线（synced prefs，与阅读节奏同席：视觉偏好跟人走；缺省开）
+const ruledLinesToggle = $<HTMLInputElement>("ruledLinesToggle");
+const ruledLinesPref = (): boolean => prefs.getItem<boolean>("ruledLines") !== false;
+function applyRuledLines(on: boolean): void { document.body.classList.toggle("ruled-lines", on); ruledLinesToggle.checked = on; }
+ruledLinesToggle.addEventListener("change", () => { prefs.setItem("ruledLines", ruledLinesToggle.checked); applyRuledLines(ruledLinesToggle.checked); });
+prefs.onChange("ruledLines", () => applyRuledLines(ruledLinesPref()));
 
 // ── 设置视图 ──
 const authRow = $("authRow");
@@ -596,8 +624,23 @@ $("menuButton").addEventListener("click", () => { if (drawer.currentView() === "
 $("drawerCloseButton").addEventListener("click", () => drawer.close());
 $("drawerBackButton").addEventListener("click", () => drawer.open("active"));
 $("drawerBackdrop").addEventListener("click", () => drawer.close());
-$("newDocButton").addEventListener("click", () => { void editor.newDoc({ dir: drawer.currentFolder() }).then(() => drawer.close()); });
-$("newFolderButton").addEventListener("click", () => { void drawer.newFolder(); });
+// 「新建…」= 弹出菜单（WeebPaint 图库 ＋ 同形；user 2026-09-04「新建文件夹收到新建里面…新建菜单里面可以加新建加密文件」）
+const newDocButton = $("newDocButton");
+newDocButton.addEventListener("click", (e) => {
+  e.stopPropagation();
+  togglePopupMenu({
+    anchor: newDocButton, align: "left",
+    items: () => [
+      { id: "doc", label: t("ui.newDoc"), icon: "new" },
+      { id: "enc", label: t("ui.newEncDoc"), icon: "lock" },
+      { id: "folder", label: t("ui.newFolder"), icon: "create-folder", separatorBefore: true, hidden: !!drawer.currentFolder() },   // 只一层：夹里不再建夹（ADR-0006）
+    ],
+    onPick: (id) => {
+      if (id === "folder") { void drawer.newFolder(); return; }
+      void editor.newDoc({ dir: drawer.currentFolder(), encrypted: id === "enc" }).then(() => drawer.close());
+    },
+  });
+});
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
 $("settingsTopButton").addEventListener("click", () => { if (drawer.currentView() === "settings") drawer.close(); else drawer.open("settings"); });   // 设置入口在顶栏三条杠旁（user 2026-09-03「不要藏 gallery 里面」）
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
@@ -621,7 +664,7 @@ async function resumeSync(): Promise<void> {
   await editor.refreshIfClean();
   await reconcileCollections();
   drawer.refresh();
-  setStatus(editor.statusForDoc());
+  setState(editor.statusForDoc());
 }
 const idle = initIdleGate({
   overlay: $("idleOverlay"),
@@ -652,6 +695,7 @@ if (shell.isDevRoute) $("settingsBuild").textContent += " · dev";
 async function boot(): Promise<void> {
   await initCollections();
   applyReadingMode(prefs.getItem<string>("readingMode"));
+  applyRuledLines(ruledLinesPref());
   if (deviceKvGet("imeEnabled") !== "0") { await ime.initialize(imeSchemaPref()); ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）
   renderImeState();
   drawer.subscribe();
@@ -670,7 +714,7 @@ async function boot(): Promise<void> {
   }
   booted = true;
   renderTopbar();
-  setStatus(editor.statusForDoc());
+  setState(editor.statusForDoc());
   editorEl.focus();
 }
 let signInHandled = false;

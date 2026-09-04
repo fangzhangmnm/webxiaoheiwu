@@ -42,7 +42,7 @@ try {
   const editable = await page.evaluate(() => { const e = document.getElementById("editor"); return !!e && !e.disabled && !e.classList.contains("locked"); });
   check("编辑器可编辑（无头浏览器不保证初始焦点，真机由用户点一下）", editable);
   const status = await page.textContent("#saveStatus");
-  check("状态栏有文案", !!status && status.length > 0, status);
+  check("顶栏稿态存在且非错误（zen：干净态留白）", status !== null && !(await page.$eval("#saveStatus", (e) => e.classList.contains("error"))), status);
   const missingUse = await page.evaluate(() => {
     const ids = new Set([...document.querySelectorAll("symbol")].map((s) => s.id));
     return [...document.querySelectorAll("use")].map((u) => (u.getAttribute("href") || "").slice(1)).filter((id) => !ids.has(id));
@@ -202,7 +202,7 @@ try {
   });
   check("内置 IME 三方案：全拼 ni→你 / 微软双拼 ni→你 / 五笔 wq→你", typeof imeRun === "object" && imeRun.luna?.includes("你") && imeRun.mspy?.includes("你") && imeRun.wubi?.includes("你"), JSON.stringify(imeRun));
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
-  const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("saveStatus").textContent; });
+  const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("toast").textContent; });
   check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);
   await page.waitForTimeout(500);
   check("零页面错误", pageErrors.length === 0, pageErrors.join(" | "));
@@ -222,7 +222,7 @@ try {
     document.getElementById("sheetInput").value = document.getElementById("sheetInput").placeholder;   // 逐字 consent
     document.getElementById("sheetConfirm").click();
     await p;
-    return document.getElementById("saveStatus").textContent;
+    return document.getElementById("toast").textContent;
   });
   check("还原出厂：跑完报「验证归零」", /归零|zero residue/.test(frResult), frResult);
   await page2.waitForTimeout(2500);   // 1.2s 后 reload

@@ -122,14 +122,11 @@
         <button class="menu-button" id="settingsTopButton" type="button" aria-label="设置" data-i18n-aria="ui.settings" data-i18n-title="ui.settings">
           <svg class="ico" aria-hidden="true"><use href="#wrench"/></svg>
         </button>
-        <input id="titleInput" type="text" class="title" placeholder="无标题" data-i18n-ph="ui.titlePlaceholder" data-i18n-aria="ui.titleAria"
-               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="文档标题" data-i18n-aria="ui.titleAria" />
+        <span class="top-spacer" aria-hidden="true"></span>
         <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
         <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护" data-i18n-aria="top.readOnlyOn"></button>
         <div class="status" aria-live="polite">
-          <span id="wordCount">0 字</span>
-          <span class="sep" aria-hidden="true">·</span>
-          <span id="saveStatus">就绪</span>
+          <span id="saveStatus"></span>
           <span class="sep" aria-hidden="true">·</span>
           <span id="imeStatus" role="button" tabindex="0">系统输入法</span>
         </div>
@@ -140,6 +137,8 @@
         <button class="auth-action" id="rekeyButton" type="button" data-i18n="ui.key.rekey">换成当前密码</button>
       </div>
       <article class="page">
+        <input id="titleInput" type="text" class="title" placeholder="无标题" data-i18n-ph="ui.titlePlaceholder" data-i18n-aria="ui.titleAria"
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="文档标题" />
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
         <button id="micButton" class="mic-button" type="button" hidden aria-label="语音输入" data-i18n-aria="ui.mic" data-state="idle">
@@ -147,6 +146,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
         <div id="candidateBar" class="candidates hidden" aria-live="polite"></div>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
       </article>
     </main>
 
@@ -241,6 +241,10 @@
             </label>
           </div>
           <p class="reading-mode-hint" data-i18n="ui.reading.hint">短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。</p>
+          <label class="voice-config-toggle">
+            <input type="checkbox" id="ruledLinesToggle" checked />
+            <span data-i18n="ui.reading.ruled">写字线</span>
+          </label>
         </section>
 
         <section class="settings-section is-flat" id="imeSection">
@@ -327,13 +331,9 @@
       </div>
 
       <div class="drawer-actions" id="drawerActions">
-        <button class="drawer-action" id="newDocButton" type="button">
+        <button class="drawer-action" id="newDocButton" type="button" aria-haspopup="menu">
           <svg class="ico" aria-hidden="true"><use href="#new"/></svg>
-          <span data-i18n="ui.newDoc">新建</span>
-        </button>
-        <button class="drawer-action" id="newFolderButton" type="button">
-          <svg class="ico" aria-hidden="true"><use href="#create-folder"/></svg>
-          <span data-i18n="ui.newFolder">新建文件夹</span>
+          <span data-i18n="ui.newMenu">新建…</span>
         </button>
       </div>
       <p class="drawer-status" id="drawerStatus" hidden></p>
@@ -356,6 +356,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-222b4aa026d7.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-dfddfa988138.mjs"></script>
   </body>
 </html>

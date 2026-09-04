@@ -7,7 +7,7 @@
 //   · 加密稿：locked 时编辑区空白 + 禁输入；解锁循环在 busy 外；错密码不碰文件（库 seal 保证）。
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS, RENAME_DEBOUNCE_MS } from "./config.ts";
-import { formatDate, parseDocName, statsForText, splitDocPath } from "./doc-model.ts";
+import { formatDate, parseDocName, splitDocPath } from "./doc-model.ts";
 import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword } from "./crypto-state.ts";
 import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
@@ -18,8 +18,8 @@ export interface StatusOpts { error?: boolean; unsynced?: boolean }
 export interface EditorDeps {
   editor: HTMLTextAreaElement;
   titleInput: HTMLInputElement;
-  wordCount: HTMLElement;
-  setStatus: (text: string, opts?: StatusOpts) => void;
+  setStatus: (text: string, opts?: StatusOpts) => void;   // 瞬时事件 → toast
+  setState: (text: string, opts?: StatusOpts) => void;    // 粘性稿态 → 顶栏（空 = 留白）
   isSignedIn: () => boolean;
   /** 当前稿变了（身份/加密态/只读态）→ 抽屉/顶栏重画。 */
   onDocChanged: () => void;
@@ -53,7 +53,6 @@ export function createEditor(d: EditorDeps) {
   let renameTimer: ReturnType<typeof setTimeout> | null = null;
   let firstDirtyAt = 0;
   let pushPending = false;     // 有落盘但未推的字节
-  let lastSavedAt = 0;
   let loadGen = 0;             // open 竞态守卫
   let refreshInFlight = false;
 
@@ -61,13 +60,6 @@ export function createEditor(d: EditorDeps) {
   const readOnlyNames = (): string[] => deviceKvGetJson<string[]>(KV_READONLY, []);
   const isReadOnlyName = (n: string | null) => !!n && readOnlyNames().includes(n);
 
-  function renderWordCount(): void {
-    const { cjk, en } = statsForText(d.editor.value);
-    const parts: string[] = [];
-    if (cjk > 0) parts.push(t("wc.chars", { n: cjk }));
-    if (en > 0) parts.push(t("wc.words", { n: en }));
-    d.wordCount.textContent = parts.length ? parts.join(" · ") : t("wc.chars", { n: 0 });
-  }
   function moveCaretToStart(): void {
     try { d.editor.selectionStart = 0; d.editor.selectionEnd = 0; } catch { /* some inputs reject */ }
     d.editor.scrollTop = 0;
@@ -77,13 +69,13 @@ export function createEditor(d: EditorDeps) {
     d.editor.classList.toggle("locked", blocked);
     d.titleInput.classList.toggle("locked", blocked);
   }
+  // zen（user 2026-09-04）：干净态 / 锁态留白——只有「未同步 / 本地草稿 / 不可用 / 加密未成」这种要人知道的才出字。
   function statusForDoc(): string {
-    if (st.locked) return t("st.lockedHint");
+    if (st.locked) return "";
     if (encryptPending) return t("st.encryptPendingHint");
     if (st.unavailable) return t("st.unavailable");
     if (pushPending || localTimer) return d.isSignedIn() ? t("st.unsynced") : t("st.localDraft");
-    if (lastSavedAt) return t("st.savedAt", { time: fmtTime(lastSavedAt) });
-    return t("st.ready");
+    return "";
   }
   const canEdit = () => !st.readOnly && !st.locked && !st.unavailable;
 
@@ -126,12 +118,11 @@ export function createEditor(d: EditorDeps) {
       if (gen !== loadGen) return;   // 切走了：字节已落在捕获的 name 上，状态归新稿管
       savedText = text;
       if (effPush) {
-        if (r.pushed) { pushPending = false; lastSavedAt = Date.now(); pushFailures = 0; }
+        if (r.pushed) { pushPending = false; pushFailures = 0; }
         else pushPending = true;
         if (r.resolution === "takeCloud" && st.name === name) await reload(name);   // 世界线换了：整体重载（2026-08-25 案卷）
       } else {
         pushPending = true;
-        if (!d.isSignedIn()) lastSavedAt = Date.now();
       }
     })();
     persistInFlight = run;
@@ -141,7 +132,7 @@ export function createEditor(d: EditorDeps) {
     if (localTimer) clearTimeout(localTimer);
     localTimer = setTimeout(() => {
       localTimer = null;
-      void persist(false).then(() => { d.setStatus(statusForDoc(), { unsynced: pushPending && d.isSignedIn() }); if (d.isSignedIn()) schedulePush(); })
+      void persist(false).then(() => { d.setState(statusForDoc(), { unsynced: pushPending && d.isSignedIn() }); if (d.isSignedIn()) schedulePush(); })
         .catch((e) => { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); });
     }, LOCAL_SAVE_DEBOUNCE_MS);
   }
@@ -163,7 +154,7 @@ export function createEditor(d: EditorDeps) {
     if (isOffline()) {   // 离线：只落本地，不刷红横幅；`online` 事件会回来推（审计 L2）
       if (localTimer) { clearTimeout(localTimer); localTimer = null; }
       try { await persist(false); } catch (e) { reportError(e, "log"); }
-      pushPending = true; d.setStatus(statusForDoc(), { unsynced: true });
+      pushPending = true; d.setState(statusForDoc(), { unsynced: true });
       return;
     }
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
@@ -172,7 +163,7 @@ export function createEditor(d: EditorDeps) {
     try {
       await persist(true);
       if (gen !== loadGen) return;
-      d.setStatus(statusForDoc(), { unsynced: pushPending });
+      d.setState(statusForDoc(), { unsynced: pushPending });
       if (pushPending) schedulePush();   // 冲突未解 / 库判未推 → 下个周期再试
     } catch (e) {
       if (gen !== loadGen) return;
@@ -237,7 +228,7 @@ export function createEditor(d: EditorDeps) {
     encryptPending = false; pushFailures = 0;
     const gen = ++loadGen;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    firstDirtyAt = 0; pushPending = false; lastSavedAt = 0;
+    firstDirtyAt = 0; pushPending = false;
     const caret = opts.keepCaret ? d.editor.selectionStart : 0;
     st.name = name; st.pendingDate = null; st.readOnly = isReadOnlyName(name); st.unavailable = false; st.locked = false; st.encrypted = false;
     setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
@@ -247,8 +238,8 @@ export function createEditor(d: EditorDeps) {
     if (r.kind === "locked" || r.kind === "other-password") {
       st.encrypted = true; st.locked = true;
       d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedTitle = d.titleInput.value; savedText = "";
-      applyGuards(); renderWordCount(); d.onDocChanged();
-      d.setStatus(r.kind === "locked" ? t("st.lockedHint") : t("st.otherPasswordHint"));
+      applyGuards(); d.onDocChanged();
+      d.setState(r.kind === "locked" ? "" : t("st.otherPasswordHint"));
       if (!opts.promptUnlock) return true;   // 非手势：停在锁态，点锁图标再问
       const ok = r.kind === "locked" ? await d.ensureUnlocked() : await d.ensureFileUnlocked(name);
       if (gen !== loadGen) return false;
@@ -267,10 +258,10 @@ export function createEditor(d: EditorDeps) {
       st.encrypted = r.encrypted; st.locked = false;
       d.editor.value = r.text; savedText = r.text;
       d.titleInput.value = parseDocName(name).title; savedTitle = d.titleInput.value;
-      applyGuards(); renderWordCount();
+      applyGuards();
       if (opts.keepCaret) { try { d.editor.selectionStart = d.editor.selectionEnd = Math.min(caret, r.text.length); } catch { /* ignore */ } }
       else moveCaretToStart();
-      d.setStatus(statusForDoc());
+      d.setState(statusForDoc());
       d.onDocChanged();
       if (r.encoding !== "utf-8" && r.encoding !== "utf-8-bom" && canEdit()) {   // 旧编码 → 以 UTF-8 写回（v1 同款规范化）
         void saveDoc(name, r.text, { push: d.isSignedIn() }).catch((e) => reportError(e, "log"));
@@ -280,7 +271,7 @@ export function createEditor(d: EditorDeps) {
     if (r.kind === "locked" || r.kind === "other-password") { d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }
     st.unavailable = true;
     d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedText = ""; savedTitle = d.titleInput.value;
-    applyGuards(); renderWordCount(); d.onDocChanged();
+    applyGuards(); d.onDocChanged();
     d.setStatus(t("st.unavailable"), { error: true });
     return false;
   }
@@ -295,13 +286,13 @@ export function createEditor(d: EditorDeps) {
     encryptPending = false; pushFailures = 0;
     loadGen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    firstDirtyAt = 0; pushPending = false; lastSavedAt = 0;
+    firstDirtyAt = 0; pushPending = false;
     const dir = opts.dir ?? currentDir();
     st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.encrypted = !!opts.encrypted; st.locked = false; st.readOnly = false; st.unavailable = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
     d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
-    applyGuards(); renderWordCount();
-    d.setStatus(st.encrypted ? t("st.pendingEncrypted") : t("st.ready"));
+    applyGuards();
+    d.setState(st.encrypted ? t("st.pendingEncrypted") : "");
     d.onDocChanged();
     d.titleInput.focus();
     return true;
@@ -319,7 +310,7 @@ export function createEditor(d: EditorDeps) {
     pushPending = false; encryptPending = false; pushFailures = 0;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
     d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
-    applyGuards(); renderWordCount(); d.setStatus(t("st.ready")); d.onDocChanged();
+    applyGuards(); d.setState(""); d.onDocChanged();
   }
 
   // ── 新鲜度（focus/online/idle 复查）：只干净快进；dirty 留给推送的冲突面 ──
@@ -357,8 +348,8 @@ export function createEditor(d: EditorDeps) {
     if (!st.name) {
       if (!st.pendingDate) return;
       // 未物化的新稿：切「预定加密」，物化那一刻兑现（persist）
-      if (!st.encrypted) { if (!(await d.ensureUnlocked())) return; st.encrypted = true; d.setStatus(t("st.pendingEncrypted")); }
-      else { st.encrypted = false; d.setStatus(t("st.pendingPlain")); }
+      if (!st.encrypted) { if (!(await d.ensureUnlocked())) return; st.encrypted = true; d.setState(t("st.pendingEncrypted")); }
+      else { st.encrypted = false; d.setState(t("st.pendingPlain")); }
       d.onDocChanged();
       return;
     }
@@ -427,14 +418,13 @@ export function createEditor(d: EditorDeps) {
   for (const el of [d.editor, d.titleInput]) for (const evt of ["beforeinput", "paste", "cut", "drop"]) el.addEventListener(evt, blockIfGuarded);
   d.editor.addEventListener("input", () => {
     if (!canEdit()) return;
-    d.setStatus(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
-    renderWordCount();
+    d.setState(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
     scheduleLocalSave();
   });
   d.titleInput.addEventListener("input", () => {
     if (!canEdit()) return;
     if (/[\r\n]/.test(d.titleInput.value)) d.titleInput.value = d.titleInput.value.replace(/[\r\n]+/g, " ");
-    d.setStatus(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
+    d.setState(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
     if (st.name) scheduleRename(); else scheduleLocalSave();
   });
   d.titleInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); d.editor.focus(); } });
@@ -444,15 +434,14 @@ export function createEditor(d: EditorDeps) {
     // 所以锁定由 app 层先 flushLocal 再调 crypto-state.lock()。这里只是兜底把画面清掉。
     st.locked = true;
     d.editor.value = ""; savedText = "";
-    applyGuards(); renderWordCount(); d.onDocChanged();
-    d.setStatus(t("st.lockedHint"));
+    applyGuards(); d.onDocChanged();
+    d.setState("");
   }
 
   /** IME/语音提交插入后调（不走 input 事件的路径）。 */
   function noteExternalEdit(): void {
     if (!canEdit()) return;
-    d.setStatus(t("st.unsynced"), { unsynced: d.isSignedIn() });
-    renderWordCount();
+    d.setState(t("st.unsynced"), { unsynced: d.isSignedIn() });
     scheduleLocalSave();
   }
 
@@ -461,7 +450,7 @@ export function createEditor(d: EditorDeps) {
     open, newDoc, clear, reload,
     flushLocal, pushNow, refreshIfClean,
     toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir,
-    canEdit, statusForDoc, renderWordCount,
+    canEdit, statusForDoc,
     isDirty: () => !!localTimer || pushPending || d.editor.value !== savedText,
     isUnlockedDoc: () => st.encrypted && isUnlocked(),
     lastOpenName: () => (deviceKvGetJson<string | null>(KV_LAST_OPEN, null) ?? null),

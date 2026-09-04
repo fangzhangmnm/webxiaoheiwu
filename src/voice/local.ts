@@ -40,6 +40,7 @@ export class LocalSession implements VoiceSession {
   private injecting = false;
   private cancelled = false;
   private loadPromise: Promise<unknown> | null = null;
+  private loadSettled = false;   // 已 resolve → 识别前不再报「加载模型中」（worker 端 load 是幂等快路径，此前 UI 每句都无条件先报 loading——user 2026-09-04 指出）
   private lang: AsrLang = "zh";
   private gen = 0;              // 会话代：旧会话的回调（getUserMedia / decode）按代丢弃（审计 M12）
   private stopRequested = false; // stop() 早于录音真正开始（getUserMedia 未回）→ 起录后立刻停
@@ -65,8 +66,9 @@ export class LocalSession implements VoiceSession {
     if (ready === undefined) { try { ready = (await asr.status(model.slug)).ready; } catch { ready = false; } if (gen !== this.gen || this.cancelled) return; }
     if (!ready) { this.d.onPackMissing?.(); return; }
     // 模型加载与录音并行；失败留到 stop 时报
-    this.loadPromise = asr.load(model.slug, this.lang);
-    this.loadPromise.catch(() => {});
+    this.loadSettled = false;
+    const lp = asr.load(model.slug, this.lang); this.loadPromise = lp;
+    lp.then(() => { if (this.loadPromise === lp) this.loadSettled = true; }, () => {});
     let stream: MediaStream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } }); }
     catch (err) { if (this.cancelled || gen !== this.gen) return; this._fail(err); return; }   // 250ms 内弃掉的 Ctrl 和弦不报错（审计 UI-12）
@@ -129,9 +131,10 @@ export class LocalSession implements VoiceSession {
     const gen = this.gen;
     this._setState("transcribing");
     try {
-      this.d.onLoading?.(true);
+      const showLoading = !this.loadSettled;
+      if (showLoading) this.d.onLoading?.(true);
       await this.loadPromise;
-      this.d.onLoading?.(false);
+      if (showLoading) this.d.onLoading?.(false);
       if (this.cancelled || gen !== this.gen) return;
       const r = await asr.decode(samples, this.lang);
       if (this.cancelled || gen !== this.gen) return;

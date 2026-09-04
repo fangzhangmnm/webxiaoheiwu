@@ -1500,3 +1500,41 @@ body {
 .cloud-btn[data-cloud-state="signedin"] { color: var(--info); }
 .cloud-btn[data-cloud-state="offline"] { color: var(--quiet); }
 .cloud-btn[data-cloud-state="out"] { color: var(--ink-soft); opacity: 0.7; }
+
+/* ── zen 顶栏 + 写字线（2026-09-04 user「帮我 zen mode 一点」「显示一条条的写字线」）：标题进纸面、字数撤、干净态状态留白、IME 只剩「中/英」一字 ── */
+.top-spacer { flex: 1 1 0; min-width: 0; }
+.page { --editor-font: clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max)); }
+.body { font-size: var(--editor-font); }
+.title {
+  flex: none; display: block; width: 100%; height: auto; line-height: 1.4;
+  font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink);
+  text-align: center; padding: 0 0 calc(var(--editor-font) * 0.5); margin: 0 0 calc(var(--editor-font) * 0.5);
+}
+.title:hover, .title:focus { color: var(--ink); }
+.title::placeholder { color: var(--ink-muted); font-weight: 500; opacity: 0.45; }
+.title.locked { color: var(--ink-soft); }
+#saveStatus:empty + .sep { display: none; }
+#imeStatus:empty { display: none; }
+.status:has(#imeStatus:empty) .sep { display: none; }   /* 系统输入法时右侧没字，分隔点别悬空 */
+#imeStatus { font-family: var(--font-ui); font-size: 11px; line-height: 16px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-soft); }
+body.ruled-lines .body {
+  background-image: linear-gradient(to top, var(--line) 1px, transparent 1px);
+  background-size: 100% calc(1em * var(--editor-line-height));
+  background-size: 100% 1lh;
+  background-repeat: repeat-y;
+  background-attachment: local;   /* 线随正文滚动，像纸 */
+}
+/* 列表行：名字左缘对齐（锁挪到云图标左边；有夹时正文行补一个夹图标宽的留白——user 2026-09-04「锁放在云图标左边…看起来对齐」） */
+.doc-main .doc-name { flex: 1 1 auto; min-width: 0; }
+.doc-badge { margin-left: 0; }
+.doc-lead { width: 13px; flex: none; }
+.toast {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6;
+  max-width: min(86%, 560px); padding: 6px 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 86%, transparent); color: var(--bg);
+  font-family: var(--font-ui); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: var(--shadow); pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 180ms ease, visibility 0s linear 180ms;
+}
+.toast.show { opacity: 1; visibility: visible; transition: opacity 120ms ease; }
+.toast.error { background: var(--danger); color: #fff; }
+.candidates:not(.hidden) ~ .toast { bottom: 64px; }

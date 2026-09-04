@@ -17,6 +17,7 @@ export declare class LocalSession implements VoiceSession {
     private injecting;
     private cancelled;
     private loadPromise;
+    private loadSettled;
     private lang;
     private gen;
     private stopRequested;

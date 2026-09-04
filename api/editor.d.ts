@@ -5,8 +5,8 @@ export interface StatusOpts {
 export interface EditorDeps {
     editor: HTMLTextAreaElement;
     titleInput: HTMLInputElement;
-    wordCount: HTMLElement;
     setStatus: (text: string, opts?: StatusOpts) => void;
+    setState: (text: string, opts?: StatusOpts) => void;
     isSignedIn: () => boolean;
     /** 当前稿变了（身份/加密态/只读态）→ 抽屉/顶栏重画。 */
     onDocChanged: () => void;
@@ -49,7 +49,6 @@ export declare function createEditor(d: EditorDeps): {
     currentDir: () => string;
     canEdit: () => boolean;
     statusForDoc: () => string;
-    renderWordCount: () => void;
     isDirty: () => boolean;
     isUnlockedDoc: () => boolean;
     lastOpenName: () => string | null;

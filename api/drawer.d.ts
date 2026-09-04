@@ -11,7 +11,6 @@ export interface DrawerDeps {
     trashActions: HTMLElement;
     settingsView: HTMLElement;
     breadcrumb: HTMLElement;
-    newFolderButton: HTMLButtonElement;
     activeName: () => string | null;
     /** 当前稿所在夹（打开抽屉时列表跳到这里）。 */
     currentDir: () => string;

@@ -92,9 +92,17 @@ export declare const S: {
         readonly zh: "关闭";
         readonly en: "Close";
     };
+    readonly "ui.newMenu": {
+        readonly zh: "新建…";
+        readonly en: "New…";
+    };
     readonly "ui.newDoc": {
-        readonly zh: "新建";
-        readonly en: "New";
+        readonly zh: "新建稿";
+        readonly en: "New draft";
+    };
+    readonly "ui.newEncDoc": {
+        readonly zh: "新建加密稿";
+        readonly en: "New encrypted draft";
     };
     readonly "ui.newFolder": {
         readonly zh: "新建文件夹";
@@ -264,6 +272,10 @@ export declare const S: {
         readonly zh: "标准 · 宽行";
         readonly en: "Standard · wide lines";
     };
+    readonly "ui.reading.ruled": {
+        readonly zh: "写字线";
+        readonly en: "Ruled lines";
+    };
     readonly "ui.reading.hint": {
         readonly zh: "短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。";
         readonly en: "Short-line mode narrows the page and opens up line spacing for web-novel dialogue rhythm.";
@@ -324,18 +336,6 @@ export declare const S: {
         readonly zh: "再次输入以确认";
         readonly en: "Repeat to confirm";
     };
-    readonly "wc.chars": {
-        readonly zh: "{n} 字";
-        readonly en: "{n} chars";
-    };
-    readonly "wc.words": {
-        readonly zh: "{n} 词";
-        readonly en: "{n} words";
-    };
-    readonly "st.ready": {
-        readonly zh: "就绪";
-        readonly en: "Ready";
-    };
     readonly "st.loading": {
         readonly zh: "加载中…";
         readonly en: "Loading…";
@@ -352,10 +352,6 @@ export declare const S: {
         readonly zh: "正在同步…";
         readonly en: "Syncing…";
     };
-    readonly "st.savedAt": {
-        readonly zh: "已保存 {time}";
-        readonly en: "Saved {time}";
-    };
     readonly "st.saveFailed": {
         readonly zh: "保存失败：{e}";
         readonly en: "Save failed: {e}";
@@ -367,10 +363,6 @@ export declare const S: {
     readonly "st.renameFailed": {
         readonly zh: "改名失败（名字被占用？）";
         readonly en: "Rename failed (name taken?)";
-    };
-    readonly "st.lockedHint": {
-        readonly zh: "已加密 · 点锁图标解锁";
-        readonly en: "Encrypted · tap the lock to unlock";
     };
     readonly "st.wrongPasswordOrLocked": {
         readonly zh: "密码不对，无法解密这篇";
@@ -899,6 +891,10 @@ export declare const S: {
     readonly "ime.system": {
         readonly zh: "系统输入法";
         readonly en: "System IME";
+    };
+    readonly "ime.clickToToggle": {
+        readonly zh: "点击切换中/英（Shift 同）";
+        readonly en: "Click to toggle 中/EN (same as Shift)";
     };
     readonly "ime.schema.luna": {
         readonly zh: "全拼";

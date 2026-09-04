@@ -13,7 +13,7 @@ export type DrawerView = "closed" | "active" | "trash" | "settings";
 export interface DrawerDeps {
   drawer: HTMLElement; backdrop: HTMLElement; title: HTMLElement; backButton: HTMLElement;
   docList: HTMLElement; docListEmpty: HTMLElement; docActions: HTMLElement; trashActions: HTMLElement; settingsView: HTMLElement;
-  breadcrumb: HTMLElement; newFolderButton: HTMLButtonElement;
+  breadcrumb: HTMLElement;
   activeName: () => string | null;
   /** 当前稿所在夹（打开抽屉时列表跳到这里）。 */
   currentDir: () => string;
@@ -88,7 +88,6 @@ export function createDrawer(d: DrawerDeps) {
   function renderBreadcrumb(): void {
     const bc = d.breadcrumb; bc.innerHTML = "";
     bc.hidden = !folder;
-    d.newFolderButton.hidden = !!folder;   // 只一层：夹里不再建夹
     if (!folder) return;
     const root = document.createElement("button"); root.type = "button"; root.className = "crumb-link"; root.innerHTML = icon("back") + t("list.root");
     root.addEventListener("click", () => setFolder(""));
@@ -122,8 +121,9 @@ export function createDrawer(d: DrawerDeps) {
       const main = document.createElement("button");
       main.type = "button"; main.className = "doc-main"; main.title = it.name;
       const b = BADGE[it.syncState] ?? { icon: "cloud", cls: "" };
-      main.innerHTML = (it.encrypted ? `<span class="doc-enc" title="${t("list.encrypted")}">${icon("lock")}</span>` : "")
+      main.innerHTML = (folders.length ? `<span class="doc-lead" aria-hidden="true"></span>` : "")   // 与夹行的图标对齐名字左缘
         + `<span class="doc-name${it.syncState === "ghost" || it.syncState === "pendingGone" ? " ghost" : ""}"></span>`
+        + (it.encrypted ? `<span class="doc-enc" title="${t("list.encrypted")}">${icon("lock")}</span>` : "")
         + `<span class="doc-badge ${b.cls}" title="">${iconHtml(b.icon)}</span>`;
       main.querySelector(".doc-name")!.textContent = it.stem;
       (main.querySelector(".doc-badge") as HTMLElement).title = [syncLabel(it.syncState), fmtSize(it.size)].filter(Boolean).join(" · ");
@@ -239,7 +239,6 @@ export function createDrawer(d: DrawerDeps) {
     view = next;
     if (next === "active" && wasClosed) { const dir = d.currentDir(); if (dir !== folder) setFolder(dir); else subscribe(); }   // 每次打开 = 重订（拉一帧云端最新；user 2026-09-03「文件夹页没有自动更新」）   // 打开抽屉 = 看当前稿所在的夹
     d.breadcrumb.hidden = next !== "active" || !folder;
-    d.newFolderButton.hidden = next !== "active" || !!folder;
     d.drawer.classList.remove("hidden"); d.drawer.setAttribute("aria-hidden", "false"); d.backdrop.classList.remove("hidden");
     const isSettings = next === "settings", isTrash = next === "trash";
     d.title.textContent = isSettings ? t("drawer.settings") : isTrash ? t("drawer.trash") : t("drawer.files");
