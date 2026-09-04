@@ -152,6 +152,15 @@
         </button>
         <div id="candidateBar" class="candidates hidden" aria-live="polite"></div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        <div id="lockCard" class="lock-card" hidden role="group" aria-label="已锁定" data-i18n-aria="lock.aria">
+          <svg class="ico lock-card-ico" aria-hidden="true"><use href="#lock"/></svg>
+          <p class="lock-card-text" id="lockCardText"></p>
+          <div class="lock-card-actions">
+            <button class="auth-action" id="lockCardUnlock" type="button" data-i18n="lock.unlock">解锁…</button>
+            <button class="auth-action" id="lockCardRetry" type="button" data-i18n="lock.retry" hidden>重试</button>
+            <button class="auth-action" id="lockCardNew" type="button" data-i18n="lock.newDoc">新建稿</button>
+          </div>
+        </div>
       </article>
     </main>
 
@@ -368,6 +377,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-da848107e8d9.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-52f5364ab4dc.mjs"></script>
   </body>
 </html>

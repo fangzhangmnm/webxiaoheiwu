@@ -52,6 +52,34 @@ export declare const S: {
         readonly zh: "语音输入";
         readonly en: "Voice input";
     };
+    readonly "lock.aria": {
+        readonly zh: "已锁定";
+        readonly en: "Locked";
+    };
+    readonly "lock.locked": {
+        readonly zh: "「{name}」是加密稿，已锁定。";
+        readonly en: "“{name}” is encrypted and locked.";
+    };
+    readonly "lock.otherPw": {
+        readonly zh: "「{name}」用的不是当前密码。";
+        readonly en: "“{name}” uses a different password.";
+    };
+    readonly "lock.unavailable": {
+        readonly zh: "「{name}」本地没有缓存，云端也连不上。";
+        readonly en: "“{name}” is not cached locally and the cloud is unreachable.";
+    };
+    readonly "lock.unlock": {
+        readonly zh: "解锁…";
+        readonly en: "Unlock…";
+    };
+    readonly "lock.retry": {
+        readonly zh: "重试";
+        readonly en: "Retry";
+    };
+    readonly "lock.newDoc": {
+        readonly zh: "新建稿";
+        readonly en: "New draft";
+    };
     readonly "ui.voiceBackspace": {
         readonly zh: "退格（按住连删）";
         readonly en: "Backspace (hold to repeat)";

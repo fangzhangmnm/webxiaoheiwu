@@ -99,7 +99,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, titleInput, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); drawer.refresh(); rememberLastActive(); },
+  onDocChanged: () => { renderTopbar(); renderLockCard(); drawer.refresh(); rememberLastActive(); },
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); },
 });
@@ -156,6 +156,20 @@ lockToggle.addEventListener("click", () => editor.toggleReadOnly());
 
 // ── 跨设备 lastActive 指针（Separated 模式：只在冷启动尊重远端，不在 session 中途切）──
 let booted = false;
+// ── 锁卡（0.2 护栏，user 2026-09-04「0.2 还是先做个护栏吧，不然坑人」）：锁着 / 不可用的稿不再假装是编辑器——纸面盖卡说明 + 三个出口；根治 = 0.3 懒空白稿 ──
+const lockCard = $("lockCard"), lockCardText = $("lockCardText"), lockCardUnlock = $<HTMLButtonElement>("lockCardUnlock"), lockCardRetry = $<HTMLButtonElement>("lockCardRetry");
+function renderLockCard(): void {
+  const st = editor.state;
+  const kind = st.locked && st.name ? (fileUsesOtherPassword(st.name) ? "other" : "locked") : st.unavailable && booted && st.name ? "unavailable" : null;
+  lockCard.hidden = !kind;
+  if (!kind) return;
+  lockCardText.textContent = t(kind === "other" ? "lock.otherPw" : kind === "locked" ? "lock.locked" : "lock.unavailable", { name: parseDocName(st.name!).title });
+  lockCardUnlock.hidden = kind === "unavailable"; lockCardRetry.hidden = kind !== "unavailable";
+}
+const reopenWithPrompt = () => { const n = editor.state.name; if (n) void editor.open(n, { promptUnlock: true }); };
+lockCardUnlock.addEventListener("click", reopenWithPrompt);
+lockCardRetry.addEventListener("click", reopenWithPrompt);
+$("lockCardNew").addEventListener("click", () => { void editor.newDoc({ dir: editor.currentDir() }); });
 function rememberLastActive(): void {
   if (!booted || !editor.state.name || !auth.isSignedIn()) return;   // 冷启动 open(last) 不写云端指针——别盖掉别的设备最后写的那篇
   appState.setItem("lastActive", { name: editor.state.name, savedAt: Date.now(), device: deviceLabel() });
@@ -360,11 +374,11 @@ voiceAbortHook = () => { if (localSession && (localSession.state === "recording"
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
   const st = editor.state;
-  const absent = !activeVoiceBackend() || (!st.name && !st.pendingDate);
-  const blocked = st.readOnly || st.locked;   // 锁着/只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
+  const absent = !activeVoiceBackend() || (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted);   // 锁着/不可用：锁卡盖着纸面，话筒收起
+  const blocked = st.readOnly;   // 只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
   micButton.hidden = absent;
   micButton.classList.toggle("disabled", blocked);
-  micButton.title = blocked ? t(st.locked ? "voice.blockedLocked" : "voice.blockedReadOnly") : t("voice.mic");
+  micButton.title = blocked ? t("voice.blockedReadOnly") : t("voice.mic");
   voiceBackspaceButton.hidden = absent || blocked || !voiceMode;
 }
 /** 语音模式退格：删光标前一个字（整个 emoji 算一个）/ 选区；组字中则喂 IME。按住连删。 */
@@ -771,6 +785,7 @@ async function boot(): Promise<void> {
     if (first) await editor.open(first); else await editor.newDoc();
   }
   booted = true;
+  renderLockCard(); renderMicVisibility();
   renderTopbar();
   setState(editor.statusForDoc());
   editorEl.focus();
@@ -803,4 +818,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

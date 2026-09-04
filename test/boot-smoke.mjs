@@ -222,6 +222,20 @@ try {
   check("页内任意处敲键 → 焦点回编辑器", typeAnywhere);
   const vbs = await page.evaluate(() => { const ed = document.getElementById("editor"), bs = document.getElementById("voiceBackspaceButton"); const x = window.__xhw; ed.focus(); ed.value = "你好😀"; ed.selectionStart = ed.selectionEnd = ed.value.length; x.voiceBackspace(); const a = ed.value; x.voiceBackspace(); const b = ed.value; x.setVoiceMode(true); const shown = !bs.hidden; ed.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true })); const hiddenAfterKey = bs.hidden; x.setVoiceMode(false); return { a, b, shown, hiddenAfterKey }; });
   check("语音模式退格钮：emoji 整个删 / 汉字删一个；口述后可见、敲实体键即隐", vbs.a === "你好" && vbs.b === "你" && vbs.shown && vbs.hiddenAfterKey, JSON.stringify(vbs));
+  // 锁卡护栏（user 2026-09-04「0.2 先做个护栏」）：加密稿物化 → 立即锁定 → 纸面盖锁卡、textarea readOnly、话筒收起；点「新建稿」→ 卡撤、可编辑
+  const lockCard = await page.evaluate(async () => {
+    const w = (ms) => new Promise((r) => setTimeout(r, ms)); const x = window.__xhw;
+    if (!(await x.editor.newDoc({ encrypted: true }))) return "newDoc refused";
+    const ed = document.getElementById("editor"); ed.focus(); ed.value = "to be locked"; ed.dispatchEvent(new Event("input"));
+    for (let i = 0; i < 50 && !x.editor.state.name; i++) await w(200);
+    if (!x.editor.state.name) return "not materialized";
+    await x.lockNow(); await w(400);
+    const card = document.getElementById("lockCard");
+    const a = { card: !card.hidden, ro: ed.readOnly, mic: document.getElementById("micButton").hidden, text: document.getElementById("lockCardText").textContent };
+    document.getElementById("lockCardNew").click(); await w(500);
+    return { ...a, after: { card: !card.hidden, ro: ed.readOnly } };
+  });
+  check("锁卡护栏：锁定 → 锁卡 + readOnly + 话筒收起；新建稿 → 卡撤可编辑", typeof lockCard === "object" && lockCard.card && lockCard.ro && lockCard.mic && /加密稿|encrypted/.test(lockCard.text) && !lockCard.after.card && !lockCard.after.ro, JSON.stringify(lockCard));
   check("内置 IME 三方案：全拼 ni→你 / 微软双拼 ni→你 / 五笔 wq→你", typeof imeRun === "object" && imeRun.luna?.includes("你") && imeRun.mspy?.includes("你") && imeRun.wubi?.includes("你"), JSON.stringify(imeRun));
   check("简/繁开关：zhe 简→这 / 繁→這 / 切回→这，且无 emoji 候选", typeof imeRun === "object" && imeRun.simp?.[0] === "这" && imeRun.trad?.[0] === "這" && imeRun.simpAgain?.[0] === "这" && !imeRun.simp.some((c) => /\p{Extended_Pictographic}/u.test(c)), JSON.stringify({ simp: imeRun.simp, trad: imeRun.trad, again: imeRun.simpAgain }));
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
