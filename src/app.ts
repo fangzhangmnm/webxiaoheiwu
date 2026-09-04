@@ -771,8 +771,8 @@ const idle = initIdleGate({
   onResume: resumeSync,
   focusEditor: () => editorEl.focus(),
 });
-// ── Quest：放下手柄时系统键盘焦点会跑去别的 app（空格在 VRChat 里跳起来）——拦不住，能做的 = 让人一眼看出「键盘不在本页」，
-//   焦点回来 / 页内任意处敲键时自动回到编辑器（user 2026-09-04）。
+// ── Quest：放下手柄时系统键盘焦点会跑去别的 app（空格在 VRChat 里跳起来）——拦不住，能做的 = 焦点回来 / 页内任意处敲键时
+//   静默回到编辑器，第一击不丢（user 2026-09-04）。「键盘不在本页」提示条 + 压暗同日撤：光标失踪本身看得见，没有煤气灯疑惑。
 function modalOpen(): boolean { return !!document.querySelector('[role="dialog"]:not(.hidden)') || !!currentPopupMenu() || drawer.currentView() !== "closed" || idle.isShown(); }
 function recoverEditorFocus(): boolean {
   const a = document.activeElement;
@@ -781,8 +781,7 @@ function recoverEditorFocus(): boolean {
   editorEl.focus();
   return document.activeElement === editorEl;
 }
-window.addEventListener("blur", () => document.body.classList.add("kb-away"));
-window.addEventListener("focus", () => { document.body.classList.remove("kb-away"); recoverEditorFocus(); });
+window.addEventListener("focus", () => { recoverEditorFocus(); });
 document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.defaultPrevented || (event.target !== document.body && event.target !== document.documentElement)) return;
   if (event.ctrlKey || event.metaKey || event.altKey) return;

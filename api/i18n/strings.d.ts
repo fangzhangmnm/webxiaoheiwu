@@ -148,10 +148,6 @@ export declare const S: {
         readonly zh: "退格（按住连删）";
         readonly en: "Backspace (hold to repeat)";
     };
-    readonly "ui.kbAway": {
-        readonly zh: "键盘不在本页——点一下页面继续";
-        readonly en: "Keyboard is not on this page — tap the page to continue";
-    };
     readonly "voice.blockedLocked": {
         readonly zh: "这篇锁着，先解锁再口述";
         readonly en: "This draft is locked — unlock it to dictate";

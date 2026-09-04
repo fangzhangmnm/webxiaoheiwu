@@ -60,7 +60,7 @@ synced prefs：`ruledLines`（bool，缺省开）、`imeSimplified`（bool，缺
 
 ## 5. 待 user 真机
 
-Quest：简体是否已好、「键盘不在本页」提示会不会亮、锁卡。iPhone：键盘缩纸面手感、smart save 钮、出血线地板。iPad：ASCII 键盘只是「弹系统键盘」。
+Quest：简体是否已好、~~「键盘不在本页」提示会不会亮~~（提示条 + 压暗 v0.2.17 撤，user 2026-09-04「光标失踪了我看得到，这里没有煤气灯的疑惑」；焦点静默找回保留）、锁卡。iPhone：键盘缩纸面手感、smart save 钮、出血线地板。iPad：ASCII 键盘只是「弹系统键盘」。
 
 ## 6. 图标库
 

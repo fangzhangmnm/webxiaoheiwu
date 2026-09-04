@@ -1525,12 +1525,9 @@ body.ruled-lines .body {
 .toast.show { opacity: 1; visibility: visible; transition: opacity 120ms ease; }
 .toast.error { background: var(--danger); color: #fff; }
 .candidates:not(.hidden) ~ .toast { bottom: 64px; }
-/* 语音模式退格钮（话筒左邻，只在纯口述时出现）+ Quest「键盘不在本页」提示（2026-09-04） */
+/* 语音模式退格钮（话筒左邻，只在纯口述时出现）。Quest「键盘不在本页」提示条 + 压暗 2026-09-04 撤（user：光标失踪本身看得见，没有煤气灯疑惑）；焦点找回逻辑留在 app.ts */
 .mic-side { right: 70px; width: 40px; height: 40px; bottom: 18px; }
 .mic-side .ico { width: 18px; height: 18px; }
-.kb-away-hint { display: none; position: fixed; top: 36px; left: 50%; transform: translateX(-50%); z-index: 8; padding: 5px 12px; border-radius: 999px; background: var(--warn); color: #fff; font-family: var(--font-ui); font-size: 12px; box-shadow: var(--shadow); pointer-events: none; }
-body.kb-away .kb-away-hint { display: block; }
-body.kb-away .page { opacity: 0.6; transition: opacity 200ms ease; }
 /* 锁卡（0.2 护栏，2026-09-04）：锁着 / 不可用的稿不再假装是编辑器 */
 .lock-card { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
 .lock-card[hidden] { display: none; }
@@ -1547,7 +1544,6 @@ body.kb-away .page { opacity: 0.6; transition: opacity 200ms ease; }
 :root[data-standalone] { --top-floor: max(env(safe-area-inset-top, 0px), 20px); --bottom-floor: max(env(safe-area-inset-bottom, 0px), 14px); --sa-left: env(safe-area-inset-left, 0px); --sa-right: env(safe-area-inset-right, 0px); }
 .top-bar { top: var(--top-floor); }
 .page { margin: calc(var(--top-floor) + 36px) auto calc(var(--bottom-floor) - 2px); height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px); }   /* 4/14 时与原 40px/12px/52px 完全相同 */
-.kb-away-hint { top: calc(var(--top-floor) + 32px); }
 .drawer { box-sizing: border-box; padding-top: calc(var(--top-floor) - 4px); padding-bottom: calc(var(--bottom-floor) - 14px); padding-left: var(--sa-left); }
 .update-toast { bottom: calc(var(--bottom-floor) - 2px); right: calc(12px + var(--sa-right)); }
 

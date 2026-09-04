@@ -47,7 +47,6 @@ export const S = {
   "save.stillPending":   { zh: "还没推上去，稍后自动重试", en: "Not uploaded yet — will retry" },
   "save.upToDate":       { zh: "已是云端最新", en: "Up to date with the cloud" },
   "ui.voiceBackspace":   { zh: "退格（按住连删）", en: "Backspace (hold to repeat)" },
-  "ui.kbAway":           { zh: "键盘不在本页——点一下页面继续", en: "Keyboard is not on this page — tap the page to continue" },
   "voice.blockedLocked": { zh: "这篇锁着，先解锁再口述", en: "This draft is locked — unlock it to dictate" },
   "voice.blockedReadOnly": { zh: "这篇是只读，先关掉只读再口述", en: "This draft is read-only — turn that off to dictate" },
   "ui.busy":             { zh: "处理中…", en: "Working…" },
