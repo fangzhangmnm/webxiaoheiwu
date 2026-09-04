@@ -1,20 +1,32 @@
 :root {
-  /* Warm wood/parchment palette — easy on the eyes in VR. The body is the
-     "desk" (deeper sand), the page box is the "paper" (lighter cream). */
-  --bg-0: #d8c8a8;       /* desk: warm sand */
-  --bg-1: #f1e6cf;       /* paper: lighter parchment, used for page + top bar */
-  --bg-2: #e6d6b6;       /* hover surface */
-  --bg-3: #c9b48d;       /* divider / inset */
-  --ink: #4a3520;        /* soft warm walnut — clearly not pure black */
-  --ink-soft: #6f5538;
-  --ink-muted: #9a8462;
-  --accent: #a05826;     /* warm wood accent */
-  --accent-strong: #8a481e;
-  --accent-soft: rgba(160, 88, 38, 0.14);
-  --danger: #9d2e21;
-  --danger-soft: rgba(157, 46, 33, 0.12);
-  --line: rgba(58, 40, 24, 0.10);
-  --line-strong: rgba(58, 40, 24, 0.22);
+  /* 配色 token：与 WeebPaint 同名同值（user 2026-09-03「配色换 weebpaint 的，以后再加别的配色」）。
+     基础 token 在下面；本仓旧变量名（--bg-0/1/2/3、--ink-muted、--accent-strong/soft、--danger-soft）改为派生，主题只换基础 token。 */
+  --bg: #f6f4ef;
+  --bg-soft: #efece4;
+  --ink: #1b1b1b;
+  --ink-soft: #555;
+  --line: #d8d2c4;
+  --line-strong: #b8af9c;
+  --accent: #8a481e;
+  --danger: #c0392b;
+  --warn: #d99a20;   /* 云侧待你处理（badge conflict） */
+  --enc: #c98a00;    /* 加密琥珀（锁） */
+  --ok: #3a9a4a;
+  --quiet: #8a8a8a;
+  --info: #4c8bf5;
+  --void: #e6e2d6;   /* 页面外的"桌面" */
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  --radius: 12px;
+
+  /* 派生（旧名保留，值跟基础 token 走） */
+  --bg-0: var(--void);
+  --bg-1: var(--bg);
+  --bg-2: var(--bg-soft);
+  --bg-3: var(--line);
+  --ink-muted: var(--quiet);
+  --accent-strong: color-mix(in srgb, var(--accent) 82%, black);
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
 
   --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
     "Segoe UI", system-ui, sans-serif;
@@ -30,6 +42,19 @@
   --box-max: 520px;
   --editor-line-height: 1.9;
   --editor-font-max: 22px;
+}
+
+:root[data-theme="night"] {
+  --bg: #121110; --bg-soft: #1c1b19; --ink: #e8e3d6; --ink-soft: #998f7a; --line: #2a2926; --line-strong: #3a3833;
+  --accent: #d8b48a; --danger: #e57369; --warn: #e2ad4e; --enc: #d9a542; --ok: #5cb96b; --quiet: #857e70; --info: #4c8bf5;
+  --void: #0a0a09; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --bg: #121110; --bg-soft: #1c1b19; --ink: #e8e3d6; --ink-soft: #998f7a; --line: #2a2926; --line-strong: #3a3833;
+    --accent: #d8b48a; --danger: #e57369; --warn: #e2ad4e; --enc: #d9a542; --ok: #5cb96b; --quiet: #857e70; --info: #4c8bf5;
+    --void: #0a0a09; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  }
 }
 
 body.reading-classic {
@@ -1452,3 +1477,31 @@ body {
 .crumb-current { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 .folder-row .doc-name { font-weight: 600; }
 .drawer-action[hidden] { display: none; }
+
+/* ── 对齐 WeebPaint（2026-09-03）：紧凑单行 + 云状态 badge + ⋯ 弹出菜单 + 抽屉头云钮 ── */
+.doc-main { flex-direction: row; align-items: center; gap: 8px; padding: 6px 10px; min-height: 34px; }
+.doc-enc { display: inline-flex; flex: none; color: var(--enc); }
+.doc-enc svg, .doc-enc .ico { width: 13px; height: 13px; }
+.doc-folder-ic { color: var(--ink-soft); }
+.doc-badge { margin-left: auto; display: inline-flex; flex: none; color: var(--ink-soft); }
+.doc-badge svg { width: 12px; height: 12px; display: block; }
+.doc-badge.b-conflict { color: var(--warn); }
+.doc-badge.b-newer { color: var(--accent); }
+.doc-more { align-self: center; }
+.doc-more .ico { width: 16px; height: 16px; }
+.doc-row .row-icon-button { opacity: 0.55; }
+.doc-row:hover .row-icon-button, .doc-row:focus-within .row-icon-button { opacity: 1; }
+.menu-panel { background: var(--bg); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 180px; max-width: min(92vw, 320px); }
+.popup-menu { z-index: 25; }   /* 抽屉 11 之上、sheet 40 之下 */
+.menu-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: transparent; border: 0; border-radius: 6px; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; text-align: left; }
+.menu-item:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.menu-item:disabled { opacity: 0.6; cursor: default; }
+.menu-item:disabled:hover { background: transparent; }
+.menu-item.danger { color: var(--danger); }
+.menu-item svg { width: 18px; height: 18px; flex: none; }
+.menu-item-icon-blank { width: 18px; height: 18px; flex: none; }
+.menu-item-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.popup-menu-sep { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.cloud-btn[data-cloud-state="signedin"] { color: var(--info); }
+.cloud-btn[data-cloud-state="offline"] { color: var(--quiet); }
+.cloud-btn[data-cloud-state="out"] { color: var(--ink-soft); opacity: 0.7; }

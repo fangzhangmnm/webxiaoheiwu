@@ -53,6 +53,8 @@ export const storeUI: StoreUI = {
   },
 
   reportError: (err: unknown, level): void => {
+    // 未登录时库的后台云动作（collections 对齐 / 云帧）会撞 auth 的 "Not signed in"——那是正常态不是故障，绝不上横幅（2026-09-03 截图：橙条常驻）。
+    if ((err as { message?: string } | null)?.message === "Not signed in") { reportError(err, "log"); return; }
     if ((err as { name?: string } | null)?.name === "CloudNetworkError") {
       reportError(err, "log");
       reportError(new Error(t("err.cloudNetwork")), level ?? "error");

@@ -48,7 +48,6 @@ def text_path(text, box, font='cjk'):
 # (id, 文字, 盒, 语义 note)
 SPECS = [
     # WebXiaoHeiWu 2026-09-03（登记见 ../20260708 SVG Icons/TODO.md 待画）：库里没有 → 字形顶位。
-    ("settings",   "设", (3, 3, 18, 18), "抽屉底栏「设置」入口（stopgap 字形；待齿轮真图）"),
     ("microphone", "麦", (3, 3, 18, 18), "编辑区浮动「语音输入」钮（stopgap 字形；待话筒真图）"),
 ]
 syms = []

@@ -45,10 +45,11 @@
     <!-- ICON-SPRITE:BEGIN — 由 tools/inline-sprites.py 生成，勿手改 -->
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  18 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  27 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
+    Feather Icons — MIT License, Copyright (c) 2013-2023 Cole Bemis · https://github.com/feathericons/feather
     Lucide — ISC License, Copyright (c) 2020 Lucide Contributors · https://github.com/lucide-icons/lucide
 -->
   <!-- edit -->
@@ -86,12 +87,29 @@
   <!-- cloud -->
   <!-- refresh — 刷新:顺时针 3/4 圆 + 箭头(从 12 点绕到 9 点, 箭头尖在右上) -->
   <symbol id="refresh" data-cat="cloud" data-src="own" data-note="刷新:顺时针 3/4 圆 + 箭头(从 12 点绕到 9 点, 箭头尖在右上)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><!-- 顺时针 3/4 圆 + 箭头：从 12 点出发顺时针绕到 9 点；箭头尖在右上 --> <path d="M21 12a9 9 0 1 1-3.5-7.1"/> <polyline points="21 4 21 9 16 9"/></symbol>
+  <!-- cloud — 云 -->
+  <symbol id="cloud" data-cat="cloud" data-src="feather:cloud" data-note="云" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></symbol>
+  <!-- cloud-synced — 云+勾 -->
+  <symbol id="cloud-synced" data-cat="cloud" data-src="feather:cloud" data-note="云+勾" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><polyline points="9 13 11 15 15 11"/></symbol>
+  <!-- cloud-upload — 云+上传箭头 (云形统一为 feather 的) -->
+  <symbol id="cloud-upload" data-cat="cloud" data-src="feather:cloud" data-note="云+上传箭头 (云形统一为 feather 的)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><line x1="12" y1="17" x2="12" y2="11"/><polyline points="9 14 12 11 15 14"/></symbol>
+  <!-- cloud-download — 云+下载箭头:cloud-upload 的精确上下镜像(箭头绕 y=14 翻转); WeebPaint gallery 同步徽章 newer-on-cloud, 12px 用量 (甲方 20260825 拍板候选 1 号) -->
+  <symbol id="cloud-download" data-cat="cloud" data-src="own" data-note="云+下载箭头:cloud-upload 的精确上下镜像(箭头绕 y=14 翻转); WeebPaint gallery 同步徽章 newer-on-cloud, 12px 用量 (甲方 20260825 拍板候选 1 号)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 17 15 14"/></symbol>
+  <!-- cloud-conflict — 云+感叹号(2.4 描边整体收在云内不破轮廓, 点半径=描边半宽; 与 cloud-pending 问号云成对但云为实线); WeebPaint gallery 同步徽章 conflict, 12px 用量 (甲方 20260825 拍板候选 5 号=大号收内) -->
+  <symbol id="cloud-conflict" data-cat="cloud" data-src="own" data-note="云+感叹号(2.4 描边整体收在云内不破轮廓, 点半径=描边半宽; 与 cloud-pending 问号云成对但云为实线); WeebPaint gallery 同步徽章 conflict, 12px 用量 (甲方 20260825 拍板候选 5 号=大号收内)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><line x1="12" y1="9" x2="12" y2="13.8" stroke-width="2.4"/><circle cx="12" cy="17.4" r="1.2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="cloud-unavailable" data-cat="cloud" data-src="feather:cloud" data-note="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
+  <!-- cloud-pending — 待判定:虚线云 + 云内问号(加粗 2.4, 遮罩描边留白与云脱开;问号下点的半径=描边半宽) -->
+  <symbol id="cloud-pending" data-cat="cloud" data-src="own" data-note="待判定:虚线云 + 云内问号(加粗 2.4, 遮罩描边留白与云脱开;问号下点的半径=描边半宽)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="icQC"><rect width="24" height="24" fill="#fff" stroke="none"/><g transform="translate(-6.00 -8.10) scale(1.500)" stroke="#000" fill="#000" stroke-width="3.33" stroke-linecap="round"><path d="M10.2 12.1a1.9 1.9 0 1 1 2.6 1.75c-.55.25-.8.7-.8 1.35v.4" fill="none"/><circle cx="12" cy="17.5" r="1.67" stroke="none"/></g></mask><g mask="url(#icQC)"><g transform="translate(0 0) scale(1.0)" stroke-width="1.70"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" stroke-dasharray="2.50 2.50"/></g></g><g transform="translate(-6.00 -8.10) scale(1.500)" stroke-width="1.60"><path d="M10.2 12.1a1.9 1.9 0 1 1 2.6 1.75c-.55.25-.8.7-.8 1.35v.4"/><circle cx="12" cy="17.5" r="0.80" fill="currentColor" stroke="none"/></g></symbol>
   <!-- ui -->
   <!-- menu — 汉堡菜单:三条等长横线(y=7/12/17) -->
   <symbol id="menu" data-cat="ui" data-src="own" data-note="汉堡菜单:三条等长横线(y=7/12/17)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line> <line x1="4" y1="12" x2="20" y2="12"></line> <line x1="4" y1="17" x2="20" y2="17"></line></symbol>
+  <!-- wrench — 扳手:斜置组合扳手轮廓(feather:wrench 衍生), 20260724 候选 1 号入库 -->
+  <symbol id="wrench" data-cat="ui" data-src="feather:wrench" data-note="扳手:斜置组合扳手轮廓(feather:wrench 衍生), 20260724 候选 1 号入库" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <!-- more — 溢出菜单:横向三点(原 ⋯ 字符跨平台字形不一) -->
+  <symbol id="more" data-cat="ui" data-src="own" data-note="溢出菜单:横向三点(原 ⋯ 字符跨平台字形不一)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="database" data-cat="ui" data-src="own" data-note="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
   <!-- missing -->
 <!-- 本地 stopgap 补丁（assets/icons-local.svg，待真图标） -->
-  <symbol id="settings" data-cat="stopgap" data-src="baked:DroidSansFallbackFull(Apache-2.0)/DejaVuSans-Bold(Bitstream-Vera)" data-note="抽屉底栏「设置」入口（stopgap 字形；待齿轮真图）" viewBox="0 0 24 24"><path d="M6.09 3Q7.42 4.57 8.28 6.29L6.8 7.15Q6.01 5.43 4.68 3.86ZM3.12 8.79H7.34V17.87L8.99 16.07L10 17.01Q8.91 18.5 7.03 19.98L5.86 18.97V10.2H3.12ZM18.46 3.63V8.32Q18.46 9.18 19 9.18H20.8V10.51H18.61Q16.89 10.51 16.89 8.95V5.11H13.45Q13.37 7.85 12.74 9.03Q12.12 10.2 10.71 11.06L9.69 9.89Q11.02 9.03 11.49 7.93Q11.96 6.83 12.04 3.63ZM11.57 12.86H10.55V11.45H19.63V12.55Q18.38 15.6 16.5 17.32Q18.46 18.65 20.88 19.43L20.02 21Q17.36 20.06 15.25 18.42Q12.9 20.22 9.85 21L8.99 19.43Q11.96 18.65 14 17.24Q12.35 15.44 11.57 12.86ZM15.25 16.3Q16.81 14.82 17.67 12.86H13.13Q13.84 14.9 15.25 16.3Z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="microphone" data-cat="stopgap" data-src="baked:DroidSansFallbackFull(Apache-2.0)/DejaVuSans-Bold(Bitstream-Vera)" data-note="编辑区浮动「语音输入」钮（stopgap 字形；待话筒真图）" viewBox="0 0 24 24"><path d="M4.02 4.57H11.22V3H12.78V4.57H19.9V5.97H12.78V7.62H19.2V9.03H12.78V10.59H20.92V12H3V10.59H11.22V9.03H4.64V7.62H11.22V5.97H4.02ZM8.95 11.14H10.9L9.26 13.33H18.18V14.66Q16.54 16.7 14.27 18.03Q17.4 18.97 21 19.36L20.22 20.92Q15.68 20.22 12.39 18.89Q8.87 20.3 4.17 21L3.23 19.51Q7.46 18.89 10.43 17.95Q8.63 16.85 7.38 15.13Q5.74 16.46 4.41 17.09L3.39 15.76Q6.83 14.27 8.95 11.14ZM8.87 14.74Q10.2 16.3 12.23 17.24Q14.58 16.15 15.91 14.74Z" fill="currentColor" stroke="none"/></symbol>
 </svg>
 <!-- ICON-SPRITE:END -->
@@ -185,6 +203,9 @@
           <svg class="ico" aria-hidden="true"><use href="#back"/></svg>
         </button>
         <h2 id="drawerTitle">文件</h2>
+        <button class="icon-button cloud-btn" id="cloudButton" type="button" aria-label="云端" data-i18n-aria="ui.cloud" data-cloud-state="out">
+          <svg class="ico" aria-hidden="true"><use href="#cloud"/></svg>
+        </button>
         <button class="icon-button" id="reloadButton" type="button" aria-label="刷新页面" data-i18n-aria="ui.drawerReload" data-i18n-title="ui.drawerReload">
           <svg class="ico" aria-hidden="true"><use href="#refresh"/></svg>
         </button>
@@ -278,10 +299,6 @@
           <svg class="ico" aria-hidden="true"><use href="#new"/></svg>
           <span data-i18n="ui.newDoc">新建</span>
         </button>
-        <button class="drawer-action" id="newEncryptedDocButton" type="button">
-          <svg class="ico" aria-hidden="true"><use href="#lock"/></svg>
-          <span data-i18n="ui.newEncryptedDoc">新建加密稿</span>
-        </button>
         <button class="drawer-action" id="newFolderButton" type="button">
           <svg class="ico" aria-hidden="true"><use href="#create-folder"/></svg>
           <span data-i18n="ui.newFolder">新建文件夹</span>
@@ -301,7 +318,7 @@
 
       <footer class="drawer-foot">
         <button class="drawer-foot-button" id="openSettingsButton" type="button">
-          <svg class="ico" aria-hidden="true"><use href="#settings"/></svg>
+          <svg class="ico" aria-hidden="true"><use href="#wrench"/></svg>
           <span data-i18n="ui.settings">设置</span>
         </button>
         <button class="drawer-foot-button" id="openTrashButton" type="button">
@@ -311,6 +328,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-f2b9e0048b82.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-e0e5f236d4ab.mjs"></script>
   </body>
 </html>

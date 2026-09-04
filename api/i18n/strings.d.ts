@@ -96,10 +96,6 @@ export declare const S: {
         readonly zh: "新建";
         readonly en: "New";
     };
-    readonly "ui.newEncryptedDoc": {
-        readonly zh: "新建加密稿";
-        readonly en: "New encrypted draft";
-    };
     readonly "ui.newFolder": {
         readonly zh: "新建文件夹";
         readonly en: "New folder";
@@ -119,6 +115,54 @@ export declare const S: {
     readonly "list.moveTo": {
         readonly zh: "移到…";
         readonly en: "Move to…";
+    };
+    readonly "list.more": {
+        readonly zh: "更多";
+        readonly en: "More";
+    };
+    readonly "list.encrypted": {
+        readonly zh: "加密稿";
+        readonly en: "Encrypted";
+    };
+    readonly "ui.cloud": {
+        readonly zh: "云端";
+        readonly en: "Cloud";
+    };
+    readonly "cloud.titleIn": {
+        readonly zh: "OneDrive · {who}";
+        readonly en: "OneDrive · {who}";
+    };
+    readonly "cloud.titleOffline": {
+        readonly zh: "OneDrive · {who}（离线）";
+        readonly en: "OneDrive · {who} (offline)";
+    };
+    readonly "cloud.titleOut": {
+        readonly zh: "未连接 OneDrive";
+        readonly en: "Not connected to OneDrive";
+    };
+    readonly "cloud.account": {
+        readonly zh: "已连接 · {who}";
+        readonly en: "Connected · {who}";
+    };
+    readonly "cloud.accountOffline": {
+        readonly zh: "已连接 · {who}（离线）";
+        readonly en: "Connected · {who} (offline)";
+    };
+    readonly "cloud.notConnected": {
+        readonly zh: "未连接（稿只在本机）";
+        readonly en: "Not connected (drafts stay on this device)";
+    };
+    readonly "cloud.refresh": {
+        readonly zh: "刷新云端";
+        readonly en: "Refresh from cloud";
+    };
+    readonly "cloud.connect": {
+        readonly zh: "连接 OneDrive";
+        readonly en: "Connect OneDrive";
+    };
+    readonly "cloud.disconnect": {
+        readonly zh: "断开连接";
+        readonly en: "Disconnect";
     };
     readonly "folder.newTitle": {
         readonly zh: "新建文件夹";

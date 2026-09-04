@@ -4,6 +4,8 @@ import { t } from "./i18n/index.ts";
 import { watchDocs, listTrash, restoreDoc, purgeDoc, emptyTrash, trashDoc, snapshotFolders, newFolder, deleteFolder, type DocListItem, type TrashDocItem } from "./docs.ts";
 import { openConfirmSheet, openInputSheet, openChoiceSheet, withBusy } from "./sheets.ts";
 import { joinDocPath, sanitizeFolderName } from "./doc-model.ts";
+import { togglePopupMenu, closePopupMenu } from "./ui/popup-menu.ts";
+import { iconHtml } from "./ui/icon.ts";
 import { reportError } from "./error-badge.ts";
 import type { SyncState } from "@internal/store";
 
@@ -26,6 +28,19 @@ export interface DrawerDeps {
 }
 
 const icon = (id: string, cls = "") => `<svg class="ico ${cls}" aria-hidden="true"><use href="#${id}"/></svg>`;
+// 云状态 badge（抄 WeebPaint gallery.ts ICON 表：8 态同图同色语义——conflict 琥珀、newer-on-cloud 强调色、其余灰）
+const BADGE: Record<string, { icon: string; cls: string }> = {
+  "synced": { icon: "cloud-synced", cls: "" },
+  "unpushed": { icon: "cloud-upload", cls: "" },
+  "float": { icon: "database", cls: "" },   // 游离（无云基线的本机稿，未登录时的常态）= 本机图标，同 local-only
+  "cloud-only": { icon: "cloud", cls: "" },
+  "local-only": { icon: "database", cls: "" },
+  "newer-on-cloud": { icon: "cloud-download", cls: "b-newer" },
+  "conflict": { icon: "cloud-conflict", cls: "b-conflict" },
+  "ghost": { icon: "cloud-unavailable", cls: "" },
+  "pendingGone": { icon: "cloud-pending", cls: "" },
+};
+const fmtSize = (n?: number) => (n == null ? "" : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`);
 
 function syncLabel(s: SyncState): string {
   switch (s) {
@@ -83,22 +98,19 @@ export function createDrawer(d: DrawerDeps) {
   }
 
   function renderList(): void {
+    closePopupMenu();
     const list = d.docList; list.innerHTML = "";
     renderBreadcrumb();
     for (const name of folders) {
       const li = document.createElement("li"); li.className = "doc-row folder-row";
       const main = document.createElement("button"); main.type = "button"; main.className = "doc-main";
-      const nameRow = document.createElement("span"); nameRow.className = "doc-name-row";
-      const pre = document.createElement("span"); pre.className = "doc-crypto-prefix"; pre.innerHTML = icon("folder"); nameRow.appendChild(pre);
-      const nameSpan = document.createElement("span"); nameSpan.className = "doc-name"; nameSpan.textContent = name; nameRow.appendChild(nameSpan);
-      main.appendChild(nameRow);
+      main.innerHTML = `<span class="doc-enc doc-folder-ic">${icon("folder")}</span><span class="doc-name"></span>`;
+      main.querySelector(".doc-name")!.textContent = name;
       main.addEventListener("click", () => setFolder(joinDocPath(folder, name)));
       li.appendChild(main);
-      const actions = document.createElement("div"); actions.className = "doc-row-actions";
-      const delBtn = document.createElement("button"); delBtn.type = "button"; delBtn.className = "row-icon-button danger"; delBtn.title = t("folder.delete"); delBtn.setAttribute("aria-label", t("folder.delete"));
-      delBtn.innerHTML = icon("trash-can");
-      delBtn.addEventListener("click", () => { void onDeleteFolder(joinDocPath(folder, name)); });
-      actions.appendChild(delBtn); li.appendChild(actions);
+      const more = document.createElement("button"); more.type = "button"; more.className = "row-icon-button doc-more"; more.title = t("list.more"); more.setAttribute("aria-label", t("list.more")); more.innerHTML = icon("more");
+      more.addEventListener("click", (e) => { e.stopPropagation(); togglePopupMenu({ anchor: more, items: () => [{ id: "del", label: t("folder.delete"), icon: "trash-can", danger: true }], onPick: () => { void onDeleteFolder(joinDocPath(folder, name)); } }); });
+      li.appendChild(more);
       list.appendChild(li);
     }
     if (!items.length) { d.docListEmpty.textContent = frameComplete ? (folders.length ? t("list.emptyFolderDocs") : t("list.empty")) : t("list.loading"); d.docListEmpty.classList.remove("hidden"); return; }
@@ -108,31 +120,28 @@ export function createDrawer(d: DrawerDeps) {
       const li = document.createElement("li");
       li.className = "doc-row" + (it.name === active ? " active" : "");
       const main = document.createElement("button");
-      main.type = "button"; main.className = "doc-main";
-      const nameRow = document.createElement("span"); nameRow.className = "doc-name-row";
-      if (it.encrypted) { const pre = document.createElement("span"); pre.className = "doc-crypto-prefix"; pre.innerHTML = icon("lock"); nameRow.appendChild(pre); }
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "doc-name" + (it.title ? "" : " untitled") + (it.syncState === "ghost" || it.syncState === "pendingGone" ? " ghost" : "") + (it.syncState === "cloud-only" ? " stub" : "") + (it.syncState === "local-only" ? " local-only" : "");
-      nameSpan.textContent = it.stem;
-      nameRow.appendChild(nameSpan);
-      main.appendChild(nameRow);
-      const meta = document.createElement("span"); meta.className = "doc-preview";
-      meta.textContent = [syncLabel(it.syncState), it.size != null ? `${(it.size / 1024).toFixed(it.size < 10240 ? 1 : 0)} KB` : ""].filter(Boolean).join(" · ");
-      main.appendChild(meta);
+      main.type = "button"; main.className = "doc-main"; main.title = it.name;
+      const b = BADGE[it.syncState] ?? { icon: "cloud", cls: "" };
+      main.innerHTML = (it.encrypted ? `<span class="doc-enc" title="${t("list.encrypted")}">${icon("lock")}</span>` : "")
+        + `<span class="doc-name${it.title ? "" : " untitled"}${it.syncState === "ghost" || it.syncState === "pendingGone" ? " ghost" : ""}"></span>`
+        + `<span class="doc-badge ${b.cls}" title="">${iconHtml(b.icon)}</span>`;
+      main.querySelector(".doc-name")!.textContent = it.stem;
+      (main.querySelector(".doc-badge") as HTMLElement).title = [syncLabel(it.syncState), fmtSize(it.size)].filter(Boolean).join(" · ");
       main.addEventListener("click", () => { void d.onOpenDoc(it.name).then(close); });
       li.appendChild(main);
-      const actions = document.createElement("div"); actions.className = "doc-row-actions";
-      const moveBtn = document.createElement("button");
-      moveBtn.type = "button"; moveBtn.className = "row-icon-button"; moveBtn.title = t("list.moveTo"); moveBtn.setAttribute("aria-label", t("list.moveTo"));
-      moveBtn.innerHTML = icon("move-to-file");
-      moveBtn.addEventListener("click", () => { void onMove(it); });
-      actions.appendChild(moveBtn);
-      const trashBtn = document.createElement("button");
-      trashBtn.type = "button"; trashBtn.className = "row-icon-button danger"; trashBtn.title = t("list.toTrash"); trashBtn.setAttribute("aria-label", t("list.toTrash"));
-      trashBtn.innerHTML = icon("trash-can");
-      trashBtn.addEventListener("click", () => { void onTrash(it.name); });
-      actions.appendChild(trashBtn);
-      li.appendChild(actions);
+      const more = document.createElement("button"); more.type = "button"; more.className = "row-icon-button doc-more"; more.title = t("list.more"); more.setAttribute("aria-label", t("list.more")); more.innerHTML = icon("more");
+      more.addEventListener("click", (e) => {
+        e.stopPropagation();
+        togglePopupMenu({
+          anchor: more,
+          items: () => [
+            { id: "move", label: t("list.moveTo"), icon: "move-to-file" },
+            { id: "trash", label: t("list.toTrash"), icon: "trash-can", danger: true, separatorBefore: true },
+          ],
+          onPick: (id) => { if (id === "move") void onMove(it); else void onTrash(it.name); },
+        });
+      });
+      li.appendChild(more);
       list.appendChild(li);
     }
   }
@@ -228,7 +237,7 @@ export function createDrawer(d: DrawerDeps) {
   function open(next: Exclude<DrawerView, "closed"> = "active"): void {
     const wasClosed = view === "closed";
     view = next;
-    if (next === "active" && wasClosed) { const dir = d.currentDir(); if (dir !== folder) setFolder(dir); }   // 打开抽屉 = 看当前稿所在的夹
+    if (next === "active" && wasClosed) { const dir = d.currentDir(); if (dir !== folder) setFolder(dir); else subscribe(); }   // 每次打开 = 重订（拉一帧云端最新；user 2026-09-03「文件夹页没有自动更新」）   // 打开抽屉 = 看当前稿所在的夹
     d.breadcrumb.hidden = next !== "active" || !folder;
     d.newFolderButton.hidden = next !== "active" || !!folder;
     d.drawer.classList.remove("hidden"); d.drawer.setAttribute("aria-hidden", "false"); d.backdrop.classList.remove("hidden");
@@ -244,6 +253,7 @@ export function createDrawer(d: DrawerDeps) {
     renderList();
   }
   function close(): void {
+    closePopupMenu();
     view = "closed";
     d.drawer.classList.add("hidden"); d.drawer.setAttribute("aria-hidden", "true"); d.backdrop.classList.add("hidden");
     d.focusEditor();

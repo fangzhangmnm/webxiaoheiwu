@@ -21,6 +21,7 @@ import { MODEL_SOURCE_DEFAULT } from "./config.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
+import { togglePopupMenu } from "./ui/popup-menu.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -335,6 +336,7 @@ prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("read
 // ── 设置视图 ──
 const authRow = $("authRow");
 function renderAuthRow(): void {
+  renderCloudButton();
   const stt = auth.getAuthState();
   authRow.innerHTML = "";
   if (stt.signedIn && stt.account) {
@@ -349,6 +351,41 @@ function renderAuthRow(): void {
   btn.addEventListener("click", () => { void onSignIn(); });
   authRow.appendChild(btn);
 }
+const cloudButton = $<HTMLButtonElement>("cloudButton");
+function renderCloudButton(): void {
+  const stt = auth.getAuthState();
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const state = stt.signedIn ? (offline ? "offline" : "signedin") : "out";
+  cloudButton.dataset.cloudState = state;
+  cloudButton.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${state === "signedin" ? "cloud-synced" : state === "offline" ? "cloud-unavailable" : "cloud"}"/></svg>`;
+  const who = stt.signedIn ? ((stt.account as { username?: string; name?: string } | null)?.username || (stt.account as { name?: string } | null)?.name || t("auth.signedIn")) : "";
+  cloudButton.title = state === "signedin" ? t("cloud.titleIn", { who }) : state === "offline" ? t("cloud.titleOffline", { who }) : t("cloud.titleOut");
+  cloudButton.setAttribute("aria-label", cloudButton.title);
+}
+cloudButton.addEventListener("click", () => {
+  const stt = auth.getAuthState();
+  const who = stt.signedIn ? ((stt.account as { username?: string; name?: string } | null)?.username || (stt.account as { name?: string } | null)?.name || t("auth.signedIn")) : "";
+  togglePopupMenu({
+    anchor: cloudButton, align: "right",
+    items: () => stt.signedIn
+      ? [
+          { id: "who", label: navigator.onLine === false ? t("cloud.accountOffline", { who }) : t("cloud.account", { who }), icon: "cloud-synced", disabled: true },
+          { id: "refresh", label: t("cloud.refresh"), icon: "refresh", hidden: navigator.onLine === false },
+          { id: "lock", label: t("auth.lockCrypto"), icon: "lock", hidden: !isUnlocked() },
+          { id: "signout", label: t("cloud.disconnect"), icon: "cloud-unavailable", danger: true, separatorBefore: true },
+        ]
+      : [
+          { id: "who", label: t("cloud.notConnected"), icon: "cloud", disabled: true },
+          { id: "signin", label: t("cloud.connect"), icon: "cloud-upload" },
+        ],
+    onPick: (id) => {
+      if (id === "refresh") { drawer.subscribe(); void resumeSync(); }
+      else if (id === "lock") void lockCryptoNow();
+      else if (id === "signout") void onSignOut();
+      else if (id === "signin") void onSignIn();
+    },
+  });
+});
 async function onSignIn(): Promise<void> {
   await editor.flushLocal();
   setStatus(t("auth.redirecting"));
@@ -493,7 +530,6 @@ $("drawerCloseButton").addEventListener("click", () => drawer.close());
 $("drawerBackButton").addEventListener("click", () => drawer.open("active"));
 $("drawerBackdrop").addEventListener("click", () => drawer.close());
 $("newDocButton").addEventListener("click", () => { void editor.newDoc({ dir: drawer.currentFolder() }).then(() => drawer.close()); });
-$("newEncryptedDocButton").addEventListener("click", () => { void editor.newDoc({ encrypted: true, dir: drawer.currentFolder() }).then((ok) => { if (ok) drawer.close(); }); });
 $("newFolderButton").addEventListener("click", () => { void drawer.newFolder(); });
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
 $("openSettingsButton").addEventListener("click", () => drawer.open("settings"));
@@ -530,14 +566,15 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") { void editor.flushLocal().then(() => { if (auth.isSignedIn()) return editor.pushNow(); }); void pushUserDict(); void flushCollections(); }
 });
 window.addEventListener("pagehide", () => { void editor.flushLocal(); void flushCollections(); });
-window.addEventListener("online", () => { if (auth.isSignedIn()) { setStatus(t("st.online")); void resumeSync(); } });
-setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) void editor.refreshIfClean(); }, FOREGROUND_POLL_MS);
+window.addEventListener("online", () => { renderCloudButton(); if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); } });
+window.addEventListener("offline", () => renderCloudButton());
+setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void editor.refreshIfClean(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);
 
 // ── PWA 壳 ──
 const updateToast = $("updateToast");
 const shell = initPwaShell({
   onUpdateAvailable: () => updateToast.classList.remove("hidden"),
-  onForeground: () => { if (!idle.isShown()) { void editor.refreshIfClean(); void reconcileCollections().then(() => drawer.refresh()); } },
+  onForeground: () => { if (!idle.isShown()) { void editor.refreshIfClean(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh()); } },
   onBeforeReload: async () => { await editor.flushLocal(); await flushCollections(); },
 });
 $("updateReloadButton").addEventListener("click", () => { void shell.reload(); });
@@ -553,7 +590,7 @@ async function boot(): Promise<void> {
   drawer.subscribe();
 
   // auth（后台探测，不挡首帧）
-  auth.onAuthChanged((st) => { renderAuthRow(); renderTopbar(); if (st.signedIn) void afterSignIn(); });
+  auth.onAuthChanged((st) => { renderAuthRow(); renderTopbar(); drawer.subscribe(); if (st.signedIn) void afterSignIn(); });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
   void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning"));
 
   // 续写：本机上次打开的稿 → 否则最新一篇 → 否则新稿
@@ -589,7 +626,10 @@ async function afterSignIn(): Promise<void> {
 }
 
 window.addEventListener("error", (event) => { reportError(new Error(`[window] ${(event.message || "").slice(0, 160)}`)); });
-window.addEventListener("unhandledrejection", (event) => { reportError(event.reason instanceof Error ? event.reason : new Error(String(event.reason))); });
+window.addEventListener("unhandledrejection", (event) => {
+  const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+  reportError(err, err.message === "Not signed in" ? "log" : "error");   // 未登录 = 正常态（库后台云动作的 getToken 抛），只记日志
+});
 
 void boot();
 
