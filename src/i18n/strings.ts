@@ -11,6 +11,7 @@ export const S = {
   "common.ok":           { zh: "确定", en: "OK" },
   "common.cancel":       { zh: "取消", en: "Cancel" },
   "common.saved":        { zh: "已保存", en: "Saved" },
+  "common.continue":     { zh: "继续", en: "Continue" },
   "err.dismissHint":     { zh: "点击关闭", en: "tap to dismiss" },
   "err.cloudNetwork":    { zh: "连不上云端（网络问题），本地已保留，稍后自动重试", en: "Cloud unreachable (network); kept locally, will retry" },
 
@@ -220,4 +221,14 @@ export const S = {
   "settings.forceUpdateTitle": { zh: "强制更新？", en: "Force update?" },
   "settings.forceUpdateMsg": { zh: "清掉 app 壳缓存并重启；文档缓存不受影响。需要联网。", en: "Clears the app shell cache and restarts; document cache is untouched. Requires network." },
   "settings.diagEmpty":  { zh: "（没有记录）", en: "(nothing logged)" },
+  "ui.factoryReset":     { zh: "还原出厂设置（清本机全部数据）…", en: "Factory reset (wipe all local data)…" },
+  "fr.introTitle":       { zh: "还原出厂设置", en: "Factory reset" },
+  "fr.introMsg":         { zh: "删除这台设备上的全部本地数据：稿件缓存、设置、密码记忆、输入法词典缓存、语音模型包、app 缓存。OneDrive 上的稿不受影响，登录后会重新拉回。", en: "Deletes all local data on this device: draft cache, settings, remembered password, IME dictionary cache, voice model pack, app cache. Drafts on OneDrive are untouched and come back after sign-in." },
+  "fr.needSync":         { zh: "有 {n} 篇未同步到云端的稿，先登录并同步再还原（不造逃生副本）", en: "{n} draft(s) not synced to the cloud — sign in and sync first (no escape copies are made)" },
+  "fr.consentPhrase":    { zh: "删除全部本地数据", en: "DELETE ALL LOCAL DATA" },
+  "fr.consentPrompt":    { zh: "输入「{phrase}」以确认（逐字）", en: "Type \"{phrase}\" to confirm (exactly)" },
+  "fr.mismatch":         { zh: "输入不匹配，已取消", en: "Input didn't match — cancelled" },
+  "fr.blocked":          { zh: "有 {n} 个库被其他标签页占用——关闭其他小黑屋标签页后重试", en: "{n} database(s) are held open by another tab — close other tabs and retry" },
+  "fr.doneClean":        { zh: "已清空并验证归零（{db} 个库 / {ls} 个键 / {caches} 个缓存）。即将重新加载。", en: "Wiped and verified zero residue ({db} databases / {ls} keys / {caches} caches). Reloading." },
+  "fr.residue":          { zh: "清理完成但扫到 {n} 处残留——重新加载后可再跑一次", en: "Wiped, but {n} residue item(s) remain — reload and run again" },
 } as const satisfies Record<string, Entry>;

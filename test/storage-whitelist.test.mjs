@@ -9,6 +9,7 @@ const ALLOW = {
   "src/device-kv.ts": "localStorage：device 层标量唯一器官（imeEnabled / voiceEnabled / voiceModelSource / lang / lastOpen）",
   "src/pwa-shell.ts": "Cache Storage：forceReset 清壳缓存（跳过 pwa-models）",
   "src/asr/worker.ts": "Cache Storage `pwa-models`：语音模型包（可再生派生缓存，user 2026-09-03 批）",
+  "src/factory-reset.ts": "还原出厂设置：indexedDB.deleteDatabase（RIME 的 ime / /rime）+ 清全部 Cache（store 命名空间走库 maintenance 口子）",
   "service-worker.js": "Cache Storage `xiaoheiwu-<hash>`：app 壳预缓存 + 运行时缓存",
   "vendor/msal/msal-browser.min.js": "MSAL token 缓存（IDB/localStorage/sessionStorage）：由 @internal/store 的 auth 配置驱动，app 不直接调",
   "vendor/my-rime/worker.js": "RIME worker 自持 IDB（词典缓存 + IDBFS /rime）：第三方派生缓存，可再生；user 追认待记",

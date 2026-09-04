@@ -46,3 +46,25 @@ export function deviceKvGetJson<T>(key: string, fallback: T): T {
 export function deviceKvSetJson(key: string, v: unknown): void {
   deviceKvSet(key, v == null ? null : JSON.stringify(v));
 }
+
+/** 还原出厂：清掉本 app 前缀下全部 localStorage 键（localStorage 只准本文件碰）。返回删掉的键数。 */
+export function deviceKvWipeAll(): number {
+  let n = 0;
+  const ls = _ls();
+  if (ls) {
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < ls.length; i++) { const k = ls.key(i); if (k && k.startsWith(PREFIX)) keys.push(k); }
+      for (const k of keys) ls.removeItem(k);
+      n = keys.length;
+    } catch { /* 隐私模式等：无键可清 */ }
+  }
+  _mem.clear();
+  return n;
+}
+/** 残留扫描：本 app 前缀下还有几个键。 */
+export function deviceKvCount(): number {
+  const ls = _ls(); let n = 0;
+  if (ls) { try { for (let i = 0; i < ls.length; i++) { const k = ls.key(i); if (k && k.startsWith(PREFIX)) n++; } } catch { /* ignore */ } }
+  return n;
+}

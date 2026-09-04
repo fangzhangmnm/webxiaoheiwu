@@ -121,8 +121,38 @@ try {
     return st.encrypted && enc ? "born-encrypted" : `flag=${st.encrypted} file=${enc}`;
   });
   check("新建即加密：物化那一刻就是密文", bornEncrypted === "born-encrypted", String(bornEncrypted));
+  // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
+  const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("saveStatus").textContent; });
+  check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);
   await page.waitForTimeout(500);
   check("零页面错误", pageErrors.length === 0, pageErrors.join(" | "));
+  // 还原出厂真跑：新 context（无稿）→ 两道 sheet → wipe → reload → 残留归零
+  const ctx2 = await browser.newContext(); const page2 = await ctx2.newPage();
+  await page2.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
+  await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
+  await page2.waitForTimeout(800);
+  const frResult = await page2.evaluate(async () => {
+    const p = window.__xhw.factoryReset();
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 50 && document.getElementById("sheet").classList.contains("hidden"); i++) await wait(100);
+    document.getElementById("sheetConfirm").click();   // 说明 → 继续
+    await wait(200);
+    for (let i = 0; i < 50 && document.getElementById("sheetInput").classList.contains("hidden"); i++) await wait(100);
+    document.getElementById("sheetInput").value = document.getElementById("sheetInput").placeholder;   // 逐字 consent
+    document.getElementById("sheetConfirm").click();
+    await p;
+    return document.getElementById("saveStatus").textContent;
+  });
+  check("还原出厂：跑完报「验证归零」", /归零|zero residue/.test(frResult), frResult);
+  await page2.waitForTimeout(2500);   // 1.2s 后 reload
+  // reload 后 app 会立刻重建一个空的 webxiaoheiwu.defaultStore（正常）；归零证据是流程内的 scanAppNamespace（上一条）。这里只看 RIME 库/前缀键/抽屉空。
+  await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
+  const residue = await page2.evaluate(async () => ({
+    rime: (await indexedDB.databases()).map((d) => d.name).filter((n) => n === "ime" || n === "/rime"),
+    docs: window.__xhw.drawer.items().length,
+  }));
+  check("还原出厂后：无 RIME 库、抽屉空（store 库由 boot 重建为空）", residue.rime.length === 0 && residue.docs === 0, JSON.stringify(residue));
+  await ctx2.close();
 } catch (e) {
   check("smoke 异常", false, String(e));
 } finally {

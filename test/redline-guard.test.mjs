@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, assert } from "./runner.mjs";
 
-const SEAM = new Set(["src/app-store.ts", "src/device-kv.ts", "src/config.ts"]);   // config = 常量 SSoT（URL/路径字符串，不是访问）
+const SEAM = new Set(["src/app-store.ts", "src/device-kv.ts", "src/config.ts", "src/factory-reset.ts"]);   // config = 常量 SSoT（URL/路径字符串，不是访问）；factory-reset = 还原出厂深清（RIME IDB 删库 + 清 Cache，抄 WeebPaint）
 const BAD = [
   { re: /\blocalStorage\b/, why: "raw localStorage" },
   { re: /\bindexedDB\b|\bIDBDatabase\b/, why: "raw IndexedDB" },
@@ -12,7 +12,7 @@ const BAD = [
   { re: /graph\.microsoft\.com|login\.microsoftonline\.com/, why: "raw Graph/AAD URL" },
   { re: /\bcaches\.(open|keys|delete)\b/, why: "Cache Storage outside SW/pwa-shell" },
 ];
-const ALLOW_CACHES = new Set(["src/pwa-shell.ts", "src/asr/worker.ts"]);   // worker：模型包缓存 pwa-models（可再生派生缓存，user 2026-09-03 批）
+const ALLOW_CACHES = new Set(["src/pwa-shell.ts", "src/asr/worker.ts", "src/factory-reset.ts"]);   // worker：模型包缓存 pwa-models（可再生派生缓存，user 2026-09-03 批）
 // 黄线区（家规硬规则 #8 + 白名单制，2026-09-03）：语音字节永不外发；任何非相对 URL 的网络访问只准在白名单文件里。
 const NET_BAD = [
   { re: /\bSpeechRecognition\b|webkitSpeechRecognition/, why: "system speech recognition (audio leaves device)" },

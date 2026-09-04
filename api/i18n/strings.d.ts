@@ -16,6 +16,10 @@ export declare const S: {
         readonly zh: "已保存";
         readonly en: "Saved";
     };
+    readonly "common.continue": {
+        readonly zh: "继续";
+        readonly en: "Continue";
+    };
     readonly "err.dismissHint": {
         readonly zh: "点击关闭";
         readonly en: "tap to dismiss";
@@ -771,5 +775,45 @@ export declare const S: {
     readonly "settings.diagEmpty": {
         readonly zh: "（没有记录）";
         readonly en: "(nothing logged)";
+    };
+    readonly "ui.factoryReset": {
+        readonly zh: "还原出厂设置（清本机全部数据）…";
+        readonly en: "Factory reset (wipe all local data)…";
+    };
+    readonly "fr.introTitle": {
+        readonly zh: "还原出厂设置";
+        readonly en: "Factory reset";
+    };
+    readonly "fr.introMsg": {
+        readonly zh: "删除这台设备上的全部本地数据：稿件缓存、设置、密码记忆、输入法词典缓存、语音模型包、app 缓存。OneDrive 上的稿不受影响，登录后会重新拉回。";
+        readonly en: "Deletes all local data on this device: draft cache, settings, remembered password, IME dictionary cache, voice model pack, app cache. Drafts on OneDrive are untouched and come back after sign-in.";
+    };
+    readonly "fr.needSync": {
+        readonly zh: "有 {n} 篇未同步到云端的稿，先登录并同步再还原（不造逃生副本）";
+        readonly en: "{n} draft(s) not synced to the cloud — sign in and sync first (no escape copies are made)";
+    };
+    readonly "fr.consentPhrase": {
+        readonly zh: "删除全部本地数据";
+        readonly en: "DELETE ALL LOCAL DATA";
+    };
+    readonly "fr.consentPrompt": {
+        readonly zh: "输入「{phrase}」以确认（逐字）";
+        readonly en: "Type \"{phrase}\" to confirm (exactly)";
+    };
+    readonly "fr.mismatch": {
+        readonly zh: "输入不匹配，已取消";
+        readonly en: "Input didn't match — cancelled";
+    };
+    readonly "fr.blocked": {
+        readonly zh: "有 {n} 个库被其他标签页占用——关闭其他小黑屋标签页后重试";
+        readonly en: "{n} database(s) are held open by another tab — close other tabs and retry";
+    };
+    readonly "fr.doneClean": {
+        readonly zh: "已清空并验证归零（{db} 个库 / {ls} 个键 / {caches} 个缓存）。即将重新加载。";
+        readonly en: "Wiped and verified zero residue ({db} databases / {ls} keys / {caches} caches). Reloading.";
+    };
+    readonly "fr.residue": {
+        readonly zh: "清理完成但扫到 {n} 处残留——重新加载后可再跑一次";
+        readonly en: "Wiped, but {n} residue item(s) remain — reload and run again";
     };
 };

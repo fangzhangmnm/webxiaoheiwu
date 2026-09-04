@@ -19,6 +19,7 @@ import { MODELS, modelKeyFrom, type ModelKey } from "./asr/packs.ts";
 import { MODEL_SOURCE_DEFAULT } from "./config.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
+import { runFactoryReset } from "./factory-reset.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -384,6 +385,12 @@ langSelect.addEventListener("change", () => setLang(langSelect.value as Lang));
 $("forceUpdateButton").addEventListener("click", () => {
   void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await editor.flushLocal(); await flushCollections(); await shell.forceReset(); } })();
 });
+const factoryReset = () => runFactoryReset({
+  setStatus,
+  unsyncedCount: async () => { await editor.flushLocal(); return drawer.items().filter((i) => i.dirty || i.syncState === "local-only").length + (editor.isDirty() ? 1 : 0); },
+  beforeWipe: async () => { await editor.flushLocal(); await flushCollections(); editor.clear(); },
+});
+$("factoryResetButton").addEventListener("click", () => { void factoryReset(); });
 $("diagButton").addEventListener("click", () => {
   const pre = $("diagLog"); pre.hidden = !pre.hidden; pre.textContent = errorLog().join("\n") || t("settings.diagEmpty");
 });
@@ -493,4 +500,4 @@ window.addEventListener("unhandledrejection", (event) => { reportError(event.rea
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset };
