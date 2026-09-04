@@ -211,7 +211,23 @@ try {
     return out;
   });
   check("系统组字收编：compositionend 'nihao' → 裸字母删掉、RIME 候选出「你好」", typeof imeRun === "object" && imeRun.sysComp?.value === "" && imeRun.sysComp?.cands?.includes("你好"), JSON.stringify(imeRun.sysComp));
-  check("标点覆盖：方引号 「」『』 交替 + ` ~ 出「·」", typeof imeRun === "object" && imeRun.punct === "「」『』··", JSON.stringify(imeRun.punct));
+  check("标点覆盖：方引号 「」『』 交替 + ~ 出「～」 + ` 出「·」", typeof imeRun === "object" && imeRun.punct === "「」『』～·", JSON.stringify(imeRun.punct));
+  // undo 彻查（user 2026-09-04）：真按键。IME 提交后 Ctrl+Z 只撤最后一词、Ctrl+Shift+Z 重做；退格钮删的能撤；换稿不漏拼音
+  const undoRun = await (async () => {
+    const val = () => page.$eval("#editor", (e) => e.value);
+    const slow = async (keys) => { for (const k of keys) { await page.keyboard.press(k); await page.waitForTimeout(120); } await page.waitForTimeout(450); };
+    await page.evaluate(async () => { const x = window.__xhw; await x.editor.newDoc(); await x.setImeEnabled(true); });
+    await page.click("#editor");
+    await slow(["n", "i", "Space"]); await slow(["h", "a", "o", "Space"]); const v0 = await val();
+    await page.keyboard.press("Control+z"); await page.waitForTimeout(250); const v1 = await val();
+    await page.keyboard.press("Control+Shift+z"); await page.waitForTimeout(250); const v2 = await val();
+    await page.evaluate(() => window.__xhw.voiceBackspace()); await page.waitForTimeout(200); const v3 = await val();
+    await page.keyboard.press("Control+z"); await page.waitForTimeout(250); const v4 = await val();
+    await slow(["d", "e", "f"]); await page.evaluate(async () => { await window.__xhw.editor.newDoc(); }); await page.click("#editor"); await slow(["n", "i", "Space"]); const v5 = await val();
+    await page.evaluate(async () => { await window.__xhw.setImeEnabled(false); });
+    return { v0, v1, v2, v3, v4, v5 };
+  })();
+  check("undo：IME 提交后 Ctrl+Z 只撤最后一词 / Ctrl+Shift+Z 重做 / 退格钮可撤 / 换稿不漏拼音", undoRun.v0 === "你好" && undoRun.v1 === "你" && undoRun.v2 === "你好" && undoRun.v3 === "你" && undoRun.v4 === "你好" && undoRun.v5 === "你", JSON.stringify(undoRun));
   const kbAway = await page.evaluate(async () => { const w = (ms) => new Promise((r) => setTimeout(r, ms)); window.dispatchEvent(new Event("blur")); await w(50); const a = document.body.classList.contains("kb-away"); document.activeElement?.blur(); window.dispatchEvent(new Event("focus")); await w(50); return { a, b: !document.body.classList.contains("kb-away"), c: document.activeElement === document.getElementById("editor") }; });
   check("Quest 键盘提示：window blur → kb-away；focus → 撤提示 + 焦点回编辑器", kbAway.a && kbAway.b && kbAway.c, JSON.stringify(kbAway));
   const typeAnywhere = await page.evaluate(() => { document.activeElement?.blur(); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true })); return document.activeElement === document.getElementById("editor"); });

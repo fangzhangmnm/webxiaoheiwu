@@ -23,6 +23,7 @@ import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
 import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
 import { setQuoteStyle } from "./zh-punct.ts";
+import { replaceRange, isProgrammaticEdit } from "./text-edit.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -102,7 +103,7 @@ const editor = createEditor({
   isSignedIn: () => auth.isSignedIn(),
   onDocChanged: () => { renderTopbar(); renderLockCard(); drawer.refresh(); rememberLastActive(); },
   ensureUnlocked, ensureFileUnlocked,
-  onBeforeLoad: () => { voiceAbortHook?.(); },
+  onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
 });
 let voiceAbortHook: (() => void) | null = null;
 const drawer = createDrawer({
@@ -217,24 +218,16 @@ imeStatus.addEventListener("mousedown", (e) => e.preventDefault());   // 别抢�
 imeStatus.addEventListener("click", () => {
   const target = document.activeElement === titleInput ? titleInput : editorEl;
   void ime.toggleAsciiMode().then((r) => {
-    if (r.type === "commit") { stripGhostBuffer(target, r.consumedBuffer); insertAtCursor(target, r.text); if (target === editorEl) editor.noteExternalEdit(); else target.dispatchEvent(new Event("input")); }
+    if (r.type === "commit") { commitText(target, r.consumedBuffer, r.text); if (target === editorEl) editor.noteExternalEdit(); else target.dispatchEvent(new Event("input")); }
     renderImeState();
   });
 });
 
-function insertAtCursor(target: HTMLTextAreaElement | HTMLInputElement, text: string): void {
-  const start = target.selectionStart ?? target.value.length, end = target.selectionEnd ?? target.value.length;
-  target.value = target.value.slice(0, start) + text + target.value.slice(end);
-  try { target.selectionStart = target.selectionEnd = start + text.length; } catch { /* ignore */ }
-}
-function stripGhostBuffer(target: HTMLTextAreaElement | HTMLInputElement, consumed: string): void {
-  if (!consumed) return;
-  const start = target.selectionStart, end = target.selectionEnd;
-  if (start == null || start !== end || start < consumed.length) return;
-  const before = target.value.slice(0, start);
-  if (!before.endsWith(consumed)) return;
-  target.value = before.slice(0, -consumed.length) + target.value.slice(end);
-  try { target.selectionStart = target.selectionEnd = start - consumed.length; } catch { /* ignore */ }
+/** IME 提交落字：幽灵拼音（软键盘 / 系统组字残留的裸字母）一并替换；走 text-edit 保 undo 栈。 */
+function commitText(target: HTMLTextAreaElement | HTMLInputElement, consumedBuffer: string, text: string): void {
+  let start = target.selectionStart ?? target.value.length; const end = target.selectionEnd ?? start;
+  if (consumedBuffer && start === end && start >= consumedBuffer.length && target.value.slice(start - consumedBuffer.length, start) === consumedBuffer) start -= consumedBuffer.length;
+  replaceRange(target, start, end, text);
 }
 let lastRealKeydownAt = 0;   // 软键盘路由判据：80ms 内见过真 keydown（key 可辨）= 实体键盘路径已处理，beforeinput 不再重复路由
 async function imeKeydown(el: HTMLTextAreaElement | HTMLInputElement, event: KeyboardEvent): Promise<void> {
@@ -248,8 +241,7 @@ async function imeKeydown(el: HTMLTextAreaElement | HTMLInputElement, event: Key
   if (!editor.canEdit()) return;
   const r = await ime.onKeydown(event);
   if (r.type === "commit") {
-    stripGhostBuffer(el, r.consumedBuffer);
-    insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
+    commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
     if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
     void maybePushUserDict();
   }
@@ -262,8 +254,7 @@ function routeSyntheticKey(el: HTMLTextAreaElement | HTMLInputElement, key: stri
   if (!fake.defaultPrevented) return false;
   void pending.then((r) => {
     if (r.type === "commit") {
-      stripGhostBuffer(el, r.consumedBuffer);
-      insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
+      commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
       if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
       void maybePushUserDict();
     }
@@ -279,8 +270,7 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     shiftCleanPress = false;
     const r = await ime.toggleAsciiMode();
     if (r.type === "commit") {
-      stripGhostBuffer(el, r.consumedBuffer);
-      insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
+      commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
       if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
     }
     renderImeState();
@@ -291,19 +281,18 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
   //   （之后的空格/数字走 beforeinput 合成路径进 RIME：拼音+空格 = 首选）；含非 ASCII（系统输入法已出汉字）→ 原样保留 + 提示一次。
   //   insertCompositionText 不可 preventDefault（PTT doc 血泪），只能事后处理。
   node.addEventListener("compositionend", (event: Event) => {
-    if (!ime.enabled) return;
+    if (!ime.enabled || isProgrammaticEdit()) return;
     const data = (event as CompositionEvent).data ?? "";
     if (!data) return;
     if (!/^[a-zA-Z0-9;]+$/.test(data)) { setStatus(t("ime.systemIntrusion"), { error: true }); return; }
     const end = el.selectionEnd ?? el.value.length, start = Math.max(0, end - data.length);
     if (el.value.slice(start, end) !== data) return;
-    el.value = el.value.slice(0, start) + el.value.slice(end);
-    try { el.selectionStart = el.selectionEnd = start; } catch { /* ignore */ }
+    replaceRange(el, start, end, "");
     for (const ch of data) routeSyntheticKey(el, ch.toLowerCase());
   });
   node.addEventListener("beforeinput", (event: Event) => {
     const ie = event as InputEvent;
-    if (!ime.enabled) return;
+    if (!ime.enabled || isProgrammaticEdit()) return;   // 自己 execCommand 落的字别再路由一遍
     if (Date.now() - lastRealKeydownAt < 80) {   // 实体键盘：keydown 已路由；这里只挡组合中的裸字符
       if (!ime.isComposing()) return;
       if (ie.inputType !== "insertText" || !ie.data) return;
@@ -390,8 +379,8 @@ function deleteBeforeCaret(): void {
   if (ime.isComposing()) { routeSyntheticKey(editorEl, "Backspace"); return; }
   const s = editorEl.selectionStart, e = editorEl.selectionEnd;
   if (s == null || e == null) return;
-  if (s !== e) editorEl.setRangeText("", s, e, "end");
-  else if (s > 0) { const n = /[\uDC00-\uDFFF]$/.test(editorEl.value.slice(0, s)) ? 2 : 1; editorEl.setRangeText("", s - n, s, "end"); }
+  if (s !== e) replaceRange(editorEl, s, e, "");
+  else if (s > 0) { const n = /[\uDC00-\uDFFF]$/.test(editorEl.value.slice(0, s)) ? 2 : 1; replaceRange(editorEl, s - n, s, ""); }
   else return;
   localSession?.notifyExternalInput();
   editor.noteExternalEdit();
@@ -775,7 +764,7 @@ async function boot(): Promise<void> {
   applyReadingMode(prefs.getItem<string>("readingMode"));
   applyRuledLines(ruledLinesPref());
   applyQuoteStyle(quoteStylePref());
-  if (deviceKvGet("imeEnabled") !== "0") { ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）
+  if (deviceKvGet("imeEnabled") !== "0") { ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (deviceKvGet("imeEnabled") !== "0") ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）
   renderImeState();
   drawer.subscribe();
 

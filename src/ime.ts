@@ -195,12 +195,13 @@ export class NaturalCodeIME {
   asciiMode = false;
   simplified = true;   // 简体（默认）/ 繁體；synced pref 跟人走，app 层在 initialize 前灌入
   // JS 层标点覆盖（方案层的 punctuation 改不了：wasm librime 重建 schema 要源 yaml）：
-  //   ` 与 ~ 中文态出间隔号「·」（user 2026-09-04「tilde 中文是不是出圆点」；Windows 微软拼音是 ` 出 ·、~ 出 ～，这里两个都给 ·）；
+  //   ` 中文态出间隔号「·」、~ 出全角「～」（user 2026-09-04「我说的是反引号…波浪号和 windows 一样吧」）；
   //   引号样式 = 设置项（user「引号变成方形的…我觉得设置」）：curly = 交给 RIME 的 “” ‘’；corner = 「」『』 交替开合（语音标点同步走 zh-punct）。
   quoteStyle: "curly" | "corner" = "curly";
   private quoteOpen = { d: true, s: true };
   private punctOverride(key: string): string | null {
-    if (key === "`" || key === "~") return "·";
+    if (key === "`") return "·";
+    if (key === "~") return "～";   // 与 Windows 微软拼音一致（RIME 默认对 ~ 弹半角/全角候选菜单，多一步）
     if (this.quoteStyle !== "corner") return null;
     if (key === '"') { const ch = this.quoteOpen.d ? "「" : "」"; this.quoteOpen.d = !this.quoteOpen.d; return ch; }
     if (key === "'") { const ch = this.quoteOpen.s ? "『" : "』"; this.quoteOpen.s = !this.quoteOpen.s; return ch; }
@@ -272,6 +273,7 @@ export class NaturalCodeIME {
       if (!isPaginator) { event.preventDefault(); return await this.backend.typePunctuation(event.key); }
     }
     if (!this.isComposing()) return { type: "passthrough" };
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && (event.key === "z" || event.key === "Z")) { event.preventDefault(); return await this.backend.clear(); }   // 组字中 Ctrl+Z = 撤掉拼音，别让浏览器在拼音底下动正文
     if (event.key === "Backspace") { event.preventDefault(); return await this.backend.backspace(); }
     if (event.key === "Escape") { event.preventDefault(); return await this.backend.clear(); }
     if (/^[1-9]$/.test(event.key)) { event.preventDefault(); return await this.backend.chooseCandidate(Number(event.key) - 1); }

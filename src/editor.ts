@@ -8,6 +8,7 @@
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS, RENAME_DEBOUNCE_MS } from "./config.ts";
 import { formatDate, parseDocName, splitDocPath } from "./doc-model.ts";
+import { replaceRange } from "./text-edit.ts";
 import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword } from "./crypto-state.ts";
 import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
@@ -424,7 +425,7 @@ export function createEditor(d: EditorDeps) {
   });
   d.titleInput.addEventListener("input", () => {
     if (!canEdit()) return;
-    if (/[\r\n]/.test(d.titleInput.value)) d.titleInput.value = d.titleInput.value.replace(/[\r\n]+/g, " ");
+    if (/[\r\n]/.test(d.titleInput.value)) { const v = d.titleInput.value; replaceRange(d.titleInput, 0, v.length, v.replace(/[\r\n]+/g, " ")); }
     d.setState(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
     if (st.name) scheduleRename(); else scheduleLocalSave();
   });

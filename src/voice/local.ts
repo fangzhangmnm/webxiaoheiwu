@@ -5,6 +5,7 @@
 //   · RMS VAD：有声后 1s 静音自动停（PTT 松键也停）；上限 60s。
 //   · stop → 重采样到 16k → worker 解码 → 中文全角标点 → 插回锚点。PTT 取消竞态用 cancelled 旗（每个 await 后检查）。
 import { chineseifyPunctuation } from "../zh-punct.ts";
+import { replaceRange } from "../text-edit.ts";
 import { asr } from "../asr/engine.ts";
 import type { ModelInfo } from "../asr/packs.ts";
 import type { AsrLang } from "../asr/protocol.ts";
@@ -153,9 +154,8 @@ export class LocalSession implements VoiceSession {
     if (this.anchorEnd > t.value.length || this.anchorStart > t.value.length) return;
     this.injecting = true;
     try {
-      t.value = `${t.value.slice(0, this.anchorStart)}${text}${t.value.slice(this.anchorEnd)}`;
+      replaceRange(t, this.anchorStart, this.anchorEnd, text);   // 走 text-edit：保浏览器 undo 栈
       this.anchorEnd = this.anchorStart + text.length;
-      try { t.selectionStart = t.selectionEnd = this.anchorEnd; } catch { /* ignore */ }
       this.d.onChange();
     } finally { this.injecting = false; }
   }
