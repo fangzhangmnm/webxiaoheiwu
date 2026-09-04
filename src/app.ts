@@ -21,7 +21,7 @@ import { MODEL_SOURCE_DEFAULT } from "./config.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
-import { togglePopupMenu } from "./ui/popup-menu.ts";
+import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -220,17 +220,30 @@ function stripGhostBuffer(target: HTMLTextAreaElement | HTMLInputElement, consum
   try { target.selectionStart = target.selectionEnd = start - consumed.length; } catch { /* ignore */ }
 }
 let lastRealKeydownAt = 0;   // 软键盘路由判据：80ms 内见过真 keydown（key 可辨）= 实体键盘路径已处理，beforeinput 不再重复路由
-function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
-  const node: HTMLElement = el;   // 联合类型上 addEventListener 的重载退化成 Event；收窄到 HTMLElement 拿回 KeyboardEvent
-  node.addEventListener("keydown", async (event: KeyboardEvent) => {
-    if (event.key !== "Unidentified" && event.key !== "Process") lastRealKeydownAt = Date.now();
-    if (event.key === "Shift") {
-      if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && ime.enabled) shiftCleanPress = true;
-      return;
-    }
-    shiftCleanPress = false;
-    if (!editor.canEdit()) return;
-    const r = await ime.onKeydown(event);
+async function imeKeydown(el: HTMLTextAreaElement | HTMLInputElement, event: KeyboardEvent): Promise<void> {
+  if (event.key !== "Unidentified" && event.key !== "Process") lastRealKeydownAt = Date.now();
+  if (event.key === "Shift") {
+    if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && ime.enabled) shiftCleanPress = true;
+    return;
+  }
+  shiftCleanPress = false;
+  if (voiceMode && el === editorEl && !event.ctrlKey && !event.metaKey && !event.altKey && (event.key.length === 1 || event.key === "Backspace" || event.key === "Enter")) { voiceMode = false; renderMicVisibility(); }   // 敲了实体键 = 不是纯口述
+  if (!editor.canEdit()) return;
+  const r = await ime.onKeydown(event);
+  if (r.type === "commit") {
+    stripGhostBuffer(el, r.consumedBuffer);
+    insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
+    if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
+    void maybePushUserDict();
+  }
+  renderImeState();
+}
+/** 合成按键喂 IME（软键盘 beforeinput / 语音模式退格钮）：IME 拦了返回 true（提交由这里落字），放行返回 false。 */
+function routeSyntheticKey(el: HTMLTextAreaElement | HTMLInputElement, key: string): boolean {
+  const fake = new KeyboardEvent("keydown", { key, cancelable: true });
+  const pending = ime.onKeydown(fake);
+  if (!fake.defaultPrevented) return false;
+  void pending.then((r) => {
     if (r.type === "commit") {
       stripGhostBuffer(el, r.consumedBuffer);
       insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
@@ -239,6 +252,11 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     }
     renderImeState();
   });
+  return true;
+}
+function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
+  const node: HTMLElement = el;   // 联合类型上 addEventListener 的重载退化成 Event；收窄到 HTMLElement 拿回 KeyboardEvent
+  node.addEventListener("keydown", (event: KeyboardEvent) => { void imeKeydown(el, event); });
   node.addEventListener("keyup", async (event: KeyboardEvent) => {
     if (event.key !== "Shift" || !shiftCleanPress) return;
     shiftCleanPress = false;
@@ -251,18 +269,20 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     renderImeState();
   });
   node.addEventListener("blur", () => { shiftCleanPress = false; });
-  // 系统输入法插手探测：内置 IME 开着却收到系统组合（桌面系统输入法在中文态）→ 撤掉那段、提示切英文。
-  //   insertCompositionText 不可 preventDefault（PTT doc 血泪），只能事后 splice。
+  // 系统层组字（Quest/安卓把实体键盘的字母也过一遍系统输入法；桌面系统输入法在中文态）——**不再撤字**（撤字 = 「无法输入」，
+  //   user 2026-09-04 Quest 回归）：纯 ASCII 组字 = 系统替我们攒的拼音 → 结束时删掉系统留下的裸字母、逐字喂给内置 IME
+  //   （之后的空格/数字走 beforeinput 合成路径进 RIME：拼音+空格 = 首选）；含非 ASCII（系统输入法已出汉字）→ 原样保留 + 提示一次。
+  //   insertCompositionText 不可 preventDefault（PTT doc 血泪），只能事后处理。
   node.addEventListener("compositionend", (event: Event) => {
     if (!ime.enabled) return;
     const data = (event as CompositionEvent).data ?? "";
     if (!data) return;
+    if (!/^[a-zA-Z0-9;]+$/.test(data)) { setStatus(t("ime.systemIntrusion"), { error: true }); return; }
     const end = el.selectionEnd ?? el.value.length, start = Math.max(0, end - data.length);
-    if (el.value.slice(start, end) === data) {
-      el.value = el.value.slice(0, start) + el.value.slice(end);
-      try { el.selectionStart = el.selectionEnd = start; } catch { /* ignore */ }
-    }
-    setStatus(t("ime.systemIntrusion"), { error: true });
+    if (el.value.slice(start, end) !== data) return;
+    el.value = el.value.slice(0, start) + el.value.slice(end);
+    try { el.selectionStart = el.selectionEnd = start; } catch { /* ignore */ }
+    for (const ch of data) routeSyntheticKey(el, ch.toLowerCase());
   });
   node.addEventListener("beforeinput", (event: Event) => {
     const ie = event as InputEvent;
@@ -279,19 +299,7 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     else if (ie.inputType === "deleteContentBackward") key = "Backspace";
     else if (ie.inputType === "insertLineBreak" || ie.inputType === "insertParagraph") key = "Enter";
     if (!key) return;
-    const fake = new KeyboardEvent("keydown", { key, cancelable: true });
-    const pending = ime.onKeydown(fake);
-    if (!fake.defaultPrevented) return;   // IME 放行 → 让浏览器正常插入
-    event.preventDefault();
-    void pending.then((r) => {
-      if (r.type === "commit") {
-        stripGhostBuffer(el, r.consumedBuffer);
-        insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
-        if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
-        void maybePushUserDict();
-      }
-      renderImeState();
-    });
+    if (routeSyntheticKey(el, key)) event.preventDefault();   // IME 放行 → 让浏览器正常插入
   });
 }
 setupImeOn(editorEl); setupImeOn(titleInput);
@@ -319,9 +327,11 @@ rimeDict.onChange("dump", () => { void pullUserDict(); });
 //   默认开、无开关（user 2026-09-03「无须 consent 默认开」）：consent = 下载语音包那一下点击（体积明摆着）。没包：话筒常驻，点了给下载 sheet；
 //   按 Ctrl 只在状态栏提一句、绝不碰 getUserMedia（Ctrl+S 永远安静）。有包：第一次真用才弹麦克风权限。
 const micButton = $<HTMLButtonElement>("micButton");
+const voiceBackspaceButton = $<HTMLButtonElement>("voiceBackspaceButton");
+let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
 const voiceModel = (): ModelKey => modelKeyFrom(prefs.getItem<string>("voiceProvider"));   // 旧值 webspeech/groq/openai → 默认 SenseVoice
 const voiceSource = (): string => (deviceKvGet("voiceModelSource") || MODEL_SOURCE_DEFAULT).replace(/\/+$/, "");
-const onVoiceInsert = () => { editor.noteExternalEdit(); idle.poke(); };
+const onVoiceInsert = () => { editor.noteExternalEdit(); idle.poke(); if (!voiceMode) { voiceMode = true; renderMicVisibility(); } };
 const voiceErrorText = (error: unknown): string => {
   const raw = error instanceof Error ? error.message : String(error);
   if (raw === "pack-missing") return t("voice.pack.missing");
@@ -350,12 +360,37 @@ voiceAbortHook = () => { if (localSession && (localSession.state === "recording"
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
   const st = editor.state;
-  micButton.hidden = !activeVoiceBackend() || (!st.name && !st.pendingDate) || st.readOnly || st.locked;
-  micButton.title = t("voice.mic");
+  const absent = !activeVoiceBackend() || (!st.name && !st.pendingDate);
+  const blocked = st.readOnly || st.locked;   // 锁着/只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
+  micButton.hidden = absent;
+  micButton.classList.toggle("disabled", blocked);
+  micButton.title = blocked ? t(st.locked ? "voice.blockedLocked" : "voice.blockedReadOnly") : t("voice.mic");
+  voiceBackspaceButton.hidden = absent || blocked || !voiceMode;
 }
+/** 语音模式退格：删光标前一个字（整个 emoji 算一个）/ 选区；组字中则喂 IME。按住连删。 */
+function deleteBeforeCaret(): void {
+  if (!editor.canEdit()) return;
+  if (ime.isComposing()) { routeSyntheticKey(editorEl, "Backspace"); return; }
+  const s = editorEl.selectionStart, e = editorEl.selectionEnd;
+  if (s == null || e == null) return;
+  if (s !== e) editorEl.setRangeText("", s, e, "end");
+  else if (s > 0) { const n = /[\uDC00-\uDFFF]$/.test(editorEl.value.slice(0, s)) ? 2 : 1; editorEl.setRangeText("", s - n, s, "end"); }
+  else return;
+  localSession?.notifyExternalInput();
+  editor.noteExternalEdit();
+}
+let bsRepeat: ReturnType<typeof setTimeout> | null = null;
+const stopBsRepeat = () => { if (bsRepeat) { clearTimeout(bsRepeat); bsRepeat = null; } };
+voiceBackspaceButton.addEventListener("pointerdown", (e) => {
+  e.preventDefault();   // 别抢编辑器焦点
+  deleteBeforeCaret(); stopBsRepeat();
+  const tick = () => { deleteBeforeCaret(); bsRepeat = setTimeout(tick, 60); };
+  bsRepeat = setTimeout(tick, 450);
+});
+for (const ev of ["pointerup", "pointercancel", "pointerleave"]) voiceBackspaceButton.addEventListener(ev, stopBsRepeat);
 micButton.addEventListener("click", () => {
   void (async () => {
-    if (!editor.canEdit()) return;
+    if (!editor.canEdit()) { setStatus(micButton.title, { error: true }); return; }
     const backend = activeVoiceBackend(); if (!backend) return;
     const m = MODELS[voiceModel()];
     let ready = asr.isKnownReady(m.slug);
@@ -676,6 +711,25 @@ const idle = initIdleGate({
   onResume: resumeSync,
   focusEditor: () => editorEl.focus(),
 });
+// ── Quest：放下手柄时系统键盘焦点会跑去别的 app（空格在 VRChat 里跳起来）——拦不住，能做的 = 让人一眼看出「键盘不在本页」，
+//   焦点回来 / 页内任意处敲键时自动回到编辑器（user 2026-09-04）。
+function modalOpen(): boolean { return !!document.querySelector('[role="dialog"]:not(.hidden)') || !!currentPopupMenu() || drawer.currentView() !== "closed" || idle.isShown(); }
+function recoverEditorFocus(): boolean {
+  const a = document.activeElement;
+  if (a && a !== document.body && a !== document.documentElement) return a === editorEl;
+  if (modalOpen() || !editor.canEdit()) return false;
+  editorEl.focus();
+  return document.activeElement === editorEl;
+}
+window.addEventListener("blur", () => document.body.classList.add("kb-away"));
+window.addEventListener("focus", () => { document.body.classList.remove("kb-away"); recoverEditorFocus(); });
+document.addEventListener("keydown", (event: KeyboardEvent) => {
+  if (event.defaultPrevented || (event.target !== document.body && event.target !== document.documentElement)) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key.length !== 1 && event.key !== "Backspace" && event.key !== "Enter") return;
+  if (!recoverEditorFocus()) return;
+  void imeKeydown(editorEl, event);   // 这一击不丢：直接走编辑器的 IME 路径（放行键的默认动作会落进刚聚焦的编辑器）
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") { void editor.flushLocal().then(() => { if (auth.isSignedIn()) return editor.pushNow(); }); void pushUserDict(); void flushCollections(); }
 });
@@ -749,4 +803,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

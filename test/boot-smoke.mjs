@@ -202,9 +202,26 @@ try {
     await typeKeys(["z", "h", "e"]); out.simp = cands().slice(0, 5); await ime.backend.clear();
     await ime.setSimplified(false); await typeKeys(["z", "h", "e"]); out.trad = cands().slice(0, 5); await ime.backend.clear();
     await ime.setSimplified(true); await typeKeys(["z", "h", "e"]); out.simpAgain = cands().slice(0, 5); await ime.backend.clear();
+    // 双拼零声母全拼重写：四个双拼方案 aimili → 艾米莉；微软原生 olmili 仍在
+    out.zero = {};
+    for (const s of ["double_pinyin_mspy", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj"]) { await ime.setSchema(s); await typeKeys("aimili".split("")); out.zero[s] = cands().slice(0, 5); ime.resetComposition(); await wait(150); }
+    await ime.setSchema("double_pinyin_mspy"); await typeKeys("olmili".split("")); out.zero.native = cands().slice(0, 5); ime.resetComposition(); await wait(150);
+    await ime.setSchema("luna_pinyin");
+    // 系统组字收编（Quest/安卓把实体键盘字母过系统输入法）：模拟 compositionend "nihao" → 裸字母被删、喂进 RIME、候选出「你好」
+    ed.value = ""; ed.focus(); ed.value = "nihao"; ed.selectionStart = ed.selectionEnd = 5;
+    ed.dispatchEvent(new CompositionEvent("compositionend", { data: "nihao", bubbles: true })); await wait(900);
+    out.sysComp = { value: ed.value, cands: cands().slice(0, 3) }; ime.resetComposition(); await wait(150); ed.value = "";
     await setImeEnabled(false);
     return out;
   });
+  check("系统组字收编：compositionend 'nihao' → 裸字母删掉、RIME 候选出「你好」", typeof imeRun === "object" && imeRun.sysComp?.value === "" && imeRun.sysComp?.cands?.includes("你好"), JSON.stringify(imeRun.sysComp));
+  check("双拼零声母全拼：微软/小鹤/ABC/加加 aimili → 艾米莉；微软原生 olmili 仍可", typeof imeRun === "object" && ["double_pinyin_mspy", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "native"].every((k) => imeRun.zero?.[k]?.includes("艾米莉")), JSON.stringify(imeRun.zero));
+  const kbAway = await page.evaluate(async () => { const w = (ms) => new Promise((r) => setTimeout(r, ms)); window.dispatchEvent(new Event("blur")); await w(50); const a = document.body.classList.contains("kb-away"); document.activeElement?.blur(); window.dispatchEvent(new Event("focus")); await w(50); return { a, b: !document.body.classList.contains("kb-away"), c: document.activeElement === document.getElementById("editor") }; });
+  check("Quest 键盘提示：window blur → kb-away；focus → 撤提示 + 焦点回编辑器", kbAway.a && kbAway.b && kbAway.c, JSON.stringify(kbAway));
+  const typeAnywhere = await page.evaluate(() => { document.activeElement?.blur(); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true })); return document.activeElement === document.getElementById("editor"); });
+  check("页内任意处敲键 → 焦点回编辑器", typeAnywhere);
+  const vbs = await page.evaluate(() => { const ed = document.getElementById("editor"), bs = document.getElementById("voiceBackspaceButton"); const x = window.__xhw; ed.focus(); ed.value = "你好😀"; ed.selectionStart = ed.selectionEnd = ed.value.length; x.voiceBackspace(); const a = ed.value; x.voiceBackspace(); const b = ed.value; x.setVoiceMode(true); const shown = !bs.hidden; ed.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true })); const hiddenAfterKey = bs.hidden; x.setVoiceMode(false); return { a, b, shown, hiddenAfterKey }; });
+  check("语音模式退格钮：emoji 整个删 / 汉字删一个；口述后可见、敲实体键即隐", vbs.a === "你好" && vbs.b === "你" && vbs.shown && vbs.hiddenAfterKey, JSON.stringify(vbs));
   check("内置 IME 三方案：全拼 ni→你 / 微软双拼 ni→你 / 五笔 wq→你", typeof imeRun === "object" && imeRun.luna?.includes("你") && imeRun.mspy?.includes("你") && imeRun.wubi?.includes("你"), JSON.stringify(imeRun));
   check("简/繁开关：zhe 简→这 / 繁→這 / 切回→这，且无 emoji 候选", typeof imeRun === "object" && imeRun.simp?.[0] === "这" && imeRun.trad?.[0] === "這" && imeRun.simpAgain?.[0] === "这" && !imeRun.simp.some((c) => /\p{Extended_Pictographic}/u.test(c)), JSON.stringify({ simp: imeRun.simp, trad: imeRun.trad, again: imeRun.simpAgain }));
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝

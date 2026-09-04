@@ -52,6 +52,22 @@ export declare const S: {
         readonly zh: "语音输入";
         readonly en: "Voice input";
     };
+    readonly "ui.voiceBackspace": {
+        readonly zh: "退格（按住连删）";
+        readonly en: "Backspace (hold to repeat)";
+    };
+    readonly "ui.kbAway": {
+        readonly zh: "键盘不在本页——点一下页面继续";
+        readonly en: "Keyboard is not on this page — tap the page to continue";
+    };
+    readonly "voice.blockedLocked": {
+        readonly zh: "这篇锁着，先解锁再口述";
+        readonly en: "This draft is locked — unlock it to dictate";
+    };
+    readonly "voice.blockedReadOnly": {
+        readonly zh: "这篇是只读，先关掉只读再口述";
+        readonly en: "This draft is read-only — turn that off to dictate";
+    };
     readonly "ui.idleTitle": {
         readonly zh: "已闲置一段时间";
         readonly en: "Idle for a while";
@@ -937,8 +953,8 @@ export declare const S: {
         readonly en: "Switched to {name}";
     };
     readonly "ime.systemIntrusion": {
-        readonly zh: "系统输入法在插手——请把它切到英文（内置输入法用 Shift 切中英）";
-        readonly en: "The system IME intervened — switch it to English (the built-in IME toggles with Shift)";
+        readonly zh: "系统输入法出了汉字（已保留）——想用内置输入法请把系统输入法切到英文";
+        readonly en: "The system IME produced text (kept) — switch it to English to use the built-in IME";
     };
     readonly "ui.sec.ime": {
         readonly zh: "输入法";

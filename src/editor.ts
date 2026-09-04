@@ -68,6 +68,7 @@ export function createEditor(d: EditorDeps) {
     const blocked = st.readOnly || st.locked || st.unavailable;
     d.editor.classList.toggle("locked", blocked);
     d.titleInput.classList.toggle("locked", blocked);
+    d.editor.readOnly = blocked; d.titleInput.readOnly = blocked;   // 锁/只读 = 真 readOnly：敲进去的字不再被悄悄吞掉（user 2026-09-04「没解锁密码导致的煤气灯」；根治=0.3 懒空白稿）
   }
   // zen（user 2026-09-04）：干净态 / 锁态留白——只有「未同步 / 本地草稿 / 不可用 / 加密未成」这种要人知道的才出字。
   function statusForDoc(): string {

@@ -19,6 +19,7 @@ export interface ImeState {
 }
 interface Backend {
     engine: string;
+    readonly busy?: boolean;
     getState(): {
         buffer: string;
         candidates: string[];
@@ -48,6 +49,10 @@ export declare class NaturalCodeIME {
     enabled: boolean;
     asciiMode: boolean;
     simplified: boolean;
+    private zero;
+    private refreshZero;
+    private runOps;
+    private track;
     setSimplified(v: boolean): Promise<void>;
     backend: Backend;
     initializeError: string | null;

@@ -16,6 +16,7 @@ export const IME_SCHEMAS = ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin
 export type ImeSchema = (typeof IME_SCHEMAS)[number];   // 全拼（默认）/ 语句流 / 微软·自然码·小鹤·ABC·拼音加加 双拼（user「双拼顺手支持其他方案」）/ 五笔86（「加一个五笔玩玩」，依赖 pinyin_simp → stroke）
 export const DEFAULT_SCHEMA: ImeSchema = "luna_pinyin";
 export const isImeSchema = (v: unknown): v is ImeSchema => (IME_SCHEMAS as readonly string[]).includes(v as string);
+import { ZeroInitialRewriter, ZERO_TABLES } from "./ime-zero-initial.ts";
 const PUNCTUATION_KEYS = new Set([",", ".", ";", ":", "?", "!", '"', "'", "(", ")", "<", ">", "{", "}", "[", "]", "\\", "~", "@", "#", "$", "&", "*", "|"]);
 
 export type ImeResult = { type: "passthrough" | "composing" | "clear" | "toggle" } | { type: "commit"; text: string; consumedBuffer: string };
@@ -23,6 +24,7 @@ export interface ImeState { enabled: boolean; asciiMode: boolean; buffer: string
 
 interface Backend {
   engine: string;
+  readonly busy?: boolean;
   getState(): { buffer: string; candidates: string[]; engine: string };
   resetState(): void;
   typeLetter(letter: string): Promise<ImeResult>;
@@ -99,7 +101,14 @@ class RimeWorkerBackend implements Backend {
   setSimplified(v: boolean): Promise<void> { this.simplified = v; return this.enqueue(() => this.applyOptions()); }
   getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine }; }
   resetState() { this.buffer = ""; this.candidates = []; }
-  enqueue<T>(task: () => Promise<T>): Promise<T> { const p = this.queue.then(task, task); this.queue = p.catch(() => {}); return p; }
+  private pending = 0;
+  get busy(): boolean { return this.pending > 0; }   // 任务在飞：首字回包前空格/退格/数字要排在它后面，不能按「缓冲为空」直通
+  enqueue<T>(task: () => Promise<T>): Promise<T> {
+    this.pending++;
+    const p = this.queue.then(task, task); this.queue = p.catch(() => {});
+    p.then(() => { this.pending--; }, () => { this.pending--; });
+    return p;
+  }
   // RPC 通道严格串行：my-rime worker 协议无请求 id，响应靠「下一条 success/error」配对——两路并飞就错位
   //   （2026-09-04 smoke 抓到：清缓冲与换方案并飞 → 微软双拼拿到上一条的候选、五笔空）。任务级原子性仍由 enqueue 负责。
   private rpcChain: Promise<unknown> = Promise.resolve();
@@ -186,6 +195,15 @@ export class NaturalCodeIME {
   enabled = false;
   asciiMode = false;
   simplified = true;   // 简体（默认）/ 繁體；synced pref 跟人走，app 层在 initialize 前灌入
+  // 双拼零声母全拼重写（ime-zero-initial.ts）：只在 RIME 后端 + 双拼方案时有表，其它直通
+  private zero = new ZeroInitialRewriter(null);
+  private refreshZero(): void { this.zero = new ZeroInitialRewriter(this.backend.engine === "rime" ? (ZERO_TABLES[this.schema] ?? null) : null); }
+  private async runOps(ops: ReturnType<ZeroInitialRewriter["onKey"]>): Promise<ImeResult> {
+    let r: ImeResult = { type: "passthrough" };
+    for (const op of ops) r = op.op === "bs" ? await this.backend.backspace() : await this.backend.typeLetter(op.key);
+    return this.track(r);
+  }
+  private track(r: ImeResult): ImeResult { if (r.type !== "composing") this.zero.reset(); return r; }
   async setSimplified(v: boolean): Promise<void> { this.simplified = v; if (this.backend.setSimplified) { try { await this.backend.setSimplified(v); } catch (e) { console.warn("[ime] setSimplified failed", e); } } }
   backend: Backend = new StarterMapBackend();
   initializeError: string | null = null;
@@ -202,6 +220,7 @@ export class NaturalCodeIME {
       try { await rime.initialize(schema); this.backend = rime; this.initializeError = null; }
       catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
       this.initialized = true;
+      this.refreshZero();
     })();
     await this.initPromise;
   }
@@ -210,6 +229,7 @@ export class NaturalCodeIME {
     this.schema = schema;
     const b = this.backend as { setSchema?: (s: ImeSchema) => Promise<void> };
     if (b.setSchema) { try { await b.setSchema(schema); } catch (e) { console.warn("[ime] setSchema failed", e); } }
+    this.refreshZero();
   }
   /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
   dispose(): void {
@@ -221,13 +241,14 @@ export class NaturalCodeIME {
     const s = this.backend.getState();
     return { enabled: this.enabled, asciiMode: this.asciiMode, buffer: s.buffer, candidates: s.candidates, engine: s.engine, initializeError: this.initializeError };
   }
-  isComposing(): boolean { return this.enabled && !this.asciiMode && this.backend.getState().buffer.length > 0; }
-  resetComposition(): void { this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
+  isComposing(): boolean { return this.enabled && !this.asciiMode && (this.backend.getState().buffer.length > 0 || !!this.backend.busy); }
+  resetComposition(): void { this.zero.reset(); this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
   async dumpUserDir(): Promise<UserDictDump | null> { if (!this.backend.dumpUserDir) return null; try { return await this.backend.dumpUserDir(); } catch (e) { console.warn("[ime] dumpUserDir failed", e); return null; } }
   async restoreUserDir(dump: UserDictDump): Promise<void> { if (!this.backend.restoreUserDir) return; try { await this.backend.restoreUserDir(dump); } catch (e) { console.warn("[ime] restoreUserDir failed", e); } }
 
   /** Shift 单击：中 ↔ EN。切到 EN 时把未完成的拼音原样提交。 */
   async toggleAsciiMode(): Promise<ImeResult> {
+    this.zero.reset();
     const toAscii = !this.asciiMode;
     const pending = this.backend.getState().buffer;
     await this.backend.clear();
@@ -238,17 +259,23 @@ export class NaturalCodeIME {
 
   async onKeydown(event: KeyboardEvent): Promise<ImeResult> {
     if (!this.enabled || this.asciiMode) return { type: "passthrough" };
-    if (isAsciiLetter(event)) { event.preventDefault(); return await this.backend.typeLetter(event.key.toLowerCase()); }
+    if (isAsciiLetter(event)) { event.preventDefault(); return await this.runOps(this.zero.onKey(event.key.toLowerCase())); }
     if (isRoutedPunct(event)) {
+      if (this.isComposing() && event.key === ";" && this.schema === "double_pinyin_mspy") { event.preventDefault(); return await this.runOps(this.zero.onKey(";")); }   // 微软双拼 ; = ing 韵母键
       const isPaginator = this.isComposing() && (event.key === "[" || event.key === "]");
-      if (!isPaginator) { event.preventDefault(); return await this.backend.typePunctuation(event.key); }
+      if (!isPaginator) { event.preventDefault(); return this.track(await this.backend.typePunctuation(event.key)); }
     }
     if (!this.isComposing()) return { type: "passthrough" };
-    if (event.key === "Backspace") { event.preventDefault(); return await this.backend.backspace(); }
-    if (event.key === "Escape") { event.preventDefault(); return await this.backend.clear(); }
-    if (/^[1-9]$/.test(event.key)) { event.preventDefault(); return await this.backend.chooseCandidate(Number(event.key) - 1); }
-    if (event.key === " ") { event.preventDefault(); return await this.backend.commitDefault(false); }
-    if (event.key === "Enter") { event.preventDefault(); return await this.backend.commitDefault(true); }
+    if (event.key === "Backspace") { event.preventDefault(); return await this.runOps(this.zero.onBackspace()); }
+    if (event.key === "Escape") { event.preventDefault(); this.zero.reset(); return await this.backend.clear(); }
+    if (/^[1-9]$/.test(event.key)) {
+      event.preventDefault();
+      const r = await this.backend.chooseCandidate(Number(event.key) - 1);
+      if (r.type === "composing") this.zero.syncFromPreedit(this.backend.getState().buffer); else this.zero.reset();
+      return r;
+    }
+    if (event.key === " ") { event.preventDefault(); return this.track(await this.backend.commitDefault(false)); }
+    if (event.key === "Enter") { event.preventDefault(); return this.track(await this.backend.commitDefault(true)); }
     if (event.key === "PageDown" || event.key === "]" || event.key === "=") { event.preventDefault(); return await this.backend.changePage(false); }
     if (event.key === "PageUp" || event.key === "[" || event.key === "-") { event.preventDefault(); return await this.backend.changePage(true); }
     return { type: "passthrough" };

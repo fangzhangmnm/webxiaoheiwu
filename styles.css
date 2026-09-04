@@ -1538,3 +1538,9 @@ body.ruled-lines .body {
 .toast.show { opacity: 1; visibility: visible; transition: opacity 120ms ease; }
 .toast.error { background: var(--danger); color: #fff; }
 .candidates:not(.hidden) ~ .toast { bottom: 64px; }
+/* 语音模式退格钮（话筒左邻，只在纯口述时出现）+ Quest「键盘不在本页」提示（2026-09-04） */
+.mic-side { right: 70px; width: 40px; height: 40px; bottom: calc(18px + var(--kb-offset, 0px)); }
+.mic-side .ico { width: 18px; height: 18px; }
+.kb-away-hint { display: none; position: fixed; top: 36px; left: 50%; transform: translateX(-50%); z-index: 8; padding: 5px 12px; border-radius: 999px; background: var(--warn); color: #fff; font-family: var(--font-ui); font-size: 12px; box-shadow: var(--shadow); pointer-events: none; }
+body.kb-away .kb-away-hint { display: block; }
+body.kb-away .page { opacity: 0.6; transition: opacity 200ms ease; }

@@ -49,6 +49,8 @@ def text_path(text, box, font='cjk'):
 SPECS = [
     # WebXiaoHeiWu 2026-09-03（登记见 ../20260708 SVG Icons/TODO.md 待画）：库里没有 → 字形顶位。
     ("microphone", "麦", (3, 3, 18, 18), "编辑区浮动「语音输入」钮（stopgap 字形；待话筒真图）"),
+    # 2026-09-04：语音模式退格钮（登记见 TODO.md）
+    ("backspace", "退", (3, 3, 18, 18), "语音模式浮动「退格」钮（stopgap 字形；待退格键真图）"),
 ]
 syms = []
 for sid, text, box, note in SPECS:
