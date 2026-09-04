@@ -484,6 +484,12 @@ $("readingModePicker").addEventListener("change", (event) => {
   applyReadingMode(v); prefs.setItem("readingMode", v);
 });
 prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("readingMode")));
+// 字号档位（device-kv：跟屏幕走，手机上按「每行字数」规范算出来只有 16px——user 2026-09-04 iPhone「字好小啊」；规范继续管行宽，档位只乘字号）
+const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
+const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
+const fontScalePref = (): string => { const v = deviceKvGet("fontScale"); return v && FONT_SCALES.includes(v) ? v : "1"; };
+function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; }
+fontScaleSelect.addEventListener("change", () => { const v = FONT_SCALES.includes(fontScaleSelect.value) ? fontScaleSelect.value : "1"; deviceKvSet("fontScale", v === "1" ? null : v); applyFontScale(v); });
 // 写字线（synced prefs，与阅读节奏同席：视觉偏好跟人走；缺省开）
 const ruledLinesToggle = $<HTMLInputElement>("ruledLinesToggle");
 const ruledLinesPref = (): boolean => prefs.getItem<boolean>("ruledLines") !== false;
@@ -621,7 +627,7 @@ langSelect.value = lang();
 langSelect.addEventListener("change", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setLang(langSelect.value as Lang); })(); });
 
 $("forceUpdateButton").addEventListener("click", () => {
-  void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await editor.flushLocal(); await flushCollections(); await shell.forceReset(); } })();
+  void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await withBusy(t("settings.forceUpdating"), () => shell.forceReset()); } })();   // flush 在 shell.onBeforeReload 里（带超时），遮罩留到导航发生
 });
 // ── 加密密码：更改（可迁移已有稿）/ 忘记重置 ──
 async function changePasswordFlow(): Promise<void> {
@@ -801,6 +807,7 @@ async function boot(): Promise<void> {
   await initCollections();
   applyReadingMode(prefs.getItem<string>("readingMode"));
   applyRuledLines(ruledLinesPref());
+  applyFontScale(fontScalePref());
   applyQuoteStyle(quoteStylePref());
   if (deviceKvGet("imeEnabled") !== "0") { ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (deviceKvGet("imeEnabled") !== "0") ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）
   renderImeState();
@@ -819,6 +826,7 @@ async function boot(): Promise<void> {
     if (first) await editor.open(first); else await editor.newDoc();
   }
   booted = true;
+  if (new URLSearchParams(location.search).has("reset")) { setStatus(t("settings.forceUpdated", { v: APP_VERSION })); try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ } }   // 强制更新回执
   renderLockCard(); renderMicVisibility();
   renderTopbar();
   setState(editor.statusForDoc());

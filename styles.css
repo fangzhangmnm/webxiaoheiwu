@@ -1503,7 +1503,7 @@ body {
 
 /* ── zen 顶栏 + 写字线（2026-09-04 user「帮我 zen mode 一点」「显示一条条的写字线」）：标题进纸面、字数撤、干净态状态留白、IME 只剩「中/英」一字 ── */
 .top-spacer { flex: 1 1 0; min-width: 0; }
-.page { --editor-font: clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max)); }
+.page { --editor-font: calc(clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max)) * var(--font-scale, 1)); }   /* 规范管行宽，档位乘字号（设置「字号」） */
 .body { font-size: var(--editor-font); }
 .title {
   flex: none; display: block; width: 100%; height: auto; line-height: 1.4;
@@ -1523,6 +1523,7 @@ body.ruled-lines .body {
   background-size: 100% 1lh;
   background-repeat: repeat-y;
   background-attachment: local;   /* 线随正文滚动，像纸 */
+  background-position: 0 -0.4em;   /* 行框 1.9em 高、字在中间：线从行框底挪到字底，字「坐」在线上而不是浮在线上（user 2026-09-04 iPhone「光标上下位置不对」的一半） */
 }
 /* 列表行：名字左缘对齐（锁挪到云图标左边；有夹时正文行补一个夹图标宽的留白——user 2026-09-04「锁放在云图标左边…看起来对齐」） */
 .doc-main .doc-name { flex: 1 1 auto; min-width: 0; }

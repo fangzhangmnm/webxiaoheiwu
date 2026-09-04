@@ -99,6 +99,12 @@ export const S = {
   "ui.sec.reading":      { zh: "阅读节奏", en: "Reading rhythm" },
   "ui.reading.novel":    { zh: "轻小说 · 短行", en: "Light novel · short lines" },
   "ui.reading.classic":  { zh: "标准 · 宽行", en: "Standard · wide lines" },
+  "ui.reading.fontScale": { zh: "字号（本机）", en: "Text size (this device)" },
+  "ui.reading.fontScale.s": { zh: "小", en: "Small" },
+  "ui.reading.fontScale.m": { zh: "标准", en: "Standard" },
+  "ui.reading.fontScale.l": { zh: "大", en: "Large" },
+  "ui.reading.fontScale.xl": { zh: "特大", en: "Extra large" },
+  "ui.reading.fontScale.xxl": { zh: "超大", en: "Huge" },
   "ui.reading.ruled":    { zh: "写字线", en: "Ruled lines" },
   "ui.reading.hint":     { zh: "短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。", en: "Short-line mode narrows the page and opens up line spacing for web-novel dialogue rhythm." },
   "ui.sec.voice":        { zh: "语音输入", en: "Voice input" },
@@ -335,6 +341,8 @@ export const S = {
 
   // ── 旧版导入 / 维护 ──
   "settings.forceUpdateTitle": { zh: "强制更新？", en: "Force update?" },
+  "settings.forceUpdating": { zh: "正在清缓存并重启…", en: "Clearing cache and restarting…" },
+  "settings.forceUpdated": { zh: "已清缓存重启 · {v}", en: "Cache cleared and restarted · {v}" },
   "settings.forceUpdateMsg": { zh: "清掉 app 壳缓存并重启；文档缓存不受影响。需要联网。", en: "Clears the app shell cache and restarts; document cache is untouched. Requires network." },
   "settings.diagEmpty":  { zh: "（没有记录）", en: "(nothing logged)" },
   "ui.idleAria":         { zh: "已闲置", en: "Idle" },

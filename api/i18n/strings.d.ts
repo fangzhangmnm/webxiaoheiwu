@@ -360,6 +360,30 @@ export declare const S: {
         readonly zh: "标准 · 宽行";
         readonly en: "Standard · wide lines";
     };
+    readonly "ui.reading.fontScale": {
+        readonly zh: "字号（本机）";
+        readonly en: "Text size (this device)";
+    };
+    readonly "ui.reading.fontScale.s": {
+        readonly zh: "小";
+        readonly en: "Small";
+    };
+    readonly "ui.reading.fontScale.m": {
+        readonly zh: "标准";
+        readonly en: "Standard";
+    };
+    readonly "ui.reading.fontScale.l": {
+        readonly zh: "大";
+        readonly en: "Large";
+    };
+    readonly "ui.reading.fontScale.xl": {
+        readonly zh: "特大";
+        readonly en: "Extra large";
+    };
+    readonly "ui.reading.fontScale.xxl": {
+        readonly zh: "超大";
+        readonly en: "Huge";
+    };
     readonly "ui.reading.ruled": {
         readonly zh: "写字线";
         readonly en: "Ruled lines";
@@ -1231,6 +1255,14 @@ export declare const S: {
     readonly "settings.forceUpdateTitle": {
         readonly zh: "强制更新？";
         readonly en: "Force update?";
+    };
+    readonly "settings.forceUpdating": {
+        readonly zh: "正在清缓存并重启…";
+        readonly en: "Clearing cache and restarting…";
+    };
+    readonly "settings.forceUpdated": {
+        readonly zh: "已清缓存重启 · {v}";
+        readonly en: "Cache cleared and restarted · {v}";
     };
     readonly "settings.forceUpdateMsg": {
         readonly zh: "清掉 app 壳缓存并重启；文档缓存不受影响。需要联网。";

@@ -250,6 +250,18 @@ try {
     return { kindDirty, shown, icon, toast, kindAfter, shrink: Math.round(h0 - h1) };
   });
   check("smart save 钮：未登录=本机图标可见、点击落盘并 toast；--kb-offset 300 → 纸面缩 300", smart.kindDirty === "local" && smart.shown && smart.icon === "#database" && /已存本机|Saved on/.test(smart.toast) && smart.kindAfter === "local" && smart.shrink === 300, JSON.stringify(smart));
+  const fs = await page.evaluate(async () => {
+    const ed = document.getElementById("editor"); const sel = document.getElementById("fontScaleSelect");
+    const f0 = parseFloat(getComputedStyle(ed).fontSize); sel.value = "1.3"; sel.dispatchEvent(new Event("change")); const f1 = parseFloat(getComputedStyle(ed).fontSize);
+    const kv = localStorage.getItem("webxiaoheiwu-7c2e9a41b3d05f68:fontScale"); sel.value = "1"; sel.dispatchEvent(new Event("change"));
+    return { f0, f1, kv, bgPos: getComputedStyle(ed).backgroundPosition };
+  });
+  check("字号档位：1.3 档字号 ×1.3、落 device-kv；写字线挪到字底", Math.abs(fs.f1 - fs.f0 * 1.3) < 0.6 && fs.kv === "1.3" && /-0\.4em|-\d+(\.\d+)?px/.test(fs.bgPos), JSON.stringify(fs));
+  const resetPage = await browser.newPage();
+  await resetPage.goto(`http://127.0.0.1:${port}/index.html?reset=1`, { waitUntil: "load" }); await resetPage.waitForFunction(() => !!window.__xhw); await resetPage.waitForTimeout(1200);
+  const resetInfo = await resetPage.evaluate(() => ({ toast: document.getElementById("toast").textContent, search: location.search, v: window.__xhw.version }));
+  await resetPage.close();
+  check("强制更新回执：?reset= 启动 → toast 报版本、URL 清干净", resetInfo.toast.includes(resetInfo.v) && resetInfo.search === "", JSON.stringify(resetInfo));
   check("undo：IME 提交后 Ctrl+Z 只撤最后一词 / Ctrl+Shift+Z 重做 / 退格钮可撤 / 换稿不漏拼音", undoRun.v0 === "你好" && undoRun.v1 === "你" && undoRun.v2 === "你好" && undoRun.v3 === "你" && undoRun.v4 === "你好" && undoRun.v5 === "你", JSON.stringify(undoRun));
   const kbAway = await page.evaluate(async () => { const w = (ms) => new Promise((r) => setTimeout(r, ms)); window.dispatchEvent(new Event("blur")); await w(50); const a = document.body.classList.contains("kb-away"); document.activeElement?.blur(); window.dispatchEvent(new Event("focus")); await w(50); return { a, b: !document.body.classList.contains("kb-away"), c: document.activeElement === document.getElementById("editor") }; });
   check("Quest 键盘提示：window blur → kb-away；focus → 撤提示 + 焦点回编辑器", kbAway.a && kbAway.b && kbAway.c, JSON.stringify(kbAway));

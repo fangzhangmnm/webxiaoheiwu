@@ -38,13 +38,19 @@ export function initPwaShell(opts: PwaShellOptions): PwaShell {
     setTimeout(doReload, 5000);
   }
 
+  // 加固（user 2026-09-04 Quest「点强制刷新没有自动重启」，原因不明且无法远程复现）：这条链不许无声——
+  //   前置 flush 加超时（挂住也走）；导航用带时间戳的 replace（绕 HTTP 缓存；reload 被吞也能走）；2.5s 看门狗再踢一脚；
+  //   重启后 boot 见 ?reset= 弹「已清缓存重启 · 版本」（app.ts），用户看得到到底有没有重启、到了哪一版。
   async function forceReset(): Promise<void> {
-    try { await opts.onBeforeReload?.(); } catch { /* best-effort */ }
+    const settle = (p: void | Promise<void>, ms: number) => Promise.race([Promise.resolve(p).catch(() => undefined), new Promise<void>((r) => setTimeout(r, ms))]);
+    await settle(opts.onBeforeReload?.(), 4000);
     try {
       if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister().catch(() => {});
       if (typeof caches !== "undefined") for (const k of await caches.keys()) { if (k === MODEL_CACHE_NAME) continue; await caches.delete(k).catch(() => {}); }   // 语音包 229MB 不陪葬（设置里有专门的删除钮）
     } catch { /* best-effort — reload anyway */ }
-    setTimeout(() => location.reload(), 150);
+    const target = `${location.pathname}?reset=${Date.now()}`;
+    setTimeout(() => location.replace(target), 150);
+    setTimeout(() => { location.href = target; }, 2500);   // 看门狗：第一脚没走再踢一次
   }
 
   const onFg = () => {
