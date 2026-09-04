@@ -1550,3 +1550,23 @@ body.kb-away .page { opacity: 0.6; transition: opacity 200ms ease; }
 .lock-card-ico { width: 28px; height: 28px; color: var(--enc); }
 .lock-card-text { margin: 0; font-family: var(--font-ui); font-size: 14px; color: var(--ink-soft); max-width: 36em; }
 .lock-card-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* ── 贴边件的地板（移植 WeebPaint ADR-0010「浮窗拖把地板从顶栏派生，不手填常数」；user 2026-09-04「weebpaint 内耗了三个月刚解决的 ios 出血线…也修」）──
+   iPhone/iPad standalone：顶部状态栏 + 系统死区（iOS 18+ 横屏顶边、iPadOS 26 窗口控制钮）没有任何 web API 能查；官方约定只有
+   safe-area（viewport-fit=cover + env()）。所以地板 = max(env(safe-area-inset-top), 20px 社区缓冲)，只在 standalone/fullscreen 生效
+   （浏览器标签页自己有 chrome，没有死区）；底部同理 max(env(bottom), 原值)。全仓唯一出处 = 这四个 token，禁再写贴边常数。
+   :root[data-standalone] 由 app 按 display-mode / navigator.standalone 打（媒体查询没法在无头测试里模拟，attribute 可测）。 */
+:root { --top-floor: 4px; --bottom-floor: 14px; --sa-left: 0px; --sa-right: 0px; }
+:root[data-standalone] { --top-floor: max(env(safe-area-inset-top, 0px), 20px); --bottom-floor: max(env(safe-area-inset-bottom, 0px), 14px); --sa-left: env(safe-area-inset-left, 0px); --sa-right: env(safe-area-inset-right, 0px); }
+.top-bar { top: var(--top-floor); }
+.page { margin: calc(var(--top-floor) + 36px) auto calc(var(--bottom-floor) - 2px); height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px); }   /* 4/14 时与原 40px/12px/52px 完全相同 */
+.kb-away-hint { top: calc(var(--top-floor) + 32px); }
+.drawer { box-sizing: border-box; padding-top: calc(var(--top-floor) - 4px); padding-bottom: calc(var(--bottom-floor) - 14px); padding-left: var(--sa-left); }
+.update-toast { bottom: calc(var(--bottom-floor) - 2px); right: calc(12px + var(--sa-right)); }
+
+/* ── 双击放大 / 长按菜单（移植 WeebPaint 20260530 iPad 双击误触四层防御的兜底层；user 2026-09-04「触屏会不小心双击放大」）──
+   通配而不是逐元素：动态生成的 DOM（列表行、弹出菜单、候选条）逐个标注必漏。manipulation = 允许 pan/pinch、禁双击 zoom；
+   配 viewport user-scalable=no。编辑器里长按选字/复制菜单保留（只压 chrome 上的 callout）。 */
+* { touch-action: manipulation; }
+html, body { -webkit-tap-highlight-color: transparent; }
+button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -webkit-touch-callout: none; }

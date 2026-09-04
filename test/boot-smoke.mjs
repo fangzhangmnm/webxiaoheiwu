@@ -227,6 +227,17 @@ try {
     await page.evaluate(async () => { await window.__xhw.setImeEnabled(false); });
     return { v0, v1, v2, v3, v4, v5 };
   })();
+  // iOS 出血线（WeebPaint ADR-0010 移植）+ 双击放大：standalone 时顶栏/抽屉退到 ≥20px 地板；通配 touch-action: manipulation；viewport user-scalable=no
+  const floors = await page.evaluate(() => {
+    const px = (el, prop) => parseFloat(getComputedStyle(el)[prop]);
+    const tb = document.querySelector(".top-bar"), dr = document.getElementById("drawer"), pg = document.querySelector(".page"), ed = document.getElementById("editor");
+    const before = { top: px(tb, "top"), drawerPad: px(dr, "paddingTop"), pageMt: px(pg, "marginTop") };
+    document.documentElement.setAttribute("data-standalone", "");
+    const after = { top: px(tb, "top"), drawerPad: px(dr, "paddingTop"), pageMt: px(pg, "marginTop") };
+    document.documentElement.removeAttribute("data-standalone");
+    return { before, after, ta: getComputedStyle(ed).touchAction, taMenu: getComputedStyle(document.getElementById("menuButton")).touchAction, vp: document.querySelector('meta[name="viewport"]').content };
+  });
+  check("iOS 出血线：standalone 顶栏 top 4→≥20、抽屉头下沉、纸面随顶栏；双击放大：编辑器/按钮 touch-action=manipulation + user-scalable=no", floors.before.top === 4 && floors.after.top >= 20 && floors.after.drawerPad >= 16 && floors.after.pageMt === floors.after.top + 36 && floors.ta === "manipulation" && floors.taMenu === "manipulation" && /user-scalable=no/.test(floors.vp), JSON.stringify(floors));
   check("undo：IME 提交后 Ctrl+Z 只撤最后一词 / Ctrl+Shift+Z 重做 / 退格钮可撤 / 换稿不漏拼音", undoRun.v0 === "你好" && undoRun.v1 === "你" && undoRun.v2 === "你好" && undoRun.v3 === "你" && undoRun.v4 === "你好" && undoRun.v5 === "你", JSON.stringify(undoRun));
   const kbAway = await page.evaluate(async () => { const w = (ms) => new Promise((r) => setTimeout(r, ms)); window.dispatchEvent(new Event("blur")); await w(50); const a = document.body.classList.contains("kb-away"); document.activeElement?.blur(); window.dispatchEvent(new Event("focus")); await w(50); return { a, b: !document.body.classList.contains("kb-away"), c: document.activeElement === document.getElementById("editor") }; });
   check("Quest 键盘提示：window blur → kb-away；focus → 撤提示 + 焦点回编辑器", kbAway.a && kbAway.b && kbAway.c, JSON.stringify(kbAway));

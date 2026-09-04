@@ -747,6 +747,12 @@ window.addEventListener("online", () => { renderCloudButton(); if (auth.isSigned
 window.addEventListener("offline", () => renderCloudButton());
 setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void editor.refreshIfClean(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);
 
+// ── standalone 标记：贴边件地板（styles.css --top-floor / --bottom-floor）按它切换；display-mode 媒体查询 + iOS 的 navigator.standalone 双保险 ──
+{
+  const mq = matchMedia("(display-mode: standalone), (display-mode: fullscreen)");
+  const apply = () => document.documentElement.toggleAttribute("data-standalone", mq.matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
+  apply(); mq.addEventListener?.("change", apply);
+}
 // ── PWA 壳 ──
 const updateToast = $("updateToast");
 const shell = initPwaShell({
