@@ -7,7 +7,7 @@
 
 | # | 问题 | 修法 |
 |---|---|---|
-| L1 | 自动推云/改名裹全屏 busy | `store-ui.ts` 按 label 把 `sync.pushing`/`file.renaming` 静默执行（状态栏由 editor 自己写）。**库侧「push 不裹 busy」仍可 escalate**，app 侧过渡已够用 |
+| L1 | 自动推云/改名裹全屏 busy | store **0.11.4** `busy(label, fn, key)` 透传 key（user 2026-09-03「改库」）；`store-ui.ts` 按 key 把 `sync.pushing`/`file.renaming` 静默执行 |
 | L2 | 离线每 15s 红横幅循环 | `pushNow` 离线只落本地不推；失败指数退避封顶 5 min；只第一次亮横幅 |
 | L3 | persist 无 gen 守卫、双建稿/绑错稿 | persist 串行（`persistInFlight`）+ 每个 await 后比 `loadGen`；`flushLocal` 等 in-flight |
 | L4 | SW 重启 `CACHE_NAME` 回落 boot | fetch 时从 `caches.keys()` 找回 `xiaoheiwu-<hash>`（**WeebPaint 同款坑，家族级，未修**） |
@@ -64,4 +64,4 @@
 ## 家族级 / escalate
 
 - **L4 SW `CACHE_NAME` 重启回落**：WeebPaint `service-worker.js:30` 同款——建议同修（本仓已修，形状可抄）。
-- **L1 库把 push / tryMove 裹 busy**：app 侧已静默，库侧要不要改（`busy` 带 key 或 push 不裹）由 user 决定。
+- **L1**：已改库（0.11.4 `busy` 带 key），小黑屋 v0.1.9 收货；WeebPaint 同步收货中。
