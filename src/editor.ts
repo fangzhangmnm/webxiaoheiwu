@@ -27,6 +27,8 @@ export interface EditorDeps {
   ensureUnlocked: () => Promise<boolean>;
   /** 「这篇稿用的不是当前密码」循环（app 注入：弹框 + verifyDocPassword）。 */
   ensureFileUnlocked: (name: string) => Promise<boolean>;
+  /** 切稿/新建/清空前（语音会话必须先中止——转写结果不能落进别的稿）。 */
+  onBeforeLoad?: () => void;
 }
 
 const KV_READONLY = "readonly-names";
@@ -42,7 +44,7 @@ export interface EditorState {
 }
 
 export function createEditor(d: EditorDeps) {
-  const st: EditorState = { name: null, pendingDate: null, encrypted: false, locked: false, readOnly: false, unavailable: false };
+  const st: EditorState = { name: null, pendingDate: null, encrypted: false, locked: false, readOnly: false, unavailable: true };   // boot 前不可打字（open/newDoc 才放行）
   let savedText = "";      // 最近一次落盘的正文（判 dirty）
   let savedTitle = "";     // 最近一次落盘/改名的标题
   let localTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,6 +78,7 @@ export function createEditor(d: EditorDeps) {
   }
   function statusForDoc(): string {
     if (st.locked) return t("st.lockedHint");
+    if (encryptPending) return t("st.encryptPendingHint");
     if (st.unavailable) return t("st.unavailable");
     if (pushPending || localTimer) return d.isSignedIn() ? t("st.unsynced") : t("st.localDraft");
     if (lastSavedAt) return t("st.savedAt", { time: fmtTime(lastSavedAt) });
@@ -84,32 +87,54 @@ export function createEditor(d: EditorDeps) {
   const canEdit = () => !st.readOnly && !st.locked && !st.unavailable;
 
   // ── 落盘 / 推云 ──
+  let persistInFlight: Promise<void> | null = null;   // 串行：两个 persist 同飞 = 双建稿（审计 L3）
+  let renameInFlight = false;                          // 改名中不写旧名（写了旧名就复活成 local-only 脏稿，审计 L7）
+  let encryptPending = false;                          // 预定加密但物化时封失败：不推云、下次 persist 重试（审计 M8）
+  let pushFailures = 0;                                // 推云连续失败 → 指数退避（审计 L2）
   async function persist(push: boolean): Promise<void> {
-    const text = d.editor.value, title = d.titleInput.value;
-    if (!st.name) {
-      if (!st.pendingDate) return;
-      if (!text && !title) return;   // 空稿不物化
-      const name = await createDoc(title, text, st.pendingDate);
-      // 新建时就定好的加密（user 2026-09-03「加密是一开始就定好的」）：物化即封——先封再把 name 暴露给 UI/抽屉，明文只在本地 IDB 停留这一步，永不推云（createDoc 是 tryPush:false）。
-      let encErr: unknown = null;
-      if (st.encrypted) { try { await encryptDoc(name); } catch (e) { encErr = e; } }
-      st.name = name; st.pendingDate = null;
-      savedText = text; savedTitle = parseDocName(name).title;
-      if (encErr) { st.encrypted = false; reportError(encErr); d.setStatus(t("st.encryptFailed", { e: errMsg(encErr) }), { error: true }); }   // 失败就诚实：锁图标不撒谎
-      setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
-      d.onDocChanged();
-    }
-    const name = st.name!;
-    const r = await saveDoc(name, text, { push });
-    savedText = text;
-    if (push) {
-      if (r.pushed) { pushPending = false; lastSavedAt = Date.now(); }
-      else pushPending = true;
-      if (r.resolution === "takeCloud") await reload(name);   // 世界线换了：整体重载（2026-08-25 案卷）
-    } else {
-      pushPending = true;
-      if (!d.isSignedIn()) lastSavedAt = Date.now();
-    }
+    if (persistInFlight) await persistInFlight;
+    const gen = loadGen;
+    const run = (async () => {
+      if (gen !== loadGen) return;
+      if (st.locked || st.unavailable || st.readOnly) return;   // 锁定/不可用/只读稿绝不写（other-password 态尤其：否则用当前密码封空容器覆盖，审计 UI-3）
+      if (renameInFlight) { scheduleLocalSave(); return; }
+      const text = d.editor.value, title = d.titleInput.value;
+      if (!st.name) {
+        if (!st.pendingDate) return;
+        if (!text && !title) return;   // 空稿不物化
+        const name = await createDoc(title, text, st.pendingDate);
+        if (gen !== loadGen) return;   // 建稿期间用户切走了：文件留在本地（下次列表可见），不把身份塞给现在的编辑器
+        // 新建时就定好的加密（user 2026-09-03「加密是一开始就定好的」）：物化即封——先封再把 name 暴露给 UI/抽屉，明文只在本地 IDB 停留这一步，永不推云（createDoc 是 tryPush:false）。
+        if (st.encrypted) {
+          try { await encryptDoc(name); encryptPending = false; }
+          catch (e) { encryptPending = true; reportError(e, "warning"); }   // 保持「预定加密」：不推云，状态栏常驻提示，下次 persist 重试
+          if (gen !== loadGen) return;
+        }
+        st.name = name; st.pendingDate = null;
+        savedText = text; savedTitle = parseDocName(name).title;
+        setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
+        d.onDocChanged();
+      }
+      const name = st.name!;
+      if (encryptPending) {
+        try { await encryptDoc(name); encryptPending = false; } catch (e) { reportError(e, "log"); }
+        if (gen !== loadGen) return;
+      }
+      const effPush = push && !encryptPending;
+      const r = await saveDoc(name, text, { push: effPush });
+      if (gen !== loadGen) return;   // 切走了：字节已落在捕获的 name 上，状态归新稿管
+      savedText = text;
+      if (effPush) {
+        if (r.pushed) { pushPending = false; lastSavedAt = Date.now(); pushFailures = 0; }
+        else pushPending = true;
+        if (r.resolution === "takeCloud" && st.name === name) await reload(name);   // 世界线换了：整体重载（2026-08-25 案卷）
+      } else {
+        pushPending = true;
+        if (!d.isSignedIn()) lastSavedAt = Date.now();
+      }
+    })();
+    persistInFlight = run;
+    try { await run; } finally { if (persistInFlight === run) persistInFlight = null; }
   }
   function scheduleLocalSave(): void {
     if (localTimer) clearTimeout(localTimer);
@@ -119,19 +144,27 @@ export function createEditor(d: EditorDeps) {
         .catch((e) => { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); });
     }, LOCAL_SAVE_DEBOUNCE_MS);
   }
-  function schedulePush(): void {
+  function schedulePush(extraDelayMs = 0): void {
     if (!d.isSignedIn()) return;
     const now = Date.now();
     if (firstDirtyAt === 0) firstDirtyAt = now;
     if (pushTimer) clearTimeout(pushTimer);
-    const target = Math.min(now + PUSH_DEBOUNCE_MS, firstDirtyAt + PUSH_HEARTBEAT_MS);
+    const target = Math.min(now + PUSH_DEBOUNCE_MS, firstDirtyAt + PUSH_HEARTBEAT_MS) + extraDelayMs;
     pushTimer = setTimeout(() => { void pushNow(); }, Math.max(0, target - now));
   }
+  const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
   async function pushNow(): Promise<void> {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0;
     if (!st.name && !st.pendingDate) return;
+    if (!canEdit()) return;   // 锁定/只读/不可用稿：没有可推的正文（审计 UI-3）
     if (!d.isSignedIn()) { await flushLocal(); return; }
+    if (isOffline()) {   // 离线：只落本地，不刷红横幅；`online` 事件会回来推（审计 L2）
+      if (localTimer) { clearTimeout(localTimer); localTimer = null; }
+      try { await persist(false); } catch (e) { reportError(e, "log"); }
+      pushPending = true; d.setStatus(statusForDoc(), { unsynced: true });
+      return;
+    }
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     const gen = loadGen;
     d.setStatus(t("st.syncing"));
@@ -139,17 +172,19 @@ export function createEditor(d: EditorDeps) {
       await persist(true);
       if (gen !== loadGen) return;
       d.setStatus(statusForDoc(), { unsynced: pushPending });
-      if (pushPending) schedulePush();   // 离线/冲突未解 → 下个周期再试
+      if (pushPending) schedulePush();   // 冲突未解 / 库判未推 → 下个周期再试
     } catch (e) {
       if (gen !== loadGen) return;
-      reportError(e, "log");
+      pushFailures++;
+      reportError(e, pushFailures === 1 ? "warning" : "log");   // 第一次亮横幅，之后只记日志（不刷屏）
       d.setStatus(t("st.syncFailed", { e: errMsg(e) }), { error: true });
       pushPending = true;
-      schedulePush();
+      schedulePush(Math.min(PUSH_DEBOUNCE_MS * 2 ** Math.min(pushFailures, 5), 5 * 60_000));   // 指数退避，封顶 5 分钟
     }
   }
   /** 只落本地（切稿/锁定/退出前）。幂等：没有 pending 就不写。 */
   async function flushLocal(): Promise<void> {
+    if (persistInFlight) { try { await persistInFlight; } catch { /* 已在 persist 内报过 */ } }
     if (!localTimer && !renameTimer) return;
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; await applyRename(); }
@@ -167,10 +202,14 @@ export function createEditor(d: EditorDeps) {
     if (!st.name) return;   // 未物化：物化时用标题
     if (title === savedTitle) return;
     const gen = loadGen;
+    renameInFlight = true;
     try {
-      const newName = await renameDoc(st.name, title);
+      const rr = await renameDoc(st.name, title);
       if (gen !== loadGen) return;
-      if (!newName) { d.setStatus(t("st.renameFailed"), { error: true }); return; }
+      if (!rr) { d.setStatus(t("st.renameFailed"), { error: true }); return; }
+      const newName = rr.name;
+      if (rr.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });        // 库把旧名原地留着（谱系不明降级 save-as）——抽屉会出现两份，告诉用户（审计 L18）
+      else if (rr.cloudDeferred) d.setStatus(t("st.renameCloudDeferred"), { unsynced: true });
       if (newName !== st.name) {
         const roNames = readOnlyNames();
         if (roNames.includes(st.name)) deviceKvSetJson(KV_READONLY, roNames.map((n) => (n === st.name ? newName : n)));
@@ -181,13 +220,20 @@ export function createEditor(d: EditorDeps) {
       d.onDocChanged();
       if (d.isSignedIn()) schedulePush();   // 改名的云端腿由库在 tryMove 内做；这里只是让状态栏跟上
     } catch (e) { reportError(e); }
+    finally {
+      renameInFlight = false;
+      if (gen === loadGen && d.editor.value !== savedText) scheduleLocalSave();   // 改名期间挂起的正文补落盘
+    }
   }
 
   // ── 打开 / 新建 ──
   async function reload(name: string): Promise<void> { await open(name, { keepCaret: true }); }
 
-  async function open(name: string, opts: { keepCaret?: boolean } = {}): Promise<boolean> {
+  /** promptUnlock：只有用户手势（抽屉点开 / 锁图标）才弹密码框——「加密永不自动弹框」（冷启动续写、锁定后 reload、重置后 reload 都不弹）。 */
+  async function open(name: string, opts: { keepCaret?: boolean; promptUnlock?: boolean } = {}): Promise<boolean> {
+    d.onBeforeLoad?.();
     await flushLocal();
+    encryptPending = false; pushFailures = 0;
     const gen = ++loadGen;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false; lastSavedAt = 0;
@@ -197,27 +243,24 @@ export function createEditor(d: EditorDeps) {
     d.setStatus(t("st.loading"));
     let r = await readDoc(name);
     if (gen !== loadGen) return false;
-    if (r.kind === "locked") {
+    if (r.kind === "locked" || r.kind === "other-password") {
       st.encrypted = true; st.locked = true;
       d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedTitle = d.titleInput.value; savedText = "";
       applyGuards(); renderWordCount(); d.onDocChanged();
-      d.setStatus(t("st.lockedHint"));
-      const ok = await d.ensureUnlocked();
+      d.setStatus(r.kind === "locked" ? t("st.lockedHint") : t("st.otherPasswordHint"));
+      if (!opts.promptUnlock) return true;   // 非手势：停在锁态，点锁图标再问
+      const ok = r.kind === "locked" ? await d.ensureUnlocked() : await d.ensureFileUnlocked(name);
       if (gen !== loadGen) return false;
       if (!ok) return true;
       r = await readDoc(name);
       if (gen !== loadGen) return false;
-    }
-    if (r.kind === "other-password") {
-      st.encrypted = true; st.locked = true;
-      d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedTitle = d.titleInput.value; savedText = "";
-      applyGuards(); renderWordCount(); d.onDocChanged();
-      d.setStatus(t("st.otherPasswordHint"));
-      const ok = await d.ensureFileUnlocked(name);
-      if (gen !== loadGen) return false;
-      if (!ok) return true;
-      r = await readDoc(name);
-      if (gen !== loadGen) return false;
+      if (r.kind === "other-password") {   // 当前密码解锁了但这篇是别的密码：再问这篇的
+        const ok2 = await d.ensureFileUnlocked(name);
+        if (gen !== loadGen) return false;
+        if (!ok2) return true;
+        r = await readDoc(name);
+        if (gen !== loadGen) return false;
+      }
     }
     if (r.kind === "ok") {
       st.encrypted = r.encrypted; st.locked = false;
@@ -244,7 +287,9 @@ export function createEditor(d: EditorDeps) {
   /** 新稿。encrypted:true = 一开始就定好加密（先要密码；用户取消 → 不新建，返回 false）。 */
   async function newDoc(opts: { encrypted?: boolean } = {}): Promise<boolean> {
     if (opts.encrypted && !(await d.ensureUnlocked())) return false;
+    d.onBeforeLoad?.();
     await flushLocal();
+    encryptPending = false; pushFailures = 0;
     loadGen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false; lastSavedAt = 0;
@@ -258,17 +303,18 @@ export function createEditor(d: EditorDeps) {
     return true;
   }
 
-  /** 当前稿被移到回收站 / 被别处改名后清空编辑器。 */
+  /** 当前稿被移到回收站 / 被别处改名后：编辑器变成一篇**空新稿**（可继续写，落盘有身份；审计 UI-4：以前是无身份可打字、永不落盘）。 */
   function clear(): void {
+    d.onBeforeLoad?.();
     loadGen++;
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
-    st.name = null; st.pendingDate = null; st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
-    pushPending = false;
-    setActiveDoc(null);
+    st.name = null; st.pendingDate = formatDate(Date.now()); st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
+    pushPending = false; encryptPending = false; pushFailures = 0;
+    setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
     d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
-    applyGuards(); renderWordCount(); d.onDocChanged();
+    applyGuards(); renderWordCount(); d.setStatus(t("st.ready")); d.onDocChanged();
   }
 
   // ── 新鲜度（focus/online/idle 复查）：只干净快进；dirty 留给推送的冲突面 ──
@@ -311,7 +357,7 @@ export function createEditor(d: EditorDeps) {
       d.onDocChanged();
       return;
     }
-    if (st.locked) { const ok = await d.ensureUnlocked(); if (ok) await reload(st.name); return; }
+    if (st.locked) { await open(st.name, { keepCaret: true, promptUnlock: true }); return; }   // 锁图标 = 手势：这里才弹密码框
     await flushLocal();
     const name = st.name;
     if (!st.encrypted) {
@@ -352,14 +398,14 @@ export function createEditor(d: EditorDeps) {
   for (const el of [d.editor, d.titleInput]) for (const evt of ["beforeinput", "paste", "cut", "drop"]) el.addEventListener(evt, blockIfGuarded);
   d.editor.addEventListener("input", () => {
     if (!canEdit()) return;
-    d.setStatus(t("st.unsynced"), { unsynced: d.isSignedIn() });
+    d.setStatus(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
     renderWordCount();
     scheduleLocalSave();
   });
   d.titleInput.addEventListener("input", () => {
     if (!canEdit()) return;
     if (/[\r\n]/.test(d.titleInput.value)) d.titleInput.value = d.titleInput.value.replace(/[\r\n]+/g, " ");
-    d.setStatus(t("st.unsynced"), { unsynced: d.isSignedIn() });
+    d.setStatus(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
     if (st.name) scheduleRename(); else scheduleLocalSave();
   });
   d.titleInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); d.editor.focus(); } });
@@ -375,6 +421,7 @@ export function createEditor(d: EditorDeps) {
 
   /** IME/语音提交插入后调（不走 input 事件的路径）。 */
   function noteExternalEdit(): void {
+    if (!canEdit()) return;
     d.setStatus(t("st.unsynced"), { unsynced: d.isSignedIn() });
     renderWordCount();
     scheduleLocalSave();

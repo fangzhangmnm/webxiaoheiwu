@@ -22,7 +22,7 @@ class AsrEngine {
       this.pending.delete(m.id);
       if (m.ok) p.resolve(m.result); else p.reject(new Error(m.error));
     };
-    w.onerror = (e) => { const err = new Error(`asr worker crashed: ${e.message || "unknown"}`); for (const p of this.pending.values()) p.reject(err); this.pending.clear(); this.worker = null; };
+    w.onerror = (e) => { const err = new Error(`asr worker crashed: ${e.message || "unknown"}`); for (const p of this.pending.values()) p.reject(err); this.pending.clear(); try { w.terminate(); } catch { /* ignore */ } this.worker = null; };
     this.worker = w;
     return w;
   }

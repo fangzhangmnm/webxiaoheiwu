@@ -44,11 +44,13 @@ export function createDrawer(d: DrawerDeps) {
   let view: DrawerView = "closed";
   let items: DocListItem[] = [];
   let frameComplete = true;
+  let resolveFirst: (() => void) | null = null;
+  const firstFramePromise = new Promise<void>((r) => { resolveFirst = r; });
   let unsub: (() => void) | null = null;
 
   function subscribe(): void {
     unsub?.();
-    unsub = watchDocs((frame) => { items = frame.items; frameComplete = frame.complete; if (view === "active") renderList(); },
+    unsub = watchDocs((frame) => { items = frame.items; frameComplete = frame.complete; resolveFirst?.(); resolveFirst = null; if (view === "active") renderList(); },
       { onError: (err, phase) => reportError(new Error(`doc list frame failed (${phase}): ${err instanceof Error ? err.message : String(err)}`), "log") });
   }
 
@@ -170,7 +172,7 @@ export function createDrawer(d: DrawerDeps) {
   }
   function refresh(): void { if (view === "active") renderList(); else if (view === "trash") void renderTrash(); }
 
-  return { open, close, refresh, subscribe, onEmptyTrash, currentView: () => view, items: () => items,
+  return { open, close, refresh, subscribe, onEmptyTrash, currentView: () => view, items: () => items, firstFrame: () => firstFramePromise,
     findByName: (name: string) => items.find((it) => it.name === name) ?? null };
 }
 export type Drawer = ReturnType<typeof createDrawer>;

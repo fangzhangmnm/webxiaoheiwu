@@ -51,6 +51,7 @@ export interface FactoryResetDeps {
 
 /** 还原出厂主流程（设置页按钮调）。全程 in-app sheet。 */
 export async function runFactoryReset(d: FactoryResetDeps): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) { d.setStatus(t("fr.needOnline"), { error: true }); return; }   // 清壳后 reload 要联网，不然白屏
   const unsynced = await d.unsyncedCount();
   if (unsynced > 0) { d.setStatus(t("fr.needSync", { n: String(unsynced) }), { error: true }); return; }
   if (!(await openConfirmSheet(t("fr.introTitle"), t("fr.introMsg"), { danger: true, okLabel: t("common.continue") }))) return;

@@ -36,10 +36,17 @@ END = "<!-- ICON-SPRITE:END -->"
 def main() -> int:
     sprite = SPRITE.read_text(encoding="utf-8").strip()
     if LOCAL.exists():
-        main_ids = set(re.findall(r'<symbol id="([^"]+)"', sprite))
+        # id 可能不在 <symbol 后第一个属性（extract-icons 的 data-missing 占位是 <symbol data-missing="1" id=…>）；
+        # 占位不算「主库已有」——stopgap 必须顶掉它，否则 <use> 按文档序取到虚线方框（审计 UI-1）。
+        missing_ids = set(re.findall(r'<symbol data-missing="1"[^>]*\bid="([^"]+)"', sprite))
+        main_ids = set(re.findall(r'<symbol[^>]*\bid="([^"]+)"', sprite)) - missing_ids
         patches, dropped = [], []
-        for m in re.finditer(r'<symbol id="([^"]+)".*?</symbol>', LOCAL.read_text(encoding="utf-8"), re.S):
+        for m in re.finditer(r'<symbol[^>]*\bid="([^"]+)".*?</symbol>', LOCAL.read_text(encoding="utf-8"), re.S):
             (dropped if m.group(1) in main_ids else patches).append((m.group(1), m.group(0)))
+        # stopgap 顶位的 id：把主库里的 data-missing 占位剔掉（不然两个同 id 的 symbol 并存）
+        for pid, _ in patches:
+            if pid in missing_ids:
+                sprite = re.sub(r'\s*<!--[^>]*-->\s*<symbol data-missing="1"[^>]*\bid="' + re.escape(pid) + r'".*?</symbol>', "", sprite, count=1, flags=re.S)
         for sid, _ in dropped:
             print(f"·  icons-local.svg 的 {sid} 已被库真图标顶掉（自愈）——可从补丁文件删掉该条")
         if patches:

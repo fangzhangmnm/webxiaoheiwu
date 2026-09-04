@@ -45,7 +45,10 @@ export declare class NaturalCodeIME {
     backend: Backend;
     initializeError: string | null;
     initialized: boolean;
+    private initPromise;
     initialize(): Promise<void>;
+    /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
+    dispose(): void;
     getState(): ImeState;
     isComposing(): boolean;
     resetComposition(): void;

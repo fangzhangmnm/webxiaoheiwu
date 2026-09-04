@@ -32,12 +32,14 @@ describe("assets", () => {
   });
   it("index.html 里每个 <use href=\"#id\"> 在内联 sprite 里有 symbol；src 里的 use 也是", () => {
     const html = readFileSync("index.html", "utf8");
-    const symbols = new Set([...html.matchAll(/<symbol id="([^"]+)"/g)].map((m) => m[1]));
+    const symbols = new Set([...html.matchAll(/<symbol[^>]*\bid="([^"]+)"/g)].map((m) => m[1]));
+    const missing = [...html.matchAll(/<symbol data-missing="1"[^>]*\bid="([^"]+)"/g)].map((m) => m[1]).filter((id) => [...html.matchAll(/<symbol[^>]*\bid="([^"]+)"/g)].filter((mm) => mm[1] === id).length > 1);
+    eq(missing.length, 0, "data-missing placeholder still shadows a stopgap symbol (run tools/inline-sprites.py): " + missing.join(", "));
     assert(symbols.size > 0, "sprite not inlined into index.html (run tools/inline-sprites.py)");
     const used = new Set([...html.matchAll(/<use href="#([^"]+)"/g)].map((m) => m[1]));
     for (const p of walk("src")) for (const m of readFileSync(p, "utf8").matchAll(/href="#([a-z-]+)"|icon\("([a-z-]+)"|useIcon\([^,]+,\s*"([a-z-]+)"|"(lock|unlock|edit-disabled|edit-enabled)"\)/g)) { const id = m[1] || m[2] || m[3] || m[4]; if (id) used.add(id); }
-    const missing = [...used].filter((id) => !symbols.has(id));
-    eq(missing.length, 0, "icons used but not in sprite: " + missing.join(", "));
+    const missingUse = [...used].filter((id) => !symbols.has(id));
+    eq(missingUse.length, 0, "icons used but not in sprite: " + missingUse.join(", "));
   });
   it("bundle 引用：index.html 指向的 dist/xiaoheiwu-<hash>.mjs 存在（构建后）", () => {
     const html = readFileSync("index.html", "utf8");

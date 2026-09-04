@@ -40,8 +40,13 @@ export declare function saveDoc(name: string, text: string, opts: {
 }): Promise<SaveResult>;
 /** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份。 */
 export declare function createDoc(title: string, text: string, date?: string): Promise<string>;
-/** 改标题 = 改身份（tryMove）。撞名追加后缀。返回新名（未变 → 原名）；失败 → null（调用方报错）。 */
-export declare function renameDoc(name: string, newTitle: string): Promise<string | null>;
+export interface RenameResult {
+    name: string;
+    oldKept?: boolean;
+    cloudDeferred?: boolean;
+}
+/** 改标题 = 改身份（tryMove）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
+export declare function renameDoc(name: string, newTitle: string): Promise<RenameResult | null>;
 export declare function trashDoc(name: string): Promise<DelResult>;
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
 export declare function pullDocIfClean(name: string, opts?: {

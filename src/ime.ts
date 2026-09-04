@@ -165,12 +165,22 @@ export class NaturalCodeIME {
   initializeError: string | null = null;
   initialized = false;
 
+  private initPromise: Promise<void> | null = null;
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    const rime = new RimeWorkerBackend();
-    try { await rime.initialize(); this.backend = rime; this.initializeError = null; }
-    catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
-    this.initialized = true;
+    if (!this.initPromise) this.initPromise = (async () => {   // 加载中连点不起第二个 worker（审计 UI-21）
+      const rime = new RimeWorkerBackend();
+      try { await rime.initialize(); this.backend = rime; this.initializeError = null; }
+      catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
+      this.initialized = true;
+    })();
+    await this.initPromise;
+  }
+  /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
+  dispose(): void {
+    const b = this.backend as { worker?: Worker | null };
+    if (b.worker) { try { b.worker.terminate(); } catch { /* ignore */ } b.worker = null; }
+    this.backend = new StarterMapBackend(); this.initialized = false; this.initPromise = null; this.enabled = false;
   }
   getState(): ImeState {
     const s = this.backend.getState();

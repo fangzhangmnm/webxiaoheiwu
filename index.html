@@ -2,13 +2,13 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="asr-worker" content="./dist/asr-worker-8190cf1958c5.js" />
+    <meta name="asr-worker" content="./dist/asr-worker-2572633f3edf.js" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#d8c8a8" />
     <meta name="color-scheme" content="light" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>网页版小黑屋</title>
+    <title data-i18n="ui.appTitle">网页版小黑屋</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
@@ -80,10 +80,6 @@
   <!-- menu — 汉堡菜单:三条等长横线(y=7/12/17) -->
   <symbol id="menu" data-cat="ui" data-src="own" data-note="汉堡菜单:三条等长横线(y=7/12/17)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line> <line x1="4" y1="12" x2="20" y2="12"></line> <line x1="4" y1="17" x2="20" y2="17"></line></symbol>
   <!-- missing -->
-  <!-- settings — 缺图标占位 — settings 尚未进 icons.svg -->
-  <symbol data-missing="1" id="settings" data-cat="missing" data-src="own" data-note="缺图标占位 — settings 尚未进 icons.svg，重跑 extract-icons.py 可自动换成真图标" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5" stroke-dasharray="2.5 2.5" opacity="0.35"/></symbol>
-  <!-- microphone — 缺图标占位 — microphone 尚未进 icons.svg -->
-  <symbol data-missing="1" id="microphone" data-cat="missing" data-src="own" data-note="缺图标占位 — microphone 尚未进 icons.svg，重跑 extract-icons.py 可自动换成真图标" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5" stroke-dasharray="2.5 2.5" opacity="0.35"/></symbol>
 <!-- 本地 stopgap 补丁（assets/icons-local.svg，待真图标） -->
   <symbol id="settings" data-cat="stopgap" data-src="baked:DroidSansFallbackFull(Apache-2.0)/DejaVuSans-Bold(Bitstream-Vera)" data-note="抽屉底栏「设置」入口（stopgap 字形；待齿轮真图）" viewBox="0 0 24 24"><path d="M6.09 3Q7.42 4.57 8.28 6.29L6.8 7.15Q6.01 5.43 4.68 3.86ZM3.12 8.79H7.34V17.87L8.99 16.07L10 17.01Q8.91 18.5 7.03 19.98L5.86 18.97V10.2H3.12ZM18.46 3.63V8.32Q18.46 9.18 19 9.18H20.8V10.51H18.61Q16.89 10.51 16.89 8.95V5.11H13.45Q13.37 7.85 12.74 9.03Q12.12 10.2 10.71 11.06L9.69 9.89Q11.02 9.03 11.49 7.93Q11.96 6.83 12.04 3.63ZM11.57 12.86H10.55V11.45H19.63V12.55Q18.38 15.6 16.5 17.32Q18.46 18.65 20.88 19.43L20.02 21Q17.36 20.06 15.25 18.42Q12.9 20.22 9.85 21L8.99 19.43Q11.96 18.65 14 17.24Q12.35 15.44 11.57 12.86ZM15.25 16.3Q16.81 14.82 17.67 12.86H13.13Q13.84 14.9 15.25 16.3Z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="microphone" data-cat="stopgap" data-src="baked:DroidSansFallbackFull(Apache-2.0)/DejaVuSans-Bold(Bitstream-Vera)" data-note="编辑区浮动「语音输入」钮（stopgap 字形；待话筒真图）" viewBox="0 0 24 24"><path d="M4.02 4.57H11.22V3H12.78V4.57H19.9V5.97H12.78V7.62H19.2V9.03H12.78V10.59H20.92V12H3V10.59H11.22V9.03H4.64V7.62H11.22V5.97H4.02ZM8.95 11.14H10.9L9.26 13.33H18.18V14.66Q16.54 16.7 14.27 18.03Q17.4 18.97 21 19.36L20.22 20.92Q15.68 20.22 12.39 18.89Q8.87 20.3 4.17 21L3.23 19.51Q7.46 18.89 10.43 17.95Q8.63 16.85 7.38 15.13Q5.74 16.46 4.41 17.09L3.39 15.76Q6.83 14.27 8.95 11.14ZM8.87 14.74Q10.2 16.3 12.23 17.24Q14.58 16.15 15.91 14.74Z" fill="currentColor" stroke="none"/></symbol>
@@ -96,9 +92,9 @@
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
         <input id="titleInput" type="text" class="title" placeholder="无标题" data-i18n-ph="ui.titlePlaceholder" data-i18n-aria="ui.titleAria"
-               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="文档标题" />
-        <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档"></button>
-        <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护"></button>
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="文档标题" data-i18n-aria="ui.titleAria" />
+        <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
+        <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护" data-i18n-aria="top.readOnlyOn"></button>
         <div class="status" aria-live="polite">
           <span id="wordCount">0 字</span>
           <span class="sep" aria-hidden="true">·</span>
@@ -123,14 +119,14 @@
       </article>
     </main>
 
-    <div id="idleOverlay" class="idle-overlay hidden" role="dialog" aria-label="已闲置">
+    <div id="idleOverlay" class="idle-overlay hidden" role="dialog" aria-label="已闲置" data-i18n-aria="ui.idleAria">
       <div class="idle-card">
         <p class="idle-title" data-i18n="ui.idleTitle">已闲置一段时间</p>
         <p class="idle-hint" data-i18n="ui.idleHint">点击任意位置同步云端最新版并继续编辑</p>
       </div>
     </div>
 
-    <div id="busyOverlay" class="idle-overlay busy-overlay hidden" role="dialog" aria-modal="true" aria-label="处理中">
+    <div id="busyOverlay" class="idle-overlay busy-overlay hidden" role="dialog" aria-modal="true" aria-label="处理中" data-i18n-aria="ui.busyAria">
       <div class="idle-card">
         <p class="idle-title" id="busyOverlayText" data-i18n="ui.busy">处理中…</p>
         <p class="idle-hint" id="busyOverlayHint" data-i18n="ui.busyHint">请稍候</p>
@@ -225,7 +221,7 @@
               <label class="voice-config-field">
                 <span class="voice-config-label" data-i18n="ui.voice.model">识别模型</span>
                 <select id="voiceModelSelect" class="voice-config-select">
-                  <option value="local-sensevoice" data-i18n="ui.voice.model.sensevoice">SenseVoice（推荐 · 229 MB · 带标点）</option>
+                  <option value="local-sensevoice" data-i18n="ui.voice.model.sensevoice">SenseVoice（推荐 · 228 MB · 带标点）</option>
                   <option value="local-zh14m" data-i18n="ui.voice.model.zh14m">极限小杯 zh-14M（30 MB · 流式 · 实验）</option>
                 </select>
               </label>
@@ -258,7 +254,7 @@
             <button class="auth-action" id="diagButton" type="button" data-i18n="ui.diag">诊断日志</button>
           </div>
           <pre id="diagLog" class="diag-log" hidden></pre>
-          <div class="settings-build" id="settingsBuild" title="构建版本"></div>
+          <div class="settings-build" id="settingsBuild" title="构建版本" data-i18n-title="ui.buildTitle"></div>
         </section>
       </div>
 
@@ -272,6 +268,7 @@
           <span data-i18n="ui.newEncryptedDoc">新建加密稿</span>
         </button>
       </div>
+      <p class="drawer-status" id="drawerStatus" hidden></p>
       <div class="drawer-actions hidden" id="trashActions">
         <button class="drawer-action danger" id="emptyTrashButton" type="button">
           <svg class="ico" aria-hidden="true"><use href="#clear-trash"/></svg>
@@ -294,6 +291,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-146cf4db30ca.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-e0a5d982c261.mjs"></script>
   </body>
 </html>

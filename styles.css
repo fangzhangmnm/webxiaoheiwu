@@ -284,7 +284,7 @@ body {
 }
 
 .doc-row .doc-name.ghost::after {
-  content: " ☁️?";
+  content: "";   /* 同步态徽标由 meta 行的文字说明承担（家规：不用 emoji 当图标） */
   color: var(--danger);
   font-size: 11px;
 }
@@ -296,7 +296,7 @@ body {
 }
 
 .doc-row .doc-name.local-only::after {
-  content: " 🌐";
+  content: "";
   color: var(--ink-muted);
   font-size: 11px;
 }
@@ -415,7 +415,7 @@ body {
   white-space: nowrap;
 }
 
-.candidate-chip:first-of-type {
+.buffer-chip + .candidate-chip {   /* 首选候选（第一个 span 是 buffer-chip，:first-of-type 永远不中——审计 UI-10） */
   background: var(--accent-soft);
   color: var(--accent-strong);
 }
@@ -1381,7 +1381,7 @@ body {
   border-color: rgba(157, 46, 33, 0.4);
 }
 
-.crypto-button.danger:hover {
+.crypto-button.danger:hover-dead-rule {   /* 旧淡粉 hover 让白字不可读（审计 UI-9）；下面的 .danger 规则统一管 */
   background: var(--danger-soft);
 }
 
@@ -1400,6 +1400,8 @@ body {
 .sheet-choice.primary { background: var(--accent, #a05826); color: #fff; border-color: transparent; }
 .sheet-choice.danger { color: var(--danger, #b0413e); }
 .crypto-button.danger { background: var(--danger, #b0413e); color: #fff; border-color: transparent; }
+.crypto-button.danger:hover { background: var(--accent-strong, #8f2f2c); color: #fff; }
+.crypto-button.hidden { display: none; }   /* choice sheet 不该有「确定」（审计 UI-5） */
 .crypto-hint.warning { color: var(--danger, #b0413e); }
 .gate-sheet { z-index: 45; }
 .gate-card { max-width: 420px; }
@@ -1430,3 +1432,14 @@ body {
 /* 「这篇用的不是当前密码」横幅（复用 ghost-banner 视觉；[hidden] 必须真隐藏） */
 .key-banner[hidden] { display: none; }
 .key-banner { justify-content: space-between; }
+
+/* ── 审计修补（2026-09-03）── */
+.crypto-toggle[hidden], .lock-toggle[hidden] { display: none !important; }   /* 作者层 display 压掉了 UA 的 [hidden]（审计 UI-2） */
+.key-banner { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: 6; margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
+.status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* 长状态别把标题挤没（审计 UI-11） */
+.voice-config-save.is-danger { color: var(--danger, #b0413e); }   /* 暗色遗留的 #ff8a8a 在淡底上看不见（审计 UI-17） */
+.drawer.hidden { visibility: hidden; transition: transform 0.25s ease, visibility 0s linear 0.25s; }   /* 屏外按钮不可 Tab 到（审计 UI-18） */
+.drawer-status { margin: 6px 12px 0; font-size: 12px; opacity: 0.85; }
+.drawer-status.error { color: var(--danger, #b0413e); opacity: 1; }
+.drawer-status[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .mic-button[data-state="recording"] .mic-pulse { animation: none; } .mic-button[data-state="recording"] { transform: none; } }

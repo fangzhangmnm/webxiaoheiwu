@@ -18,6 +18,8 @@ export declare class LocalSession implements VoiceSession {
     private cancelled;
     private loadPromise;
     private lang;
+    private gen;
+    private stopRequested;
     constructor(d: VoiceSessionDeps & {
         getModel: () => ModelInfo;
         onLoading?: (loading: boolean) => void;
@@ -26,6 +28,8 @@ export declare class LocalSession implements VoiceSession {
     start(langHint: string): Promise<void>;
     stop(): void;
     abort(): void;
+    /** 报错但不卡死在 error：PTT 只在 idle 起录，所以报完立刻回 idle（按钮红一下由 onState 负责）。 */
+    private _fail;
     notifyExternalInput(): void;
     private _setState;
     private _teardown;

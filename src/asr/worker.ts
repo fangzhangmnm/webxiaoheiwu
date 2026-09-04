@@ -73,6 +73,11 @@ async function status(slug: string): Promise<PackStatus> {
 
 async function download(slug: string, base: string, progress: (p: PackProgress) => void): Promise<PackStatus> {
   const { packId, manifest: m } = manifestOf(slug);
+  // 同 slug 重打包（packId 变了）→ 旧分片全部作废重下，不能只看尺寸对就免验（审计 L19）
+  const cache0 = await caches.open(MODEL_CACHE_NAME);
+  const marker = await cache0.match(keyOf(slug, "verified.json"));
+  const markedId = marker ? ((await marker.json()) as { packId?: string }).packId : null;
+  if (marker && markedId !== packId) { for (const c of m.chunks) await cache0.delete(keyOf(slug, c.name)); await cache0.delete(keyOf(slug, "verified.json")); }
   const sizes = await cachedChunkSizes(slug, m);
   let done = sizes.reduce((a, n, i) => a + (n === m.chunks[i]!.bytes ? n : 0), 0);
   progress({ done, total: m.totalBytes });
@@ -81,12 +86,12 @@ async function download(slug: string, base: string, progress: (p: PackProgress) 
     if (sizes[i] === c.bytes) continue;
     const res = await fetch(`${base}/packs/${slug}/${c.name}`, { cache: "no-store" });
     if (!res.ok || !res.body) throw new Error(`fetch ${c.name}: HTTP ${res.status}`);
-    const reader = res.body.getReader(); const sha = new Sha256(); const buf = new Uint8Array(c.bytes); let got = 0;
+    const reader = res.body.getReader(); const sha = new Sha256(); const buf = new Uint8Array(c.bytes); let got = 0, lastReported = 0;
     for (;;) {
       const { value, done: end } = await reader.read(); if (end) break;
       if (got + value.length > c.bytes) throw new Error(`${c.name}: larger than manifest says`);
       sha.update(value); buf.set(value, got); got += value.length;
-      progress({ done: done + got, total: m.totalBytes });
+      if (got - lastReported >= 1048576 || got === c.bytes) { lastReported = got; progress({ done: done + got, total: m.totalBytes }); }   // ≥1 MiB 报一次（审计 L25：每个网络块一条 = 1.5 万条）
     }
     if (got !== c.bytes) throw new Error(`${c.name}: got ${got} bytes, expected ${c.bytes}`);
     const h = sha.hex();

@@ -153,8 +153,8 @@ export declare const S: {
         readonly en: "Model";
     };
     readonly "ui.voice.model.sensevoice": {
-        readonly zh: "SenseVoice（推荐 · 229 MB · 带标点）";
-        readonly en: "SenseVoice (recommended · 229 MB · punctuation)";
+        readonly zh: "SenseVoice（推荐 · 228 MB · 带标点）";
+        readonly en: "SenseVoice (recommended · 228 MB · punctuation)";
     };
     readonly "ui.voice.model.zh14m": {
         readonly zh: "极限小杯 zh-14M（30 MB · 流式 · 实验）";
@@ -201,7 +201,7 @@ export declare const S: {
         readonly en: "{n} chars";
     };
     readonly "wc.words": {
-        readonly zh: "{n} words";
+        readonly zh: "{n} 词";
         readonly en: "{n} words";
     };
     readonly "st.ready": {
@@ -267,6 +267,18 @@ export declare const S: {
     readonly "st.pendingPlain": {
         readonly zh: "新稿将以明文保存";
         readonly en: "This new draft will be saved in plaintext";
+    };
+    readonly "st.encryptPendingHint": {
+        readonly zh: "加密还没成功（本地已存、不会推云）——联网后会自动重试";
+        readonly en: "Encryption has not succeeded yet (saved locally, not pushed) — retries automatically when online";
+    };
+    readonly "st.renameOldKept": {
+        readonly zh: "已按新标题另存；旧名那份云端还在（列表里会有两份）";
+        readonly en: "Saved under the new title; the old copy is still in the cloud (you will see both)";
+    };
+    readonly "st.renameCloudDeferred": {
+        readonly zh: "标题已改（云端待推）";
+        readonly en: "Title changed (cloud pending)";
     };
     readonly "st.encrypted": {
         readonly zh: "已加密 {time}（{status}）";
@@ -596,6 +608,10 @@ export declare const S: {
         readonly zh: "设置";
         readonly en: "Set";
     };
+    readonly "pw.setupNeedsNetwork": {
+        readonly zh: "首次设置密码要先联网同步（避免盖掉别的设备已设的密码）";
+        readonly en: "Setting the first password needs a sync first (so another device's password is not overwritten)";
+    };
     readonly "fp.title": {
         readonly zh: "这篇稿的密码";
         readonly en: "This draft's password";
@@ -732,6 +748,14 @@ export declare const S: {
         readonly zh: "系统输入法";
         readonly en: "System IME";
     };
+    readonly "ime.name": {
+        readonly zh: "自然码";
+        readonly en: "Natural Code";
+    };
+    readonly "ime.nameFallback": {
+        readonly zh: "自然码（备用）";
+        readonly en: "Natural Code (fallback)";
+    };
     readonly "ime.modeZh": {
         readonly zh: "中";
         readonly en: "中";
@@ -795,6 +819,10 @@ export declare const S: {
     readonly "voice.pack.readyToast": {
         readonly zh: "语音包已就绪";
         readonly en: "Voice pack ready";
+    };
+    readonly "voice.pack.deleted": {
+        readonly zh: "语音包已删除";
+        readonly en: "Voice pack deleted";
     };
     readonly "voice.pack.failed": {
         readonly zh: "语音包失败：{e}";
@@ -872,6 +900,18 @@ export declare const S: {
         readonly zh: "（没有记录）";
         readonly en: "(nothing logged)";
     };
+    readonly "ui.idleAria": {
+        readonly zh: "已闲置";
+        readonly en: "Idle";
+    };
+    readonly "ui.busyAria": {
+        readonly zh: "处理中";
+        readonly en: "Working";
+    };
+    readonly "ui.buildTitle": {
+        readonly zh: "构建版本";
+        readonly en: "Build";
+    };
     readonly "ui.factoryReset": {
         readonly zh: "还原出厂设置（清本机全部数据）…";
         readonly en: "Factory reset (wipe all local data)…";
@@ -883,6 +923,10 @@ export declare const S: {
     readonly "fr.introMsg": {
         readonly zh: "删除这台设备上的全部本地数据：稿件缓存、设置、密码记忆、输入法词典缓存、语音模型包、app 缓存。OneDrive 上的稿不受影响，登录后会重新拉回。";
         readonly en: "Deletes all local data on this device: draft cache, settings, remembered password, IME dictionary cache, voice model pack, app cache. Drafts on OneDrive are untouched and come back after sign-in.";
+    };
+    readonly "fr.needOnline": {
+        readonly zh: "还原出厂要联网（清掉缓存后需要重新下载 app）";
+        readonly en: "Factory reset needs a network connection (the app is re-downloaded afterwards)";
     };
     readonly "fr.needSync": {
         readonly zh: "有 {n} 篇未同步到云端的稿，先登录并同步再还原（不造逃生副本）";

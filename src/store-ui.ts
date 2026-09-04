@@ -27,8 +27,11 @@ const STORE_TEXT_KEYS: Record<StoreTextKey, Key> = {
 
 const stripExt = (n: string) => n.replace(/\.txt$/i, "");
 
+// 库把 push / tryMove 也裹进 busy（审计 L1：连续打字每 15s 全屏一暗、遮罩期间 sheet 抛错）。这两类是后台节律，不上全屏遮罩——
+// 状态栏已由 editor.pushNow 自己写「正在同步…」。库侧「push 不裹 busy」另案 escalate；这里是 app 侧过渡。
+const QUIET_BUSY = (): Set<string> => new Set([t("st.syncPushing"), t("st.fileRenaming")]);
 export const storeUI: StoreUI = {
-  busy: (label, fn) => withBusy(label, fn),
+  busy: (label, fn) => (QUIET_BUSY().has(label) ? Promise.resolve().then(fn) : withBusy(label, fn)),
 
   text: (key: StoreTextKey, params?: StoreTextParams): string | undefined => {
     const k = STORE_TEXT_KEYS[key];

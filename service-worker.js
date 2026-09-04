@@ -32,6 +32,20 @@ const STATIC_PRECACHE = [
 
 let CACHE_NAME = "xiaoheiwu-boot";
 const SCOPE_IS_DEV = self.location.pathname.includes("/dev/");
+const SCOPE_PATH = self.location.pathname.replace(/[^/]*$/, "");   // SW 脚本所在目录 = 本 app 的路径前缀（scope 外的同源请求——如 /pwa-models/——一律不接管，审计 L5）
+
+// SW 空闲被杀重启后顶层重跑，CACHE_NAME 会回落 "xiaoheiwu-boot" → 预缓存全成孤儿（审计 L4，家族级坑）。
+// 从 caches.keys() 找回唯一的 xiaoheiwu-<hash>（activate 已清老的）。
+let cacheNameResolved = null;
+async function currentCacheName() {
+  if (CACHE_NAME !== "xiaoheiwu-boot") return CACHE_NAME;
+  if (!cacheNameResolved) cacheNameResolved = (async () => {
+    const keys = (await caches.keys()).filter((k) => k.startsWith("xiaoheiwu-") && k !== "xiaoheiwu-boot");
+    if (keys.length) CACHE_NAME = keys[keys.length - 1];
+    return CACHE_NAME;
+  })().finally(() => { cacheNameResolved = null; });
+  return cacheNameResolved;
+}
 
 async function getCurrentBundleUrl() {
   const res = await fetch("./index.html", { cache: "no-store" });
@@ -51,7 +65,7 @@ self.addEventListener("install", (event) => {
     const bundleHash = bundleUrl.match(/xiaoheiwu-([a-z0-9-]+)\.mjs/i)?.[1] || "boot";
     CACHE_NAME = `xiaoheiwu-${bundleHash}`;
     const cache = await caches.open(CACHE_NAME);
-    const urls = [...STATIC_PRECACHE, bundleUrl, bundleUrl + ".map", ...(workerUrl ? [workerUrl] : [])];
+    const urls = [...STATIC_PRECACHE, bundleUrl, ...(workerUrl ? [workerUrl] : [])];   // .map 不预缓存（审计 L27）
     await Promise.all(urls.map((u) =>
       fetch(u, { cache: "no-store" })
         .then((r) => (r.ok ? cache.put(u, r) : null))
@@ -82,12 +96,13 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  if (!url.pathname.startsWith(SCOPE_PATH)) return;   // 同源但 scope 外（模型包 /pwa-models/ 等）：不接管、不复制进壳缓存
   if (!SCOPE_IS_DEV && url.pathname.includes("/dev/")) return;
   event.respondWith(SCOPE_IS_DEV ? networkFirst(req) : cacheFirst(req));
 });
 
 async function cacheFirst(req) {
-  const cache = await caches.open(CACHE_NAME);
+  const cache = await caches.open(await currentCacheName());
   const cached = await cache.match(req, { ignoreSearch: true });
   const networkPromise = fetch(req).then((resp) => {
     if (resp && resp.ok) {
@@ -110,7 +125,7 @@ async function cacheFirst(req) {
 // dev：network-first 带超时（半开 TCP / 强制门户下 fetch 会永远挂着——WeebPaint v417/v421 教训：超时只用来把「永远挂」变「有界失败」）。
 const NETWORK_FIRST_TIMEOUT_MS = self.__NETWORK_FIRST_TIMEOUT_MS ?? 60000;
 async function networkFirst(req) {
-  const cache = await caches.open(CACHE_NAME);
+  const cache = await caches.open(await currentCacheName());
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), NETWORK_FIRST_TIMEOUT_MS);

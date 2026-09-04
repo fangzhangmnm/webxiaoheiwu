@@ -41,6 +41,8 @@ export class LocalSession implements VoiceSession {
   private cancelled = false;
   private loadPromise: Promise<unknown> | null = null;
   private lang: AsrLang = "zh";
+  private gen = 0;              // 会话代：旧会话的回调（getUserMedia / decode）按代丢弃（审计 M12）
+  private stopRequested = false; // stop() 早于录音真正开始（getUserMedia 未回）→ 起录后立刻停
 
   constructor(private d: VoiceSessionDeps & { getModel: () => ModelInfo; onLoading?: (loading: boolean) => void }) {}
 
@@ -52,7 +54,8 @@ export class LocalSession implements VoiceSession {
 
   async start(langHint: string): Promise<void> {
     if (this.state === "recording" || this.state === "transcribing") return;
-    this.cancelled = false;
+    const gen = ++this.gen;
+    this.cancelled = false; this.stopRequested = false;
     this.lang = langHint.startsWith("zh") ? "zh" : "en";
     const caret = this.d.target.selectionStart ?? this.d.target.value.length;
     this.anchorStart = caret; this.anchorEnd = caret;
@@ -62,8 +65,8 @@ export class LocalSession implements VoiceSession {
     this.loadPromise.catch(() => {});
     let stream: MediaStream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } }); }
-    catch (err) { this._setState("error", err); return; }
-    if (this.cancelled) { for (const t of stream.getTracks()) { try { t.stop(); } catch { /* ignore */ } } return; }
+    catch (err) { if (this.cancelled || gen !== this.gen) return; this._fail(err); return; }   // 250ms 内弃掉的 Ctrl 和弦不报错（审计 UI-12）
+    if (this.cancelled || gen !== this.gen) { for (const t of stream.getTracks()) { try { t.stop(); } catch { /* ignore */ } } return; }
     this.stream = stream;
     try {
       this.ctx = new AudioContext({ sampleRate: 16000 });
@@ -81,14 +84,15 @@ export class LocalSession implements VoiceSession {
         if (this.hasHeardVoice && now - this.lastVoiceAt >= SILENCE_MS) this.stop();
       };
       this.src.connect(this.proc); this.proc.connect(this.ctx.destination);
-    } catch (err) { this._teardown(); this._setState("error", err); return; }
-    if (this.cancelled) { this._teardown(); return; }
+    } catch (err) { this._teardown(); this._fail(err); return; }
+    if (this.cancelled || gen !== this.gen) { this._teardown(); return; }
     this.startedAt = Date.now(); this.lastVoiceAt = this.startedAt; this.hasHeardVoice = false;
     this._setState("recording");
+    if (this.stopRequested) this.stop();   // 松键早于麦克风就绪：现在补停
   }
 
   stop(): void {
-    if (this.state !== "recording") return;
+    if (this.state !== "recording") { if (this.state === "idle" && this.stream == null && this.loadPromise) this.stopRequested = true; return; }
     const rate = this.ctx?.sampleRate ?? 16000;
     const chunks = this.chunks; this.chunks = [];
     this._teardown();
@@ -100,10 +104,13 @@ export class LocalSession implements VoiceSession {
   }
 
   abort(): void {
-    this.cancelled = true;
+    this.cancelled = true; this.gen++;   // 之后任何旧回调按代丢弃
     if (this.state === "recording") { this.chunks = []; this._teardown(); this._setState("idle"); }
-    else if (this.state === "transcribing") this._setState("idle");   // worker 里的解码跑完即弃（结果检查 cancelled）
+    else if (this.state === "transcribing") this._setState("idle");   // worker 里的解码跑完即弃（gen 已变）
+    else if (this.state === "error") this._setState("idle");
   }
+  /** 报错但不卡死在 error：PTT 只在 idle 起录，所以报完立刻回 idle（按钮红一下由 onState 负责）。 */
+  private _fail(err: unknown): void { this._setState("error", err); this.state = "idle"; }
   notifyExternalInput(): void { if (this.injecting) return; if (this.state === "recording") this.abort(); }
 
   private _setState(next: VoiceState, error?: unknown) { this.state = next; this.d.onState(next, error); }
@@ -115,22 +122,23 @@ export class LocalSession implements VoiceSession {
     if (this.stream) { for (const t of this.stream.getTracks()) { try { t.stop(); } catch { /* ignore */ } } this.stream = null; }
   }
   private async _transcribe(samples: Float32Array) {
+    const gen = this.gen;
     this._setState("transcribing");
     try {
       this.d.onLoading?.(true);
       await this.loadPromise;
       this.d.onLoading?.(false);
-      if (this.cancelled) return;
+      if (this.cancelled || gen !== this.gen) return;
       const r = await asr.decode(samples, this.lang);
-      if (this.cancelled) return;
+      if (this.cancelled || gen !== this.gen) return;
       let text = r.text.trim();
       if (text && this.lang === "zh") text = chineseifyPunctuation(text);
       if (text) this._insertAtAnchor(text);
       this._setState("idle");
     } catch (err) {
       this.d.onLoading?.(false);
-      if (this.cancelled) return;
-      this._setState("error", err);
+      if (this.cancelled || gen !== this.gen) return;
+      this._fail(err);
     }
   }
   private _insertAtAnchor(text: string) {

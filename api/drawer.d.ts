@@ -28,6 +28,7 @@ export declare function createDrawer(d: DrawerDeps): {
     onEmptyTrash: () => Promise<void>;
     currentView: () => DrawerView;
     items: () => DocListItem[];
+    firstFrame: () => Promise<void>;
     findByName: (name: string) => DocListItem | null;
 };
 export type Drawer = ReturnType<typeof createDrawer>;

@@ -71,7 +71,12 @@ export async function readDoc(name: string): Promise<ReadDocResult> {
   const encrypted = await f.isEncrypted().catch(() => false);
   if (encrypted && !isUnlocked()) return { kind: "locked" };
   const blob = await f.open();
-  if (!blob) return encrypted ? { kind: "other-password" } : { kind: "unavailable" };
+  if (!blob) {
+    // 纯云端稿首开：isEncrypted 只看本地字节（此刻还没有）→ open 拉下来后才知道是密文。再看一次再判（审计 L16）。
+    const encNow = encrypted || (await f.isEncrypted().catch(() => false));
+    if (!encNow) return { kind: "unavailable" };
+    return isUnlocked() ? { kind: "other-password" } : { kind: "locked" };
+  }
   const { text, encoding } = decodeTextBytes(new Uint8Array(await blob.arrayBuffer()));
   return { kind: "ok", text, encoding, encrypted };
 }
@@ -94,17 +99,18 @@ export async function createDoc(title: string, text: string, date = formatDate(D
   throw new Error("too many name collisions creating a document");
 }
 
-/** 改标题 = 改身份（tryMove）。撞名追加后缀。返回新名（未变 → 原名）；失败 → null（调用方报错）。 */
-export async function renameDoc(name: string, newTitle: string): Promise<string | null> {
+export interface RenameResult { name: string; oldKept?: boolean; cloudDeferred?: boolean }
+/** 改标题 = 改身份（tryMove）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
+export async function renameDoc(name: string, newTitle: string): Promise<RenameResult | null> {
   const p = parseDocName(name);
   const base = makeDocName(p.date ?? formatDate(Date.now()), newTitle);
-  if (base === name) return name;
+  if (base === name) return { name };
   const f = file(name);
   for (let n = 0; n < 50; n++) {
     const cand = collisionCandidate(base, n);
-    if (cand === name) return name;
+    if (cand === name) return { name };
     const r = await f.tryMove(cand);
-    if (r.ok) { invalidateEncryptedFlag(name); return cand; }
+    if (r.ok) { invalidateEncryptedFlag(name); const x = r as { oldKept?: boolean; cloudDeferred?: boolean }; return { name: cand, oldKept: x.oldKept, cloudDeferred: x.cloudDeferred }; }
     if (r.reason !== "name-collision") return null;
   }
   return null;

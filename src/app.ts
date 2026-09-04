@@ -31,6 +31,9 @@ function setStatus(text: string, opts: { error?: boolean; unsynced?: boolean } =
   saveStatusEl.textContent = text;
   saveStatusEl.classList.toggle("error", !!opts.error);
   saveStatusEl.classList.toggle("unsynced", !!opts.unsynced);
+  // 抽屉开着时顶栏被遮罩压住，用户看不到状态（审计 UI-6）：镜像一份到抽屉底部
+  const ds = document.getElementById("drawerStatus");
+  if (ds && !document.getElementById("drawer")!.classList.contains("hidden")) { ds.textContent = text; ds.classList.toggle("error", !!opts.error); ds.hidden = false; }
 }
 initErrorBadge({ status: (text) => setStatus(text), dismissHint: () => t("err.dismissHint") });
 initSheets({ ok: t("common.ok"), cancel: t("common.cancel") });
@@ -54,7 +57,15 @@ wireCryptoState({
   }),
   verifiers: { get: () => (appState.getItem("passwordVerifier") as VerifierRecord | undefined) ?? null, set: (rec) => appState.setItem("passwordVerifier", rec) },
 });
-const ensureUnlocked = () => cryptoEnsureUnlocked({
+const ensureUnlocked = async (): Promise<boolean> => {
+  // 首次设密码前：已登录就先把 synced-app-state 拉齐——否则新设备会用 LWW 盖掉云端已有的 verifier，老设备从此「密码错」（审计 L6）
+  if (!hasVerifier() && auth.isSignedIn()) {
+    try { await reconcileCollections(); } catch (e) { reportError(e, "log"); setStatus(t("pw.setupNeedsNetwork"), { error: true }); return false; }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) { setStatus(t("pw.setupNeedsNetwork"), { error: true }); return false; }
+  }
+  return cryptoEnsureUnlocked(labelsForUnlock());
+};
+const labelsForUnlock = () => ({
   unlockTitle: t("pw.unlockTitle"), unlockHint: t("pw.unlockHint"), setupTitle: t("pw.setupTitle"), setupHint: t("pw.setupHint"),
   wrong: t("pw.wrong"), mismatch: t("pw.mismatch"), okUnlock: t("pw.unlock"), okSetup: t("pw.set"),
 });
@@ -69,12 +80,14 @@ const editor = createEditor({
   isSignedIn: () => auth.isSignedIn(),
   onDocChanged: () => { renderTopbar(); drawer.refresh(); rememberLastActive(); },
   ensureUnlocked, ensureFileUnlocked,
+  onBeforeLoad: () => { voiceAbortHook?.(); },
 });
+let voiceAbortHook: (() => void) | null = null;
 const drawer = createDrawer({
   drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
   docList: $("docList"), docListEmpty: $("docListEmpty"), docActions: $("drawerActions"), trashActions: $("trashActions"), settingsView: $("settingsView"),
   activeName: () => editor.state.name,
-  onOpenDoc: async (name) => { await editor.open(name); },
+  onOpenDoc: async (name) => { await editor.open(name, { promptUnlock: true }); },
   onActiveTrashed: async () => { await editor.flushLocal(); editor.clear(); },
   onSettingsShown: () => renderSettings(),
   focusEditor: () => editorEl.focus(),
@@ -111,8 +124,9 @@ cryptoToggle.addEventListener("click", () => {
 lockToggle.addEventListener("click", () => editor.toggleReadOnly());
 
 // ── 跨设备 lastActive 指针（Separated 模式：只在冷启动尊重远端，不在 session 中途切）──
+let booted = false;
 function rememberLastActive(): void {
-  if (!editor.state.name || !auth.isSignedIn()) return;
+  if (!booted || !editor.state.name || !auth.isSignedIn()) return;   // 冷启动 open(last) 不写云端指针——别盖掉别的设备最后写的那篇
   appState.setItem("lastActive", { name: editor.state.name, savedAt: Date.now(), device: deviceLabel() });
 }
 function deviceLabel(): string {
@@ -128,7 +142,7 @@ const candidateBar = $("candidateBar");
 let shiftCleanPress = false;
 function renderImeState(): void {
   const s = ime.getState();
-  imeStatus.textContent = !s.enabled ? t("ime.system") : `${s.engine === "rime-double_pinyin" ? "Natural Code" : "Natural Code (fallback)"} · ${s.asciiMode ? t("ime.modeEn") : t("ime.modeZh")}`;
+  imeStatus.textContent = !s.enabled ? t("ime.system") : `${s.engine === "rime-double_pinyin" ? t("ime.name") : t("ime.nameFallback")} · ${s.asciiMode ? t("ime.modeEn") : t("ime.modeZh")}`;
   if (!s.enabled || !s.buffer) { candidateBar.classList.add("hidden"); candidateBar.innerHTML = ""; return; }
   candidateBar.classList.remove("hidden");
   const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
@@ -202,7 +216,7 @@ let lastDictPushAt = 0, dictPushInFlight = false;
 async function pushUserDict(): Promise<void> {
   if (dictPushInFlight || !ime.initialized) return;
   dictPushInFlight = true;
-  try { const dump = await ime.dumpUserDir(); if (dump?.files?.length) { rimeDict.setItem("dump", { ...dump, savedAt: Date.now(), device: deviceLabel() }); lastDictPushAt = Date.now(); } }
+  try { const dump = await ime.dumpUserDir(); if (dump?.files?.length) { const savedAt = Date.now(); dictRestoredSavedAt = savedAt; rimeDict.setItem("dump", { ...dump, savedAt, device: deviceLabel() }); lastDictPushAt = savedAt; } }   // 先记 savedAt：自己推的 onChange 不再回灌重置引擎
   finally { dictPushInFlight = false; }
 }
 function maybePushUserDict(): Promise<void> { return Date.now() - lastDictPushAt < USER_DICT_PUSH_INTERVAL_MS ? Promise.resolve() : pushUserDict(); }
@@ -229,6 +243,7 @@ const voiceErrorText = (error: unknown): string => {
   return t("voice.failed", { e: raw });
 };
 const onVoiceState = (next: VoiceState, error?: unknown) => {
+  if (next === "recording" && pttBackend && !pttCommitted) return;   // PTT 250ms 门没过就不画「录音中」（Ctrl 和弦不闪）
   micButton.setAttribute("data-state", next);
   if (next === "recording" || next === "listening") setStatus(t("voice.recording"));
   else if (next === "transcribing") setStatus(t("voice.transcribing"));
@@ -239,6 +254,7 @@ const localSession: VoiceSession | null = isLocalVoiceSupported()
   ? new LocalSession({ target: editorEl, onChange: onVoiceInsert, onState: onVoiceState, getModel: () => MODELS[voiceModel()], onLoading: (on) => { if (on) setStatus(t("voice.loadingModel")); } })
   : null;
 function activeVoiceBackend(): VoiceSession | null { return voiceEnabled ? localSession : null; }
+voiceAbortHook = () => { if (localSession && (localSession.state === "recording" || localSession.state === "transcribing")) localSession.abort(); };
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
   const st = editor.state;
@@ -268,7 +284,7 @@ document.addEventListener("keydown", (event) => {
   if (!backend || backend.state !== "idle") return;
   pttBackend = backend; pttCommitted = false;
   void backend.start(pickSpeechLang());
-  pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; }, PTT_HOLD_MS);
+  pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; if (pttBackend?.state === "recording") onVoiceState("recording"); }, PTT_HOLD_MS);
 }, { capture: true });
 document.addEventListener("keyup", (event) => {
   if (!isPttKey(event) || !pttBackend) return;
@@ -361,16 +377,17 @@ async function renderPackStatus(): Promise<void> {
     voicePackDownload.hidden = st.ready; voicePackImport.hidden = st.ready; voicePackDelete.hidden = !st.ready && st.bytesCached === 0;
   } catch (e) { voicePackStatus.textContent = t("voice.pack.failed", { e: e instanceof Error ? e.message : String(e) }); }
 }
-async function runPackJob(job: (onProgress: (p: { done: number; total: number }) => void) => Promise<unknown>): Promise<void> {
+async function runPackJob(job: (onProgress: (p: { done: number; total: number }) => void) => Promise<unknown>, doneText = t("voice.pack.readyToast")): Promise<void> {
   if (packBusy) return;
   packBusy = true; voicePackProgress.value = 0; void renderPackStatus();
   try {
     await job((p) => { voicePackProgress.value = p.total ? p.done / p.total : 0; voicePackStatus.textContent = t("voice.pack.downloading", { done: mbOf(p.done), total: mbOf(p.total) }); });
-    setStatus(t("voice.pack.readyToast"));
+    setStatus(doneText);
   } catch (e) { reportError(e, "warning"); voicePackStatus.textContent = t("voice.pack.failed", { e: e instanceof Error ? e.message : String(e) }); }
   finally { packBusy = false; void renderPackStatus(); }
 }
 voiceEnabledToggle.addEventListener("change", () => { voiceEnabled = voiceEnabledToggle.checked; deviceKvSet("voiceEnabled", voiceEnabled ? "1" : "0"); renderVoiceConfig(); renderMicVisibility(); });
+prefs.onChange("voiceProvider", () => { if (drawer.currentView() === "settings") renderVoiceConfig(); });
 voiceModelSelect.addEventListener("change", () => { prefs.setItem("voiceProvider", modelKeyFrom(voiceModelSelect.value)); void asr.unload().catch(() => {}); renderVoiceConfig(); });
 voiceSourceInput.addEventListener("change", () => { const v = voiceSourceInput.value.trim(); deviceKvSet("voiceModelSource", v && v !== MODEL_SOURCE_DEFAULT ? v : null); voiceSourceInput.value = voiceSource(); });
 voicePackDownload.addEventListener("click", () => { const m = MODELS[voiceModel()]; void runPackJob((p) => asr.download(m.slug, voiceSource(), p)); });
@@ -380,14 +397,14 @@ voicePackDelete.addEventListener("click", () => {
   void (async () => {
     const m = MODELS[voiceModel()];
     if (!(await openConfirmSheet(t("voice.pack.deleteTitle"), t("voice.pack.deleteMsg", { mb: mbOf(m.bytes) }), { danger: true }))) return;
-    await runPackJob(async () => { await asr.delete(m.slug); });
+    await runPackJob(async () => { await asr.delete(m.slug); }, t("voice.pack.deleted"));
   })();
 });
 
 const langSelect = $<HTMLSelectElement>("langSelect");
 for (const l of LANGS) { const o = document.createElement("option"); o.value = l; o.textContent = LANG_NAME[l]; langSelect.appendChild(o); }
 langSelect.value = lang();
-langSelect.addEventListener("change", () => setLang(langSelect.value as Lang));
+langSelect.addEventListener("change", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setLang(langSelect.value as Lang); })(); });
 
 $("forceUpdateButton").addEventListener("click", () => {
   void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await editor.flushLocal(); await flushCollections(); await shell.forceReset(); } })();
@@ -406,6 +423,7 @@ async function changePasswordFlow(): Promise<void> {
   let moved = 0, kept = 0;
   await withBusy(t("busy.migrating"), async () => {
     await setCurrentPassword(next);
+    if (mode === "keep" && openName && editor.state.encrypted && !editor.state.locked) rememberFilePassword(openName, old);   // 正开着的这篇是用旧密码开的：登记，重载不用再问
     if (mode === "migrate") {
       for (const it of drawer.items()) {
         if (it.encrypted === false) continue;
@@ -435,7 +453,7 @@ $("resetPasswordButton").addEventListener("click", () => { void resetPasswordFlo
 const factoryReset = () => runFactoryReset({
   setStatus,
   unsyncedCount: async () => { await editor.flushLocal(); return drawer.items().filter((i) => i.dirty || i.syncState === "local-only").length + (editor.isDirty() ? 1 : 0); },
-  beforeWipe: async () => { await editor.flushLocal(); await flushCollections(); editor.clear(); },
+  beforeWipe: async () => { await editor.flushLocal(); await flushCollections(); editor.clear(); ime.dispose(); },
 });
 $("factoryResetButton").addEventListener("click", () => { void factoryReset(); });
 $("diagButton").addEventListener("click", () => {
@@ -455,7 +473,7 @@ $("openSettingsButton").addEventListener("click", () => drawer.open("settings"))
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
 $("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && drawer.currentView() !== "closed") { drawer.close(); return; }
+  if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) {
     event.preventDefault();
     saveStatusEl.classList.add("flash"); setTimeout(() => saveStatusEl.classList.remove("flash"), 500);
@@ -485,7 +503,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") { void editor.flushLocal().then(() => { if (auth.isSignedIn()) return editor.pushNow(); }); void pushUserDict(); void flushCollections(); }
 });
 window.addEventListener("pagehide", () => { void editor.flushLocal(); void flushCollections(); });
-window.addEventListener("online", () => { setStatus(t("st.online")); void resumeSync(); });
+window.addEventListener("online", () => { if (auth.isSignedIn()) { setStatus(t("st.online")); void resumeSync(); } });
 setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) void editor.refreshIfClean(); }, FOREGROUND_POLL_MS);
 
 // ── PWA 壳 ──
@@ -515,9 +533,11 @@ async function boot(): Promise<void> {
   const last = editor.lastOpenName();
   if (last) await editor.open(last);
   else {
-    const first = await new Promise<string | null>((resolve) => { const stop = setTimeout(() => resolve(null), 1500); const items = drawer.items(); if (items.length) { clearTimeout(stop); resolve(items[0]!.name); } });
+    await Promise.race([drawer.firstFrame(), new Promise((r) => setTimeout(r, 3000))]);   // 等列表首帧（最多 3s），不再死等 1.5s 后开空新稿
+    const first = drawer.items()[0]?.name ?? null;
     if (first) await editor.open(first); else await editor.newDoc();
   }
+  booted = true;
   renderTopbar();
   setStatus(editor.statusForDoc());
   editorEl.focus();
@@ -547,4 +567,4 @@ window.addEventListener("unhandledrejection", (event) => { reportError(event.rea
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword };

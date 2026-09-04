@@ -14,6 +14,8 @@ export interface EditorDeps {
     ensureUnlocked: () => Promise<boolean>;
     /** 「这篇稿用的不是当前密码」循环（app 注入：弹框 + verifyDocPassword）。 */
     ensureFileUnlocked: (name: string) => Promise<boolean>;
+    /** 切稿/新建/清空前（语音会话必须先中止——转写结果不能落进别的稿）。 */
+    onBeforeLoad?: () => void;
 }
 export interface EditorState {
     name: string | null;
@@ -27,6 +29,7 @@ export declare function createEditor(d: EditorDeps): {
     state: EditorState;
     open: (name: string, opts?: {
         keepCaret?: boolean;
+        promptUnlock?: boolean;
     }) => Promise<boolean>;
     newDoc: (opts?: {
         encrypted?: boolean;
