@@ -1043,11 +1043,7 @@ body {
   text-overflow: ellipsis;
 }
 
-.doc-name.untitled {
-  color: var(--ink-soft);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
+.doc-name.untitled { color: var(--ink-soft); }   /* 无标题（裸日期名）只淡一点；字体字号与有标题的一致（user 2026-09-03「为什么字体没统一」——原等宽 12px 删） */
 
 .doc-preview {
   font-size: 11px;
