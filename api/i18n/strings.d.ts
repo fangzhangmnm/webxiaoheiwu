@@ -952,6 +952,18 @@ export declare const S: {
         readonly zh: "输入方案";
         readonly en: "Scheme";
     };
+    readonly "ui.ime.script": {
+        readonly zh: "字形";
+        readonly en: "Script";
+    };
+    readonly "ui.ime.script.simp": {
+        readonly zh: "简体（默认）";
+        readonly en: "Simplified (default)";
+    };
+    readonly "ui.ime.script.trad": {
+        readonly zh: "繁體";
+        readonly en: "Traditional";
+    };
     readonly "ui.ime.softKeyboard": {
         readonly zh: "触屏键盘（无实体键盘时）";
         readonly en: "Touch keyboard (when there is no physical keyboard)";

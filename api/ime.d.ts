@@ -34,6 +34,7 @@ interface Backend {
     changePage(prev: boolean): Promise<ImeResult>;
     dumpUserDir?(): Promise<UserDictDump>;
     restoreUserDir?(dump: UserDictDump): Promise<void>;
+    setSimplified?(v: boolean): Promise<void>;
 }
 export interface UserDictDump {
     files: {
@@ -46,6 +47,8 @@ export interface UserDictDump {
 export declare class NaturalCodeIME {
     enabled: boolean;
     asciiMode: boolean;
+    simplified: boolean;
+    setSimplified(v: boolean): Promise<void>;
     backend: Backend;
     initializeError: string | null;
     initialized: boolean;

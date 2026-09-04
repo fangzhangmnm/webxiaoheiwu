@@ -197,10 +197,16 @@ try {
     await typeKeys(["n", "i"]); out.luna = cands().slice(0, 5); await ime.resetComposition();
     await ime.setSchema("double_pinyin_mspy"); await typeKeys(["n", "i"]); out.mspy = cands().slice(0, 5); await ime.resetComposition();
     await ime.setSchema("wubi86"); await typeKeys(["w", "q"]); out.wubi = cands().slice(0, 5); await ime.resetComposition();
-    await ime.setSchema("luna_pinyin"); await setImeEnabled(false);
+    await ime.setSchema("luna_pinyin");
+    // 简/繁开关真跑（zhe：简 这 / 繁 這）+ 候选里不该有 emoji
+    await typeKeys(["z", "h", "e"]); out.simp = cands().slice(0, 5); await ime.backend.clear();
+    await ime.setSimplified(false); await typeKeys(["z", "h", "e"]); out.trad = cands().slice(0, 5); await ime.backend.clear();
+    await ime.setSimplified(true); await typeKeys(["z", "h", "e"]); out.simpAgain = cands().slice(0, 5); await ime.backend.clear();
+    await setImeEnabled(false);
     return out;
   });
   check("内置 IME 三方案：全拼 ni→你 / 微软双拼 ni→你 / 五笔 wq→你", typeof imeRun === "object" && imeRun.luna?.includes("你") && imeRun.mspy?.includes("你") && imeRun.wubi?.includes("你"), JSON.stringify(imeRun));
+  check("简/繁开关：zhe 简→这 / 繁→這 / 切回→这，且无 emoji 候选", typeof imeRun === "object" && imeRun.simp?.[0] === "这" && imeRun.trad?.[0] === "這" && imeRun.simpAgain?.[0] === "这" && !imeRun.simp.some((c) => /\p{Extended_Pictographic}/u.test(c)), JSON.stringify({ simp: imeRun.simp, trad: imeRun.trad, again: imeRun.simpAgain }));
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
   const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("toast").textContent; });
   check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);

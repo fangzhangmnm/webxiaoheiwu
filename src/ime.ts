@@ -34,6 +34,7 @@ interface Backend {
   changePage(prev: boolean): Promise<ImeResult>;
   dumpUserDir?(): Promise<UserDictDump>;
   restoreUserDir?(dump: UserDictDump): Promise<void>;
+  setSimplified?(v: boolean): Promise<void>;
 }
 export interface UserDictDump { files: { path: string; data: string }[]; savedAt?: number; device?: string }
 
@@ -83,17 +84,30 @@ class RimeWorkerBackend implements Backend {
     this.worker = new Worker(RIME_WORKER_URL);
     await this.setSchema(schema);
   }
-  async setSchema(schema: ImeSchema): Promise<void> {
-    this.schema = schema;
-    await this.call("setIME", schema);
-    await this.call("setOption", "simplification", 1);
+  simplified = true;
+  /** 会话开关：简/繁（user 2026-09-04「quest 输入法拼命出繁体」）、中文标点、关 emoji 候选（luna 方案默认开，写小说是噪音）。
+   *  Quest 首次部署是异步的、deploy 完成会刷新会话——开关可能被打回方案默认（繁体）→ 除了换方案后设一次，**每次起组字前再重申一次**（一次 ccall，零成本），不赌会话状态。 */
+  async applyOptions(): Promise<void> {
+    await this.call("setOption", "simplification", this.simplified ? 1 : 0);
     await this.call("setOption", "ascii_punct", 0);
-    this.resetState();
+    await this.call("setOption", "emoji_suggestion", 0);
   }
+  setSchema(schema: ImeSchema): Promise<void> {
+    this.schema = schema;
+    return this.enqueue(async () => { await this.call("setIME", schema); await this.applyOptions(); this.resetState(); });
+  }
+  setSimplified(v: boolean): Promise<void> { this.simplified = v; return this.enqueue(() => this.applyOptions()); }
   getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine }; }
   resetState() { this.buffer = ""; this.candidates = []; }
   enqueue<T>(task: () => Promise<T>): Promise<T> { const p = this.queue.then(task, task); this.queue = p.catch(() => {}); return p; }
+  // RPC 通道严格串行：my-rime worker 协议无请求 id，响应靠「下一条 success/error」配对——两路并飞就错位
+  //   （2026-09-04 smoke 抓到：清缓冲与换方案并飞 → 微软双拼拿到上一条的候选、五笔空）。任务级原子性仍由 enqueue 负责。
+  private rpcChain: Promise<unknown> = Promise.resolve();
   call(name: string, ...args: unknown[]): Promise<any> {
+    const run = () => this.rawCall(name, ...args);
+    const p = this.rpcChain.then(run, run); this.rpcChain = p.catch(() => {}); return p;
+  }
+  private rawCall(name: string, ...args: unknown[]): Promise<any> {
     const w = this.worker;
     if (!w) return Promise.reject(new Error("RIME worker is not ready"));
     return new Promise((resolve, reject) => {
@@ -120,7 +134,7 @@ class RimeWorkerBackend implements Backend {
     }
     this.resetState(); return { type: "clear" };
   }
-  typeLetter(letter: string) { return this.enqueue(async () => this.normalize(await this.call("process", letter))); }
+  typeLetter(letter: string) { return this.enqueue(async () => { if (!this.buffer) await this.applyOptions(); return this.normalize(await this.call("process", letter)); }); }
   typePunctuation(key: string) { return this.enqueue(async () => this.normalize(await this.call("process", key))); }
   backspace() { return this.enqueue(async () => this.normalize(await this.call("process", "{BackSpace}"))); }
   clear() { return this.enqueue(async () => this.normalize(await this.call("process", "{Escape}"))); }
@@ -163,7 +177,7 @@ class RimeWorkerBackend implements Backend {
       try { await this.call("fsOperate", "writeFile", `${root}/${entry.path}`, unb64(entry.data)); }
       catch (e) { console.warn("[ime] restoreUserDir write failed", entry.path, e); }
     }
-    try { await this.call("setIME", this.schema); await this.call("setOption", "simplification", 1); await this.call("setOption", "ascii_punct", 0); }
+    try { await this.call("setIME", this.schema); await this.applyOptions(); }
     catch (e) { console.warn("[ime] restoreUserDir re-init failed", e); }
   }
 }
@@ -171,6 +185,8 @@ class RimeWorkerBackend implements Backend {
 export class NaturalCodeIME {
   enabled = false;
   asciiMode = false;
+  simplified = true;   // 简体（默认）/ 繁體；synced pref 跟人走，app 层在 initialize 前灌入
+  async setSimplified(v: boolean): Promise<void> { this.simplified = v; if (this.backend.setSimplified) { try { await this.backend.setSimplified(v); } catch (e) { console.warn("[ime] setSimplified failed", e); } } }
   backend: Backend = new StarterMapBackend();
   initializeError: string | null = null;
   initialized = false;
@@ -182,6 +198,7 @@ export class NaturalCodeIME {
     if (this.initialized) return;
     if (!this.initPromise) this.initPromise = (async () => {   // 加载中连点不起第二个 worker（审计 UI-21）
       const rime = new RimeWorkerBackend();
+      rime.simplified = this.simplified;
       try { await rime.initialize(schema); this.backend = rime; this.initializeError = null; }
       catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
       this.initialized = true;
@@ -205,7 +222,7 @@ export class NaturalCodeIME {
     return { enabled: this.enabled, asciiMode: this.asciiMode, buffer: s.buffer, candidates: s.candidates, engine: s.engine, initializeError: this.initializeError };
   }
   isComposing(): boolean { return this.enabled && !this.asciiMode && this.backend.getState().buffer.length > 0; }
-  resetComposition(): void { this.backend.resetState(); }
+  resetComposition(): void { this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
   async dumpUserDir(): Promise<UserDictDump | null> { if (!this.backend.dumpUserDir) return null; try { return await this.backend.dumpUserDir(); } catch (e) { console.warn("[ime] dumpUserDir failed", e); return null; } }
   async restoreUserDir(dump: UserDictDump): Promise<void> { if (!this.backend.restoreUserDir) return; try { await this.backend.restoreUserDir(dump); } catch (e) { console.warn("[ime] restoreUserDir failed", e); } }
 
