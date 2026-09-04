@@ -123,7 +123,7 @@ export function createDrawer(d: DrawerDeps) {
       main.type = "button"; main.className = "doc-main"; main.title = it.name;
       const b = BADGE[it.syncState] ?? { icon: "cloud", cls: "" };
       main.innerHTML = (it.encrypted ? `<span class="doc-enc" title="${t("list.encrypted")}">${icon("lock")}</span>` : "")
-        + `<span class="doc-name${it.title ? "" : " untitled"}${it.syncState === "ghost" || it.syncState === "pendingGone" ? " ghost" : ""}"></span>`
+        + `<span class="doc-name${it.syncState === "ghost" || it.syncState === "pendingGone" ? " ghost" : ""}"></span>`
         + `<span class="doc-badge ${b.cls}" title="">${iconHtml(b.icon)}</span>`;
       main.querySelector(".doc-name")!.textContent = it.stem;
       (main.querySelector(".doc-badge") as HTMLElement).title = [syncLabel(it.syncState), fmtSize(it.size)].filter(Boolean).join(" · ");

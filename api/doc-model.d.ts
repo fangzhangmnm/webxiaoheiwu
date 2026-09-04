@@ -3,11 +3,11 @@ export interface ParsedDocName {
     dir: string;
     /** 文件名（不含夹）。 */
     base: string;
-    /** 日期前缀 "YYYYMMDD"；不匹配 → null。 */
+    /** 名字里若以 8 位日期开头则给出（只作参考，不再是结构）；否则 null。 */
     date: string | null;
-    /** 标题（不含日期与扩展名）；裸日期 → ""。不匹配 → 整个 stem。 */
+    /** 标题 = 去扩展名的整个名字（有名保名）。 */
     title: string;
-    /** 去扩展名的显示名（不含夹）。 */
+    /** 去扩展名的显示名（不含夹）= title。 */
     stem: string;
 }
 export declare function splitDocPath(path: string): {
@@ -21,8 +21,10 @@ export declare function parseDocName(name: string): ParsedDocName;
 export declare function formatDate(ts: number): string;
 /** 文件名里合法的标题片段：去路径字符、压空白、去前导点、截 200。 */
 export declare function sanitizeTitle(s: string): string;
-/** 由日期前缀 + 标题拼文件名（不含碰撞后缀）；dir 非空则带夹前缀。 */
-export declare function makeDocName(date: string, title: string, dir?: string): string;
+/** 4 位随机 hex（无名稿消歧；WeebPaint v217 惯例）。 */
+export declare function hex4(): string;
+/** 有名保名，无名日期：标题 → `<标题>.txt`；空 → `yyyymmdd-hex4.txt`。dir 非空则带夹前缀（不含碰撞后缀）。 */
+export declare function makeDocName(date: string, title: string, dir?: string, suffix?: string): string;
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export declare function sanitizeFolderName(s: string): string;
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 " n"。 */

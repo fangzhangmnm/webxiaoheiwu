@@ -201,7 +201,7 @@ export function createEditor(d: EditorDeps) {
   async function applyRename(): Promise<void> {
     const title = d.titleInput.value.trim();
     if (!st.name) return;   // 未物化：物化时用标题
-    if (title === savedTitle) return;
+    if (title === savedTitle || !title) return;   // 空标题不改名（禁「未命名」，有名保名）
     const gen = loadGen;
     renameInFlight = true;
     try {

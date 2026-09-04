@@ -1,10 +1,10 @@
 // doc-model —— 文档域的**纯函数**（无 DOM、无 store）：文件名解析/生成、排序、字数、文本编码探测、采纳验真。
-// created 2026-09-03 by Claude Fable 5.1。规则来源 = docs/20260524-filename-conventions.md（user 三轮回退后的终形）：
-//   · `YYYYMMDD 标题.txt`；裸 `YYYYMMDD.txt` 合法（无标题）；空格后**全部**是标题（尾数字/多空格都算标题，不猜序号）。
-//   · 撞名才加后缀 ` 1` ` 2`…（后缀不是标题的一部分，是碰撞产物）。
-//   · never trust remote filenames：任何字符串都解析得出，不匹配 → { date:null, title:整个 stem }。
-//   · 排序 = zh-CN 自然序降序（今天的在最上；第10章 在 第9章 之后）。
-//   · 多文件夹（ADR-0006，2026-09-03）：身份 = `[夹/]YYYYMMDD 标题.txt`，夹只一层；根 = 默认夹，老稿零迁移。
+// created 2026-09-03 by Claude Fable 5.1。命名约定 2026-09-03 改为与 WeebPaint 对齐（user「yyyymmdd 不应该强制…按照和 weebpaint 的 name convention 来管」）：
+//   · **有名保名，无名日期**：标题就是文件名（`<标题>.txt`，只做路径字符清洗）；空标题 → `yyyymmdd-hex4.txt`（WeebPaint naming.ts v217 惯例：日粒度 + 4 位随机 hex 消歧）。
+//   · 撞名才加后缀 ` 1` ` 2`…（后缀不是标题的一部分，是碰撞产物）。禁「未命名」：改名成空 = 不改。
+//   · never trust remote filenames：任何字符串都解析得出，title = 整个 stem；不再拆日期前缀（老稿 `YYYYMMDD 标题.txt` 原名保留、原样显示）。
+//   · 排序 = zh-CN 自然序降序（与 WeebPaint 图库同：新日期名在上，稳定不随存盘时间跳）。
+//   · 多文件夹（ADR-0006）：身份 = `[夹/]<名>.txt`，夹只一层；根 = 默认夹。
 
 import { DOC_EXT } from "./config.ts";
 
@@ -13,11 +13,11 @@ export interface ParsedDocName {
   dir: string;
   /** 文件名（不含夹）。 */
   base: string;
-  /** 日期前缀 "YYYYMMDD"；不匹配 → null。 */
+  /** 名字里若以 8 位日期开头则给出（只作参考，不再是结构）；否则 null。 */
   date: string | null;
-  /** 标题（不含日期与扩展名）；裸日期 → ""。不匹配 → 整个 stem。 */
+  /** 标题 = 去扩展名的整个名字（有名保名）。 */
   title: string;
-  /** 去扩展名的显示名（不含夹）。 */
+  /** 去扩展名的显示名（不含夹）= title。 */
   stem: string;
 }
 
@@ -39,11 +39,8 @@ export function isDocName(name: string): boolean {
 export function parseDocName(name: string): ParsedDocName {
   const { dir, base } = splitDocPath(name ?? "");
   const stem = base.replace(EXT_RE, "");
-  let m = stem.match(/^(\d{8})$/);
-  if (m) return { dir, base, date: m[1]!, title: "", stem };
-  m = stem.match(/^(\d{8})\s+(.+)$/);
-  if (m) return { dir, base, date: m[1]!, title: m[2]!.trim(), stem };
-  return { dir, base, date: null, title: stem, stem };
+  const m = stem.match(/^(\d{8})(?:\D|$)/);
+  return { dir, base, date: m ? m[1]! : null, title: stem, stem };
 }
 
 export function formatDate(ts: number): string {
@@ -63,10 +60,16 @@ export function sanitizeTitle(s: string): string {
     .slice(0, 200);
 }
 
-/** 由日期前缀 + 标题拼文件名（不含碰撞后缀）；dir 非空则带夹前缀。 */
-export function makeDocName(date: string, title: string, dir = ""): string {
+/** 4 位随机 hex（无名稿消歧；WeebPaint v217 惯例）。 */
+export function hex4(): string {
+  const b = new Uint8Array(2);
+  (globalThis.crypto ?? { getRandomValues: (a: Uint8Array) => { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); return a; } }).getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+/** 有名保名，无名日期：标题 → `<标题>.txt`；空 → `yyyymmdd-hex4.txt`。dir 非空则带夹前缀（不含碰撞后缀）。 */
+export function makeDocName(date: string, title: string, dir = "", suffix = hex4()): string {
   const t = sanitizeTitle(title);
-  return joinDocPath(dir, t ? `${date} ${t}${DOC_EXT}` : `${date}${DOC_EXT}`);
+  return joinDocPath(dir, t ? `${t}${DOC_EXT}` : `${date}-${suffix}${DOC_EXT}`);
 }
 
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */

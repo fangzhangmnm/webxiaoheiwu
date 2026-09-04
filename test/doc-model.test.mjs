@@ -1,30 +1,31 @@
 // doc-model 纯函数契约：文件名约定（user 三轮回退终形）/ 排序 / 字数 / 编码 / 采纳验真。created 2026-09-03 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
-import { parseDocName, makeDocName, collisionCandidate, sanitizeTitle, compareDocNamesDesc, statsForText, decodeTextBytes, looksLikeTextDoc, isDocName, formatDate, splitDocPath, joinDocPath, sanitizeFolderName } from "../src/doc-model.ts";
+import { parseDocName, makeDocName, collisionCandidate, sanitizeTitle, compareDocNamesDesc, statsForText, decodeTextBytes, looksLikeTextDoc, isDocName, formatDate, splitDocPath, joinDocPath, sanitizeFolderName, hex4 } from "../src/doc-model.ts";
 
-describe("doc-model · 文件名", () => {
-  it("裸日期合法（无标题）", () => { const p = parseDocName("20260519.txt"); eq(p.date, "20260519"); eq(p.title, ""); eq(p.stem, "20260519"); });
-  it("日期 + 标题：空格后全部是标题（尾数字也是标题，不猜序号）", () => {
-    const p = parseDocName("20260517 第一章 开局 1.txt"); eq(p.date, "20260517"); eq(p.title, "第一章 开局 1");
-  });
-  it("多空格 / 不合规名：never trust —— 不抛，整个 stem 当标题", () => {
-    eq(parseDocName("20260517  双空格.txt").title, "双空格");
-    const p = parseDocName("random notes.txt"); eq(p.date, null); eq(p.title, "random notes");
+describe("doc-model · 文件名（有名保名，无名 yyyymmdd-hex4；2026-09-03 对齐 WeebPaint）", () => {
+  it("有名保名：标题就是文件名，parse 回来 title = 整个 stem（老稿的日期前缀原样保留）", () => {
+    eq(makeDocName("20260903", "第一章 开局", "", "abcd"), "第一章 开局.txt");
+    const p = parseDocName("20260517 第一章 开局 1.txt"); eq(p.title, "20260517 第一章 开局 1"); eq(p.date, "20260517"); eq(p.stem, p.title);
+    eq(parseDocName("random notes.txt").date, null); eq(parseDocName("random notes.txt").title, "random notes");
     eq(parseDocName("").title, "");
   });
-  it("makeDocName：有标题带空格，无标题裸日期；标题去路径字符", () => {
-    eq(makeDocName("20260903", "a/b:c"), "20260903 a-b-c.txt");
-    eq(makeDocName("20260903", "   "), "20260903.txt");
+  it("无名日期：空标题 → yyyymmdd-hex4；hex4 是 4 位十六进制", () => {
+    eq(makeDocName("20260903", "   ", "", "1a2b"), "20260903-1a2b.txt");
+    eq(makeDocName("20260903", "", "小说", "1a2b"), "小说/20260903-1a2b.txt");
+    assert(/^[0-9a-f]{4}$/.test(hex4()));
+    eq(parseDocName("20260903-1a2b.txt").date, "20260903");
+  });
+  it("标题去路径字符、压空白", () => {
+    eq(makeDocName("20260903", "a/b:c"), "a-b-c.txt");
     eq(sanitizeTitle("  多  空  格 \n x"), "多 空 格 x");
   });
-  it("碰撞后缀只在 n≥1 追加", () => { eq(collisionCandidate("20260903 x.txt", 0), "20260903 x.txt"); eq(collisionCandidate("20260903 x.txt", 2), "20260903 x 2.txt"); });
+  it("碰撞后缀只在 n≥1 追加", () => { eq(collisionCandidate("x.txt", 0), "x.txt"); eq(collisionCandidate("x.txt", 2), "x 2.txt"); });
   it("isDocName：任一夹下的 .txt（ADR-0006）；容器/空段/点头段不算", () => { assert(isDocName("a.txt")); assert(isDocName("sub/a.txt")); assert(!isDocName("a.TXT.zip")); assert(!isDocName("a.bin")); assert(!isDocName("/a.txt")); assert(!isDocName(".hid/a.txt")); });
-  it("多文件夹：split/join/parse 带夹；makeDocName 带 dir；sanitizeFolderName", () => {
+  it("多文件夹：split/join/parse 带夹；sanitizeFolderName", () => {
     eq(splitDocPath("小说/20260903 x.txt").dir, "小说"); eq(splitDocPath("小说/20260903 x.txt").base, "20260903 x.txt"); eq(splitDocPath("a.txt").dir, "");
     eq(joinDocPath("", "a.txt"), "a.txt"); eq(joinDocPath("f", "a.txt"), "f/a.txt");
-    const p = parseDocName("小说/20260903 第一章.txt"); eq(p.dir, "小说"); eq(p.date, "20260903"); eq(p.title, "第一章"); eq(p.stem, "20260903 第一章");
-    eq(makeDocName("20260903", "x", "小说"), "小说/20260903 x.txt"); eq(makeDocName("20260903", "", "小说"), "小说/20260903.txt");
-    eq(collisionCandidate("小说/20260903 x.txt", 1), "小说/20260903 x 1.txt");
+    const p = parseDocName("小说/第一章.txt"); eq(p.dir, "小说"); eq(p.title, "第一章");
+    eq(collisionCandidate("小说/x.txt", 1), "小说/x 1.txt");
     eq(sanitizeFolderName(" a/b:c  d "), "a-b-c d"); eq(sanitizeFolderName("..x"), "x"); eq(sanitizeFolderName("   "), "");
   });
   it("formatDate", () => { eq(formatDate(new Date(2026, 8, 3).getTime()), "20260903"); });

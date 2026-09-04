@@ -1,5 +1,5 @@
 # Filename and sort conventions
-> ⚠ 2026-09-03（edited by Claude Fable 5.1）：多文件夹落地——身份可带一层夹前缀 `夹/YYYYMMDD 标题.txt`（ADR-0006）；本文的文件名规则对 basename 仍全部有效。
+> ⚠ **SUPERSEDED 2026-09-03（edited by Claude Fable 5.1）**：user「yyyymmdd 不应该强制…按照和 weebpaint 的 name convention 来管」→ 命名改为 WeebPaint 的「有名保名，无名 `yyyymmdd-hex4`」（`src/doc-model.ts` 头注释 = 现行 SSoT）；本文的 `YYYYMMDD 标题` 结构不再解析，老稿原名保留原样显示。多文件夹见 ADR-0006。
 
 > ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：全部有效，实现 = `src/doc-model.ts`（解析/生成/排序）+ `src/docs.ts`（碰撞后缀 `createDoc`/`renameDoc`）；`.trash/` 由库管（两端聚合回收站）。
 

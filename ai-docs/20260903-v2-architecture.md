@@ -25,7 +25,7 @@
 | 稿（Work） | `store.file("[夹/]YYYYMMDD 标题.txt", {isZip:false})`，一层文件夹（adr/0006），根 = 默认夹 | 身份 = 路径/名（adr/0001）；与 v1 明文稿零迁移 |
 | 加密稿 | 同名，库透明容器；云端 at-rest `….txt.zip` | adr/0002；`crypt.ext="txt"`、peek 空（verifyPassword 靠它） |
 | 回收站 | 库 `.trash`（两端聚合）| v1 的 `.trash/*.txt` 直接可见 |
-| 跨设备偏好 | collection `synced-user-preference`：readingMode / voiceProvider（`local-sensevoice`｜`local-zh14m`；旧值 webspeech/groq/openai 落默认）；`voiceGroqKey`/`voiceOpenaiKey`/`voiceVocab` 为遗留死键（不读不删） | v1 `voice.json` 不再搬（2026-09-03） |
+| 跨设备偏好 | collection `synced-user-preference`：readingMode / imeSchema（输入方案，肌肉记忆跟人走）/ voiceProvider（`local-sensevoice`｜`local-zh14m`；旧值 webspeech/groq/openai 落默认）；`voiceGroqKey`/`voiceOpenaiKey`/`voiceVocab` 为遗留死键（不读不删） | v1 `voice.json` 不再搬（2026-09-03） |
 | 跨设备 app 态 | collection `synced-app-state`：lastActive{name,savedAt,device} / passwordVerifier（`legacyImport.*` 为死键） | lastActive 只在冷启动尊重（Separated 指针模式） |
 | RIME 用户词库 | collection `rime-user-dict` item `dump` | uat-LWW，可再生；2min 节流推、idle/unload flush |
 | per-device | device-kv：imeEnabled / voiceEnabled / voiceModelSource（模型源镜像，默认空=官方源）/ lang / last-open / readonly-names | user 拍板 IME/语音开关不跟云 |

@@ -119,7 +119,8 @@ export interface RenameResult { name: string; oldKept?: boolean; cloudDeferred?:
 /** 改标题 = 改身份（tryMove）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
 export async function renameDoc(name: string, newTitle: string): Promise<RenameResult | null> {
   const p = parseDocName(name);
-  return tryMoveWithCollision(name, makeDocName(p.date ?? formatDate(Date.now()), newTitle, p.dir));
+  if (!newTitle.trim()) return { name };   // 禁「未命名」：清空标题 = 不改名（WeebPaint 同约定）
+  return tryMoveWithCollision(name, makeDocName(formatDate(Date.now()), newTitle, p.dir));
 }
 /** 移到别的夹（身份变 = tryMove，同名撞则追加后缀）。toDir "" = 根。 */
 export async function moveDoc(name: string, toDir: string): Promise<RenameResult | null> {

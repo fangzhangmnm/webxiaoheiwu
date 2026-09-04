@@ -154,7 +154,8 @@ function deviceLabel(): string {
 const imeStatus = $("imeStatus");
 const candidateBar = $("candidateBar");
 let shiftCleanPress = false;
-const imeSchemaPref = (): ImeSchema => { const v = deviceKvGet("imeSchema"); return isImeSchema(v) ? v : DEFAULT_SCHEMA; };
+// 方案跟人走（synced prefs：肌肉记忆换设备不该变）；逃生开关跟设备走（device-kv：取决于这台机器有没有实体键盘）。user 2026-09-03 问「持久化跟谁走」→ 此定。
+const imeSchemaPref = (): ImeSchema => { const v = prefs.getItem<string>("imeSchema"); return isImeSchema(v) ? v : DEFAULT_SCHEMA; };
 const SCHEMA_NAME_KEY = { luna_pinyin: "ime.schema.luna", luna_pinyin_fluency: "ime.schema.fluency", double_pinyin_mspy: "ime.schema.mspy", double_pinyin: "ime.schema.ziranma", double_pinyin_flypy: "ime.schema.flypy", double_pinyin_abc: "ime.schema.abc", double_pinyin_pyjj: "ime.schema.pyjj", wubi86: "ime.schema.wubi" } as const;
 const schemaName = (s: ImeSchema) => t(SCHEMA_NAME_KEY[s]);
 function renderImeState(): void {
@@ -530,8 +531,12 @@ const systemImeToggle = $<HTMLInputElement>("systemImeToggle");
 function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; }
 imeSchemaSelect.addEventListener("change", () => {
   const v = imeSchemaSelect.value; if (!isImeSchema(v)) return;
-  deviceKvSet("imeSchema", v);
+  prefs.setItem("imeSchema", v);
   void ime.setSchema(v).then(() => { renderImeState(); setStatus(t("ime.schemaSwitched", { name: schemaName(v) })); });
+});
+prefs.onChange("imeSchema", () => {   // 别的设备改了方案 → 本机跟上
+  const v = imeSchemaPref();
+  if (ime.schema !== v) void ime.setSchema(v).then(() => { renderImeState(); if (drawer.currentView() === "settings") renderImeSection(); });
 });
 systemImeToggle.addEventListener("change", () => { void setImeEnabled(!systemImeToggle.checked).then(renderImeSection); });
 $("changePasswordButton").addEventListener("click", () => { void changePasswordFlow(); });
