@@ -209,15 +209,22 @@
           <p class="reading-mode-hint" data-i18n="ui.reading.hint">短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。</p>
         </section>
 
+        <section class="settings-section is-flat" id="passwordSection">
+          <h3 class="settings-section-title" data-i18n="ui.sec.password">加密密码</h3>
+          <p class="reading-mode-hint" id="passwordStatus"></p>
+          <p class="reading-mode-hint" data-i18n="ui.pw.hint">一个账号一个当前密码；每篇加密稿用它自己被封时的那把（改密码时可选择把已有稿一起换）。没有任何后门。</p>
+          <div class="voice-config-actions">
+            <button class="auth-action" id="changePasswordButton" type="button" data-i18n="ui.pw.change">更改密码…</button>
+            <button class="auth-action" id="lockNowButton" type="button" data-i18n="ui.pw.lockNow">立即锁定</button>
+            <button class="auth-action" id="resetPasswordButton" type="button" data-i18n="ui.pw.reset">忘记密码，重置…</button>
+          </div>
+        </section>
+
         <details class="settings-section" id="voiceConfigSection">
           <summary class="settings-section-title" data-i18n="ui.sec.voice">语音输入</summary>
           <div class="voice-config-form">
-            <label class="voice-config-toggle">
-              <input type="checkbox" id="voiceEnabledToggle" />
-              <span data-i18n="ui.voice.enable">启用语音输入</span>
-            </label>
-            <div class="voice-config-backend" id="voiceConfigBackend" hidden>
-              <p class="voice-config-hint" data-i18n="ui.voice.localHint">识别在本机运行，声音不出设备；加密稿也能用。按住左 Ctrl 说话，或点右下角话筒。</p>
+            <div class="voice-config-backend" id="voiceConfigBackend">
+              <p class="voice-config-hint" data-i18n="ui.voice.localHint">识别在本机运行，声音不出设备；加密稿也能用。第一次用会先下载语音包（一次，离线可用）。按住左 Ctrl 说话，或点右下角话筒。</p>
               <label class="voice-config-field">
                 <span class="voice-config-label" data-i18n="ui.voice.model">识别模型</span>
                 <select id="voiceModelSelect" class="voice-config-select">
@@ -247,8 +254,6 @@
         <section class="settings-section is-flat">
           <h3 class="settings-section-title" data-i18n="ui.sec.maintenance">维护</h3>
           <div class="settings-row">
-            <button class="auth-action" id="changePasswordButton" type="button" data-i18n="ui.pw.change">更改加密密码…</button>
-            <button class="auth-action" id="resetPasswordButton" type="button" data-i18n="ui.pw.reset">忘记密码，重置…</button>
             <button class="auth-action" id="forceUpdateButton" type="button" data-i18n="ui.forceUpdate">强制更新（清缓存重启）</button>
             <button class="auth-action danger" id="factoryResetButton" type="button" data-i18n="ui.factoryReset">还原出厂设置（清本机全部数据）…</button>
             <button class="auth-action" id="diagButton" type="button" data-i18n="ui.diag">诊断日志</button>
@@ -291,6 +296,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-e0a5d982c261.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-09d186852dc9.mjs"></script>
   </body>
 </html>

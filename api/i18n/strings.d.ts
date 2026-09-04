@@ -140,13 +140,9 @@ export declare const S: {
         readonly zh: "语音输入";
         readonly en: "Voice input";
     };
-    readonly "ui.voice.enable": {
-        readonly zh: "启用语音输入";
-        readonly en: "Enable voice input";
-    };
     readonly "ui.voice.localHint": {
-        readonly zh: "识别在本机运行，声音不出设备；加密稿也能用。按住左 Ctrl 说话，或点右下角话筒。";
-        readonly en: "Recognition runs on this device; audio never leaves it, so it works on encrypted drafts too. Hold Left Ctrl to talk, or tap the mic.";
+        readonly zh: "识别在本机运行，声音不出设备；加密稿也能用。第一次用会先下载语音包（一次，离线可用）。按住左 Ctrl 说话，或点右下角话筒。";
+        readonly en: "Recognition runs on this device; audio never leaves it, so it works on encrypted drafts too. The first use downloads a voice pack once (works offline after). Hold Left Ctrl to talk, or tap the mic.";
     };
     readonly "ui.voice.model": {
         readonly zh: "识别模型";
@@ -644,9 +640,33 @@ export declare const S: {
         readonly zh: "换密码失败：{e}";
         readonly en: "Re-key failed: {e}";
     };
+    readonly "ui.sec.password": {
+        readonly zh: "加密密码";
+        readonly en: "Encryption password";
+    };
+    readonly "ui.pw.hint": {
+        readonly zh: "一个账号一个当前密码；每篇加密稿用它自己被封时的那把（改密码时可选择把已有稿一起换）。没有任何后门。";
+        readonly en: "One current password per account; each encrypted draft keeps the password it was sealed with (you can migrate them when changing). There is no backdoor.";
+    };
     readonly "ui.pw.change": {
-        readonly zh: "更改加密密码…";
-        readonly en: "Change encryption password…";
+        readonly zh: "更改密码…";
+        readonly en: "Change password…";
+    };
+    readonly "ui.pw.lockNow": {
+        readonly zh: "立即锁定";
+        readonly en: "Lock now";
+    };
+    readonly "pw.status.none": {
+        readonly zh: "还没设置密码——新建加密稿或点锁图标时设置";
+        readonly en: "No password yet — set it when you create an encrypted draft or tap the lock";
+    };
+    readonly "pw.status.unlocked": {
+        readonly zh: "已设置 · 当前已解锁（本机内存里，关页即忘）";
+        readonly en: "Set · currently unlocked (in memory only, forgotten when the page closes)";
+    };
+    readonly "pw.status.locked": {
+        readonly zh: "已设置 · 当前已锁定";
+        readonly en: "Set · currently locked";
     };
     readonly "ui.pw.reset": {
         readonly zh: "忘记密码，重置…";
@@ -797,8 +817,24 @@ export declare const S: {
         readonly en: "Loading model…";
     };
     readonly "voice.pack.missing": {
-        readonly zh: "语音包未下载（设置 → 语音输入）";
-        readonly en: "Voice pack not downloaded (Settings → Voice input)";
+        readonly zh: "语音包未下载（点右下角话筒下载）";
+        readonly en: "Voice pack not downloaded (tap the mic to download)";
+    };
+    readonly "voice.pack.missingHint": {
+        readonly zh: "语音输入要先下载语音包——点右下角话筒";
+        readonly en: "Voice input needs the voice pack first — tap the mic";
+    };
+    readonly "voice.pack.offerTitle": {
+        readonly zh: "下载语音识别模型？";
+        readonly en: "Download the speech model?";
+    };
+    readonly "voice.pack.offerMsg": {
+        readonly zh: "{name}，约 {mb} MB，一次下载、离线可用。识别全在本机跑，声音不出设备。";
+        readonly en: "{name}, about {mb} MB, downloaded once and works offline. Recognition runs entirely on this device; audio never leaves it.";
+    };
+    readonly "voice.pack.readyHint": {
+        readonly zh: "语音包已就绪——按住左 Ctrl 或点话筒说话";
+        readonly en: "Voice pack ready — hold Left Ctrl or tap the mic to talk";
     };
     readonly "voice.pack.none": {
         readonly zh: "未下载（约 {mb} MB，一次下载，离线可用）";

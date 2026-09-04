@@ -231,8 +231,9 @@ async function pullUserDict(): Promise<void> {
 rimeDict.onChange("dump", () => { void pullUserDict(); });
 
 // ── 语音（全本机：硬规则 #8 声音不出设备；Web Speech / Groq / OpenAI 2026-09-03 sunset）──
+//   默认开、无开关（user 2026-09-03「无须 consent 默认开」）：consent = 下载语音包那一下点击（体积明摆着）。没包：话筒常驻，点了给下载 sheet；
+//   按 Ctrl 只在状态栏提一句、绝不碰 getUserMedia（Ctrl+S 永远安静）。有包：第一次真用才弹麦克风权限。
 const micButton = $<HTMLButtonElement>("micButton");
-let voiceEnabled = deviceKvGet("voiceEnabled") === "1";
 const voiceModel = (): ModelKey => modelKeyFrom(prefs.getItem<string>("voiceProvider"));   // 旧值 webspeech/groq/openai → 默认 SenseVoice
 const voiceSource = (): string => (deviceKvGet("voiceModelSource") || MODEL_SOURCE_DEFAULT).replace(/\/+$/, "");
 const onVoiceInsert = () => { editor.noteExternalEdit(); idle.poke(); };
@@ -251,9 +252,15 @@ const onVoiceState = (next: VoiceState, error?: unknown) => {
   else if (next === "idle") { const txt = saveStatusEl.textContent; if (txt === t("voice.recording") || txt === t("voice.transcribing") || txt === t("voice.loadingModel")) setStatus(editor.statusForDoc()); }
 };
 const localSession: VoiceSession | null = isLocalVoiceSupported()
-  ? new LocalSession({ target: editorEl, onChange: onVoiceInsert, onState: onVoiceState, getModel: () => MODELS[voiceModel()], onLoading: (on) => { if (on) setStatus(t("voice.loadingModel")); } })
+  ? new LocalSession({ target: editorEl, onChange: onVoiceInsert, onState: onVoiceState, getModel: () => MODELS[voiceModel()], onLoading: (on) => { if (on) setStatus(t("voice.loadingModel")); }, onPackMissing: () => setStatus(t("voice.pack.missingHint")) })
   : null;
-function activeVoiceBackend(): VoiceSession | null { return voiceEnabled ? localSession : null; }
+function activeVoiceBackend(): VoiceSession | null { return localSession; }
+/** 点话筒但没包：下载即同意——一个带体积的 sheet，点「下载」就地跑进度（状态栏），不进设置页。 */
+async function offerVoicePack(): Promise<void> {
+  const m = MODELS[voiceModel()];
+  if (!(await openConfirmSheet(t("voice.pack.offerTitle"), t("voice.pack.offerMsg", { name: t(m.nameKey), mb: mbOf(m.bytes) }), { okLabel: t("ui.voice.download") }))) return;
+  await runPackJob((p) => asr.download(m.slug, voiceSource(), p), t("voice.pack.readyHint"));
+}
 voiceAbortHook = () => { if (localSession && (localSession.state === "recording" || localSession.state === "transcribing")) localSession.abort(); };
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
@@ -262,11 +269,17 @@ function renderMicVisibility(): void {
   micButton.title = t("voice.mic");
 }
 micButton.addEventListener("click", () => {
-  if (!editor.canEdit()) return;
-  const backend = activeVoiceBackend(); if (!backend) return;
-  if (ime.isComposing()) { ime.resetComposition(); renderImeState(); }
-  editorEl.focus();
-  backend.toggle(pickSpeechLang());
+  void (async () => {
+    if (!editor.canEdit()) return;
+    const backend = activeVoiceBackend(); if (!backend) return;
+    const m = MODELS[voiceModel()];
+    let ready = asr.isKnownReady(m.slug);
+    if (ready === undefined) { try { ready = (await asr.status(m.slug)).ready; } catch { ready = false; } }
+    if (!ready) { await offerVoicePack(); return; }
+    if (ime.isComposing()) { ime.resetComposition(); renderImeState(); }
+    editorEl.focus();
+    backend.toggle(pickSpeechLang());
+  })();
 });
 editorEl.addEventListener("input", () => { localSession?.notifyExternalInput(); });
 editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "recording") localSession.abort(); });
@@ -347,7 +360,6 @@ async function lockCryptoNow(): Promise<void> {
   setStatus(t("enc.lockedNow"));
 }
 
-const voiceEnabledToggle = $<HTMLInputElement>("voiceEnabledToggle");
 const voiceModelSelect = $<HTMLSelectElement>("voiceModelSelect");
 const voicePackStatus = $("voicePackStatus");
 const voicePackProgress = $<HTMLProgressElement>("voicePackProgress");
@@ -359,8 +371,6 @@ const voiceSourceInput = $<HTMLInputElement>("voiceSourceInput");
 const mbOf = (n: number) => String(Math.round(n / 1048576));
 let packBusy = false;
 function renderVoiceConfig(): void {
-  voiceEnabledToggle.checked = voiceEnabled;
-  $("voiceConfigBackend").hidden = !voiceEnabled;
   voiceModelSelect.value = voiceModel();
   voiceSourceInput.value = voiceSource();
   $("voiceAttribution").textContent = t(MODELS[voiceModel()].attrKey);
@@ -381,12 +391,11 @@ async function runPackJob(job: (onProgress: (p: { done: number; total: number })
   if (packBusy) return;
   packBusy = true; voicePackProgress.value = 0; void renderPackStatus();
   try {
-    await job((p) => { voicePackProgress.value = p.total ? p.done / p.total : 0; voicePackStatus.textContent = t("voice.pack.downloading", { done: mbOf(p.done), total: mbOf(p.total) }); });
+    await job((p) => { voicePackProgress.value = p.total ? p.done / p.total : 0; const txt = t("voice.pack.downloading", { done: mbOf(p.done), total: mbOf(p.total) }); voicePackStatus.textContent = txt; if (drawer.currentView() === "closed") setStatus(txt); });
     setStatus(doneText);
   } catch (e) { reportError(e, "warning"); voicePackStatus.textContent = t("voice.pack.failed", { e: e instanceof Error ? e.message : String(e) }); }
   finally { packBusy = false; void renderPackStatus(); }
 }
-voiceEnabledToggle.addEventListener("change", () => { voiceEnabled = voiceEnabledToggle.checked; deviceKvSet("voiceEnabled", voiceEnabled ? "1" : "0"); renderVoiceConfig(); renderMicVisibility(); });
 prefs.onChange("voiceProvider", () => { if (drawer.currentView() === "settings") renderVoiceConfig(); });
 voiceModelSelect.addEventListener("change", () => { prefs.setItem("voiceProvider", modelKeyFrom(voiceModelSelect.value)); void asr.unload().catch(() => {}); renderVoiceConfig(); });
 voiceSourceInput.addEventListener("change", () => { const v = voiceSourceInput.value.trim(); deviceKvSet("voiceModelSource", v && v !== MODEL_SOURCE_DEFAULT ? v : null); voiceSourceInput.value = voiceSource(); });
@@ -449,6 +458,13 @@ async function resetPasswordFlow(): Promise<void> {
 }
 $("changePasswordButton").addEventListener("click", () => { void changePasswordFlow(); });
 $("resetPasswordButton").addEventListener("click", () => { void resetPasswordFlow(); });
+$("lockNowButton").addEventListener("click", () => { void lockCryptoNow(); });
+function renderPasswordSection(): void {
+  $("passwordStatus").textContent = !hasVerifier() ? t("pw.status.none") : isUnlocked() ? t("pw.status.unlocked") : t("pw.status.locked");
+  $<HTMLButtonElement>("lockNowButton").hidden = !isUnlocked();
+  $<HTMLButtonElement>("changePasswordButton").hidden = !hasVerifier();
+  $<HTMLButtonElement>("resetPasswordButton").hidden = !hasVerifier();
+}
 
 const factoryReset = () => runFactoryReset({
   setStatus,
@@ -459,7 +475,7 @@ $("factoryResetButton").addEventListener("click", () => { void factoryReset(); }
 $("diagButton").addEventListener("click", () => {
   const pre = $("diagLog"); pre.hidden = !pre.hidden; pre.textContent = errorLog().join("\n") || t("settings.diagEmpty");
 });
-function renderSettings(): void { renderAuthRow(); renderVoiceConfig(); }
+function renderSettings(): void { renderAuthRow(); renderPasswordSection(); renderVoiceConfig(); }
 
 // ── 抽屉按钮 ──
 $("menuButton").addEventListener("click", () => { if (drawer.currentView() === "closed") drawer.open("active"); else drawer.close(); });

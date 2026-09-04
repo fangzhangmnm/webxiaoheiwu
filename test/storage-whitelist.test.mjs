@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, it, assert } from "./runner.mjs";
 
 const ALLOW = {
-  "src/device-kv.ts": "localStorage：device 层标量唯一器官（imeEnabled / voiceEnabled / voiceModelSource / lang / lastOpen）",
+  "src/device-kv.ts": "localStorage：device 层标量唯一器官（imeEnabled / voiceModelSource / lang / lastOpen；voiceEnabled 为死键）",
   "src/pwa-shell.ts": "Cache Storage：forceReset 清壳缓存（跳过 pwa-models）",
   "src/asr/worker.ts": "Cache Storage `pwa-models`：语音模型包（可再生派生缓存，user 2026-09-03 批）",
   "src/factory-reset.ts": "还原出厂设置：indexedDB.deleteDatabase（RIME 的 ime / /rime）+ 清全部 Cache（store 命名空间走库 maintenance 口子）",

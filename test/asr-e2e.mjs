@@ -36,7 +36,6 @@ for (const key of KEYS) {
   await page.evaluate(() => { window.__xhw.drawer.open("settings"); document.getElementById("voiceConfigSection").open = true; });
   await page.waitForTimeout(400);   // 抽屉动画
   await page.evaluate((key) => {
-    const cb = document.getElementById("voiceEnabledToggle"); if (!cb.checked) { cb.checked = true; cb.dispatchEvent(new Event("change")); }
     const sel = document.getElementById("voiceModelSelect"); sel.value = key; sel.dispatchEvent(new Event("change"));
     const src = document.getElementById("voiceSourceInput"); src.value = "/models"; src.dispatchEvent(new Event("change"));
   }, key);

@@ -2,7 +2,7 @@
 // created 2026-09-03 by Claude Fable 5.1
 //
 // 纪律：**全 app 禁裸 localStorage**（红线守卫测试 test/redline-guard.test.mjs 守着）——device 层标量一律经本器官。
-//   住这里的：imeEnabled / voiceEnabled（per-device 开关，user 拍板不跟云）、lang、lastOpenName（本机续写指针）。
+//   住这里的：imeEnabled（per-device 开关，user 拍板不跟云）、voiceModelSource、lang、lastOpenName（本机续写指针）。voiceEnabled 已退役（语音默认开，2026-09-03）。
 // localStorage 不可用（隐私模式/配额）→ try/catch 降级纯内存（本 session 内一致，不跨刷新）。
 // key 前缀带 GUID 命名空间（同 origin 兄弟 PWA 共桶防撞；永不碰非自己前缀的键）。
 

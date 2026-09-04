@@ -26,9 +26,9 @@ mic 钮 / Left Ctrl PTT ──▶ src/voice/local.ts ──Float32 16k──▶ 
 - **挂载**：按文件预分配 buffer → 分片拷入 → `FS.createDataFile(canOwn=true)` 零拷贝 → 建识别器（SenseVoice=`OfflineRecognizer`；zh-14M=`createOnlineRecognizer`，喂完整段 + 0.5s 尾静音）→ unlink。语言（zh/en 按 IME 状态）SenseVoice 经 `setConfig` 热切。
 - **会话** `LocalSession`：start 立刻 getUserMedia（PTT 前 250ms 也要）并**并行**让 worker load（首次 1–10 s）；采集 = AudioContext(16k) + ScriptProcessor；RMS VAD 有声后 1 s 静音自停，上限 60 s；stop → 重采样 16k → decode → 全角标点 → 锚点插入；cancelled 旗处理 PTT 短按竞态。状态行：录音中 / 加载识别模型… / 识别中 / 语音包未下载（设置 → 语音输入）。
 
-## 2. 设置页（语音输入）
+## 2. 设置页（语音输入）+ 默认开
 
-启用开关（per-device）→ 识别模型下拉（synced `voiceProvider`：`local-sensevoice`｜`local-zh14m`；旧值落默认）→ 语音包状态行（未下载/部分/已就绪）+ 进度条 + 下载 / 从文件导入（整个 `.bin` 或全部 `chunk-NNN`）/ 删除（in-app 确认 sheet）→ 模型源 URL（per-device）→ 署名行（`voice.attr.*`：SenseVoiceSmall 阿里巴巴通义实验室 FunASR 模型协议 v1.1 / zh-14M k2-fsa Apache-2.0；运行时 sherpa-onnx Apache-2.0）。
+**默认开、无开关**（user 2026-09-03「无须 consent 默认开」；v0.1.8）：consent = 下载语音包那一下点击。话筒常驻（稿可编辑即显示）；没包点话筒 → sheet「下载语音识别模型？（名字 · 体积）」→ 就地下载、进度走状态栏；没包按 Ctrl → 状态栏一句提示，**绝不碰 getUserMedia**（`LocalSession.start` 先查 `asr.isKnownReady`，首次一次缓存查询）。有包第一次真用才弹麦克风权限。设置页：识别模型下拉（synced `voiceProvider`：`local-sensevoice`｜`local-zh14m`；旧值落默认）→ 语音包状态行（未下载/部分/已就绪）+ 进度条 + 下载 / 从文件导入（整个 `.bin` 或全部 `chunk-NNN`）/ 删除（in-app 确认 sheet）→ 模型源 URL（per-device）→ 署名行（`voice.attr.*`：SenseVoiceSmall 阿里巴巴通义实验室 FunASR 模型协议 v1.1 / zh-14M k2-fsa Apache-2.0；运行时 sherpa-onnx Apache-2.0）。
 
 ## 3. 构建 / 验证
 

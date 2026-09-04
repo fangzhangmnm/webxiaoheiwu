@@ -8,6 +8,7 @@ type Req = DistributiveOmit<AsrRequest, "id">;
 
 class AsrEngine {
   private worker: Worker | null = null;
+  private knownReady = new Map<string, boolean>();   // 最近一次 status/download/delete 的结论：让 PTT 起录前能**同步**判「有没有包」（没包不碰 getUserMedia）
   private seq = 0;
   private pending = new Map<number, Pending>();
 
@@ -35,10 +36,12 @@ class AsrEngine {
     });
   }
 
-  status(slug: string): Promise<PackStatus> { return this.call({ op: "status", slug }); }
-  download(slug: string, base: string, onProgress?: (p: PackProgress) => void): Promise<PackStatus> { return this.call({ op: "download", slug, base }, onProgress); }
-  importFiles(slug: string, files: File[], onProgress?: (p: PackProgress) => void): Promise<PackStatus> { return this.call({ op: "import", slug, files }, onProgress); }
-  delete(slug: string): Promise<void> { return this.call({ op: "delete", slug }); }
+  isKnownReady(slug: string): boolean | undefined { return this.knownReady.get(slug); }
+  private note(st: PackStatus): PackStatus { this.knownReady.set(st.slug, st.ready); return st; }
+  status(slug: string): Promise<PackStatus> { return this.call<PackStatus>({ op: "status", slug }).then((st) => this.note(st)); }
+  download(slug: string, base: string, onProgress?: (p: PackProgress) => void): Promise<PackStatus> { return this.call<PackStatus>({ op: "download", slug, base }, onProgress).then((st) => this.note(st)); }
+  importFiles(slug: string, files: File[], onProgress?: (p: PackProgress) => void): Promise<PackStatus> { return this.call<PackStatus>({ op: "import", slug, files }, onProgress).then((st) => this.note(st)); }
+  delete(slug: string): Promise<void> { return this.call<void>({ op: "delete", slug }).then(() => { this.knownReady.set(slug, false); }); }
   load(slug: string, lang: AsrLang): Promise<LoadResult> { return this.call({ op: "load", slug, lang }); }
   decode(samples: Float32Array, lang: AsrLang): Promise<DecodeResult> { return this.call({ op: "decode", samples, lang }, undefined, [samples.buffer]); }
   unload(): Promise<void> { return this.call({ op: "unload" }); }

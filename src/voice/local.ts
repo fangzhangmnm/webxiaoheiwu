@@ -44,7 +44,7 @@ export class LocalSession implements VoiceSession {
   private gen = 0;              // 会话代：旧会话的回调（getUserMedia / decode）按代丢弃（审计 M12）
   private stopRequested = false; // stop() 早于录音真正开始（getUserMedia 未回）→ 起录后立刻停
 
-  constructor(private d: VoiceSessionDeps & { getModel: () => ModelInfo; onLoading?: (loading: boolean) => void }) {}
+  constructor(private d: VoiceSessionDeps & { getModel: () => ModelInfo; onLoading?: (loading: boolean) => void; onPackMissing?: () => void }) {}
 
   toggle(lang: string): void {
     if (this.state === "recording") this.stop();
@@ -60,7 +60,11 @@ export class LocalSession implements VoiceSession {
     const caret = this.d.target.selectionStart ?? this.d.target.value.length;
     this.anchorStart = caret; this.anchorEnd = caret;
     const model = this.d.getModel();
-    // 模型加载与录音并行；失败留到 stop 时报（缺包 = "pack-missing"）
+    // 没包就不碰麦克风（默认开 = 下载即同意：没下过包的设备按 Ctrl 绝不能弹权限框）。首次要一次 ~ms 级缓存查询，之后同步判。
+    let ready = asr.isKnownReady(model.slug);
+    if (ready === undefined) { try { ready = (await asr.status(model.slug)).ready; } catch { ready = false; } if (gen !== this.gen || this.cancelled) return; }
+    if (!ready) { this.d.onPackMissing?.(); return; }
+    // 模型加载与录音并行；失败留到 stop 时报
     this.loadPromise = asr.load(model.slug, this.lang);
     this.loadPromise.catch(() => {});
     let stream: MediaStream;

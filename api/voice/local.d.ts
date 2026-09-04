@@ -23,6 +23,7 @@ export declare class LocalSession implements VoiceSession {
     constructor(d: VoiceSessionDeps & {
         getModel: () => ModelInfo;
         onLoading?: (loading: boolean) => void;
+        onPackMissing?: () => void;
     });
     toggle(lang: string): void;
     start(langHint: string): Promise<void>;
