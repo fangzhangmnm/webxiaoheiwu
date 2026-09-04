@@ -119,6 +119,9 @@
         <button class="menu-button" id="menuButton" type="button" aria-label="文件菜单" data-i18n-aria="ui.menu" data-i18n-title="ui.menu">
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
+        <button class="menu-button" id="settingsTopButton" type="button" aria-label="设置" data-i18n-aria="ui.settings" data-i18n-title="ui.settings">
+          <svg class="ico" aria-hidden="true"><use href="#wrench"/></svg>
+        </button>
         <input id="titleInput" type="text" class="title" placeholder="无标题" data-i18n-ph="ui.titlePlaceholder" data-i18n-aria="ui.titleAria"
                autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="文档标题" data-i18n-aria="ui.titleAria" />
         <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
@@ -256,6 +259,13 @@
               <option value="wubi86" data-i18n="ime.schema.wubi">五笔 86</option>
             </select>
           </label>
+          <label class="voice-config-field">
+            <span class="voice-config-label" data-i18n="ui.ime.softKeyboard">触屏键盘（无实体键盘时）</span>
+            <select id="softKeyboardSelect" class="voice-config-select">
+              <option value="none" data-i18n="ui.ime.softKeyboard.none">不弹（默认；Quest / 桌面）</option>
+              <option value="ascii" data-i18n="ui.ime.softKeyboard.ascii">弹 ASCII 键盘（字母进内置输入法，不走系统输入法）</option>
+            </select>
+          </label>
           <label class="voice-config-toggle">
             <input type="checkbox" id="systemImeToggle" />
             <span data-i18n="ui.ime.useSystem">改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）</span>
@@ -339,10 +349,6 @@
       <p id="docListEmpty" class="doc-list-empty hidden"></p>
 
       <footer class="drawer-foot">
-        <button class="drawer-foot-button" id="openSettingsButton" type="button">
-          <svg class="ico" aria-hidden="true"><use href="#wrench"/></svg>
-          <span data-i18n="ui.settings">设置</span>
-        </button>
         <button class="drawer-foot-button" id="openTrashButton" type="button">
           <svg class="ico" aria-hidden="true"><use href="#trash-can"/></svg>
           <span data-i18n="ui.trash">回收站</span>
@@ -350,6 +356,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-b07931503c7a.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-222b4aa026d7.mjs"></script>
   </body>
 </html>

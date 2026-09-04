@@ -44,8 +44,12 @@ $("settingsBuild").textContent = APP_VERSION;
 const editorEl = $<HTMLTextAreaElement>("editor");
 const titleInput = $<HTMLInputElement>("titleInput");
 // 内置 IME 开着时全平台 inputmode=none：不弹系统软键盘、系统输入法不碰字节（2026-09-03 user「直接不用系统输入法」；Quest 一直如此，见 20260524-quest-ime.md）。
+// 触屏键盘（per-device）：none = 不弹（Quest/桌面实体键盘）；ascii = inputmode="email" → iOS 出纯 ASCII 键盘、Android 不组字——字母仍进内置 IME
+//   （user 2026-09-03「不改用系统输入法只是出软键盘行吗」）。软键盘不一定发 keydown（Android 发 229/Unidentified）→ beforeinput 路由见 setupImeOn。
+const softKeyboardPref = (): "none" | "ascii" => (deviceKvGet("softKeyboard") === "ascii" ? "ascii" : "none");
 function applyInputMode(builtinIme: boolean): void {
-  for (const el of [editorEl, titleInput]) { if (builtinIme) el.setAttribute("inputmode", "none"); else el.removeAttribute("inputmode"); }
+  const mode = builtinIme ? (softKeyboardPref() === "ascii" ? "email" : "none") : null;
+  for (const el of [editorEl, titleInput]) { if (mode) el.setAttribute("inputmode", mode); else el.removeAttribute("inputmode"); }
 }
 if (window.visualViewport) {   // iOS 软键盘：把键盘高度暴露成 CSS 变量，麦克风钮往上挪
   const vv = window.visualViewport;
@@ -192,9 +196,11 @@ function stripGhostBuffer(target: HTMLTextAreaElement | HTMLInputElement, consum
   target.value = before.slice(0, -consumed.length) + target.value.slice(end);
   try { target.selectionStart = target.selectionEnd = start - consumed.length; } catch { /* ignore */ }
 }
+let lastRealKeydownAt = 0;   // 软键盘路由判据：80ms 内见过真 keydown（key 可辨）= 实体键盘路径已处理，beforeinput 不再重复路由
 function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
   const node: HTMLElement = el;   // 联合类型上 addEventListener 的重载退化成 Event；收窄到 HTMLElement 拿回 KeyboardEvent
   node.addEventListener("keydown", async (event: KeyboardEvent) => {
+    if (event.key !== "Unidentified" && event.key !== "Process") lastRealKeydownAt = Date.now();
     if (event.key === "Shift") {
       if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && ime.enabled) shiftCleanPress = true;
       return;
@@ -236,10 +242,33 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     setStatus(t("ime.systemIntrusion"), { error: true });
   });
   node.addEventListener("beforeinput", (event: Event) => {
-    if (!ime.isComposing()) return;
     const ie = event as InputEvent;
-    if (ie.inputType !== "insertText" || !ie.data) return;
-    if (/^[a-z0-9 ]$/i.test(ie.data)) event.preventDefault();
+    if (!ime.enabled) return;
+    if (Date.now() - lastRealKeydownAt < 80) {   // 实体键盘：keydown 已路由；这里只挡组合中的裸字符
+      if (!ime.isComposing()) return;
+      if (ie.inputType !== "insertText" || !ie.data) return;
+      if (/^[a-z0-9 ]$/i.test(ie.data)) event.preventDefault();
+      return;
+    }
+    // 软键盘（无可辨 keydown）：把 insertText / 删除 / 换行翻成合成按键喂 IME；IME 决定拦不拦（preventDefault 在其第一个 await 前，同步生效）
+    let key: string | null = null;
+    if (ie.inputType === "insertText" && ie.data && ie.data.length === 1) key = ie.data;
+    else if (ie.inputType === "deleteContentBackward") key = "Backspace";
+    else if (ie.inputType === "insertLineBreak" || ie.inputType === "insertParagraph") key = "Enter";
+    if (!key) return;
+    const fake = new KeyboardEvent("keydown", { key, cancelable: true });
+    const pending = ime.onKeydown(fake);
+    if (!fake.defaultPrevented) return;   // IME 放行 → 让浏览器正常插入
+    event.preventDefault();
+    void pending.then((r) => {
+      if (r.type === "commit") {
+        stripGhostBuffer(el, r.consumedBuffer);
+        insertAtCursor(el, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
+        if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
+        void maybePushUserDict();
+      }
+      renderImeState();
+    });
   });
 }
 setupImeOn(editorEl); setupImeOn(titleInput);
@@ -528,7 +557,9 @@ async function resetPasswordFlow(): Promise<void> {
 // ── 设置页：输入法（方案 per-device + 「用系统输入法」逃生开关）──
 const imeSchemaSelect = $<HTMLSelectElement>("imeSchemaSelect");
 const systemImeToggle = $<HTMLInputElement>("systemImeToggle");
-function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; }
+const softKeyboardSelect = $<HTMLSelectElement>("softKeyboardSelect");
+function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; softKeyboardSelect.value = softKeyboardPref(); }
+softKeyboardSelect.addEventListener("change", () => { deviceKvSet("softKeyboard", softKeyboardSelect.value === "ascii" ? "ascii" : null); applyInputMode(ime.enabled); });
 imeSchemaSelect.addEventListener("change", () => {
   const v = imeSchemaSelect.value; if (!isImeSchema(v)) return;
   prefs.setItem("imeSchema", v);
@@ -568,7 +599,7 @@ $("drawerBackdrop").addEventListener("click", () => drawer.close());
 $("newDocButton").addEventListener("click", () => { void editor.newDoc({ dir: drawer.currentFolder() }).then(() => drawer.close()); });
 $("newFolderButton").addEventListener("click", () => { void drawer.newFolder(); });
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
-$("openSettingsButton").addEventListener("click", () => drawer.open("settings"));
+$("settingsTopButton").addEventListener("click", () => { if (drawer.currentView() === "settings") drawer.close(); else drawer.open("settings"); });   // 设置入口在顶栏三条杠旁（user 2026-09-03「不要藏 gallery 里面」）
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
 $("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {

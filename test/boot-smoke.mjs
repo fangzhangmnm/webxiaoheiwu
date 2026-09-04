@@ -53,9 +53,10 @@ try {
   check("抽屉打开", await page.evaluate(() => !document.getElementById("drawer").classList.contains("hidden")));
   const emptyText = await page.textContent("#docListEmpty");
   check("列表空态文案", !!emptyText, emptyText);
-  await page.click("#openSettingsButton");
-  await page.waitForTimeout(200);
-  check("设置视图显示 + 登录钮", await page.evaluate(() => !document.getElementById("settingsView").hidden && !!document.querySelector("#authRow button")));
+  await page.click("#drawerCloseButton"); await page.waitForTimeout(300);
+  await page.click("#settingsTopButton");   // 设置入口在顶栏三条杠旁（不在抽屉里）
+  await page.waitForTimeout(300);
+  check("顶栏设置钮 → 设置视图显示 + 登录钮", await page.evaluate(() => !document.getElementById("settingsView").hidden && !!document.querySelector("#authRow button")));
   check("版本显示在设置页", (await page.textContent("#settingsBuild")).includes(version));
   await page.click("#drawerCloseButton");
   await page.waitForTimeout(200);

@@ -956,6 +956,18 @@ export declare const S: {
         readonly zh: "输入方案";
         readonly en: "Scheme";
     };
+    readonly "ui.ime.softKeyboard": {
+        readonly zh: "触屏键盘（无实体键盘时）";
+        readonly en: "Touch keyboard (when there is no physical keyboard)";
+    };
+    readonly "ui.ime.softKeyboard.none": {
+        readonly zh: "不弹（默认；Quest / 桌面）";
+        readonly en: "None (default; Quest / desktop)";
+    };
+    readonly "ui.ime.softKeyboard.ascii": {
+        readonly zh: "弹 ASCII 键盘（字母进内置输入法，不走系统输入法）";
+        readonly en: "ASCII keyboard (letters go to the built-in IME, never the system IME)";
+    };
     readonly "ui.ime.useSystem": {
         readonly zh: "改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）";
         readonly en: "Use the system IME instead (disables the built-in one; system/cloud IMEs may upload keystrokes)";
