@@ -22,7 +22,7 @@
 
 | 数据类 | 归宿 | 备注 |
 |---|---|---|
-| 稿（Work） | `store.file("YYYYMMDD 标题.txt", {isZip:false})`，appfolder 根平铺 | 身份 = 路径/名（adr/0001）；与 v1 明文稿零迁移 |
+| 稿（Work） | `store.file("[夹/]YYYYMMDD 标题.txt", {isZip:false})`，一层文件夹（adr/0006），根 = 默认夹 | 身份 = 路径/名（adr/0001）；与 v1 明文稿零迁移 |
 | 加密稿 | 同名，库透明容器；云端 at-rest `….txt.zip` | adr/0002；`crypt.ext="txt"`、peek 空（verifyPassword 靠它） |
 | 回收站 | 库 `.trash`（两端聚合）| v1 的 `.trash/*.txt` 直接可见 |
 | 跨设备偏好 | collection `synced-user-preference`：readingMode / voiceProvider（`local-sensevoice`｜`local-zh14m`；旧值 webspeech/groq/openai 落默认）；`voiceGroqKey`/`voiceOpenaiKey`/`voiceVocab` 为遗留死键（不读不删） | v1 `voice.json` 不再搬（2026-09-03） |

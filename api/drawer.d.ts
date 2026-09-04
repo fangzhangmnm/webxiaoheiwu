@@ -10,7 +10,13 @@ export interface DrawerDeps {
     docActions: HTMLElement;
     trashActions: HTMLElement;
     settingsView: HTMLElement;
+    breadcrumb: HTMLElement;
+    newFolderButton: HTMLButtonElement;
     activeName: () => string | null;
+    /** 当前稿所在夹（打开抽屉时列表跳到这里）。 */
+    currentDir: () => string;
+    /** 把一篇移到别的夹（当前稿由编辑器走 moveTo；其它稿 app 直接调 docs.moveDoc）。 */
+    onMoveDoc: (name: string, toDir: string) => Promise<void>;
     onOpenDoc: (name: string) => Promise<void>;
     /** 当前稿被移入回收站/改名后：编辑器清空或切稿。 */
     onActiveTrashed: () => Promise<void>;
@@ -29,6 +35,9 @@ export declare function createDrawer(d: DrawerDeps): {
     currentView: () => DrawerView;
     items: () => DocListItem[];
     firstFrame: () => Promise<void>;
+    currentFolder: () => string;
+    setFolder: (f: string) => void;
+    newFolder: () => Promise<void>;
     findByName: (name: string) => DocListItem | null;
 };
 export type Drawer = ReturnType<typeof createDrawer>;

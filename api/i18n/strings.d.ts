@@ -100,6 +100,94 @@ export declare const S: {
         readonly zh: "新建加密稿";
         readonly en: "New encrypted draft";
     };
+    readonly "ui.newFolder": {
+        readonly zh: "新建文件夹";
+        readonly en: "New folder";
+    };
+    readonly "ui.breadcrumbAria": {
+        readonly zh: "文件夹";
+        readonly en: "Folder";
+    };
+    readonly "list.root": {
+        readonly zh: "全部稿件";
+        readonly en: "All drafts";
+    };
+    readonly "list.emptyFolderDocs": {
+        readonly zh: "这个夹里还没有稿。";
+        readonly en: "No drafts in this folder yet.";
+    };
+    readonly "list.moveTo": {
+        readonly zh: "移到…";
+        readonly en: "Move to…";
+    };
+    readonly "folder.newTitle": {
+        readonly zh: "新建文件夹";
+        readonly en: "New folder";
+    };
+    readonly "folder.newHint": {
+        readonly zh: "文件夹只有一层，用来分小说 / 系列。稿仍按日期命名。";
+        readonly en: "Folders are one level deep — one per novel or series. Drafts keep their date names.";
+    };
+    readonly "folder.namePh": {
+        readonly zh: "文件夹名";
+        readonly en: "Folder name";
+    };
+    readonly "folder.badName": {
+        readonly zh: "文件夹名不能为空";
+        readonly en: "Folder name cannot be empty";
+    };
+    readonly "folder.created": {
+        readonly zh: "已建文件夹「{name}」";
+        readonly en: "Folder \"{name}\" created";
+    };
+    readonly "folder.createFailed": {
+        readonly zh: "建文件夹失败：{e}";
+        readonly en: "Could not create folder: {e}";
+    };
+    readonly "folder.delete": {
+        readonly zh: "删除空文件夹";
+        readonly en: "Delete empty folder";
+    };
+    readonly "folder.deleting": {
+        readonly zh: "正在删除文件夹…";
+        readonly en: "Deleting folder…";
+    };
+    readonly "folder.deleteTitle": {
+        readonly zh: "删除文件夹「{name}」？";
+        readonly en: "Delete folder \"{name}\"?";
+    };
+    readonly "folder.deleteMsg": {
+        readonly zh: "只能删空文件夹；里面还有稿（含云端）会被拒绝，不会碰任何稿。";
+        readonly en: "Only empty folders can be deleted; if drafts remain (including in the cloud) it is refused and nothing is touched.";
+    };
+    readonly "folder.deleted": {
+        readonly zh: "已删除文件夹「{name}」";
+        readonly en: "Folder \"{name}\" deleted";
+    };
+    readonly "folder.deleteFailed": {
+        readonly zh: "删不掉（可能不是空的，或云端无法确认）：{e}";
+        readonly en: "Could not delete (not empty, or cloud could not confirm): {e}";
+    };
+    readonly "move.title": {
+        readonly zh: "移到哪个文件夹？";
+        readonly en: "Move to which folder?";
+    };
+    readonly "move.msg": {
+        readonly zh: "「{name}」";
+        readonly en: "\"{name}\"";
+    };
+    readonly "move.noTarget": {
+        readonly zh: "还没有别的文件夹可以移过去";
+        readonly en: "No other folder to move to yet";
+    };
+    readonly "st.moved": {
+        readonly zh: "已移到「{dir}」";
+        readonly en: "Moved to \"{dir}\"";
+    };
+    readonly "st.moveFailed": {
+        readonly zh: "移动失败";
+        readonly en: "Move failed";
+    };
     readonly "ui.emptyTrash": {
         readonly zh: "清空回收站";
         readonly en: "Empty trash";

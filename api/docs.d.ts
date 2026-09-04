@@ -2,6 +2,7 @@ import type { SyncState, SaveResult, FreshResult, DelResult, TrashItem, WatchFol
 import { type TextEncodingName } from "./doc-model.ts";
 export interface DocListItem {
     name: string;
+    dir: string;
     stem: string;
     title: string;
     date: string | null;
@@ -14,14 +15,23 @@ export interface DocListItem {
     size?: number;
 }
 export interface DocListFrame {
+    folder: string;
     items: DocListItem[];
+    folders: string[];
     complete: boolean;
     stale: boolean;
 }
 export declare function invalidateEncryptedFlag(name: string): void;
-export declare function watchDocs(cb: (frame: DocListFrame) => void, opts?: {
+export declare function watchDocs(folder: string, cb: (frame: DocListFrame) => void, opts?: {
     onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
 }): () => void;
+/** 一次性拿某夹的 immediate 子夹名（移动稿的目标列表用）：订阅一帧就退。 */
+export declare function snapshotFolders(folder?: string): Promise<string[]>;
+export declare function newFolder(path: string): Promise<void>;
+/** 只删空夹（库内强制证实为空；非空/无法确认 → 抛）。 */
+export declare function deleteFolder(path: string): Promise<void>;
+/** 有未推字节的稿数（全库标量，不列名字）——出厂重置等门用。 */
+export declare function dirtyDocCount(): Promise<number>;
 export type ReadDocResult = {
     kind: "ok";
     text: string;
@@ -38,8 +48,8 @@ export declare function readDoc(name: string): Promise<ReadDocResult>;
 export declare function saveDoc(name: string, text: string, opts: {
     push: boolean;
 }): Promise<SaveResult>;
-/** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份。 */
-export declare function createDoc(title: string, text: string, date?: string): Promise<string>;
+/** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份（全路径）。 */
+export declare function createDoc(title: string, text: string, date?: string, dir?: string): Promise<string>;
 export interface RenameResult {
     name: string;
     oldKept?: boolean;
@@ -47,6 +57,8 @@ export interface RenameResult {
 }
 /** 改标题 = 改身份（tryMove）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
 export declare function renameDoc(name: string, newTitle: string): Promise<RenameResult | null>;
+/** 移到别的夹（身份变 = tryMove，同名撞则追加后缀）。toDir "" = 根。 */
+export declare function moveDoc(name: string, toDir: string): Promise<RenameResult | null>;
 export declare function trashDoc(name: string): Promise<DelResult>;
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
 export declare function pullDocIfClean(name: string, opts?: {

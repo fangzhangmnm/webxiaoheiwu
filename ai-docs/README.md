@@ -10,5 +10,6 @@ ADR（决策与否决，防 re-litigate）：
 - [adr/0003](adr/0003-conflict-is-library-sheet-not-sibling-copy.md) 冲突 = 库 sheet + .backup
 - [adr/0004](adr/0004-legacy-v1-layout-read-only-import.md) v1 布局只读导入（superseded 2026-09-03：不做 backward compatibility）
 - [adr/0005](adr/0005-per-file-password-save-uses-opening-key.md) 每篇可有自己的密码；保存用打开时那把；换钥匙显式
+- [adr/0006](adr/0006-one-level-folders.md) 多文件夹：身份 = `[夹/]YYYYMMDD 标题.txt`，只一层（修订 0001 的根平铺）
 
 v1 时代 how-doc（2026-05，顶部戳标明哪些仍有效）：sync-design · encryption · msal-onedrive · pwa-service-worker · filename-conventions · editor-ux · quest-ime · voice-input · push-to-talk · working-with-this-user。

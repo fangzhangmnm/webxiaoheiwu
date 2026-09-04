@@ -8,7 +8,7 @@ import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
-import { verifyDocPassword, decryptDoc, encryptDoc } from "./docs.ts";
+import { verifyDocPassword, decryptDoc, encryptDoc, moveDoc, dirtyDocCount, deleteFolder, snapshotFolders } from "./docs.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import { initPwaShell } from "./pwa-shell.ts";
@@ -86,7 +86,17 @@ let voiceAbortHook: (() => void) | null = null;
 const drawer = createDrawer({
   drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
   docList: $("docList"), docListEmpty: $("docListEmpty"), docActions: $("drawerActions"), trashActions: $("trashActions"), settingsView: $("settingsView"),
+  breadcrumb: $("docBreadcrumb"), newFolderButton: $<HTMLButtonElement>("newFolderButton"),
   activeName: () => editor.state.name,
+  currentDir: () => editor.currentDir(),
+  onMoveDoc: async (name, toDir) => {
+    if (editor.state.name === name) { await editor.moveTo(toDir); return; }
+    try {
+      const r = await moveDoc(name, toDir);
+      if (!r) { setStatus(t("st.moveFailed"), { error: true }); return; }
+      setStatus(r.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: toDir || t("list.root") }), { error: !!r.oldKept });
+    } catch (e) { reportError(e); setStatus(t("st.moveFailed"), { error: true }); }
+  },
   onOpenDoc: async (name) => { await editor.open(name, { promptUnlock: true }); },
   onActiveTrashed: async () => { await editor.flushLocal(); editor.clear(); },
   onSettingsShown: () => renderSettings(),
@@ -468,7 +478,7 @@ function renderPasswordSection(): void {
 
 const factoryReset = () => runFactoryReset({
   setStatus,
-  unsyncedCount: async () => { await editor.flushLocal(); return drawer.items().filter((i) => i.dirty || i.syncState === "local-only").length + (editor.isDirty() ? 1 : 0); },
+  unsyncedCount: async () => { await editor.flushLocal(); return (await dirtyDocCount()) + (editor.isDirty() ? 1 : 0); },   // 全库 dirty 标量（不只当前夹）
   beforeWipe: async () => { await editor.flushLocal(); await flushCollections(); editor.clear(); ime.dispose(); },
 });
 $("factoryResetButton").addEventListener("click", () => { void factoryReset(); });
@@ -482,8 +492,9 @@ $("menuButton").addEventListener("click", () => { if (drawer.currentView() === "
 $("drawerCloseButton").addEventListener("click", () => drawer.close());
 $("drawerBackButton").addEventListener("click", () => drawer.open("active"));
 $("drawerBackdrop").addEventListener("click", () => drawer.close());
-$("newDocButton").addEventListener("click", () => { void editor.newDoc().then(() => drawer.close()); });
-$("newEncryptedDocButton").addEventListener("click", () => { void editor.newDoc({ encrypted: true }).then((ok) => { if (ok) drawer.close(); }); });
+$("newDocButton").addEventListener("click", () => { void editor.newDoc({ dir: drawer.currentFolder() }).then(() => drawer.close()); });
+$("newEncryptedDocButton").addEventListener("click", () => { void editor.newDoc({ encrypted: true, dir: drawer.currentFolder() }).then((ok) => { if (ok) drawer.close(); }); });
+$("newFolderButton").addEventListener("click", () => { void drawer.newFolder(); });
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
 $("openSettingsButton").addEventListener("click", () => drawer.open("settings"));
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
@@ -583,4 +594,4 @@ window.addEventListener("unhandledrejection", (event) => { reportError(event.rea
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders };

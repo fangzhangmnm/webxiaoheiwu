@@ -6,11 +6,12 @@
 import type { SyncState, FolderSnapshot, SaveResult, FreshResult, DelResult, TrashItem, RawFile, WatchFolderErrorPhase } from "@internal/store";
 import { requireStore, isCached, isDirty, setActiveFileName } from "./app-store.ts";
 import { isUnlocked } from "./crypto-state.ts";
-import { isDocName, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, type TextEncodingName } from "./doc-model.ts";
+import { isDocName, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, type TextEncodingName } from "./doc-model.ts";
 
 export interface DocListItem {
-  name: string;          // 身份（全名，含 .txt）
-  stem: string;          // 显示名
+  name: string;          // 身份（全路径，含 .txt）
+  dir: string;           // 所在夹（"" = 根）
+  stem: string;          // 显示名（不含夹）
   title: string;
   date: string | null;
   syncState: SyncState;
@@ -21,30 +22,32 @@ export interface DocListItem {
   lastModified?: number;
   size?: number;
 }
-export interface DocListFrame { items: DocListItem[]; complete: boolean; stale: boolean }
+export interface DocListFrame { folder: string; items: DocListItem[]; folders: string[]; complete: boolean; stale: boolean }
 
 const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => requireStore().file(name, { isZip: false, mode });
 
-// ── 列表（唯一列举面 = watchFolder 根夹；只认 *.txt 直属项）──
+// ── 列表（唯一列举面 = watchFolder 当前夹；只认 *.txt 直属项 + immediate 子夹）──
 const _encCache = new Map<string, { key: string; value: boolean }>();   // name → 本地字节是否容器（按 lastModified+size 失效）
 export function invalidateEncryptedFlag(name: string): void { _encCache.delete(name); }
 
-export function watchDocs(cb: (frame: DocListFrame) => void, opts?: { onError?: (err: unknown, phase: WatchFolderErrorPhase) => void }): () => void {
+export function watchDocs(folder: string, cb: (frame: DocListFrame) => void, opts?: { onError?: (err: unknown, phase: WatchFolderErrorPhase) => void }): () => void {
   let gen = 0;
+  const prefix = folder ? `${folder}/` : "";
   const emit = (snap: FolderSnapshot) => {
     const myGen = ++gen;
+    const folders = snap.folders.map((f) => (f.startsWith(prefix) ? f.slice(prefix.length) : f)).filter((f) => f && !f.includes("/")).sort(compareDocNamesDesc).reverse();   // immediate 段，自然序正排
     const items: DocListItem[] = snap.items.filter((it) => isDocName(it.path)).map((it) => {
       const p = parseDocName(it.path);
       const key = `${it.lastModified ?? 0}:${it.size ?? 0}`;
       const enc = _encCache.get(it.path);
       return {
-        name: it.path, stem: p.stem, title: p.title, date: p.date,
+        name: it.path, dir: p.dir, stem: p.stem, title: p.title, date: p.date,
         syncState: it.syncState, cached: isCached(it.syncState), dirty: isDirty(it.syncState),
         encrypted: enc && enc.key === key ? enc.value : null,
         lastModified: it.lastModified, size: it.size,
       };
     }).sort((a, b) => compareDocNamesDesc(a.name, b.name));
-    cb({ items, complete: snap.complete, stale: !!snap.stale });
+    cb({ folder, items, folders, complete: snap.complete, stale: !!snap.stale });
     // 二阶段：本地已缓存但加密态未知的项，读本地字节判容器（零网络），判完再闪一帧。
     const pending = items.filter((it) => it.cached && it.encrypted == null);
     if (!pending.length) return;
@@ -54,10 +57,23 @@ export function watchDocs(cb: (frame: DocListFrame) => void, opts?: { onError?: 
         _encCache.set(it.name, { key: `${it.lastModified ?? 0}:${it.size ?? 0}`, value: v });
         it.encrypted = v;
       } catch { /* leave unknown */ }
-    })).then(() => { if (myGen === gen) cb({ items, complete: snap.complete, stale: !!snap.stale }); });
+    })).then(() => { if (myGen === gen) cb({ folder, items, folders, complete: snap.complete, stale: !!snap.stale }); });
   };
-  return requireStore().files.watchFolder("", emit, opts);
+  return requireStore().files.watchFolder(folder, emit, opts);
 }
+
+/** 一次性拿某夹的 immediate 子夹名（移动稿的目标列表用）：订阅一帧就退。 */
+export function snapshotFolders(folder = ""): Promise<string[]> {
+  return new Promise((resolve) => {
+    let done = false;
+    const unsub = watchDocs(folder, (f) => { if (done) return; done = true; resolve(f.folders); setTimeout(() => unsub(), 0); });
+  });
+}
+export function newFolder(path: string): Promise<void> { return requireStore().files.newFolder(path); }
+/** 只删空夹（库内强制证实为空；非空/无法确认 → 抛）。 */
+export function deleteFolder(path: string): Promise<void> { return requireStore().files.deleteFolder(path); }
+/** 有未推字节的稿数（全库标量，不列名字）——出厂重置等门用。 */
+export function dirtyDocCount(): Promise<number> { return requireStore().files.dirty.count(); }
 
 // ── 读 ──
 export type ReadDocResult =
@@ -86,9 +102,9 @@ export async function saveDoc(name: string, text: string, opts: { push: boolean 
   return await file(name).save(encodeText(text), { tryPush: opts.push });
 }
 
-/** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份。 */
-export async function createDoc(title: string, text: string, date = formatDate(Date.now())): Promise<string> {
-  const base = makeDocName(date, title);
+/** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份（全路径）。 */
+export async function createDoc(title: string, text: string, date = formatDate(Date.now()), dir = ""): Promise<string> {
+  const base = makeDocName(date, title, dir);
   const files = requireStore().files;
   for (let n = 0; n < 200; n++) {
     const cand = collisionCandidate(base, n);
@@ -103,11 +119,19 @@ export interface RenameResult { name: string; oldKept?: boolean; cloudDeferred?:
 /** 改标题 = 改身份（tryMove）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
 export async function renameDoc(name: string, newTitle: string): Promise<RenameResult | null> {
   const p = parseDocName(name);
-  const base = makeDocName(p.date ?? formatDate(Date.now()), newTitle);
-  if (base === name) return { name };
+  return tryMoveWithCollision(name, makeDocName(p.date ?? formatDate(Date.now()), newTitle, p.dir));
+}
+/** 移到别的夹（身份变 = tryMove，同名撞则追加后缀）。toDir "" = 根。 */
+export async function moveDoc(name: string, toDir: string): Promise<RenameResult | null> {
+  const { dir, base } = splitDocPath(name);
+  if (dir === toDir) return { name };
+  return tryMoveWithCollision(name, joinDocPath(toDir, base));
+}
+async function tryMoveWithCollision(name: string, target: string): Promise<RenameResult | null> {
+  if (target === name) return { name };
   const f = file(name);
   for (let n = 0; n < 50; n++) {
-    const cand = collisionCandidate(base, n);
+    const cand = collisionCandidate(target, n);
     if (cand === name) return { name };
     const r = await f.tryMove(cand);
     if (r.ok) { invalidateEncryptedFlag(name); const x = r as { oldKept?: boolean; cloudDeferred?: boolean }; return { name: cand, oldKept: x.oldKept, cloudDeferred: x.cloudDeferred }; }

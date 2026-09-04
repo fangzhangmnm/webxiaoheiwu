@@ -1,18 +1,30 @@
 export interface ParsedDocName {
+    /** 所在夹（"" = 根）。 */
+    dir: string;
+    /** 文件名（不含夹）。 */
+    base: string;
     /** 日期前缀 "YYYYMMDD"；不匹配 → null。 */
     date: string | null;
     /** 标题（不含日期与扩展名）；裸日期 → ""。不匹配 → 整个 stem。 */
     title: string;
-    /** 去扩展名的显示名。 */
+    /** 去扩展名的显示名（不含夹）。 */
     stem: string;
 }
+export declare function splitDocPath(path: string): {
+    dir: string;
+    base: string;
+};
+export declare function joinDocPath(dir: string, base: string): string;
+/** 稿 = 任一夹下的 *.txt（隐藏项由库滤掉；这里再挡一次空段/点头段）。 */
 export declare function isDocName(name: string): boolean;
 export declare function parseDocName(name: string): ParsedDocName;
 export declare function formatDate(ts: number): string;
 /** 文件名里合法的标题片段：去路径字符、压空白、去前导点、截 200。 */
 export declare function sanitizeTitle(s: string): string;
-/** 由日期前缀 + 标题拼文件名（不含碰撞后缀）。 */
-export declare function makeDocName(date: string, title: string): string;
+/** 由日期前缀 + 标题拼文件名（不含碰撞后缀）；dir 非空则带夹前缀。 */
+export declare function makeDocName(date: string, title: string, dir?: string): string;
+/** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
+export declare function sanitizeFolderName(s: string): string;
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 " n"。 */
 export declare function collisionCandidate(name: string, n: number): string;
 /** 降序自然序比较器（新在前）。 */

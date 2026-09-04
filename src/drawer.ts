@@ -1,8 +1,9 @@
 // 抽屉：文件列表 / 回收站 / 设置 三视图。created 2026-09-03 by Claude Fable 5.1
 // 列表来自 docs.watchDocs（唯一列举面），乐观 UI 归库（delete 本地先动、云端后台），行内图标全走共享 sprite <use>。
 import { t } from "./i18n/index.ts";
-import { watchDocs, listTrash, restoreDoc, purgeDoc, emptyTrash, trashDoc, type DocListItem, type TrashDocItem } from "./docs.ts";
-import { openConfirmSheet, withBusy } from "./sheets.ts";
+import { watchDocs, listTrash, restoreDoc, purgeDoc, emptyTrash, trashDoc, snapshotFolders, newFolder, deleteFolder, type DocListItem, type TrashDocItem } from "./docs.ts";
+import { openConfirmSheet, openInputSheet, openChoiceSheet, withBusy } from "./sheets.ts";
+import { joinDocPath, sanitizeFolderName } from "./doc-model.ts";
 import { reportError } from "./error-badge.ts";
 import type { SyncState } from "@internal/store";
 
@@ -10,7 +11,12 @@ export type DrawerView = "closed" | "active" | "trash" | "settings";
 export interface DrawerDeps {
   drawer: HTMLElement; backdrop: HTMLElement; title: HTMLElement; backButton: HTMLElement;
   docList: HTMLElement; docListEmpty: HTMLElement; docActions: HTMLElement; trashActions: HTMLElement; settingsView: HTMLElement;
+  breadcrumb: HTMLElement; newFolderButton: HTMLButtonElement;
   activeName: () => string | null;
+  /** 当前稿所在夹（打开抽屉时列表跳到这里）。 */
+  currentDir: () => string;
+  /** 把一篇移到别的夹（当前稿由编辑器走 moveTo；其它稿 app 直接调 docs.moveDoc）。 */
+  onMoveDoc: (name: string, toDir: string) => Promise<void>;
   onOpenDoc: (name: string) => Promise<void>;
   /** 当前稿被移入回收站/改名后：编辑器清空或切稿。 */
   onActiveTrashed: () => Promise<void>;
@@ -42,6 +48,8 @@ function fmtTs(ts: string | null): string {
 
 export function createDrawer(d: DrawerDeps) {
   let view: DrawerView = "closed";
+  let folder = "";                       // 列表正看着哪个夹（"" = 根；ADR-0006 只一层）
+  let folders: string[] = [];            // 当前夹的 immediate 子夹名
   let items: DocListItem[] = [];
   let frameComplete = true;
   let resolveFirst: (() => void) | null = null;
@@ -50,13 +58,50 @@ export function createDrawer(d: DrawerDeps) {
 
   function subscribe(): void {
     unsub?.();
-    unsub = watchDocs((frame) => { items = frame.items; frameComplete = frame.complete; resolveFirst?.(); resolveFirst = null; if (view === "active") renderList(); },
-      { onError: (err, phase) => reportError(new Error(`doc list frame failed (${phase}): ${err instanceof Error ? err.message : String(err)}`), "log") });
+    const mine = folder;
+    unsub = watchDocs(mine, (frame) => {
+      if (frame.folder !== folder) return;   // 换夹后迟到的旧帧
+      items = frame.items; folders = frame.folders; frameComplete = frame.complete; resolveFirst?.(); resolveFirst = null; if (view === "active") renderList();
+    }, { onError: (err, phase) => reportError(new Error(`doc list frame failed (${phase}): ${err instanceof Error ? err.message : String(err)}`), "log") });
+  }
+  function setFolder(f: string): void {
+    if (f === folder) return;
+    folder = f; items = []; folders = []; frameComplete = false;
+    subscribe();
+    if (view === "active") renderList();
+  }
+  function renderBreadcrumb(): void {
+    const bc = d.breadcrumb; bc.innerHTML = "";
+    bc.hidden = !folder;
+    d.newFolderButton.hidden = !!folder;   // 只一层：夹里不再建夹
+    if (!folder) return;
+    const root = document.createElement("button"); root.type = "button"; root.className = "crumb-link"; root.innerHTML = icon("back") + t("list.root");
+    root.addEventListener("click", () => setFolder(""));
+    const sep = document.createElement("span"); sep.className = "crumb-sep"; sep.textContent = "›";
+    const cur = document.createElement("span"); cur.className = "crumb-current"; cur.innerHTML = icon("folder-open") + folder;
+    bc.appendChild(root); bc.appendChild(sep); bc.appendChild(cur);
   }
 
   function renderList(): void {
     const list = d.docList; list.innerHTML = "";
-    if (!items.length) { d.docListEmpty.textContent = frameComplete ? t("list.empty") : t("list.loading"); d.docListEmpty.classList.remove("hidden"); return; }
+    renderBreadcrumb();
+    for (const name of folders) {
+      const li = document.createElement("li"); li.className = "doc-row folder-row";
+      const main = document.createElement("button"); main.type = "button"; main.className = "doc-main";
+      const nameRow = document.createElement("span"); nameRow.className = "doc-name-row";
+      const pre = document.createElement("span"); pre.className = "doc-crypto-prefix"; pre.innerHTML = icon("folder"); nameRow.appendChild(pre);
+      const nameSpan = document.createElement("span"); nameSpan.className = "doc-name"; nameSpan.textContent = name; nameRow.appendChild(nameSpan);
+      main.appendChild(nameRow);
+      main.addEventListener("click", () => setFolder(joinDocPath(folder, name)));
+      li.appendChild(main);
+      const actions = document.createElement("div"); actions.className = "doc-row-actions";
+      const delBtn = document.createElement("button"); delBtn.type = "button"; delBtn.className = "row-icon-button danger"; delBtn.title = t("folder.delete"); delBtn.setAttribute("aria-label", t("folder.delete"));
+      delBtn.innerHTML = icon("trash-can");
+      delBtn.addEventListener("click", () => { void onDeleteFolder(joinDocPath(folder, name)); });
+      actions.appendChild(delBtn); li.appendChild(actions);
+      list.appendChild(li);
+    }
+    if (!items.length) { d.docListEmpty.textContent = frameComplete ? (folders.length ? t("list.emptyFolderDocs") : t("list.empty")) : t("list.loading"); d.docListEmpty.classList.remove("hidden"); return; }
     d.docListEmpty.classList.add("hidden");
     const active = d.activeName();
     for (const it of items) {
@@ -77,6 +122,11 @@ export function createDrawer(d: DrawerDeps) {
       main.addEventListener("click", () => { void d.onOpenDoc(it.name).then(close); });
       li.appendChild(main);
       const actions = document.createElement("div"); actions.className = "doc-row-actions";
+      const moveBtn = document.createElement("button");
+      moveBtn.type = "button"; moveBtn.className = "row-icon-button"; moveBtn.title = t("list.moveTo"); moveBtn.setAttribute("aria-label", t("list.moveTo"));
+      moveBtn.innerHTML = icon("move-to-file");
+      moveBtn.addEventListener("click", () => { void onMove(it); });
+      actions.appendChild(moveBtn);
       const trashBtn = document.createElement("button");
       trashBtn.type = "button"; trashBtn.className = "row-icon-button danger"; trashBtn.title = t("list.toTrash"); trashBtn.setAttribute("aria-label", t("list.toTrash"));
       trashBtn.innerHTML = icon("trash-can");
@@ -85,6 +135,30 @@ export function createDrawer(d: DrawerDeps) {
       li.appendChild(actions);
       list.appendChild(li);
     }
+  }
+
+  /** 新建文件夹（只在根；in-app 输入 sheet）。 */
+  async function newFolderFlow(): Promise<void> {
+    const raw = await openInputSheet(t("folder.newTitle"), { message: t("folder.newHint"), placeholder: t("folder.namePh"), okLabel: t("common.ok") });
+    if (raw == null) return;
+    const name = sanitizeFolderName(raw);
+    if (!name) { d.setStatus(t("folder.badName"), { error: true }); return; }
+    try { await newFolder(name); d.setStatus(t("folder.created", { name })); setFolder(name); }
+    catch (e) { reportError(e); d.setStatus(t("folder.createFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+  }
+  async function onDeleteFolder(path: string): Promise<void> {
+    if (!(await openConfirmSheet(t("folder.deleteTitle", { name: path }), t("folder.deleteMsg"), { danger: true, okLabel: t("folder.delete") }))) return;
+    try { await withBusy(t("folder.deleting"), () => deleteFolder(path)); d.setStatus(t("folder.deleted", { name: path })); }
+    catch (e) { reportError(e, "warning"); d.setStatus(t("folder.deleteFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+  }
+  async function onMove(it: DocListItem): Promise<void> {
+    let all: string[] = [];
+    try { all = await snapshotFolders(""); } catch (e) { reportError(e, "log"); }
+    const choices = [...(it.dir ? [{ label: t("list.root"), value: "" }] : []), ...all.filter((f) => f !== it.dir).map((f) => ({ label: f, value: f }))];
+    if (!choices.length) { d.setStatus(t("move.noTarget")); return; }
+    const to = await openChoiceSheet<string>(t("move.title"), t("move.msg", { name: it.stem }), choices);
+    if (to == null) return;
+    await d.onMoveDoc(it.name, to);
   }
 
   async function onTrash(name: string): Promise<void> {
@@ -152,7 +226,11 @@ export function createDrawer(d: DrawerDeps) {
   }
 
   function open(next: Exclude<DrawerView, "closed"> = "active"): void {
+    const wasClosed = view === "closed";
     view = next;
+    if (next === "active" && wasClosed) { const dir = d.currentDir(); if (dir !== folder) setFolder(dir); }   // 打开抽屉 = 看当前稿所在的夹
+    d.breadcrumb.hidden = next !== "active" || !folder;
+    d.newFolderButton.hidden = next !== "active" || !!folder;
     d.drawer.classList.remove("hidden"); d.drawer.setAttribute("aria-hidden", "false"); d.backdrop.classList.remove("hidden");
     const isSettings = next === "settings", isTrash = next === "trash";
     d.title.textContent = isSettings ? t("drawer.settings") : isTrash ? t("drawer.trash") : t("drawer.files");
@@ -172,7 +250,7 @@ export function createDrawer(d: DrawerDeps) {
   }
   function refresh(): void { if (view === "active") renderList(); else if (view === "trash") void renderTrash(); }
 
-  return { open, close, refresh, subscribe, onEmptyTrash, currentView: () => view, items: () => items, firstFrame: () => firstFramePromise,
+  return { open, close, refresh, subscribe, onEmptyTrash, currentView: () => view, items: () => items, firstFrame: () => firstFramePromise, currentFolder: () => folder, setFolder, newFolder: newFolderFlow,
     findByName: (name: string) => items.find((it) => it.name === name) ?? null };
 }
 export type Drawer = ReturnType<typeof createDrawer>;

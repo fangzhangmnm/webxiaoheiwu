@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-14 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+18 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -9,12 +9,18 @@
 
 ```html
 <!-- 内联 icons.svg -->
-<svg width="24" height="24"><use href="#new"/></svg>
+<svg width="24" height="24"><use href="#move-to-file"/></svg>
 ```
 
 > ⚠ 库里还没有这些图标，当前用 `icon-missing` 占位：`settings`、`microphone`
 > 等它们进 `icons.svg` 后重跑本脚本即可换成真图标。
 
+
+## edit
+
+| name | 说明 |
+|------|------|
+| `move-to-file` | 文件+绕行箭头(移到文件) |
 
 ## file
 
@@ -24,6 +30,8 @@
 | `clear-trash` | 清空回收站:桶身改虚线表示已空 |
 | `trash-can` | 垃圾桶:桶身收口(feather 是直筒);与 fluent(圆提手/更低)、heroicons(弧形透视)亦不同 — own |
 | `restore-trash` | 同上但盖只掀 -16° |
+| `folder` | 文件夹:左边 tab + 矩形主体 |
+| `folder-open` | 打开的文件夹:背板止于盖顶 T 接,不再互相压线 |
 
 ## hierarchy
 
@@ -33,6 +41,7 @@
 | `unlock` | 开锁:同 lock 体型+锁梁弹开 |
 | `edit-disabled` | 不可编辑:同 pencil 加删除线, 方向与笔身垂直(笔身是 ↗, 所以线走 ↘) |
 | `edit-enabled` | 可编辑:Bootstrap Icons 的 pencil(MIT) |
+| `create-folder` | 加号做成右下角徽标 |
 
 ## common
 

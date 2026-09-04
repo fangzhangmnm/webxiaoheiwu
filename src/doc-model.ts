@@ -4,29 +4,46 @@
 //   · 撞名才加后缀 ` 1` ` 2`…（后缀不是标题的一部分，是碰撞产物）。
 //   · never trust remote filenames：任何字符串都解析得出，不匹配 → { date:null, title:整个 stem }。
 //   · 排序 = zh-CN 自然序降序（今天的在最上；第10章 在 第9章 之后）。
+//   · 多文件夹（ADR-0006，2026-09-03）：身份 = `[夹/]YYYYMMDD 标题.txt`，夹只一层；根 = 默认夹，老稿零迁移。
 
 import { DOC_EXT } from "./config.ts";
 
 export interface ParsedDocName {
+  /** 所在夹（"" = 根）。 */
+  dir: string;
+  /** 文件名（不含夹）。 */
+  base: string;
   /** 日期前缀 "YYYYMMDD"；不匹配 → null。 */
   date: string | null;
   /** 标题（不含日期与扩展名）；裸日期 → ""。不匹配 → 整个 stem。 */
   title: string;
-  /** 去扩展名的显示名。 */
+  /** 去扩展名的显示名（不含夹）。 */
   stem: string;
 }
 
 const EXT_RE = /\.txt$/i;
 
-export function isDocName(name: string): boolean { return EXT_RE.test(name) && !name.includes("/"); }
+export function splitDocPath(path: string): { dir: string; base: string } {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? { dir: "", base: path } : { dir: path.slice(0, i), base: path.slice(i + 1) };
+}
+export function joinDocPath(dir: string, base: string): string { return dir ? `${dir}/${base}` : base; }
+
+/** 稿 = 任一夹下的 *.txt（隐藏项由库滤掉；这里再挡一次空段/点头段）。 */
+export function isDocName(name: string): boolean {
+  if (!EXT_RE.test(name)) return false;
+  const segs = name.split("/");
+  return segs.every((seg) => seg.length > 0 && !seg.startsWith("."));
+}
 
 export function parseDocName(name: string): ParsedDocName {
-  const stem = (name ?? "").replace(EXT_RE, "");
+  const { dir, base } = splitDocPath(name ?? "");
+  const stem = base.replace(EXT_RE, "");
   let m = stem.match(/^(\d{8})$/);
-  if (m) return { date: m[1]!, title: "", stem };
+  if (m) return { dir, base, date: m[1]!, title: "", stem };
   m = stem.match(/^(\d{8})\s+(.+)$/);
-  if (m) return { date: m[1]!, title: m[2]!.trim(), stem };
-  return { date: null, title: stem, stem };
+  if (m) return { dir, base, date: m[1]!, title: m[2]!.trim(), stem };
+  return { dir, base, date: null, title: stem, stem };
 }
 
 export function formatDate(ts: number): string {
@@ -46,10 +63,15 @@ export function sanitizeTitle(s: string): string {
     .slice(0, 200);
 }
 
-/** 由日期前缀 + 标题拼文件名（不含碰撞后缀）。 */
-export function makeDocName(date: string, title: string): string {
+/** 由日期前缀 + 标题拼文件名（不含碰撞后缀）；dir 非空则带夹前缀。 */
+export function makeDocName(date: string, title: string, dir = ""): string {
   const t = sanitizeTitle(title);
-  return t ? `${date} ${t}${DOC_EXT}` : `${date}${DOC_EXT}`;
+  return joinDocPath(dir, t ? `${date} ${t}${DOC_EXT}` : `${date}${DOC_EXT}`);
+}
+
+/** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
+export function sanitizeFolderName(s: string): string {
+  return String(s ?? "").replace(/[\r\n]+/g, " ").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").replace(/^\.+/, "").trim().slice(0, 80);
 }
 
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 " n"。 */

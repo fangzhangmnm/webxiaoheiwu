@@ -7,8 +7,8 @@
 //   · 加密稿：locked 时编辑区空白 + 禁输入；解锁循环在 busy 外；错密码不碰文件（库 seal 保证）。
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS, RENAME_DEBOUNCE_MS } from "./config.ts";
-import { formatDate, parseDocName, statsForText } from "./doc-model.ts";
-import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc } from "./docs.ts";
+import { formatDate, parseDocName, statsForText, splitDocPath } from "./doc-model.ts";
+import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword } from "./crypto-state.ts";
 import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
@@ -37,6 +37,7 @@ const KV_LAST_OPEN = "last-open";
 export interface EditorState {
   name: string | null;          // 已物化的身份；新稿未物化时 null（看 pendingDate）
   pendingDate: string | null;   // 新稿：物化时用的日期前缀
+  pendingDir: string;           // 新稿：物化落在哪个夹（"" = 根；ADR-0006 多文件夹）
   encrypted: boolean;
   locked: boolean;              // 加密且未解锁（编辑区空白）
   readOnly: boolean;            // per-device 只读保护
@@ -44,7 +45,7 @@ export interface EditorState {
 }
 
 export function createEditor(d: EditorDeps) {
-  const st: EditorState = { name: null, pendingDate: null, encrypted: false, locked: false, readOnly: false, unavailable: true };   // boot 前不可打字（open/newDoc 才放行）
+  const st: EditorState = { name: null, pendingDate: null, pendingDir: "", encrypted: false, locked: false, readOnly: false, unavailable: true };   // boot 前不可打字（open/newDoc 才放行）
   let savedText = "";      // 最近一次落盘的正文（判 dirty）
   let savedTitle = "";     // 最近一次落盘/改名的标题
   let localTimer: ReturnType<typeof setTimeout> | null = null;
@@ -102,7 +103,7 @@ export function createEditor(d: EditorDeps) {
       if (!st.name) {
         if (!st.pendingDate) return;
         if (!text && !title) return;   // 空稿不物化
-        const name = await createDoc(title, text, st.pendingDate);
+        const name = await createDoc(title, text, st.pendingDate, st.pendingDir);
         if (gen !== loadGen) return;   // 建稿期间用户切走了：文件留在本地（下次列表可见），不把身份塞给现在的编辑器
         // 新建时就定好的加密（user 2026-09-03「加密是一开始就定好的」）：物化即封——先封再把 name 暴露给 UI/抽屉，明文只在本地 IDB 停留这一步，永不推云（createDoc 是 tryPush:false）。
         if (st.encrypted) {
@@ -284,8 +285,10 @@ export function createEditor(d: EditorDeps) {
     return false;
   }
 
-  /** 新稿。encrypted:true = 一开始就定好加密（先要密码；用户取消 → 不新建，返回 false）。 */
-  async function newDoc(opts: { encrypted?: boolean } = {}): Promise<boolean> {
+  /** 当前所在夹（打开的稿的夹 / 新稿预定的夹）。 */
+  function currentDir(): string { return st.name ? splitDocPath(st.name).dir : st.pendingDir; }
+  /** 新稿。encrypted:true = 一开始就定好加密（先要密码；用户取消 → 不新建，返回 false）。dir = 落在哪个夹（默认当前夹）。 */
+  async function newDoc(opts: { encrypted?: boolean; dir?: string } = {}): Promise<boolean> {
     if (opts.encrypted && !(await d.ensureUnlocked())) return false;
     d.onBeforeLoad?.();
     await flushLocal();
@@ -293,7 +296,8 @@ export function createEditor(d: EditorDeps) {
     loadGen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false; lastSavedAt = 0;
-    st.name = null; st.pendingDate = formatDate(Date.now()); st.encrypted = !!opts.encrypted; st.locked = false; st.readOnly = false; st.unavailable = false;
+    const dir = opts.dir ?? currentDir();
+    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.encrypted = !!opts.encrypted; st.locked = false; st.readOnly = false; st.unavailable = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
     d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
     applyGuards(); renderWordCount();
@@ -310,7 +314,8 @@ export function createEditor(d: EditorDeps) {
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
-    st.name = null; st.pendingDate = formatDate(Date.now()); st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
+    const dir = currentDir();
+    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
     pushPending = false; encryptPending = false; pushFailures = 0;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
     d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
@@ -380,6 +385,30 @@ export function createEditor(d: EditorDeps) {
     d.onDocChanged();
   }
 
+  /** 移到别的夹（ADR-0006）。未物化的新稿只改预定夹；已物化走 tryMove（撞名追加后缀）。返回最终身份（未变 → 原名 / null）。 */
+  async function moveTo(dir: string): Promise<string | null> {
+    if (!st.name) { st.pendingDir = dir; d.onDocChanged(); return null; }
+    await flushLocal();
+    const gen = loadGen, from = st.name;
+    renameInFlight = true;
+    try {
+      const rr = await moveDoc(from, dir);
+      if (gen !== loadGen) return null;
+      if (!rr) { d.setStatus(t("st.moveFailed"), { error: true }); return null; }
+      if (rr.name !== from) {
+        const roNames = readOnlyNames();
+        if (roNames.includes(from)) deviceKvSetJson(KV_READONLY, roNames.map((n) => (n === from ? rr.name : n)));
+        renameFilePassword(from, rr.name);
+        st.name = rr.name; setActiveDoc(rr.name); deviceKvSet(KV_LAST_OPEN, rr.name);
+      }
+      d.setStatus(rr.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: dir || t("list.root") }), { error: !!rr.oldKept });
+      d.onDocChanged();
+      if (d.isSignedIn()) schedulePush();
+      return rr.name;
+    } catch (e) { reportError(e); d.setStatus(t("st.moveFailed"), { error: true }); return null; }
+    finally { renameInFlight = false; if (gen === loadGen && d.editor.value !== savedText) scheduleLocalSave(); }
+  }
+
   /** 显式换钥匙：这篇（用别的密码封的）→ 解开 → 用当前密码重封。规则①的唯一例外入口（横幅按钮）。 */
   async function rekeyToCurrent(busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
     if (!st.name || !st.encrypted || st.locked || !fileUsesOtherPassword(st.name)) return;
@@ -431,7 +460,7 @@ export function createEditor(d: EditorDeps) {
     state: st,
     open, newDoc, clear, reload,
     flushLocal, pushNow, refreshIfClean,
-    toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit,
+    toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir,
     canEdit, statusForDoc, renderWordCount,
     isDirty: () => !!localTimer || pushPending || d.editor.value !== savedText,
     isUnlockedDoc: () => st.encrypted && isUnlocked(),

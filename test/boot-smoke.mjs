@@ -154,6 +154,33 @@ try {
     return !oldOk2 && newOk2 && document.getElementById("keyBanner").hidden ? "ok" : `after rekey: old=${oldOk2} new=${newOk2} banner=${document.getElementById("keyBanner").hidden}`;
   });
   check("每篇密码：保留旧密码静默重载+横幅 → 忘掉后手势打开被问 → 换成当前密码", perFile === "ok", String(perFile));
+  // 多文件夹（ADR-0006）：新建夹 → 夹里新稿物化在夹下 → 移回根（撞名追加后缀）→ 删空夹（离线可能拒删：必须响亮，不静默）
+  const folderFlow = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const { drawer, editor } = window.__xhw;
+    const sheet = document.getElementById("sheet"), input = document.getElementById("sheetInput");
+    drawer.open("active"); await wait(200);
+    const p = drawer.newFolder();
+    for (let i = 0; i < 50 && (sheet.classList.contains("hidden") || input.classList.contains("hidden")); i++) await wait(100);
+    input.value = "测试夹"; document.getElementById("sheetConfirm").click(); await p; await wait(300);
+    if (drawer.currentFolder() !== "测试夹") return "did not enter new folder: " + drawer.currentFolder();
+    if (!document.getElementById("docBreadcrumb").textContent.includes("测试夹")) return "breadcrumb missing";
+    await editor.newDoc({ dir: "测试夹" });
+    const ed = document.getElementById("editor"); ed.focus(); ed.value = "in folder"; ed.dispatchEvent(new Event("input"));
+    for (let i = 0; i < 50 && !editor.state.name; i++) await wait(200);
+    if (!(editor.state.name || "").startsWith("测试夹/")) return "doc not materialized in folder: " + editor.state.name;
+    for (let i = 0; i < 30 && !document.querySelector("#docList .doc-row:not(.folder-row)"); i++) await wait(200);
+    if (!document.querySelector("#docList .doc-row:not(.folder-row)")) return "folder listing did not show the doc";
+    const moved = await editor.moveTo("");
+    if (!moved || moved.includes("/")) return "move to root failed: " + moved;
+    drawer.setFolder(""); await wait(500);
+    if (!document.querySelector(".folder-row")) return "root listing lost the folder row";
+    let deleted = "", err = "";
+    try { await window.__xhw.deleteFolder("测试夹"); deleted = "deleted"; } catch (e) { err = String(e?.message || e); }
+    drawer.close();
+    return deleted || (err ? "refused-loudly" : "silent");
+  });
+  check("多文件夹：建夹 → 夹内新稿 → 移回根 → 删夹（离线拒删须响亮）", folderFlow === "deleted" || folderFlow === "refused-loudly", String(folderFlow));
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
   const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("saveStatus").textContent; });
   check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);

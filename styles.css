@@ -1443,3 +1443,12 @@ body {
 .drawer-status.error { color: var(--danger, #b0413e); opacity: 1; }
 .drawer-status[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .mic-button[data-state="recording"] .mic-pulse { animation: none; } .mic-button[data-state="recording"] { transform: none; } }
+
+/* ── 多文件夹（ADR-0006）── */
+.doc-breadcrumb { display: flex; align-items: center; gap: 6px; padding: 6px 14px 2px; font-size: 13px; opacity: 0.9; }
+.doc-breadcrumb[hidden] { display: none; }
+.crumb-link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent, #6aa8ff); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.crumb-sep { opacity: 0.5; }
+.crumb-current { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.folder-row .doc-name { font-weight: 600; }
+.drawer-action[hidden] { display: none; }

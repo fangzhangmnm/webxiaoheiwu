@@ -1,6 +1,6 @@
 // doc-model 纯函数契约：文件名约定（user 三轮回退终形）/ 排序 / 字数 / 编码 / 采纳验真。created 2026-09-03 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
-import { parseDocName, makeDocName, collisionCandidate, sanitizeTitle, compareDocNamesDesc, statsForText, decodeTextBytes, looksLikeTextDoc, isDocName, formatDate } from "../src/doc-model.ts";
+import { parseDocName, makeDocName, collisionCandidate, sanitizeTitle, compareDocNamesDesc, statsForText, decodeTextBytes, looksLikeTextDoc, isDocName, formatDate, splitDocPath, joinDocPath, sanitizeFolderName } from "../src/doc-model.ts";
 
 describe("doc-model · 文件名", () => {
   it("裸日期合法（无标题）", () => { const p = parseDocName("20260519.txt"); eq(p.date, "20260519"); eq(p.title, ""); eq(p.stem, "20260519"); });
@@ -18,7 +18,15 @@ describe("doc-model · 文件名", () => {
     eq(sanitizeTitle("  多  空  格 \n x"), "多 空 格 x");
   });
   it("碰撞后缀只在 n≥1 追加", () => { eq(collisionCandidate("20260903 x.txt", 0), "20260903 x.txt"); eq(collisionCandidate("20260903 x.txt", 2), "20260903 x 2.txt"); });
-  it("isDocName 只认根级 .txt", () => { assert(isDocName("a.txt")); assert(!isDocName("a.TXT.zip")); assert(!isDocName("sub/a.txt")); assert(!isDocName("a.bin")); });
+  it("isDocName：任一夹下的 .txt（ADR-0006）；容器/空段/点头段不算", () => { assert(isDocName("a.txt")); assert(isDocName("sub/a.txt")); assert(!isDocName("a.TXT.zip")); assert(!isDocName("a.bin")); assert(!isDocName("/a.txt")); assert(!isDocName(".hid/a.txt")); });
+  it("多文件夹：split/join/parse 带夹；makeDocName 带 dir；sanitizeFolderName", () => {
+    eq(splitDocPath("小说/20260903 x.txt").dir, "小说"); eq(splitDocPath("小说/20260903 x.txt").base, "20260903 x.txt"); eq(splitDocPath("a.txt").dir, "");
+    eq(joinDocPath("", "a.txt"), "a.txt"); eq(joinDocPath("f", "a.txt"), "f/a.txt");
+    const p = parseDocName("小说/20260903 第一章.txt"); eq(p.dir, "小说"); eq(p.date, "20260903"); eq(p.title, "第一章"); eq(p.stem, "20260903 第一章");
+    eq(makeDocName("20260903", "x", "小说"), "小说/20260903 x.txt"); eq(makeDocName("20260903", "", "小说"), "小说/20260903.txt");
+    eq(collisionCandidate("小说/20260903 x.txt", 1), "小说/20260903 x 1.txt");
+    eq(sanitizeFolderName(" a/b:c  d "), "a-b-c d"); eq(sanitizeFolderName("..x"), "x"); eq(sanitizeFolderName("   "), "");
+  });
   it("formatDate", () => { eq(formatDate(new Date(2026, 8, 3).getTime()), "20260903"); });
 });
 

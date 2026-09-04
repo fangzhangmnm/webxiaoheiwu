@@ -20,6 +20,7 @@ export interface EditorDeps {
 export interface EditorState {
     name: string | null;
     pendingDate: string | null;
+    pendingDir: string;
     encrypted: boolean;
     locked: boolean;
     readOnly: boolean;
@@ -33,6 +34,7 @@ export declare function createEditor(d: EditorDeps): {
     }) => Promise<boolean>;
     newDoc: (opts?: {
         encrypted?: boolean;
+        dir?: string;
     }) => Promise<boolean>;
     clear: () => void;
     reload: (name: string) => Promise<void>;
@@ -43,6 +45,8 @@ export declare function createEditor(d: EditorDeps): {
     toggleEncryption: (confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
     rekeyToCurrent: (busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
     noteExternalEdit: () => void;
+    moveTo: (dir: string) => Promise<string | null>;
+    currentDir: () => string;
     canEdit: () => boolean;
     statusForDoc: () => string;
     renderWordCount: () => void;

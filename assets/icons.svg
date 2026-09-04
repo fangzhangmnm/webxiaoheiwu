@@ -1,10 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  14 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  18 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
+    Lucide — ISC License, Copyright (c) 2020 Lucide Contributors · https://github.com/lucide-icons/lucide
 -->
+  <!-- edit -->
+  <!-- move-to-file — 文件+绕行箭头(移到文件) -->
+  <symbol id="move-to-file" data-cat="edit" data-src="own" data-note="文件+绕行箭头(移到文件)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3 H10 a2 2 0 0 0 -2 2 v14 a2 2 0 0 0 2 2 h8 a2 2 0 0 0 2 -2 V8 z"/><path d="M15 3 v5 h5"/><path d="M3 17 A7 7 0 0 1 12.5 9"/><g transform="rotate(30 12.8 9)"><path d="M9.7 8 L12.8 9 L12 12"/></g></symbol>
   <!-- file -->
   <!-- new — 新建:纯加号(等长十字线) -->
   <symbol id="new" data-cat="file" data-src="own" data-note="新建:纯加号(等长十字线)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/> <line x1="5" y1="12" x2="19" y2="12"/></symbol>
@@ -14,6 +18,10 @@
   <symbol id="trash-can" data-cat="file" data-src="own" data-note="垃圾桶:桶身收口(feather 是直筒);与 fluent(圆提手/更低)、heroicons(弧形透视)亦不同 — own" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 9.5v9"/><path d="M14 9.5v9"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
   <!-- restore-trash — 同上但盖只掀 -16° -->
   <symbol id="restore-trash" data-cat="file" data-src="own" data-note="同上但盖只掀 -16°" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="icRtB"><rect width="24" height="24" fill="#fff" stroke="none"/><g stroke="#000" stroke-width="4.5" fill="none" stroke-linecap="round"><path d="M12 19.2 V9.6"/><path d="M9.4 12.2 L12 9.6 L14.6 12.2"/></g></mask><g mask="url(#icRtB)"><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><g transform="rotate(-16 5 6) translate(0 1.66)"><polyline points="3 6 5 6 21 6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></g></g><path d="M12 19.2 V9.6"/><path d="M9.4 12.2 L12 9.6 L14.6 12.2"/></symbol>
+  <!-- folder — 文件夹:左边 tab + 矩形主体 -->
+  <symbol id="folder" data-cat="file" data-src="lucide:folder" data-note="文件夹:左边 tab + 矩形主体" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><!-- 文件夹：左边 tab + 矩形主体 --> <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <!-- folder-open — 打开的文件夹:背板止于盖顶 T 接,不再互相压线 -->
+  <symbol id="folder-open" data-cat="file" data-src="own" data-note="打开的文件夹:背板止于盖顶 T 接,不再互相压线" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18 V7 a2 2 0 0 1 2 -2 h4 l2 2 h6 a2 2 0 0 1 2 2 v1.8"/><path d="M3 18 L6.4 10.8 H21.6 L18.2 18 Z"/></symbol>
   <!-- hierarchy -->
   <!-- lock — 锁:体 13x11+锁梁抬高(腿3.5),整体居中 -->
   <symbol id="lock" data-cat="hierarchy" data-src="own" data-note="锁:体 13x11+锁梁抬高(腿3.5),整体居中" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="10" width="13" height="11"/><path d="M8.8 10 V6.5 a3.2 3.2 0 0 1 6.4 0 V10"/></symbol>
@@ -23,6 +31,8 @@
   <symbol id="edit-disabled" data-cat="hierarchy" data-src="bootstrap:pencil" data-note="不可编辑:同 pencil 加删除线, 方向与笔身垂直(笔身是 ↗, 所以线走 ↘)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="icEdM"><rect width="24" height="24" fill="#fff" stroke="none"/><path d="M4.6 4.6 L19.4 19.4" stroke="#000" stroke-width="4"/></mask><g mask="url(#icEdM)"><g transform="scale(1.5)" fill="currentColor" stroke="none"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"/></g></g><path d="M4.6 4.6 L19.4 19.4"/></symbol>
   <!-- edit-enabled — 可编辑:Bootstrap Icons 的 pencil(MIT) -->
   <symbol id="edit-enabled" data-cat="hierarchy" data-src="bootstrap:pencil" data-note="可编辑:Bootstrap Icons 的 pencil(MIT)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><g transform="scale(1.5)" fill="currentColor" stroke="none"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"/></g></symbol>
+  <!-- create-folder — 加号做成右下角徽标 -->
+  <symbol id="create-folder" data-cat="hierarchy" data-src="own" data-note="加号做成右下角徽标" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="icCfd"><rect width="24" height="24" fill="#fff" stroke="none"/><circle cx="17.6" cy="17.6" r="4.6" fill="#000" stroke="none"/></mask><g mask="url(#icCfd)"><g transform="translate(-1.2 -1.6) scale(0.86)"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g></g><path d="M14.6 17.6 H20.6 M17.6 14.6 V20.6"/></symbol>
   <!-- common -->
   <!-- x — 叉 -->
   <symbol id="x" data-cat="common" data-src="own" data-note="叉" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 L17.5 17.5 M17.5 6.5 L6.5 17.5"/></symbol>
