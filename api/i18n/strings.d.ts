@@ -80,6 +80,50 @@ export declare const S: {
         readonly zh: "新建稿";
         readonly en: "New draft";
     };
+    readonly "save.aria": {
+        readonly zh: "保存 / 同步";
+        readonly en: "Save / sync";
+    };
+    readonly "save.title.clean": {
+        readonly zh: "已同步 · 点击复查云端";
+        readonly en: "Synced · tap to check the cloud";
+    };
+    readonly "save.title.unsynced": {
+        readonly zh: "有改动未同步 · 点击立即上传（Ctrl+S）";
+        readonly en: "Unsynced changes · tap to upload now (Ctrl+S)";
+    };
+    readonly "save.title.local": {
+        readonly zh: "未登录 · 稿子只在本机 · 点击立即落盘";
+        readonly en: "Not signed in · draft lives on this device · tap to save now";
+    };
+    readonly "save.title.offline": {
+        readonly zh: "离线 · 已存本机，联网后自动上传";
+        readonly en: "Offline · saved locally, uploads when back online";
+    };
+    readonly "save.title.encryptPending": {
+        readonly zh: "加密还没成功 · 本地已存、未上云";
+        readonly en: "Encryption pending · saved locally, not uploaded";
+    };
+    readonly "save.synced": {
+        readonly zh: "已同步";
+        readonly en: "Synced";
+    };
+    readonly "save.local": {
+        readonly zh: "已存本机";
+        readonly en: "Saved on this device";
+    };
+    readonly "save.offline": {
+        readonly zh: "离线：已存本机，联网后自动上传";
+        readonly en: "Offline: saved locally, uploads when back online";
+    };
+    readonly "save.stillPending": {
+        readonly zh: "还没推上去，稍后自动重试";
+        readonly en: "Not uploaded yet — will retry";
+    };
+    readonly "save.upToDate": {
+        readonly zh: "已是云端最新";
+        readonly en: "Up to date with the cloud";
+    };
     readonly "ui.voiceBackspace": {
         readonly zh: "退格（按住连删）";
         readonly en: "Backspace (hold to repeat)";
@@ -1029,8 +1073,8 @@ export declare const S: {
         readonly en: "None (default; Quest / desktop)";
     };
     readonly "ui.ime.softKeyboard.ascii": {
-        readonly zh: "弹 ASCII 键盘（字母进内置输入法，不走系统输入法）";
-        readonly en: "ASCII keyboard (letters go to the built-in IME, never the system IME)";
+        readonly zh: "弹系统键盘（字母进内置输入法；iOS 弹的仍是你当前的键盘——请在键盘上切到英文）";
+        readonly en: "Show the system keyboard (letters go to the built-in IME; on iOS it is still your current keyboard — switch it to English)";
     };
     readonly "ui.ime.useSystem": {
         readonly zh: "改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）";

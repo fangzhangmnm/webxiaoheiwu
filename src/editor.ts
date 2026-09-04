@@ -16,6 +16,7 @@ import { reportError } from "./error-badge.ts";
 import { t } from "./i18n/index.ts";
 
 export interface StatusOpts { error?: boolean; unsynced?: boolean }
+export type SyncKind = "none" | "locked" | "unavailable" | "encryptPending" | "local" | "offline" | "unsynced" | "clean";
 export interface EditorDeps {
   editor: HTMLTextAreaElement;
   titleInput: HTMLInputElement;
@@ -71,13 +72,22 @@ export function createEditor(d: EditorDeps) {
     d.titleInput.classList.toggle("locked", blocked);
     d.editor.readOnly = blocked; d.titleInput.readOnly = blocked;   // 锁/只读 = 真 readOnly：敲进去的字不再被悄悄吞掉（user 2026-09-04「没解锁密码导致的煤气灯」；根治=0.3 懒空白稿）
   }
-  // zen（user 2026-09-04）：干净态 / 锁态留白——只有「未同步 / 本地草稿 / 不可用 / 加密未成」这种要人知道的才出字。
+  // zen（user 2026-09-04）：干净态 / 锁态留白；「未同步 / 本地稿」交给顶栏 smart save 图标（syncKind），只剩「不可用 / 加密未成」出字。
   function statusForDoc(): string {
     if (st.locked) return "";
     if (encryptPending) return t("st.encryptPendingHint");
     if (st.unavailable) return t("st.unavailable");
-    if (pushPending || localTimer) return d.isSignedIn() ? t("st.unsynced") : t("st.localDraft");
     return "";
+  }
+  /** 顶栏 smart save 钮的状态源（user 2026-09-04「为什么没有 smart save button，触屏的时候没法按 ctrl s」）。 */
+  function syncKind(): SyncKind {
+    if (!st.name && !st.pendingDate) return "none";
+    if (st.locked) return "locked";
+    if (st.unavailable) return "unavailable";
+    if (encryptPending) return "encryptPending";
+    if (!d.isSignedIn()) return "local";
+    const dirty = pushPending || !!localTimer || !!renameTimer;
+    return dirty ? (isOffline() ? "offline" : "unsynced") : "clean";
   }
   const canEdit = () => !st.readOnly && !st.locked && !st.unavailable;
 
@@ -420,14 +430,14 @@ export function createEditor(d: EditorDeps) {
   for (const el of [d.editor, d.titleInput]) for (const evt of ["beforeinput", "paste", "cut", "drop"]) el.addEventListener(evt, blockIfGuarded);
   d.editor.addEventListener("input", () => {
     if (!canEdit()) return;
-    d.setState(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
     scheduleLocalSave();
+    d.setState(statusForDoc(), { unsynced: d.isSignedIn() });
   });
   d.titleInput.addEventListener("input", () => {
     if (!canEdit()) return;
     if (/[\r\n]/.test(d.titleInput.value)) { const v = d.titleInput.value; replaceRange(d.titleInput, 0, v.length, v.replace(/[\r\n]+/g, " ")); }
-    d.setState(d.isSignedIn() ? t("st.unsynced") : t("st.localDraft"), { unsynced: d.isSignedIn() });
     if (st.name) scheduleRename(); else scheduleLocalSave();
+    d.setState(statusForDoc(), { unsynced: d.isSignedIn() });
   });
   d.titleInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); d.editor.focus(); } });
   onLockChange((unlocked) => { if (!unlocked && st.encrypted && st.name) { void lockNow(); } });
@@ -443,8 +453,8 @@ export function createEditor(d: EditorDeps) {
   /** IME/语音提交插入后调（不走 input 事件的路径）。 */
   function noteExternalEdit(): void {
     if (!canEdit()) return;
-    d.setState(t("st.unsynced"), { unsynced: d.isSignedIn() });
     scheduleLocalSave();
+    d.setState(statusForDoc(), { unsynced: d.isSignedIn() });
   }
 
   return {
@@ -452,7 +462,7 @@ export function createEditor(d: EditorDeps) {
     open, newDoc, clear, reload,
     flushLocal, pushNow, refreshIfClean,
     toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir,
-    canEdit, statusForDoc,
+    canEdit, statusForDoc, syncKind,
     isDirty: () => !!localTimer || pushPending || d.editor.value !== savedText,
     isUnlockedDoc: () => st.encrypted && isUnlocked(),
     lastOpenName: () => (deviceKvGetJson<string | null>(KV_LAST_OPEN, null) ?? null),

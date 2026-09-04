@@ -238,6 +238,18 @@ try {
     return { before, after, ta: getComputedStyle(ed).touchAction, taMenu: getComputedStyle(document.getElementById("menuButton")).touchAction, vp: document.querySelector('meta[name="viewport"]').content };
   });
   check("iOS 出血线：standalone 顶栏 top 4→≥20、抽屉头下沉、纸面随顶栏；双击放大：编辑器/按钮 touch-action=manipulation + user-scalable=no", floors.before.top === 4 && floors.after.top >= 20 && floors.after.drawerPad >= 16 && floors.after.pageMt === floors.after.top + 36 && floors.ta === "manipulation" && floors.taMenu === "manipulation" && /user-scalable=no/.test(floors.vp), JSON.stringify(floors));
+  // smart save 钮 + 软键盘缩纸面
+  const smart = await page.evaluate(async () => {
+    const w = (ms) => new Promise((r) => setTimeout(r, ms)); const x = window.__xhw; const btn = document.getElementById("saveButton");
+    await x.editor.newDoc(); const ed = document.getElementById("editor"); ed.focus(); ed.value = "smart save"; ed.dispatchEvent(new Event("input")); await w(50);
+    const kindDirty = x.editor.syncKind(), shown = !btn.hidden, icon = btn.querySelector("use")?.getAttribute("href");
+    await x.smartSave(); await w(300);
+    const toast = document.getElementById("toast").textContent, kindAfter = x.editor.syncKind();
+    const pg = document.querySelector(".page"); const h0 = pg.getBoundingClientRect().height;
+    document.documentElement.style.setProperty("--kb-offset", "300px"); const h1 = pg.getBoundingClientRect().height; document.documentElement.style.setProperty("--kb-offset", "0px");
+    return { kindDirty, shown, icon, toast, kindAfter, shrink: Math.round(h0 - h1) };
+  });
+  check("smart save 钮：未登录=本机图标可见、点击落盘并 toast；--kb-offset 300 → 纸面缩 300", smart.kindDirty === "local" && smart.shown && smart.icon === "#database" && /已存本机|Saved on/.test(smart.toast) && smart.kindAfter === "local" && smart.shrink === 300, JSON.stringify(smart));
   check("undo：IME 提交后 Ctrl+Z 只撤最后一词 / Ctrl+Shift+Z 重做 / 退格钮可撤 / 换稿不漏拼音", undoRun.v0 === "你好" && undoRun.v1 === "你" && undoRun.v2 === "你好" && undoRun.v3 === "你" && undoRun.v4 === "你好" && undoRun.v5 === "你", JSON.stringify(undoRun));
   const kbAway = await page.evaluate(async () => { const w = (ms) => new Promise((r) => setTimeout(r, ms)); window.dispatchEvent(new Event("blur")); await w(50); const a = document.body.classList.contains("kb-away"); document.activeElement?.blur(); window.dispatchEvent(new Event("focus")); await w(50); return { a, b: !document.body.classList.contains("kb-away"), c: document.activeElement === document.getElementById("editor") }; });
   check("Quest 键盘提示：window blur → kb-away；focus → 撤提示 + 焦点回编辑器", kbAway.a && kbAway.b && kbAway.c, JSON.stringify(kbAway));

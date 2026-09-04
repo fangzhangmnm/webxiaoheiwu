@@ -2,6 +2,7 @@ export interface StatusOpts {
     error?: boolean;
     unsynced?: boolean;
 }
+export type SyncKind = "none" | "locked" | "unavailable" | "encryptPending" | "local" | "offline" | "unsynced" | "clean";
 export interface EditorDeps {
     editor: HTMLTextAreaElement;
     titleInput: HTMLInputElement;
@@ -49,6 +50,7 @@ export declare function createEditor(d: EditorDeps): {
     currentDir: () => string;
     canEdit: () => boolean;
     statusForDoc: () => string;
+    syncKind: () => SyncKind;
     isDirty: () => boolean;
     isUnlockedDoc: () => boolean;
     lastOpenName: () => string | null;

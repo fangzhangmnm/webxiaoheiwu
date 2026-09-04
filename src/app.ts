@@ -11,6 +11,7 @@ import { createEditor } from "./editor.ts";
 import { verifyDocPassword, decryptDoc, encryptDoc, moveDoc, dirtyDocCount, deleteFolder, snapshotFolders } from "./docs.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
+import type { SyncKind } from "./editor.ts";
 import { initPwaShell } from "./pwa-shell.ts";
 import { NaturalCodeIME, DEFAULT_SCHEMA, isImeSchema, type ImeSchema, type UserDictDump } from "./ime.ts";
 import type { VoiceSession, VoiceState } from "./voice/session.ts";
@@ -39,7 +40,39 @@ function setState(text: string, opts: { error?: boolean; unsynced?: boolean } = 
   saveStatusEl.textContent = text;
   saveStatusEl.classList.toggle("error", !!opts.error);
   saveStatusEl.classList.toggle("unsynced", !!opts.unsynced);
+  queueMicrotask(renderSaveButton);   // 微任务：让同一处理器里排在后面的定时器（localTimer/renameTimer）先落，再读 syncKind
 }
+// ── smart save 钮（user 2026-09-04「为什么没有 smart save button，触屏的时候没法按 ctrl s」；形状抄 WeebPaint 顶栏云钮：状态即按钮）──
+const saveButton = $<HTMLButtonElement>("saveButton");
+const SAVE_SPEC: Record<SyncKind, { icon: string; cls: string; title: Parameters<typeof t>[0] } | null> = {
+  clean: { icon: "cloud-synced", cls: "s-clean", title: "save.title.clean" },
+  unsynced: { icon: "cloud-upload", cls: "s-unsynced", title: "save.title.unsynced" },
+  local: { icon: "database", cls: "s-local", title: "save.title.local" },
+  offline: { icon: "cloud-unavailable", cls: "s-offline", title: "save.title.offline" },
+  encryptPending: { icon: "cloud-pending", cls: "s-pending", title: "save.title.encryptPending" },
+  locked: null, unavailable: null, none: null,
+};
+function renderSaveButton(): void {
+  const spec = SAVE_SPEC[editor.syncKind()];
+  saveButton.hidden = !spec;
+  if (!spec) return;
+  useIcon(saveButton, spec.icon);
+  for (const c of ["s-clean", "s-unsynced", "s-local", "s-offline", "s-pending"]) saveButton.classList.toggle(c, c === spec.cls);
+  saveButton.title = t(spec.title); saveButton.setAttribute("aria-label", saveButton.title);
+}
+/** Ctrl+S 与顶栏保存钮同一入口：脏 → 立即上传/落本地；干净且已登录 → 复查云端（同 WeebPaint「新鲜时点=刷新」）。 */
+async function smartSave(): Promise<void> {
+  const before = editor.syncKind();
+  if (before === "none" || before === "locked" || before === "unavailable") return;
+  saveButton.classList.add("flash"); setTimeout(() => saveButton.classList.remove("flash"), 500);
+  void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
+  if (before === "clean") { await editor.refreshIfClean(); if (editor.syncKind() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return; }
+  await editor.pushNow();
+  const after = editor.syncKind();
+  setStatus(after === "clean" ? t("save.synced") : after === "local" ? t("save.local") : after === "offline" ? t("save.offline") : after === "unsynced" ? t("save.stillPending") : "");
+  renderSaveButton();
+}
+saveButton.addEventListener("click", () => { void smartSave(); });
 function setStatus(text: string, opts: { error?: boolean; unsynced?: boolean } = {}): void {
   if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
   toastEl.textContent = text;
@@ -59,16 +92,20 @@ $("settingsBuild").textContent = APP_VERSION;
 const editorEl = $<HTMLTextAreaElement>("editor");
 const titleInput = $<HTMLInputElement>("titleInput");
 // 内置 IME 开着时全平台 inputmode=none：不弹系统软键盘、系统输入法不碰字节（2026-09-03 user「直接不用系统输入法」；Quest 一直如此，见 20260524-quest-ime.md）。
-// 触屏键盘（per-device）：none = 不弹（Quest/桌面实体键盘）；ascii = inputmode="email" → iOS 出纯 ASCII 键盘、Android 不组字——字母仍进内置 IME
-//   （user 2026-09-03「不改用系统输入法只是出软键盘行吗」）。软键盘不一定发 keydown（Android 发 229/Unidentified）→ beforeinput 路由见 setupImeOn。
+// 触屏键盘（per-device）：none = 不弹（Quest/桌面实体键盘）；ascii = inputmode="email" → 弹系统键盘、字母仍进内置 IME
+//   （user 2026-09-03「不改用系统输入法只是出软键盘行吗」）。⚠ iOS 实测（user 2026-09-04）：inputmode 只改布局不改语言，
+//   弹出的仍是用户当前的中文键盘——iOS 上唯一能强制英文键盘的是密码框（secure text entry），那是「输入代理」一整刀，待拍板。软键盘不一定发 keydown（Android 发 229/Unidentified）→ beforeinput 路由见 setupImeOn。
 const softKeyboardPref = (): "none" | "ascii" => (deviceKvGet("softKeyboard") === "ascii" ? "ascii" : "none");
 function applyInputMode(builtinIme: boolean): void {
   const mode = builtinIme ? (softKeyboardPref() === "ascii" ? "email" : "none") : null;
   for (const el of [editorEl, titleInput]) { if (mode) el.setAttribute("inputmode", mode); else el.removeAttribute("inputmode"); }
 }
-if (window.visualViewport) {   // iOS 软键盘：把键盘高度暴露成 CSS 变量，麦克风钮往上挪
+if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset，纸面整体缩到键盘上方（styles .page height）；iOS 若把视口顶上去，拉回 0 让固定顶栏别被推出屏
   const vv = window.visualViewport;
-  const upd = () => document.documentElement.style.setProperty("--kb-offset", `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
+  const upd = () => {
+    if (vv.offsetTop > 0 && document.activeElement && document.activeElement !== document.body) window.scrollTo(0, 0);
+    document.documentElement.style.setProperty("--kb-offset", `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
+  };
   vv.addEventListener("resize", upd); vv.addEventListener("scroll", upd); upd();
 }
 
@@ -101,7 +138,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, titleInput, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); drawer.refresh(); rememberLastActive(); },
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); drawer.refresh(); rememberLastActive(); },
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
 });
@@ -695,12 +732,7 @@ $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash
 $("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
-  if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) {
-    event.preventDefault();
-    saveStatusEl.classList.add("flash"); setTimeout(() => saveStatusEl.classList.remove("flash"), 500);
-    void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
-    void editor.pushNow();
-  }
+  if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); }
 });
 
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
@@ -743,8 +775,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") { void editor.flushLocal().then(() => { if (auth.isSignedIn()) return editor.pushNow(); }); void pushUserDict(); void flushCollections(); }
 });
 window.addEventListener("pagehide", () => { void editor.flushLocal(); void flushCollections(); });
-window.addEventListener("online", () => { renderCloudButton(); if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); } });
-window.addEventListener("offline", () => renderCloudButton());
+window.addEventListener("online", () => { renderCloudButton(); renderSaveButton(); if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); } });
+window.addEventListener("offline", () => { renderCloudButton(); renderSaveButton(); });
 setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void editor.refreshIfClean(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);
 
 // ── standalone 标记：贴边件地板（styles.css --top-floor / --bottom-floor）按它切换；display-mode 媒体查询 + iOS 的 navigator.standalone 双保险 ──
@@ -820,4 +852,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

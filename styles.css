@@ -457,7 +457,7 @@ body {
 .mic-button {
   position: absolute;
   right: 14px;
-  bottom: calc(14px + var(--kb-offset, 0px));
+  bottom: 14px;   /* 键盘由 .page 整体缩高（--kb-offset）应对，纸内件不再各自抬 */
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -1539,7 +1539,7 @@ body.ruled-lines .body {
 .toast.error { background: var(--danger); color: #fff; }
 .candidates:not(.hidden) ~ .toast { bottom: 64px; }
 /* 语音模式退格钮（话筒左邻，只在纯口述时出现）+ Quest「键盘不在本页」提示（2026-09-04） */
-.mic-side { right: 70px; width: 40px; height: 40px; bottom: calc(18px + var(--kb-offset, 0px)); }
+.mic-side { right: 70px; width: 40px; height: 40px; bottom: 18px; }
 .mic-side .ico { width: 18px; height: 18px; }
 .kb-away-hint { display: none; position: fixed; top: 36px; left: 50%; transform: translateX(-50%); z-index: 8; padding: 5px 12px; border-radius: 999px; background: var(--warn); color: #fff; font-family: var(--font-ui); font-size: 12px; box-shadow: var(--shadow); pointer-events: none; }
 body.kb-away .kb-away-hint { display: block; }
@@ -1570,3 +1570,12 @@ body.kb-away .page { opacity: 0.6; transition: opacity 200ms ease; }
 * { touch-action: manipulation; }
 html, body { -webkit-tap-highlight-color: transparent; }
 button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -webkit-touch-callout: none; }
+
+/* ── smart save 钮（顶栏，触屏的 Ctrl+S；状态色同抽屉 badge）── */
+.save-btn.s-clean { color: var(--info); }
+.save-btn.s-unsynced { color: var(--accent); }
+.save-btn.s-local, .save-btn.s-offline { color: var(--quiet); }
+.save-btn.s-pending { color: var(--warn); }
+.save-btn.flash { color: var(--ok); }
+/* ── iOS 软键盘：纸面整体缩到键盘上方（visualViewport → --kb-offset），光标/候选/话筒都在可见区（user 2026-09-04「屏幕没跟上，被键盘遮挡，候选也看不到」）── */
+.page { height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px - var(--kb-offset, 0px)); }
