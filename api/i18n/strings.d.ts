@@ -912,6 +912,26 @@ export declare const S: {
         readonly zh: "五笔 86";
         readonly en: "Wubi 86";
     };
+    readonly "ime.schema.fluency": {
+        readonly zh: "全拼 · 语句流（整句连打）";
+        readonly en: "Pinyin · sentence flow";
+    };
+    readonly "ime.schema.ziranma": {
+        readonly zh: "自然码双拼";
+        readonly en: "Ziranma double pinyin";
+    };
+    readonly "ime.schema.flypy": {
+        readonly zh: "小鹤双拼";
+        readonly en: "Xiaohe double pinyin";
+    };
+    readonly "ime.schema.abc": {
+        readonly zh: "智能 ABC 双拼";
+        readonly en: "ABC double pinyin";
+    };
+    readonly "ime.schema.pyjj": {
+        readonly zh: "拼音加加双拼";
+        readonly en: "Pinyin Jiajia double pinyin";
+    };
     readonly "ime.nameFallback": {
         readonly zh: "拼音（备用）";
         readonly en: "Pinyin (fallback)";

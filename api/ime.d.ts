@@ -1,5 +1,5 @@
-export type ImeSchema = "luna_pinyin" | "double_pinyin_mspy" | "wubi86";
-export declare const IME_SCHEMAS: ImeSchema[];
+export declare const IME_SCHEMAS: readonly ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin_mspy", "double_pinyin", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "wubi86"];
+export type ImeSchema = (typeof IME_SCHEMAS)[number];
 export declare const DEFAULT_SCHEMA: ImeSchema;
 export declare const isImeSchema: (v: unknown) => v is ImeSchema;
 export type ImeResult = {

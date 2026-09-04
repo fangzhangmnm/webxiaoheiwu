@@ -155,7 +155,8 @@ const imeStatus = $("imeStatus");
 const candidateBar = $("candidateBar");
 let shiftCleanPress = false;
 const imeSchemaPref = (): ImeSchema => { const v = deviceKvGet("imeSchema"); return isImeSchema(v) ? v : DEFAULT_SCHEMA; };
-const schemaName = (s: ImeSchema) => (s === "double_pinyin_mspy" ? t("ime.schema.mspy") : s === "wubi86" ? t("ime.schema.wubi") : t("ime.schema.luna"));
+const SCHEMA_NAME_KEY = { luna_pinyin: "ime.schema.luna", luna_pinyin_fluency: "ime.schema.fluency", double_pinyin_mspy: "ime.schema.mspy", double_pinyin: "ime.schema.ziranma", double_pinyin_flypy: "ime.schema.flypy", double_pinyin_abc: "ime.schema.abc", double_pinyin_pyjj: "ime.schema.pyjj", wubi86: "ime.schema.wubi" } as const;
+const schemaName = (s: ImeSchema) => t(SCHEMA_NAME_KEY[s]);
 function renderImeState(): void {
   const s = ime.getState();
   imeStatus.textContent = !s.enabled ? t("ime.system") : `${s.engine === "rime" ? schemaName(ime.schema) : t("ime.nameFallback")} · ${s.asciiMode ? t("ime.modeEn") : t("ime.modeZh")}`;

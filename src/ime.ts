@@ -12,10 +12,10 @@ const NATURAL_CODE_STARTER_MAP: Record<string, string[]> = {
   wen: ["文", "问", "闻"], xie: ["写", "谢", "鞋"], xiaoshuo: ["小说"],
 };
 const RIME_WORKER_URL = "./vendor/my-rime/worker.js";
-export type ImeSchema = "luna_pinyin" | "double_pinyin_mspy" | "wubi86";
-export const IME_SCHEMAS: ImeSchema[] = ["luna_pinyin", "double_pinyin_mspy", "wubi86"];   // 五笔86：user 2026-09-03「加一个五笔玩玩」（依赖 pinyin_simp 反查 → stroke）
+export const IME_SCHEMAS = ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin_mspy", "double_pinyin", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "wubi86"] as const;
+export type ImeSchema = (typeof IME_SCHEMAS)[number];   // 全拼（默认）/ 语句流 / 微软·自然码·小鹤·ABC·拼音加加 双拼（user「双拼顺手支持其他方案」）/ 五笔86（「加一个五笔玩玩」，依赖 pinyin_simp → stroke）
 export const DEFAULT_SCHEMA: ImeSchema = "luna_pinyin";
-export const isImeSchema = (v: unknown): v is ImeSchema => v === "luna_pinyin" || v === "double_pinyin_mspy" || v === "wubi86";
+export const isImeSchema = (v: unknown): v is ImeSchema => (IME_SCHEMAS as readonly string[]).includes(v as string);
 const PUNCTUATION_KEYS = new Set([",", ".", ";", ":", "?", "!", '"', "'", "(", ")", "<", ">", "{", "}", "[", "]", "\\", "~", "@", "#", "$", "&", "*", "|"]);
 
 export type ImeResult = { type: "passthrough" | "composing" | "clear" | "toggle" } | { type: "commit"; text: string; consumedBuffer: string };
