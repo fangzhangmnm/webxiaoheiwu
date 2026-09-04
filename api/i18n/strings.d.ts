@@ -1008,6 +1008,18 @@ export declare const S: {
         readonly zh: "繁體";
         readonly en: "Traditional";
     };
+    readonly "ui.ime.quotes": {
+        readonly zh: "引号样式（打字与语音同用）";
+        readonly en: "Quote style (typing and voice)";
+    };
+    readonly "ui.ime.quotes.curly": {
+        readonly zh: "弯引号 “ ” ‘ ’（默认）";
+        readonly en: "Curly “ ” ‘ ’ (default)";
+    };
+    readonly "ui.ime.quotes.corner": {
+        readonly zh: "方引号 「 」『 』";
+        readonly en: "Corner brackets 「 」『 』";
+    };
     readonly "ui.ime.softKeyboard": {
         readonly zh: "触屏键盘（无实体键盘时）";
         readonly en: "Touch keyboard (when there is no physical keyboard)";

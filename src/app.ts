@@ -22,6 +22,7 @@ import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
 import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
+import { setQuoteStyle } from "./zh-punct.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -190,6 +191,8 @@ const imeSchemaPref = (): ImeSchema => { const v = prefs.getItem<string>("imeSch
 const SCHEMA_NAME_KEY = { luna_pinyin: "ime.schema.luna", luna_pinyin_fluency: "ime.schema.fluency", double_pinyin_mspy: "ime.schema.mspy", double_pinyin: "ime.schema.ziranma", double_pinyin_flypy: "ime.schema.flypy", double_pinyin_abc: "ime.schema.abc", double_pinyin_pyjj: "ime.schema.pyjj", wubi86: "ime.schema.wubi" } as const;
 const schemaName = (s: ImeSchema) => t(SCHEMA_NAME_KEY[s]);
 const imeSimplifiedPref = (): boolean => prefs.getItem<boolean>("imeSimplified") !== false;   // 简/繁跟人走（synced prefs）；缺省简体
+const quoteStylePref = (): "curly" | "corner" => (prefs.getItem<string>("quoteStyle") === "corner" ? "corner" : "curly");   // 引号样式跟人走
+function applyQuoteStyle(v: "curly" | "corner"): void { ime.quoteStyle = v; setQuoteStyle(v); }
 function renderImeState(): void {
   const s = ime.getState();
   // zen：顶栏只剩「中/英」一字（方案名进 title 悬停 + 设置页；系统输入法时整个不显示）。点它 = 切中/英（同 Shift）；改用系统输入法只在设置页。
@@ -637,7 +640,10 @@ const imeSchemaSelect = $<HTMLSelectElement>("imeSchemaSelect");
 const systemImeToggle = $<HTMLInputElement>("systemImeToggle");
 const softKeyboardSelect = $<HTMLSelectElement>("softKeyboardSelect");
 const imeScriptSelect = $<HTMLSelectElement>("imeScriptSelect");
-function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; softKeyboardSelect.value = softKeyboardPref(); imeScriptSelect.value = imeSimplifiedPref() ? "simp" : "trad"; }
+const quoteStyleSelect = $<HTMLSelectElement>("quoteStyleSelect");
+function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; softKeyboardSelect.value = softKeyboardPref(); imeScriptSelect.value = imeSimplifiedPref() ? "simp" : "trad"; quoteStyleSelect.value = quoteStylePref(); }
+quoteStyleSelect.addEventListener("change", () => { const v = quoteStyleSelect.value === "corner" ? "corner" : "curly"; prefs.setItem("quoteStyle", v); applyQuoteStyle(v); });
+prefs.onChange("quoteStyle", () => { applyQuoteStyle(quoteStylePref()); if (drawer.currentView() === "settings") renderImeSection(); });
 imeScriptSelect.addEventListener("change", () => { const v = imeScriptSelect.value === "simp"; prefs.setItem("imeSimplified", v); void ime.setSimplified(v); });
 prefs.onChange("imeSimplified", () => { void ime.setSimplified(imeSimplifiedPref()); if (drawer.currentView() === "settings") renderImeSection(); });
 softKeyboardSelect.addEventListener("change", () => { deviceKvSet("softKeyboard", softKeyboardSelect.value === "ascii" ? "ascii" : null); applyInputMode(ime.enabled); });
@@ -695,7 +701,7 @@ newDocButton.addEventListener("click", (e) => {
   });
 });
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
-$("settingsTopButton").addEventListener("click", () => { if (drawer.currentView() === "settings") drawer.close(); else drawer.open("settings"); });   // 设置入口在顶栏三条杠旁（user 2026-09-03「不要藏 gallery 里面」）
+$("settingsButton").addEventListener("click", () => drawer.open("settings"));   // 设置入口在抽屉头云图标旁（user 2026-09-04「扳手还是收到 gallery 里面吧…看看 weebpaint 的布局」）
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
 $("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
@@ -768,6 +774,7 @@ async function boot(): Promise<void> {
   await initCollections();
   applyReadingMode(prefs.getItem<string>("readingMode"));
   applyRuledLines(ruledLinesPref());
+  applyQuoteStyle(quoteStylePref());
   if (deviceKvGet("imeEnabled") !== "0") { ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）
   renderImeState();
   drawer.subscribe();

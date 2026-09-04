@@ -49,10 +49,9 @@ export declare class NaturalCodeIME {
     enabled: boolean;
     asciiMode: boolean;
     simplified: boolean;
-    private zero;
-    private refreshZero;
-    private runOps;
-    private track;
+    quoteStyle: "curly" | "corner";
+    private quoteOpen;
+    private punctOverride;
     setSimplified(v: boolean): Promise<void>;
     backend: Backend;
     initializeError: string | null;

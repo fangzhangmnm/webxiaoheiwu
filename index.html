@@ -120,9 +120,6 @@
         <button class="menu-button" id="menuButton" type="button" aria-label="文件菜单" data-i18n-aria="ui.menu" data-i18n-title="ui.menu">
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
-        <button class="menu-button" id="settingsTopButton" type="button" aria-label="设置" data-i18n-aria="ui.settings" data-i18n-title="ui.settings">
-          <svg class="ico" aria-hidden="true"><use href="#wrench"/></svg>
-        </button>
         <span class="top-spacer" aria-hidden="true"></span>
         <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
         <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护" data-i18n-aria="top.readOnlyOn"></button>
@@ -223,6 +220,9 @@
         <button class="icon-button cloud-btn" id="cloudButton" type="button" aria-label="云端" data-i18n-aria="ui.cloud" data-cloud-state="out">
           <svg class="ico" aria-hidden="true"><use href="#cloud"/></svg>
         </button>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="设置" data-i18n-aria="ui.settings" data-i18n-title="ui.settings">
+          <svg class="ico" aria-hidden="true"><use href="#wrench"/></svg>
+        </button>
         <button class="icon-button" id="reloadButton" type="button" aria-label="刷新页面" data-i18n-aria="ui.drawerReload" data-i18n-title="ui.drawerReload">
           <svg class="ico" aria-hidden="true"><use href="#refresh"/></svg>
         </button>
@@ -282,6 +282,13 @@
             <select id="imeScriptSelect" class="voice-config-select">
               <option value="simp" data-i18n="ui.ime.script.simp">简体（默认）</option>
               <option value="trad" data-i18n="ui.ime.script.trad">繁體</option>
+            </select>
+          </label>
+          <label class="voice-config-field">
+            <span class="voice-config-label" data-i18n="ui.ime.quotes">引号样式（打字与语音同用）</span>
+            <select id="quoteStyleSelect" class="voice-config-select">
+              <option value="curly" data-i18n="ui.ime.quotes.curly">弯引号 “ ” ‘ ’（默认）</option>
+              <option value="corner" data-i18n="ui.ime.quotes.corner">方引号 「 」『 』</option>
             </select>
           </label>
           <label class="voice-config-field">
@@ -377,6 +384,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-52f5364ab4dc.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-80cf39d5a7b6.mjs"></script>
   </body>
 </html>

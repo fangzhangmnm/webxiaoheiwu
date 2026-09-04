@@ -16,7 +16,6 @@ export const IME_SCHEMAS = ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin
 export type ImeSchema = (typeof IME_SCHEMAS)[number];   // 全拼（默认）/ 语句流 / 微软·自然码·小鹤·ABC·拼音加加 双拼（user「双拼顺手支持其他方案」）/ 五笔86（「加一个五笔玩玩」，依赖 pinyin_simp → stroke）
 export const DEFAULT_SCHEMA: ImeSchema = "luna_pinyin";
 export const isImeSchema = (v: unknown): v is ImeSchema => (IME_SCHEMAS as readonly string[]).includes(v as string);
-import { ZeroInitialRewriter, ZERO_TABLES } from "./ime-zero-initial.ts";
 const PUNCTUATION_KEYS = new Set([",", ".", ";", ":", "?", "!", '"', "'", "(", ")", "<", ">", "{", "}", "[", "]", "\\", "~", "@", "#", "$", "&", "*", "|"]);
 
 export type ImeResult = { type: "passthrough" | "composing" | "clear" | "toggle" } | { type: "commit"; text: string; consumedBuffer: string };
@@ -195,15 +194,18 @@ export class NaturalCodeIME {
   enabled = false;
   asciiMode = false;
   simplified = true;   // 简体（默认）/ 繁體；synced pref 跟人走，app 层在 initialize 前灌入
-  // 双拼零声母全拼重写（ime-zero-initial.ts）：只在 RIME 后端 + 双拼方案时有表，其它直通
-  private zero = new ZeroInitialRewriter(null);
-  private refreshZero(): void { this.zero = new ZeroInitialRewriter(this.backend.engine === "rime" ? (ZERO_TABLES[this.schema] ?? null) : null); }
-  private async runOps(ops: ReturnType<ZeroInitialRewriter["onKey"]>): Promise<ImeResult> {
-    let r: ImeResult = { type: "passthrough" };
-    for (const op of ops) r = op.op === "bs" ? await this.backend.backspace() : await this.backend.typeLetter(op.key);
-    return this.track(r);
+  // JS 层标点覆盖（方案层的 punctuation 改不了：wasm librime 重建 schema 要源 yaml）：
+  //   ` 与 ~ 中文态出间隔号「·」（user 2026-09-04「tilde 中文是不是出圆点」；Windows 微软拼音是 ` 出 ·、~ 出 ～，这里两个都给 ·）；
+  //   引号样式 = 设置项（user「引号变成方形的…我觉得设置」）：curly = 交给 RIME 的 “” ‘’；corner = 「」『』 交替开合（语音标点同步走 zh-punct）。
+  quoteStyle: "curly" | "corner" = "curly";
+  private quoteOpen = { d: true, s: true };
+  private punctOverride(key: string): string | null {
+    if (key === "`" || key === "~") return "·";
+    if (this.quoteStyle !== "corner") return null;
+    if (key === '"') { const ch = this.quoteOpen.d ? "「" : "」"; this.quoteOpen.d = !this.quoteOpen.d; return ch; }
+    if (key === "'") { const ch = this.quoteOpen.s ? "『" : "』"; this.quoteOpen.s = !this.quoteOpen.s; return ch; }
+    return null;
   }
-  private track(r: ImeResult): ImeResult { if (r.type !== "composing") this.zero.reset(); return r; }
   async setSimplified(v: boolean): Promise<void> { this.simplified = v; if (this.backend.setSimplified) { try { await this.backend.setSimplified(v); } catch (e) { console.warn("[ime] setSimplified failed", e); } } }
   backend: Backend = new StarterMapBackend();
   initializeError: string | null = null;
@@ -220,7 +222,6 @@ export class NaturalCodeIME {
       try { await rime.initialize(schema); this.backend = rime; this.initializeError = null; }
       catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
       this.initialized = true;
-      this.refreshZero();
     })();
     await this.initPromise;
   }
@@ -229,7 +230,6 @@ export class NaturalCodeIME {
     this.schema = schema;
     const b = this.backend as { setSchema?: (s: ImeSchema) => Promise<void> };
     if (b.setSchema) { try { await b.setSchema(schema); } catch (e) { console.warn("[ime] setSchema failed", e); } }
-    this.refreshZero();
   }
   /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
   dispose(): void {
@@ -242,13 +242,12 @@ export class NaturalCodeIME {
     return { enabled: this.enabled, asciiMode: this.asciiMode, buffer: s.buffer, candidates: s.candidates, engine: s.engine, initializeError: this.initializeError };
   }
   isComposing(): boolean { return this.enabled && !this.asciiMode && (this.backend.getState().buffer.length > 0 || !!this.backend.busy); }
-  resetComposition(): void { this.zero.reset(); this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
+  resetComposition(): void { this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
   async dumpUserDir(): Promise<UserDictDump | null> { if (!this.backend.dumpUserDir) return null; try { return await this.backend.dumpUserDir(); } catch (e) { console.warn("[ime] dumpUserDir failed", e); return null; } }
   async restoreUserDir(dump: UserDictDump): Promise<void> { if (!this.backend.restoreUserDir) return; try { await this.backend.restoreUserDir(dump); } catch (e) { console.warn("[ime] restoreUserDir failed", e); } }
 
   /** Shift 单击：中 ↔ EN。切到 EN 时把未完成的拼音原样提交。 */
   async toggleAsciiMode(): Promise<ImeResult> {
-    this.zero.reset();
     const toAscii = !this.asciiMode;
     const pending = this.backend.getState().buffer;
     await this.backend.clear();
@@ -259,23 +258,25 @@ export class NaturalCodeIME {
 
   async onKeydown(event: KeyboardEvent): Promise<ImeResult> {
     if (!this.enabled || this.asciiMode) return { type: "passthrough" };
-    if (isAsciiLetter(event)) { event.preventDefault(); return await this.runOps(this.zero.onKey(event.key.toLowerCase())); }
+    if (isAsciiLetter(event)) { event.preventDefault(); return await this.backend.typeLetter(event.key.toLowerCase()); }
+    if (!(event.ctrlKey || event.altKey || event.metaKey)) {   // JS 层标点覆盖（RIME 方案层改不了，见 punctOverride）
+      const p = this.punctOverride(event.key);
+      if (p != null) {
+        event.preventDefault();
+        if (this.isComposing()) { const r = await this.backend.commitDefault(false); if (r.type === "commit") return { type: "commit", text: r.text + p, consumedBuffer: r.consumedBuffer }; }
+        return { type: "commit", text: p, consumedBuffer: "" };
+      }
+    }
     if (isRoutedPunct(event)) {
-      if (this.isComposing() && event.key === ";" && this.schema === "double_pinyin_mspy") { event.preventDefault(); return await this.runOps(this.zero.onKey(";")); }   // 微软双拼 ; = ing 韵母键
       const isPaginator = this.isComposing() && (event.key === "[" || event.key === "]");
-      if (!isPaginator) { event.preventDefault(); return this.track(await this.backend.typePunctuation(event.key)); }
+      if (!isPaginator) { event.preventDefault(); return await this.backend.typePunctuation(event.key); }
     }
     if (!this.isComposing()) return { type: "passthrough" };
-    if (event.key === "Backspace") { event.preventDefault(); return await this.runOps(this.zero.onBackspace()); }
-    if (event.key === "Escape") { event.preventDefault(); this.zero.reset(); return await this.backend.clear(); }
-    if (/^[1-9]$/.test(event.key)) {
-      event.preventDefault();
-      const r = await this.backend.chooseCandidate(Number(event.key) - 1);
-      if (r.type === "composing") this.zero.syncFromPreedit(this.backend.getState().buffer); else this.zero.reset();
-      return r;
-    }
-    if (event.key === " ") { event.preventDefault(); return this.track(await this.backend.commitDefault(false)); }
-    if (event.key === "Enter") { event.preventDefault(); return this.track(await this.backend.commitDefault(true)); }
+    if (event.key === "Backspace") { event.preventDefault(); return await this.backend.backspace(); }
+    if (event.key === "Escape") { event.preventDefault(); return await this.backend.clear(); }
+    if (/^[1-9]$/.test(event.key)) { event.preventDefault(); return await this.backend.chooseCandidate(Number(event.key) - 1); }
+    if (event.key === " ") { event.preventDefault(); return await this.backend.commitDefault(false); }
+    if (event.key === "Enter") { event.preventDefault(); return await this.backend.commitDefault(true); }
     if (event.key === "PageDown" || event.key === "]" || event.key === "=") { event.preventDefault(); return await this.backend.changePage(false); }
     if (event.key === "PageUp" || event.key === "[" || event.key === "-") { event.preventDefault(); return await this.backend.changePage(true); }
     return { type: "passthrough" };

@@ -9,6 +9,9 @@ const SINGLE_MAP: Record<string, string> = { ",": "，", ".": "。", "?": "？",
 const CJK_RE = /[一-鿿]/;
 const isCjk = (ch: string | undefined): boolean => !!ch && CJK_RE.test(ch);
 
+/** 引号样式（与内置 IME 同一设置；app 层 setQuoteStyle 同步）。 */
+let _corner = false;
+export function setQuoteStyle(style: "curly" | "corner"): void { _corner = style === "corner"; }
 export function chineseifyPunctuation(text: string): string {
   if (!text || !CJK_RE.test(text)) return text;
   let out = text;
@@ -17,9 +20,9 @@ export function chineseifyPunctuation(text: string): string {
   out = convertPairs(out, "(", ")", "（", "）");
   out = convertPairs(out, "[", "]", "【", "】");
   let openDouble = true;
-  out = out.replace(/"/g, () => { const ch = openDouble ? "“" : "”"; openDouble = !openDouble; return ch; });
+  out = out.replace(/"/g, () => { const ch = openDouble ? (_corner ? "「" : "“") : (_corner ? "」" : "”"); openDouble = !openDouble; return ch; });
   let openSingle = true;
-  out = out.replace(/'/g, () => { const ch = openSingle ? "‘" : "’"; openSingle = !openSingle; return ch; });
+  out = out.replace(/'/g, () => { const ch = openSingle ? (_corner ? "『" : "‘") : (_corner ? "』" : "’"); openSingle = !openSingle; return ch; });
   return out;
 }
 

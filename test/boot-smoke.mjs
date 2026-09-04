@@ -53,10 +53,9 @@ try {
   check("抽屉打开", await page.evaluate(() => !document.getElementById("drawer").classList.contains("hidden")));
   const emptyText = await page.textContent("#docListEmpty");
   check("列表空态文案", !!emptyText, emptyText);
-  await page.click("#drawerCloseButton"); await page.waitForTimeout(300);
-  await page.click("#settingsTopButton");   // 设置入口在顶栏三条杠旁（不在抽屉里）
+  await page.click("#settingsButton");   // 设置入口在抽屉头云图标旁（WeebPaint 布局）
   await page.waitForTimeout(300);
-  check("顶栏设置钮 → 设置视图显示 + 登录钮", await page.evaluate(() => !document.getElementById("settingsView").hidden && !!document.querySelector("#authRow button")));
+  check("抽屉头设置钮 → 设置视图显示 + 登录钮", await page.evaluate(() => !document.getElementById("settingsView").hidden && !!document.querySelector("#authRow button")));
   check("版本显示在设置页", (await page.textContent("#settingsBuild")).includes(version));
   await page.click("#drawerCloseButton");
   await page.waitForTimeout(200);
@@ -202,11 +201,8 @@ try {
     await typeKeys(["z", "h", "e"]); out.simp = cands().slice(0, 5); await ime.backend.clear();
     await ime.setSimplified(false); await typeKeys(["z", "h", "e"]); out.trad = cands().slice(0, 5); await ime.backend.clear();
     await ime.setSimplified(true); await typeKeys(["z", "h", "e"]); out.simpAgain = cands().slice(0, 5); await ime.backend.clear();
-    // 双拼零声母全拼重写：四个双拼方案 aimili → 艾米莉；微软原生 olmili 仍在
-    out.zero = {};
-    for (const s of ["double_pinyin_mspy", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj"]) { await ime.setSchema(s); await typeKeys("aimili".split("")); out.zero[s] = cands().slice(0, 5); ime.resetComposition(); await wait(150); }
-    await ime.setSchema("double_pinyin_mspy"); await typeKeys("olmili".split("")); out.zero.native = cands().slice(0, 5); ime.resetComposition(); await wait(150);
-    await ime.setSchema("luna_pinyin");
+    // 标点覆盖：` ~ → ·；方引号设置 → 「」『』 交替
+    ed.value = ""; ime.quoteStyle = "corner"; await typeKeys(['"', '"', "'", "'", "~", "`"]); out.punct = ed.value; ime.quoteStyle = "curly"; ed.value = "";
     // 系统组字收编（Quest/安卓把实体键盘字母过系统输入法）：模拟 compositionend "nihao" → 裸字母被删、喂进 RIME、候选出「你好」
     ed.value = ""; ed.focus(); ed.value = "nihao"; ed.selectionStart = ed.selectionEnd = 5;
     ed.dispatchEvent(new CompositionEvent("compositionend", { data: "nihao", bubbles: true })); await wait(900);
@@ -215,7 +211,7 @@ try {
     return out;
   });
   check("系统组字收编：compositionend 'nihao' → 裸字母删掉、RIME 候选出「你好」", typeof imeRun === "object" && imeRun.sysComp?.value === "" && imeRun.sysComp?.cands?.includes("你好"), JSON.stringify(imeRun.sysComp));
-  check("双拼零声母全拼：微软/小鹤/ABC/加加 aimili → 艾米莉；微软原生 olmili 仍可", typeof imeRun === "object" && ["double_pinyin_mspy", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "native"].every((k) => imeRun.zero?.[k]?.includes("艾米莉")), JSON.stringify(imeRun.zero));
+  check("标点覆盖：方引号 「」『』 交替 + ` ~ 出「·」", typeof imeRun === "object" && imeRun.punct === "「」『』··", JSON.stringify(imeRun.punct));
   const kbAway = await page.evaluate(async () => { const w = (ms) => new Promise((r) => setTimeout(r, ms)); window.dispatchEvent(new Event("blur")); await w(50); const a = document.body.classList.contains("kb-away"); document.activeElement?.blur(); window.dispatchEvent(new Event("focus")); await w(50); return { a, b: !document.body.classList.contains("kb-away"), c: document.activeElement === document.getElementById("editor") }; });
   check("Quest 键盘提示：window blur → kb-away；focus → 撤提示 + 焦点回编辑器", kbAway.a && kbAway.b && kbAway.c, JSON.stringify(kbAway));
   const typeAnywhere = await page.evaluate(() => { document.activeElement?.blur(); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true })); return document.activeElement === document.getElementById("editor"); });
