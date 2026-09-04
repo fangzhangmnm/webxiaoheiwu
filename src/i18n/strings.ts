@@ -18,8 +18,14 @@ export const S = {
   // ── 静态页面（data-i18n）──
   "ui.appTitle":         { zh: "网页版小黑屋", en: "WebXiaoHeiWu" },
   "ui.menu":             { zh: "文件菜单", en: "File menu" },
-  "ui.titlePlaceholder": { zh: "无标题", en: "Untitled" },
-  "ui.titleAria":        { zh: "文档标题", en: "Document title" },
+  // 文件名 = 管理句柄不是标题（ADR-0007，2026-09-04）：顶栏显示、点击改名；OneDrive 上可见（加密稿也一样），文案要说清
+  "top.docName":         { zh: "文件名（管理用，OneDrive 上可见）· 点击改名", en: "File name (for organizing; visible on OneDrive) · tap to rename" },
+  "top.newDocName":      { zh: "新稿", en: "New draft" },
+  "fn.title":            { zh: "文件名", en: "File name" },
+  "fn.hint":             { zh: "只用于管理和排序，OneDrive 上可见；不是标题。留空 = 不改。", en: "For organizing and sorting only; visible on OneDrive. Not a title. Leave empty to keep." },
+  "fn.hintEnc":          { zh: "加密稿的文件名在 OneDrive 上仍是明文——别把标题写进来。留空 = 不改。", en: "An encrypted draft's file name is still plaintext on OneDrive — do not put the title here. Leave empty to keep." },
+  "fn.ph":               { zh: "例如 20260904-1a2b", en: "e.g. 20260904-1a2b" },
+  "fn.ok":               { zh: "改名", en: "Rename" },
   "ui.editorAria":       { zh: "小说编辑区", en: "Writing area" },
   "ui.mic":              { zh: "语音输入", en: "Voice input" },
   "lock.aria":           { zh: "已锁定", en: "Locked" },
@@ -44,8 +50,6 @@ export const S = {
   "ui.kbAway":           { zh: "键盘不在本页——点一下页面继续", en: "Keyboard is not on this page — tap the page to continue" },
   "voice.blockedLocked": { zh: "这篇锁着，先解锁再口述", en: "This draft is locked — unlock it to dictate" },
   "voice.blockedReadOnly": { zh: "这篇是只读，先关掉只读再口述", en: "This draft is read-only — turn that off to dictate" },
-  "ui.idleTitle":        { zh: "已闲置一段时间", en: "Idle for a while" },
-  "ui.idleHint":         { zh: "点击任意位置同步云端最新版并继续编辑", en: "Tap anywhere to sync the latest cloud version and continue" },
   "ui.busy":             { zh: "处理中…", en: "Working…" },
   "ui.busyHint":         { zh: "请稍候", en: "Please wait" },
   "ui.updateText":       { zh: "有新版本", en: "New version available" },
@@ -137,9 +141,10 @@ export const S = {
   "st.pendingEncrypted": { zh: "新稿将以加密保存", en: "This new draft will be saved encrypted" },
   "st.pendingPlain":     { zh: "新稿将以明文保存", en: "This new draft will be saved in plaintext" },
   "st.encryptPendingHint": { zh: "加密还没成功（本地已存、不会推云）——联网后会自动重试", en: "Encryption has not succeeded yet (saved locally, not pushed) — retries automatically when online" },
-  "st.renameOldKept":    { zh: "已按新标题另存；旧名那份云端还在（列表里会有两份）", en: "Saved under the new title; the old copy is still in the cloud (you will see both)" },
-  "st.renameCloudDeferred": { zh: "标题已改（云端待推）", en: "Title changed (cloud pending)" },
-  "st.encrypted":        { zh: "已加密 {time}（{status}）", en: "Encrypted {time} ({status})" },
+  "st.renameOldKept":    { zh: "已按新文件名另存；旧名那份云端还在（列表里会有两份）", en: "Saved under the new file name; the old copy is still in the cloud (you will see both)" },
+  "st.renameCloudDeferred": { zh: "文件名已改（云端待推）", en: "File name changed (cloud pending)" },
+  "st.encryptedRenamed": { zh: "已加密 {time}；文件名已改为「{name}」（藏标题）", en: "Encrypted {time}; file renamed to \u201c{name}\u201d (title hidden)" },
+  "st.encryptedNameKept": { zh: "已加密，但文件名仍是「{name}」（OneDrive 上可见）——点顶栏文件名改掉", en: "Encrypted, but the file name is still \u201c{name}\u201d (visible on OneDrive) — tap the file name in the top bar to rename" },
   "st.encryptFailed":    { zh: "加密失败：{e}", en: "Encrypt failed: {e}" },
   "st.decrypted":        { zh: "已解密 {time}（{status}）", en: "Decrypted {time} ({status})" },
   "st.decryptFailed":    { zh: "解密失败：{e}", en: "Decrypt failed: {e}" },
@@ -186,7 +191,7 @@ export const S = {
   // ── 离线补推（ADR-0018）──
   "replay.progress":     { zh: "正在上传离线新稿 {done}/{total}…", en: "Uploading offline drafts {done}/{total}…" },
   "replay.done":         { zh: "离线新稿已上传 {done}/{total}", en: "Offline drafts uploaded {done}/{total}" },
-  "replay.collision":    { zh: "「{name}」云端已有同名文件，本地这份未覆盖上去（请改个标题再存）", en: "“{name}” already exists in the cloud; the local copy was not uploaded (rename and save again)" },
+  "replay.collision":    { zh: "「{name}」云端已有同名文件，本地这份未覆盖上去（请改个文件名再存）", en: "“{name}” already exists in the cloud; the local copy was not uploaded (rename the file and save again)" },
 
   // ── 列表 / 回收站 / 抽屉 ──
   "drawer.files":        { zh: "文件", en: "Files" },

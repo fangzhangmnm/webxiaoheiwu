@@ -5,7 +5,7 @@ export interface ParsedDocName {
     base: string;
     /** 名字里若以 8 位日期开头则给出（只作参考，不再是结构）；否则 null。 */
     date: string | null;
-    /** 标题 = 去扩展名的整个名字（有名保名）。 */
+    /** 显示名 = 去扩展名的整个名字（有名保名）。历史字段名 title；语义自 ADR-0007 起 = 文件名，不是稿的标题。 */
     title: string;
     /** 去扩展名的显示名（不含夹）= title。 */
     stem: string;
@@ -23,8 +23,10 @@ export declare function formatDate(ts: number): string;
 export declare function sanitizeTitle(s: string): string;
 /** 4 位随机 hex（无名稿消歧；WeebPaint v217 惯例）。 */
 export declare function hex4(): string;
-/** 有名保名，无名日期：标题 → `<标题>.txt`；空 → `yyyymmdd-hex4.txt`。dir 非空则带夹前缀（不含碰撞后缀）。 */
+/** 有名保名，无名日期：名 → `<名>.txt`；空 → `yyyymmdd-hex4.txt`（日期码）。dir 非空则带夹前缀（不含碰撞后缀）。 */
 export declare function makeDocName(date: string, title: string, dir?: string, suffix?: string): string;
+/** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
+export declare function isOpaqueStem(stem: string): boolean;
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export declare function sanitizeFolderName(s: string): string;
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 " n"。 */

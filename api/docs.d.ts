@@ -55,8 +55,10 @@ export interface RenameResult {
     oldKept?: boolean;
     cloudDeferred?: boolean;
 }
-/** 改标题 = 改身份（tryMove）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
+/** 改文件名 = 改身份（tryMove；ADR-0007：文件名是管理句柄不是标题）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
 export declare function renameDoc(name: string, newTitle: string): Promise<RenameResult | null>;
+/** 转加密后藏标题：改成日期码名 `yyyymmdd-hex4`（日期沿用原名的 8 位前缀，没有则今天）。已是日期码 → 原名不动。失败 → null。 */
+export declare function renameDocToOpaque(name: string): Promise<RenameResult | null>;
 /** 移到别的夹（身份变 = tryMove，同名撞则追加后缀）。toDir "" = 根。 */
 export declare function moveDoc(name: string, toDir: string): Promise<RenameResult | null>;
 export declare function trashDoc(name: string): Promise<DelResult>;

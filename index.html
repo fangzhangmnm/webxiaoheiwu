@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="asr-worker" content="./dist/asr-worker-2572633f3edf.js" />
+    <meta name="asr-worker" content="./dist/asr-worker-10472c72363d.js" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#d8c8a8" />
     <meta name="color-scheme" content="light" />
@@ -120,6 +120,7 @@
         <button class="menu-button" id="menuButton" type="button" aria-label="文件菜单" data-i18n-aria="ui.menu" data-i18n-title="ui.menu">
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
+        <button class="doc-name" id="docNameButton" type="button" hidden aria-label="文件名" data-i18n-aria="top.docName" data-i18n-title="top.docName"></button>
         <span class="top-spacer" aria-hidden="true"></span>
         <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
         <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护" data-i18n-aria="top.readOnlyOn"></button>
@@ -139,8 +140,6 @@
         <button class="auth-action" id="rekeyButton" type="button" data-i18n="ui.key.rekey">换成当前密码</button>
       </div>
       <article class="page">
-        <input id="titleInput" type="text" class="title" placeholder="无标题" data-i18n-ph="ui.titlePlaceholder" data-i18n-aria="ui.titleAria"
-               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="文档标题" />
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
         <button id="micButton" class="mic-button" type="button" hidden aria-label="语音输入" data-i18n-aria="ui.mic" data-state="idle">
@@ -164,12 +163,8 @@
       </article>
     </main>
 
-    <div id="idleOverlay" class="idle-overlay hidden" role="dialog" aria-label="已闲置" data-i18n-aria="ui.idleAria">
-      <div class="idle-card">
-        <p class="idle-title" data-i18n="ui.idleTitle">已闲置一段时间</p>
-        <p class="idle-hint" data-i18n="ui.idleHint">点击任意位置同步云端最新版并继续编辑</p>
-      </div>
-    </div>
+    <!-- 闲置遮罩：只模糊，不解释（user 2026-09-04「只要 blur，不需要那行字解释为什么 blur」）；点任意处解锁前复查云端（idle-gate.ts） -->
+    <div id="idleOverlay" class="idle-overlay hidden" role="dialog" aria-label="已闲置" data-i18n-aria="ui.idleAria"></div>
 
     <div id="busyOverlay" class="idle-overlay busy-overlay hidden" role="dialog" aria-modal="true" aria-label="处理中" data-i18n-aria="ui.busyAria">
       <div class="idle-card">
@@ -397,6 +392,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-19625365f088.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-5425e0102231.mjs"></script>
   </body>
 </html>

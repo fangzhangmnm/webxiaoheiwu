@@ -1,6 +1,6 @@
 // doc-model 纯函数契约：文件名约定（user 三轮回退终形）/ 排序 / 字数 / 编码 / 采纳验真。created 2026-09-03 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
-import { parseDocName, makeDocName, collisionCandidate, sanitizeTitle, compareDocNamesDesc, statsForText, decodeTextBytes, looksLikeTextDoc, isDocName, formatDate, splitDocPath, joinDocPath, sanitizeFolderName, hex4 } from "../src/doc-model.ts";
+import { parseDocName, makeDocName, collisionCandidate, sanitizeTitle, compareDocNamesDesc, statsForText, decodeTextBytes, looksLikeTextDoc, isDocName, formatDate, splitDocPath, joinDocPath, sanitizeFolderName, hex4, isOpaqueStem } from "../src/doc-model.ts";
 
 describe("doc-model · 文件名（有名保名，无名 yyyymmdd-hex4；2026-09-03 对齐 WeebPaint）", () => {
   it("有名保名：标题就是文件名，parse 回来 title = 整个 stem（老稿的日期前缀原样保留）", () => {
@@ -14,6 +14,10 @@ describe("doc-model · 文件名（有名保名，无名 yyyymmdd-hex4；2026-09
     eq(makeDocName("20260903", "", "小说", "1a2b"), "小说/20260903-1a2b.txt");
     assert(/^[0-9a-f]{4}$/.test(hex4()));
     eq(parseDocName("20260903-1a2b.txt").date, "20260903");
+  });
+  it("isOpaqueStem：日期码名（可带碰撞后缀）= 加密稿藏标题的出生名（ADR-0007）；带标题的名不算", () => {
+    assert(isOpaqueStem("20260904-1a2b")); assert(isOpaqueStem("20260904-1A2B 3")); assert(isOpaqueStem(parseDocName("小说/20260904-1a2b.txt").stem));
+    assert(!isOpaqueStem("20260904 第一章")); assert(!isOpaqueStem("20260904-1a2b 第一章")); assert(!isOpaqueStem("第一章")); assert(!isOpaqueStem("20260904-1a2")); assert(!isOpaqueStem(""));
   });
   it("标题去路径字符、压空白", () => {
     eq(makeDocName("20260903", "a/b:c"), "a-b-c.txt");

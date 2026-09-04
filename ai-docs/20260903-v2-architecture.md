@@ -22,8 +22,8 @@
 
 | 数据类 | 归宿 | 备注 |
 |---|---|---|
-| 稿（Work） | `store.file("[夹/]YYYYMMDD 标题.txt", {isZip:false})`，一层文件夹（adr/0006），根 = 默认夹 | 身份 = 路径/名（adr/0001）；与 v1 明文稿零迁移 |
-| 加密稿 | 同名，库透明容器；云端 at-rest `….txt.zip` | adr/0002；`crypt.ext="txt"`、peek 空（verifyPassword 靠它） |
+| 稿（Work） | `store.file("[夹/]<文件名>.txt", {isZip:false})`，一层文件夹（adr/0006），根 = 默认夹 | 身份 = 路径/名（adr/0001）；**文件名 = 管理句柄不是标题（adr/0007，2026-09-04）**；与 v1 明文稿零迁移 |
+| 加密稿 | 同名，库透明容器；云端 at-rest `….txt.zip`；**出生名日期码 `yyyymmdd-hex4`，转加密自动改日期码（藏标题，adr/0007）** | adr/0002；`crypt.ext="txt"`、peek 空（verifyPassword 靠它） |
 | 回收站 | 库 `.trash`（两端聚合）| v1 的 `.trash/*.txt` 直接可见 |
 | 跨设备偏好 | collection `synced-user-preference`：readingMode / imeSchema（输入方案，肌肉记忆跟人走）/ voiceProvider（`local-sensevoice`｜`local-zh14m`；旧值 webspeech/groq/openai 落默认）；`voiceGroqKey`/`voiceOpenaiKey`/`voiceVocab` 为遗留死键（不读不删） | v1 `voice.json` 不再搬（2026-09-03） |
 | 跨设备 app 态 | collection `synced-app-state`：lastActive{name,savedAt,device} / passwordVerifier（`legacyImport.*` 为死键） | lastActive 只在冷启动尊重（Separated 指针模式） |
@@ -52,6 +52,7 @@ createStore 表态：`persistence:"app-managed"`（登录手势 / Ctrl+S 手势�
 ## 未做 / 待拍板
 
 - 版本号：占位 `0.0.82`，提议开 `0.1.0` 纪元（需 user 说出口）。
-- 加密稿标题可见（adr/0002 取舍）——要藏标题需改成「加密稿文件名只留日期+随机码、标题写在容器 meta」。
+- ~~加密稿标题可见（adr/0002 取舍）~~ 2026-09-04 收口 = adr/0007（名字日期码）；列表显真标题的 peek 增强未做。
+- **下一纪元（2026-09-04 user）：所见即所得 markdown 编辑 + LaTeX/代码块/表格解禁**——见 `20260904-0.3-knight-and-store-backlog.md`。
 - WebDAV/坚果云线（v1 悬案不动）。自托管 Whisper 死案（2026-09-03 离线本机替代）。
 - 多源（「另一朵云」folder provider）未接；WeebPaint 的 gallery-registry 未抽包前不做。

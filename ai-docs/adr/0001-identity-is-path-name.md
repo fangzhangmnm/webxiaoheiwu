@@ -1,5 +1,5 @@
 # ADR-0001 稿的身份 = 路径/文件名（不再是 OneDrive itemId）
-> created 20260903 · **2026-09-03 修订**：ADR-0006 允许一层文件夹前缀；命名改「有名保名，无名 yyyymmdd-hex4」（对齐 WeebPaint naming.ts，user 拍板）——日期前缀不再是结构 · by Claude Fable 5.1 · status: accepted
+> created 20260903 · **2026-09-03 修订**：ADR-0006 允许一层文件夹前缀；命名改「有名保名，无名 yyyymmdd-hex4」（对齐 WeebPaint naming.ts，user 拍板）——日期前缀不再是结构 · **2026-09-04 ADR-0007**：文件名 = 管理句柄不是标题（编辑器无标题框；加密稿出生名日期码） · by Claude Fable 5.1 · status: accepted
 
 ## 决定
 v2 起，一篇稿的身份就是 appfolder 根下的文件名 `YYYYMMDD 标题.txt`（与家族 MASTER §A「identity = path/name」一致）。改标题 = 改身份（`file.tryMove`），撞名追加 ` 1` ` 2`…。

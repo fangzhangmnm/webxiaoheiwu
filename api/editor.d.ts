@@ -5,7 +5,6 @@ export interface StatusOpts {
 export type SyncKind = "none" | "locked" | "unavailable" | "encryptPending" | "local" | "offline" | "unsynced" | "clean";
 export interface EditorDeps {
     editor: HTMLTextAreaElement;
-    titleInput: HTMLInputElement;
     setStatus: (text: string, opts?: StatusOpts) => void;
     setState: (text: string, opts?: StatusOpts) => void;
     isSignedIn: () => boolean;
@@ -22,6 +21,7 @@ export interface EditorState {
     name: string | null;
     pendingDate: string | null;
     pendingDir: string;
+    pendingTitle: string | null;
     encrypted: boolean;
     locked: boolean;
     readOnly: boolean;
@@ -48,6 +48,8 @@ export declare function createEditor(d: EditorDeps): {
     noteExternalEdit: () => void;
     moveTo: (dir: string) => Promise<string | null>;
     currentDir: () => string;
+    renameTo: (raw: string) => Promise<boolean>;
+    displayName: () => string | null;
     canEdit: () => boolean;
     statusForDoc: () => string;
     syncKind: () => SyncKind;

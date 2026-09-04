@@ -1,8 +1,10 @@
 // doc-model —— 文档域的**纯函数**（无 DOM、无 store）：文件名解析/生成、排序、字数、文本编码探测、采纳验真。
 // created 2026-09-03 by Claude Fable 5.1。命名约定 2026-09-03 改为与 WeebPaint 对齐（user「yyyymmdd 不应该强制…按照和 weebpaint 的 name convention 来管」）：
-//   · **有名保名，无名日期**：标题就是文件名（`<标题>.txt`，只做路径字符清洗）；空标题 → `yyyymmdd-hex4.txt`（WeebPaint naming.ts v217 惯例：日粒度 + 4 位随机 hex 消歧）。
-//   · 撞名才加后缀 ` 1` ` 2`…（后缀不是标题的一部分，是碰撞产物）。禁「未命名」：改名成空 = 不改。
-//   · never trust remote filenames：任何字符串都解析得出，title = 整个 stem；不再拆日期前缀（老稿 `YYYYMMDD 标题.txt` 原名保留、原样显示）。
+//   · **文件名 = 管理用句柄，不是标题**（ADR-0007，user 2026-09-04「文件名不是标题的语义，可以变，是管理用的」）：顶栏显示、改名 sheet 改；编辑器里没有标题。
+//   · **有名保名，无名日期**：用户给了名就用（`<名>.txt`，只做路径字符清洗）；没给 → `yyyymmdd-hex4.txt`（WeebPaint naming.ts v217 惯例：日粒度 + 4 位随机 hex 消歧）。
+//     加密稿出生名一律日期码（藏标题：云端只见 `yyyymmdd-hex4.txt.zip`）；明文稿转加密也改成日期码（`isOpaqueStem` 判已是日期码则不动）。
+//   · 撞名才加后缀 ` 1` ` 2`…（后缀不是名字的一部分，是碰撞产物）。禁「未命名」：改名成空 = 不改。
+//   · never trust remote filenames：任何字符串都解析得出，title = 整个 stem（= 显示名）；不再拆日期前缀（老稿 `YYYYMMDD 标题.txt` 原名保留、原样显示）。
 //   · 排序 = zh-CN 自然序降序（与 WeebPaint 图库同：新日期名在上，稳定不随存盘时间跳）。
 //   · 多文件夹（ADR-0006）：身份 = `[夹/]<名>.txt`，夹只一层；根 = 默认夹。
 
@@ -15,7 +17,7 @@ export interface ParsedDocName {
   base: string;
   /** 名字里若以 8 位日期开头则给出（只作参考，不再是结构）；否则 null。 */
   date: string | null;
-  /** 标题 = 去扩展名的整个名字（有名保名）。 */
+  /** 显示名 = 去扩展名的整个名字（有名保名）。历史字段名 title；语义自 ADR-0007 起 = 文件名，不是稿的标题。 */
   title: string;
   /** 去扩展名的显示名（不含夹）= title。 */
   stem: string;
@@ -66,11 +68,13 @@ export function hex4(): string {
   (globalThis.crypto ?? { getRandomValues: (a: Uint8Array) => { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); return a; } }).getRandomValues(b);
   return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
-/** 有名保名，无名日期：标题 → `<标题>.txt`；空 → `yyyymmdd-hex4.txt`。dir 非空则带夹前缀（不含碰撞后缀）。 */
+/** 有名保名，无名日期：名 → `<名>.txt`；空 → `yyyymmdd-hex4.txt`（日期码）。dir 非空则带夹前缀（不含碰撞后缀）。 */
 export function makeDocName(date: string, title: string, dir = "", suffix = hex4()): string {
   const t = sanitizeTitle(title);
   return joinDocPath(dir, t ? `${t}${DOC_EXT}` : `${date}-${suffix}${DOC_EXT}`);
 }
+/** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
+export function isOpaqueStem(stem: string): boolean { return /^\d{8}-[0-9a-f]{4}( \d+)?$/i.test(stem); }
 
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export function sanitizeFolderName(s: string): string {

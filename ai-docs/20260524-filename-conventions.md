@@ -1,4 +1,5 @@
 # Filename and sort conventions
+> ⚠ **2026-09-04 ADR-0007（edited by Claude Fable 5.1）**：文件名 = 管理用句柄，不是标题（编辑器无标题框，文件名住顶栏）；加密稿出生名 `yyyymmdd-hex4`，转加密自动改日期码。下文「标题」一律读作「文件名」。
 > ⚠ **SUPERSEDED 2026-09-03（edited by Claude Fable 5.1）**：user「yyyymmdd 不应该强制…按照和 weebpaint 的 name convention 来管」→ 命名改为 WeebPaint 的「有名保名，无名 `yyyymmdd-hex4`」（`src/doc-model.ts` 头注释 = 现行 SSoT）；本文的 `YYYYMMDD 标题` 结构不再解析，老稿原名保留原样显示。多文件夹见 ADR-0006。
 
 > ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：全部有效，实现 = `src/doc-model.ts`（解析/生成/排序）+ `src/docs.ts`（碰撞后缀 `createDoc`/`renameDoc`）；`.trash/` 由库管（两端聚合回收站）。

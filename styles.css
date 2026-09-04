@@ -184,35 +184,30 @@ body {
   outline: none;
 }
 
-.title {
-  flex: 1 1 0;
+/* 文件名（顶栏）：管理句柄不是标题（ADR-0007）——小字、可点改名、溢出省略 */
+.doc-name {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 48%;
   border: 0;
   background: transparent;
+  cursor: pointer;
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 500;
   color: var(--ink-muted);
+  height: 26px;
+  line-height: 26px;
   padding: 0 6px;
-  outline: none;
-  text-align: center;
-  /* Lock single-line geometry against any layout surprises. */
-  display: inline-block;
-  height: 24px;
-  line-height: 24px;
+  border-radius: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color 120ms ease, background 120ms ease;
 }
-
-.title:hover,
-.title:focus { color: var(--ink-soft); }
-
-.title::placeholder {
-  color: var(--ink-muted);
-  font-weight: 400;
-  opacity: 0.7;
-}
+.doc-name:hover,
+.doc-name:focus-visible { color: var(--ink-soft); }
+.doc-name.pending { opacity: 0.6; }
 
 .status {
   flex: 0 0 auto;
@@ -375,13 +370,11 @@ body {
 
 .body::placeholder { color: var(--ink-muted); }
 
-.body.locked,
-.title.locked {
+.body.locked {
   caret-color: var(--accent);
 }
 
-.body::selection,
-.title::selection {
+.body::selection {
   background: rgba(160, 88, 38, 0.22);
 }
 
@@ -1268,7 +1261,7 @@ body {
     height: calc(100dvh - 48px);
   }
   .status { font-size: 10px; gap: 4px; }
-  .title { font-size: 11px; }
+  .doc-name { font-size: 11px; }
 }
 
 @media (hover: none) {
@@ -1501,18 +1494,11 @@ body {
 .cloud-btn[data-cloud-state="offline"] { color: var(--quiet); }
 .cloud-btn[data-cloud-state="out"] { color: var(--ink-soft); opacity: 0.7; }
 
-/* ── zen 顶栏 + 写字线（2026-09-04 user「帮我 zen mode 一点」「显示一条条的写字线」）：标题进纸面、字数撤、干净态状态留白、IME 只剩「中/英」一字 ── */
+/* ── zen 顶栏 + 写字线（2026-09-04 user「帮我 zen mode 一点」「显示一条条的写字线」）：字数撤、干净态状态留白、IME 只剩「中/英」一字。
+   标题框 2026-09-04 撤（ADR-0007：文件名是管理句柄不是标题，回顶栏 .doc-name；编辑器里没有标题） ── */
 .top-spacer { flex: 1 1 0; min-width: 0; }
 .page { --editor-font: calc(clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max)) * var(--font-scale, 1)); }   /* 规范管行宽，档位乘字号（设置「字号」） */
 .body { font-size: var(--editor-font); }
-.title {
-  flex: none; display: block; width: 100%; height: auto; line-height: 1.4;
-  font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink);
-  text-align: center; padding: 0 0 calc(var(--editor-font) * 0.5); margin: 0 0 calc(var(--editor-font) * 0.5);
-}
-.title:hover, .title:focus { color: var(--ink); }
-.title::placeholder { color: var(--ink-muted); font-weight: 500; opacity: 0.45; }
-.title.locked { color: var(--ink-soft); }
 #saveStatus:empty + .sep { display: none; }
 #imeStatus:empty { display: none; }
 .status:has(#imeStatus:empty) .sep { display: none; }   /* 系统输入法时右侧没字，分隔点别悬空 */

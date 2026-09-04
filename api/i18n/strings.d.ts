@@ -36,13 +36,33 @@ export declare const S: {
         readonly zh: "文件菜单";
         readonly en: "File menu";
     };
-    readonly "ui.titlePlaceholder": {
-        readonly zh: "无标题";
-        readonly en: "Untitled";
+    readonly "top.docName": {
+        readonly zh: "文件名（管理用，OneDrive 上可见）· 点击改名";
+        readonly en: "File name (for organizing; visible on OneDrive) · tap to rename";
     };
-    readonly "ui.titleAria": {
-        readonly zh: "文档标题";
-        readonly en: "Document title";
+    readonly "top.newDocName": {
+        readonly zh: "新稿";
+        readonly en: "New draft";
+    };
+    readonly "fn.title": {
+        readonly zh: "文件名";
+        readonly en: "File name";
+    };
+    readonly "fn.hint": {
+        readonly zh: "只用于管理和排序，OneDrive 上可见；不是标题。留空 = 不改。";
+        readonly en: "For organizing and sorting only; visible on OneDrive. Not a title. Leave empty to keep.";
+    };
+    readonly "fn.hintEnc": {
+        readonly zh: "加密稿的文件名在 OneDrive 上仍是明文——别把标题写进来。留空 = 不改。";
+        readonly en: "An encrypted draft's file name is still plaintext on OneDrive — do not put the title here. Leave empty to keep.";
+    };
+    readonly "fn.ph": {
+        readonly zh: "例如 20260904-1a2b";
+        readonly en: "e.g. 20260904-1a2b";
+    };
+    readonly "fn.ok": {
+        readonly zh: "改名";
+        readonly en: "Rename";
     };
     readonly "ui.editorAria": {
         readonly zh: "小说编辑区";
@@ -139,14 +159,6 @@ export declare const S: {
     readonly "voice.blockedReadOnly": {
         readonly zh: "这篇是只读，先关掉只读再口述";
         readonly en: "This draft is read-only — turn that off to dictate";
-    };
-    readonly "ui.idleTitle": {
-        readonly zh: "已闲置一段时间";
-        readonly en: "Idle for a while";
-    };
-    readonly "ui.idleHint": {
-        readonly zh: "点击任意位置同步云端最新版并继续编辑";
-        readonly en: "Tap anywhere to sync the latest cloud version and continue";
     };
     readonly "ui.busy": {
         readonly zh: "处理中…";
@@ -505,16 +517,20 @@ export declare const S: {
         readonly en: "Encryption has not succeeded yet (saved locally, not pushed) — retries automatically when online";
     };
     readonly "st.renameOldKept": {
-        readonly zh: "已按新标题另存；旧名那份云端还在（列表里会有两份）";
-        readonly en: "Saved under the new title; the old copy is still in the cloud (you will see both)";
+        readonly zh: "已按新文件名另存；旧名那份云端还在（列表里会有两份）";
+        readonly en: "Saved under the new file name; the old copy is still in the cloud (you will see both)";
     };
     readonly "st.renameCloudDeferred": {
-        readonly zh: "标题已改（云端待推）";
-        readonly en: "Title changed (cloud pending)";
+        readonly zh: "文件名已改（云端待推）";
+        readonly en: "File name changed (cloud pending)";
     };
-    readonly "st.encrypted": {
-        readonly zh: "已加密 {time}（{status}）";
-        readonly en: "Encrypted {time} ({status})";
+    readonly "st.encryptedRenamed": {
+        readonly zh: "已加密 {time}；文件名已改为「{name}」（藏标题）";
+        readonly en: "Encrypted {time}; file renamed to “{name}” (title hidden)";
+    };
+    readonly "st.encryptedNameKept": {
+        readonly zh: "已加密，但文件名仍是「{name}」（OneDrive 上可见）——点顶栏文件名改掉";
+        readonly en: "Encrypted, but the file name is still “{name}” (visible on OneDrive) — tap the file name in the top bar to rename";
     };
     readonly "st.encryptFailed": {
         readonly zh: "加密失败：{e}";
@@ -677,8 +693,8 @@ export declare const S: {
         readonly en: "Offline drafts uploaded {done}/{total}";
     };
     readonly "replay.collision": {
-        readonly zh: "「{name}」云端已有同名文件，本地这份未覆盖上去（请改个标题再存）";
-        readonly en: "“{name}” already exists in the cloud; the local copy was not uploaded (rename and save again)";
+        readonly zh: "「{name}」云端已有同名文件，本地这份未覆盖上去（请改个文件名再存）";
+        readonly en: "“{name}” already exists in the cloud; the local copy was not uploaded (rename the file and save again)";
     };
     readonly "drawer.files": {
         readonly zh: "文件";

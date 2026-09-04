@@ -1,4 +1,6 @@
-// 编辑器控制器：textarea + 标题框 ↔ 当前稿（docs 层）。created 2026-09-03 by Claude Fable 5.1
+// 编辑器控制器：textarea ↔ 当前稿（docs 层）。created 2026-09-03 by Claude Fable 5.1
+//   · 文件名 = 管理句柄不是标题（ADR-0007，2026-09-04）：编辑器里没有标题框；文件名住顶栏，改名走 sheet → renameTo（显式、不防抖）。
+//     新稿没给名 → 物化时 `yyyymmdd-hex4`；加密稿一律日期码（藏标题）；明文稿转加密 → 封完自动改日期码（失败响亮，不静默）。
 // 人类钉死的行为（docs/20260524-editor-ux.md + sync-design.md）：
 //   · 200ms 本地落盘；15s 防抖 + 30s 心跳推云；推后下次计时只在下一次击键才起（无后台轮询）。
 //   · 状态文案稳定不跳（未同步 / 正在同步… / 已保存 HH:MM:SS），不做倒计时。
@@ -6,10 +8,9 @@
 //   · 打开落在开头（moveCaretToStart）。
 //   · 加密稿：locked 时编辑区空白 + 禁输入；解锁循环在 busy 外；错密码不碰文件（库 seal 保证）。
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
-import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS, RENAME_DEBOUNCE_MS } from "./config.ts";
-import { formatDate, parseDocName, splitDocPath } from "./doc-model.ts";
-import { replaceRange } from "./text-edit.ts";
-import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, moveDoc } from "./docs.ts";
+import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "./config.ts";
+import { formatDate, parseDocName, splitDocPath, sanitizeTitle } from "./doc-model.ts";
+import { readDoc, saveDoc, createDoc, renameDoc, renameDocToOpaque, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword } from "./crypto-state.ts";
 import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
@@ -19,7 +20,6 @@ export interface StatusOpts { error?: boolean; unsynced?: boolean }
 export type SyncKind = "none" | "locked" | "unavailable" | "encryptPending" | "local" | "offline" | "unsynced" | "clean";
 export interface EditorDeps {
   editor: HTMLTextAreaElement;
-  titleInput: HTMLInputElement;
   setStatus: (text: string, opts?: StatusOpts) => void;   // 瞬时事件 → toast
   setState: (text: string, opts?: StatusOpts) => void;    // 粘性稿态 → 顶栏（空 = 留白）
   isSignedIn: () => boolean;
@@ -40,6 +40,7 @@ export interface EditorState {
   name: string | null;          // 已物化的身份；新稿未物化时 null（看 pendingDate）
   pendingDate: string | null;   // 新稿：物化时用的日期前缀
   pendingDir: string;           // 新稿：物化落在哪个夹（"" = 根；ADR-0006 多文件夹）
+  pendingTitle: string | null;  // 新稿：用户在物化前显式给的文件名（顶栏改名）；null → 物化时日期码
   encrypted: boolean;
   locked: boolean;              // 加密且未解锁（编辑区空白）
   readOnly: boolean;            // per-device 只读保护
@@ -47,12 +48,10 @@ export interface EditorState {
 }
 
 export function createEditor(d: EditorDeps) {
-  const st: EditorState = { name: null, pendingDate: null, pendingDir: "", encrypted: false, locked: false, readOnly: false, unavailable: true };   // boot 前不可打字（open/newDoc 才放行）
+  const st: EditorState = { name: null, pendingDate: null, pendingDir: "", pendingTitle: null, encrypted: false, locked: false, readOnly: false, unavailable: true };   // boot 前不可打字（open/newDoc 才放行）
   let savedText = "";      // 最近一次落盘的正文（判 dirty）
-  let savedTitle = "";     // 最近一次落盘/改名的标题
   let localTimer: ReturnType<typeof setTimeout> | null = null;
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
-  let renameTimer: ReturnType<typeof setTimeout> | null = null;
   let firstDirtyAt = 0;
   let pushPending = false;     // 有落盘但未推的字节
   let loadGen = 0;             // open 竞态守卫
@@ -69,8 +68,7 @@ export function createEditor(d: EditorDeps) {
   function applyGuards(): void {
     const blocked = st.readOnly || st.locked || st.unavailable;
     d.editor.classList.toggle("locked", blocked);
-    d.titleInput.classList.toggle("locked", blocked);
-    d.editor.readOnly = blocked; d.titleInput.readOnly = blocked;   // 锁/只读 = 真 readOnly：敲进去的字不再被悄悄吞掉（user 2026-09-04「没解锁密码导致的煤气灯」；根治=0.3 懒空白稿）
+    d.editor.readOnly = blocked;   // 锁/只读 = 真 readOnly：敲进去的字不再被悄悄吞掉（user 2026-09-04「没解锁密码导致的煤气灯」；根治=0.3 懒空白稿）
   }
   // zen（user 2026-09-04）：干净态 / 锁态留白；「未同步 / 本地稿」交给顶栏 smart save 图标（syncKind），只剩「不可用 / 加密未成」出字。
   function statusForDoc(): string {
@@ -86,7 +84,7 @@ export function createEditor(d: EditorDeps) {
     if (st.unavailable) return "unavailable";
     if (encryptPending) return "encryptPending";
     if (!d.isSignedIn()) return "local";
-    const dirty = pushPending || !!localTimer || !!renameTimer;
+    const dirty = pushPending || !!localTimer;
     return dirty ? (isOffline() ? "offline" : "unsynced") : "clean";
   }
   const canEdit = () => !st.readOnly && !st.locked && !st.unavailable;
@@ -103,11 +101,11 @@ export function createEditor(d: EditorDeps) {
       if (gen !== loadGen) return;
       if (st.locked || st.unavailable || st.readOnly) return;   // 锁定/不可用/只读稿绝不写（other-password 态尤其：否则用当前密码封空容器覆盖，审计 UI-3）
       if (renameInFlight) { scheduleLocalSave(); return; }
-      const text = d.editor.value, title = d.titleInput.value;
+      const text = d.editor.value;
       if (!st.name) {
         if (!st.pendingDate) return;
-        if (!text && !title) return;   // 空稿不物化
-        const name = await createDoc(title, text, st.pendingDate, st.pendingDir);
+        if (!text && !st.pendingTitle) return;   // 空稿不物化
+        const name = await createDoc(st.pendingTitle ?? "", text, st.pendingDate, st.pendingDir);   // 没给名 → 日期码（加密稿默认即藏标题）
         if (gen !== loadGen) return;   // 建稿期间用户切走了：文件留在本地（下次列表可见），不把身份塞给现在的编辑器
         // 新建时就定好的加密（user 2026-09-03「加密是一开始就定好的」）：物化即封——先封再把 name 暴露给 UI/抽屉，明文只在本地 IDB 停留这一步，永不推云（createDoc 是 tryPush:false）。
         if (st.encrypted) {
@@ -115,8 +113,8 @@ export function createEditor(d: EditorDeps) {
           catch (e) { encryptPending = true; reportError(e, "warning"); }   // 保持「预定加密」：不推云，状态栏常驻提示，下次 persist 重试
           if (gen !== loadGen) return;
         }
-        st.name = name; st.pendingDate = null;
-        savedText = text; savedTitle = parseDocName(name).title;
+        st.name = name; st.pendingDate = null; st.pendingTitle = null;
+        savedText = text;
         setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
         d.onDocChanged();
       }
@@ -189,46 +187,60 @@ export function createEditor(d: EditorDeps) {
   /** 只落本地（切稿/锁定/退出前）。幂等：没有 pending 就不写。 */
   async function flushLocal(): Promise<void> {
     if (persistInFlight) { try { await persistInFlight; } catch { /* 已在 persist 内报过 */ } }
-    if (!localTimer && !renameTimer) return;
-    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
-    if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; await applyRename(); }
+    if (!localTimer) return;
+    clearTimeout(localTimer); localTimer = null;
     if (!canEdit()) return;
     try { await persist(false); } catch (e) { reportError(e); }
   }
 
-  // ── 标题 = 身份（改名防抖）──
-  function scheduleRename(): void {
-    if (renameTimer) clearTimeout(renameTimer);
-    renameTimer = setTimeout(() => { renameTimer = null; void applyRename(); }, RENAME_DEBOUNCE_MS);
+  // ── 文件名 = 身份（ADR-0007：管理句柄，显式改名，不防抖）──
+  /** 身份换了之后的记账：只读名单 / 每篇密码表 / 当前稿指针 / 本机 last-open 跟着走。 */
+  function adoptName(from: string, to: string): void {
+    if (from === to) return;
+    const roNames = readOnlyNames();
+    if (roNames.includes(from)) deviceKvSetJson(KV_READONLY, roNames.map((n) => (n === from ? to : n)));
+    renameFilePassword(from, to);
+    st.name = to; setActiveDoc(to); deviceKvSet(KV_LAST_OPEN, to);
   }
-  async function applyRename(): Promise<void> {
-    const title = d.titleInput.value.trim();
-    if (!st.name) return;   // 未物化：物化时用标题
-    if (title === savedTitle || !title) return;   // 空标题不改名（禁「未命名」，有名保名）
-    const gen = loadGen;
+  /** 改文件名（顶栏 sheet）。空 = 不改（禁「未命名」）。未物化的新稿只记 pendingTitle，物化时兑现。返回 false = 没改成（已 toast）。 */
+  async function renameTo(raw: string): Promise<boolean> {
+    const title = sanitizeTitle(raw);
+    if (!title) return false;
+    if (!st.name) { st.pendingTitle = title; d.onDocChanged(); return true; }
+    if (title === parseDocName(st.name).stem) return true;
+    await flushLocal();
+    const gen = loadGen, from = st.name;
     renameInFlight = true;
     try {
-      const rr = await renameDoc(st.name, title);
-      if (gen !== loadGen) return;
-      if (!rr) { d.setStatus(t("st.renameFailed"), { error: true }); return; }
-      const newName = rr.name;
+      const rr = await renameDoc(from, title);
+      if (gen !== loadGen) return false;
+      if (!rr) { d.setStatus(t("st.renameFailed"), { error: true }); return false; }
       if (rr.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });        // 库把旧名原地留着（谱系不明降级 save-as）——抽屉会出现两份，告诉用户（审计 L18）
       else if (rr.cloudDeferred) d.setStatus(t("st.renameCloudDeferred"), { unsynced: true });
-      if (newName !== st.name) {
-        const roNames = readOnlyNames();
-        if (roNames.includes(st.name)) deviceKvSetJson(KV_READONLY, roNames.map((n) => (n === st.name ? newName : n)));
-        renameFilePassword(st.name, newName);
-        st.name = newName; setActiveDoc(newName); deviceKvSet(KV_LAST_OPEN, newName);
-      }
-      savedTitle = parseDocName(newName).title;
+      adoptName(from, rr.name);
       d.onDocChanged();
       if (d.isSignedIn()) schedulePush();   // 改名的云端腿由库在 tryMove 内做；这里只是让状态栏跟上
-    } catch (e) { reportError(e); }
+      return true;
+    } catch (e) { reportError(e); d.setStatus(t("st.renameFailed"), { error: true }); return false; }
     finally {
       renameInFlight = false;
       if (gen === loadGen && d.editor.value !== savedText) scheduleLocalSave();   // 改名期间挂起的正文补落盘
     }
   }
+  /** 明文稿转加密后藏标题：改成日期码名。返回 {stem, oldKept}；改不成 → null（调用方响亮报「文件名仍带标题」）。 */
+  async function hideNameAfterEncrypt(from: string): Promise<{ stem: string; oldKept: boolean } | null> {
+    const gen = loadGen;
+    renameInFlight = true;
+    try {
+      const rr = await renameDocToOpaque(from);
+      if (gen !== loadGen || !rr) return null;
+      adoptName(from, rr.name);   // oldKept（库降级 save-as）也采纳新名——与 renameTo 同：旧名那份仍在云端，下面响亮告知
+      return { stem: parseDocName(rr.name).stem, oldKept: !!rr.oldKept };
+    } catch (e) { reportError(e, "warning"); return null; }
+    finally { renameInFlight = false; }
+  }
+  /** 顶栏显示名：已物化 = stem；新稿 = 预定的文件名或 null（顶栏画占位）。 */
+  function displayName(): string | null { return st.name ? parseDocName(st.name).stem : st.pendingTitle; }
 
   // ── 打开 / 新建 ──
   async function reload(name: string): Promise<void> { await open(name, { keepCaret: true }); }
@@ -242,14 +254,14 @@ export function createEditor(d: EditorDeps) {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false;
     const caret = opts.keepCaret ? d.editor.selectionStart : 0;
-    st.name = name; st.pendingDate = null; st.readOnly = isReadOnlyName(name); st.unavailable = false; st.locked = false; st.encrypted = false;
+    st.name = name; st.pendingDate = null; st.pendingTitle = null; st.readOnly = isReadOnlyName(name); st.unavailable = false; st.locked = false; st.encrypted = false;
     setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
     d.setStatus(t("st.loading"));
     let r = await readDoc(name);
     if (gen !== loadGen) return false;
     if (r.kind === "locked" || r.kind === "other-password") {
       st.encrypted = true; st.locked = true;
-      d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedTitle = d.titleInput.value; savedText = "";
+      d.editor.value = ""; savedText = "";
       applyGuards(); d.onDocChanged();
       d.setState(r.kind === "locked" ? "" : t("st.otherPasswordHint"));
       if (!opts.promptUnlock) return true;   // 非手势：停在锁态，点锁图标再问
@@ -269,7 +281,6 @@ export function createEditor(d: EditorDeps) {
     if (r.kind === "ok") {
       st.encrypted = r.encrypted; st.locked = false;
       d.editor.value = r.text; savedText = r.text;
-      d.titleInput.value = parseDocName(name).title; savedTitle = d.titleInput.value;
       applyGuards();
       if (opts.keepCaret) { try { d.editor.selectionStart = d.editor.selectionEnd = Math.min(caret, r.text.length); } catch { /* ignore */ } }
       else moveCaretToStart();
@@ -282,7 +293,7 @@ export function createEditor(d: EditorDeps) {
     }
     if (r.kind === "locked" || r.kind === "other-password") { d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }
     st.unavailable = true;
-    d.editor.value = ""; d.titleInput.value = parseDocName(name).title; savedText = ""; savedTitle = d.titleInput.value;
+    d.editor.value = ""; savedText = "";
     applyGuards(); d.onDocChanged();
     d.setStatus(t("st.unavailable"), { error: true });
     return false;
@@ -300,13 +311,13 @@ export function createEditor(d: EditorDeps) {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false;
     const dir = opts.dir ?? currentDir();
-    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.encrypted = !!opts.encrypted; st.locked = false; st.readOnly = false; st.unavailable = false;
+    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.pendingTitle = null; st.encrypted = !!opts.encrypted; st.locked = false; st.readOnly = false; st.unavailable = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
-    d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
+    d.editor.value = ""; savedText = "";
     applyGuards();
     d.setState(st.encrypted ? t("st.pendingEncrypted") : "");
     d.onDocChanged();
-    d.titleInput.focus();
+    d.editor.focus();
     return true;
   }
 
@@ -316,12 +327,11 @@ export function createEditor(d: EditorDeps) {
     loadGen++;
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
     const dir = currentDir();
-    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
+    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.pendingTitle = null; st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
     pushPending = false; encryptPending = false; pushFailures = 0;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
-    d.editor.value = ""; d.titleInput.value = ""; savedText = ""; savedTitle = "";
+    d.editor.value = ""; savedText = "";
     applyGuards(); d.setState(""); d.onDocChanged();
   }
 
@@ -329,7 +339,7 @@ export function createEditor(d: EditorDeps) {
   async function refreshIfClean(): Promise<void> {
     const name = st.name;
     if (!name || refreshInFlight || !d.isSignedIn() || st.locked) return;
-    if (localTimer || renameTimer || pushPending) return;
+    if (localTimer || renameInFlight || pushPending) return;
     refreshInFlight = true;
     const gen = loadGen;
     try {
@@ -371,11 +381,18 @@ export function createEditor(d: EditorDeps) {
     if (!st.encrypted) {
       const ok = await d.ensureUnlocked();
       if (!ok) return;
+      let sealed = false;
       try {
-        const r = await busy(t("busy.encrypting"), () => encryptDoc(name));
-        st.encrypted = true;
-        d.setStatus(t("st.encrypted", { time: fmtTime(Date.now()), status: r.status }));
+        await busy(t("busy.encrypting"), () => encryptDoc(name));
+        sealed = true; st.encrypted = true;
       } catch (e) { reportError(e); d.setStatus(t("st.encryptFailed", { e: errMsg(e) }), { error: true }); }
+      if (sealed) {
+        // 藏标题（ADR-0007）：封完把带标题的文件名换成日期码。改不成（离线谱系不明 / 撞名耗尽）→ 响亮说「文件名仍带标题」，绝不静默。
+        const hidden = await hideNameAfterEncrypt(name);
+        if (!hidden) d.setStatus(t("st.encryptedNameKept", { name: parseDocName(name).stem }), { error: true });
+        else if (hidden.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });
+        else d.setStatus(t("st.encryptedRenamed", { time: fmtTime(Date.now()), name: hidden.stem }));
+      }
       d.onDocChanged();
       return;
     }
@@ -398,12 +415,7 @@ export function createEditor(d: EditorDeps) {
       const rr = await moveDoc(from, dir);
       if (gen !== loadGen) return null;
       if (!rr) { d.setStatus(t("st.moveFailed"), { error: true }); return null; }
-      if (rr.name !== from) {
-        const roNames = readOnlyNames();
-        if (roNames.includes(from)) deviceKvSetJson(KV_READONLY, roNames.map((n) => (n === from ? rr.name : n)));
-        renameFilePassword(from, rr.name);
-        st.name = rr.name; setActiveDoc(rr.name); deviceKvSet(KV_LAST_OPEN, rr.name);
-      }
+      adoptName(from, rr.name);
       d.setStatus(rr.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: dir || t("list.root") }), { error: !!rr.oldKept });
       d.onDocChanged();
       if (d.isSignedIn()) schedulePush();
@@ -427,19 +439,12 @@ export function createEditor(d: EditorDeps) {
 
   // ── DOM 接线 ──
   const blockIfGuarded = (e: Event) => { if (!canEdit()) e.preventDefault(); };
-  for (const el of [d.editor, d.titleInput]) for (const evt of ["beforeinput", "paste", "cut", "drop"]) el.addEventListener(evt, blockIfGuarded);
+  for (const evt of ["beforeinput", "paste", "cut", "drop"]) d.editor.addEventListener(evt, blockIfGuarded);
   d.editor.addEventListener("input", () => {
     if (!canEdit()) return;
     scheduleLocalSave();
     d.setState(statusForDoc(), { unsynced: d.isSignedIn() });
   });
-  d.titleInput.addEventListener("input", () => {
-    if (!canEdit()) return;
-    if (/[\r\n]/.test(d.titleInput.value)) { const v = d.titleInput.value; replaceRange(d.titleInput, 0, v.length, v.replace(/[\r\n]+/g, " ")); }
-    if (st.name) scheduleRename(); else scheduleLocalSave();
-    d.setState(statusForDoc(), { unsynced: d.isSignedIn() });
-  });
-  d.titleInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); d.editor.focus(); } });
   onLockChange((unlocked) => { if (!unlocked && st.encrypted && st.name) { void lockNow(); } });
   async function lockNow(): Promise<void> {
     // 锁定前 flush（否则最后几秒的字困在 textarea 里没法加密落盘）——注意：此刻密码已清，persist 会抛 LockedError；
@@ -461,7 +466,7 @@ export function createEditor(d: EditorDeps) {
     state: st,
     open, newDoc, clear, reload,
     flushLocal, pushNow, refreshIfClean,
-    toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir,
+    toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir, renameTo, displayName,
     canEdit, statusForDoc, syncKind,
     isDirty: () => !!localTimer || pushPending || d.editor.value !== savedText,
     isUnlockedDoc: () => st.encrypted && isUnlocked(),

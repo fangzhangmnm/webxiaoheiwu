@@ -3,7 +3,7 @@ export declare const CLIENT_ID = "39d8afca-f47b-43cb-b962-0803f556520f";
 export declare const AUTHORITY = "https://login.microsoftonline.com/consumers";
 export declare const SCOPES: string[];
 export declare const MSAL_URL = "./vendor/msal/msal-browser.min.js";
-/** 文档扩展名（身份 = `YYYYMMDD 标题.txt`，appfolder 根平铺；加密件云端 at-rest = `….txt.zip`，库透明）。 */
+/** 文档扩展名（身份 = `[夹/]<文件名>.txt`，文件名是管理句柄不是标题（ADR-0007）；加密件云端 at-rest = `….txt.zip`，库透明）。 */
 export declare const DOC_EXT = ".txt";
 /** 编辑 → 本地落盘（IDB）防抖。 */
 export declare const LOCAL_SAVE_DEBOUNCE_MS = 200;
@@ -11,8 +11,6 @@ export declare const LOCAL_SAVE_DEBOUNCE_MS = 200;
 export declare const PUSH_DEBOUNCE_MS = 15000;
 /** 首次变脏起最多等这么久必推（「一直打字不停」）。 */
 export declare const PUSH_HEARTBEAT_MS = 30000;
-/** 标题改名（tryMove）防抖：标题是身份，别每个字都改名。 */
-export declare const RENAME_DEBOUNCE_MS = 1500;
 /** 闲置锁屏（Quest「核电池开一年」——醒来必查云端再放行输入）。 */
 export declare const IDLE_OVERLAY_MS: number;
 /** RIME 用户词库推云节流（每次 commit 检查，超间隔才推；idle/unload 无条件 flush）。 */

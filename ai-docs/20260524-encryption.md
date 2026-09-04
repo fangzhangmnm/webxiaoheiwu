@@ -1,6 +1,7 @@
 # Per-file encryption (AES-GCM)
 
-> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：容器换成 `@internal/encryption`（明文 zip 壳 + 7z AES-256，7-Zip 可开），云端 at-rest 名 = `YYYYMMDD 标题.txt.zip`（标题可见——与 v1 随机名不同，见 adr/0002）；统一密码 + verifier 记录住 synced collection；`.crypto/` `.enc/` 不读不删（2026-09-03 起不做 backward compatibility，adr/0004 superseded）。**仍有效**：威胁模型、不自动弹框、错密码不污染任何文件、解密需警告、明文永不落持久层（库 seal 保证）。「加密稿禁云端语音」已随语音全本机消失（2026-09-03）。**每篇可有自己的密码 / 保存用打开时那把 / 更改密码 = 迁移 / 忘记 = 重置** 见 adr/0005（2026-09-03）。
+> ⚠ as-of v0.2.16 / 2026-09-04（edited by Claude Fable 5.1）：**标题重新藏起来了，靠名字不透明**——加密稿出生名 `yyyymmdd-hex4.txt.zip`，转加密自动改日期码（adr/0007：文件名 = 管理句柄不是标题）；v1 的「标题进密文 + 随机名」精神回归，机制不同（无 16KB padding、无 .enc/）。
+> ⚠ as-of v0.0.82 / 2026-09-03（v2 换代，edited by Claude Fable 5.1）：容器换成 `@internal/encryption`（明文 zip 壳 + 7z AES-256，7-Zip 可开），云端 at-rest 名 = `YYYYMMDD 标题.txt.zip`（~~标题可见~~ 2026-09-04 起日期码，见 adr/0007）；统一密码 + verifier 记录住 synced collection；`.crypto/` `.enc/` 不读不删（2026-09-03 起不做 backward compatibility，adr/0004 superseded）。**仍有效**：威胁模型、不自动弹框、错密码不污染任何文件、解密需警告、明文永不落持久层（库 seal 保证）。「加密稿禁云端语音」已随语音全本机消失（2026-09-03）。**每篇可有自己的密码 / 保存用打开时那把 / 更改密码 = 迁移 / 忘记 = 重置** 见 adr/0005（2026-09-03）。
 
 
 Optional per-doc encryption added on top of the existing sync layer. Goal: make encrypted drafts opaque to Microsoft server-side scanning, while a user who never touches the feature sees zero friction.

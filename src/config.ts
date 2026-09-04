@@ -8,7 +8,7 @@ export const AUTHORITY = "https://login.microsoftonline.com/consumers";
 export const SCOPES = ["Files.ReadWrite.AppFolder", "offline_access"];
 export const MSAL_URL = "./vendor/msal/msal-browser.min.js";
 
-/** 文档扩展名（身份 = `YYYYMMDD 标题.txt`，appfolder 根平铺；加密件云端 at-rest = `….txt.zip`，库透明）。 */
+/** 文档扩展名（身份 = `[夹/]<文件名>.txt`，文件名是管理句柄不是标题（ADR-0007）；加密件云端 at-rest = `….txt.zip`，库透明）。 */
 export const DOC_EXT = ".txt";
 
 // ── 节律（docs/20260524-sync-design.md，user 多轮回退后的终形，别再动）──
@@ -18,8 +18,6 @@ export const LOCAL_SAVE_DEBOUNCE_MS = 200;
 export const PUSH_DEBOUNCE_MS = 15_000;
 /** 首次变脏起最多等这么久必推（「一直打字不停」）。 */
 export const PUSH_HEARTBEAT_MS = 30_000;
-/** 标题改名（tryMove）防抖：标题是身份，别每个字都改名。 */
-export const RENAME_DEBOUNCE_MS = 1_500;
 /** 闲置锁屏（Quest「核电池开一年」——醒来必查云端再放行输入）。 */
 export const IDLE_OVERLAY_MS = 2 * 60 * 1000;
 /** RIME 用户词库推云节流（每次 commit 检查，超间隔才推；idle/unload 无条件 flush）。 */

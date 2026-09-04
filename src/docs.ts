@@ -6,7 +6,7 @@
 import type { SyncState, FolderSnapshot, SaveResult, FreshResult, DelResult, TrashItem, RawFile, WatchFolderErrorPhase } from "@internal/store";
 import { requireStore, isCached, isDirty, setActiveFileName } from "./app-store.ts";
 import { isUnlocked } from "./crypto-state.ts";
-import { isDocName, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, type TextEncodingName } from "./doc-model.ts";
+import { isDocName, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, isOpaqueStem, type TextEncodingName } from "./doc-model.ts";
 
 export interface DocListItem {
   name: string;          // 身份（全路径，含 .txt）
@@ -116,11 +116,17 @@ export async function createDoc(title: string, text: string, date = formatDate(D
 }
 
 export interface RenameResult { name: string; oldKept?: boolean; cloudDeferred?: boolean }
-/** 改标题 = 改身份（tryMove）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
+/** 改文件名 = 改身份（tryMove；ADR-0007：文件名是管理句柄不是标题）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
 export async function renameDoc(name: string, newTitle: string): Promise<RenameResult | null> {
   const p = parseDocName(name);
-  if (!newTitle.trim()) return { name };   // 禁「未命名」：清空标题 = 不改名（WeebPaint 同约定）
+  if (!newTitle.trim()) return { name };   // 禁「未命名」：清空 = 不改名（WeebPaint 同约定）
   return tryMoveWithCollision(name, makeDocName(formatDate(Date.now()), newTitle, p.dir));
+}
+/** 转加密后藏标题：改成日期码名 `yyyymmdd-hex4`（日期沿用原名的 8 位前缀，没有则今天）。已是日期码 → 原名不动。失败 → null。 */
+export async function renameDocToOpaque(name: string): Promise<RenameResult | null> {
+  const p = parseDocName(name);
+  if (isOpaqueStem(p.stem)) return { name };
+  return tryMoveWithCollision(name, makeDocName(p.date ?? formatDate(Date.now()), "", p.dir));
 }
 /** 移到别的夹（身份变 = tryMove，同名撞则追加后缀）。toDir "" = 根。 */
 export async function moveDoc(name: string, toDir: string): Promise<RenameResult | null> {

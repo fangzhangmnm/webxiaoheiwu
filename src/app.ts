@@ -90,7 +90,6 @@ console.log("[xhw] build:", APP_VERSION);
 $("settingsBuild").textContent = APP_VERSION;
 
 const editorEl = $<HTMLTextAreaElement>("editor");
-const titleInput = $<HTMLInputElement>("titleInput");
 // 内置 IME 开着时全平台 inputmode=none：不弹系统软键盘、系统输入法不碰字节（2026-09-03 user「直接不用系统输入法」；Quest 一直如此，见 20260524-quest-ime.md）。
 // 触屏键盘（per-device）：none = 不弹（Quest/桌面实体键盘）；ascii = inputmode="email" → 弹系统键盘、字母仍进内置 IME
 //   （user 2026-09-03「不改用系统输入法只是出软键盘行吗」）。⚠ iOS 实测（user 2026-09-04）：inputmode 只改布局不改语言，
@@ -98,7 +97,7 @@ const titleInput = $<HTMLInputElement>("titleInput");
 const softKeyboardPref = (): "none" | "ascii" => (deviceKvGet("softKeyboard") === "ascii" ? "ascii" : "none");
 function applyInputMode(builtinIme: boolean): void {
   const mode = builtinIme ? (softKeyboardPref() === "ascii" ? "email" : "none") : null;
-  for (const el of [editorEl, titleInput]) { if (mode) el.setAttribute("inputmode", mode); else el.removeAttribute("inputmode"); }
+  if (mode) editorEl.setAttribute("inputmode", mode); else editorEl.removeAttribute("inputmode");
 }
 if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset，纸面整体缩到键盘上方（styles .page height）；iOS 若把视口顶上去，拉回 0 让固定顶栏别被推出屏
   const vv = window.visualViewport;
@@ -136,7 +135,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
   { title: t("fp.title"), hint: t("fp.hint", { name: parseDocName(name).title }), wrong: t("pw.wrong"), ok: t("pw.unlock") },
   (pw) => verifyDocPassword(name, pw));
 const editor = createEditor({
-  editor: editorEl, titleInput, setStatus, setState,
+  editor: editorEl, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
   onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); drawer.refresh(); rememberLastActive(); },
   ensureUnlocked, ensureFileUnlocked,
@@ -164,13 +163,19 @@ const drawer = createDrawer({
   setStatus,
 });
 
-// ── 顶栏（加密钮 / 只读钮）──
+// ── 顶栏（文件名 / 加密钮 / 只读钮）──
 const cryptoToggle = $<HTMLButtonElement>("cryptoToggle");
 const lockToggle = $<HTMLButtonElement>("lockToggle");
+const docNameButton = $<HTMLButtonElement>("docNameButton");   // 文件名 = 管理句柄不是标题（ADR-0007）：住顶栏，点了改名
 const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`; };
 function renderTopbar(): void {
   const st = editor.state;
   const hasDoc = !!st.name || !!st.pendingDate;
+  const dn = editor.displayName();
+  docNameButton.hidden = !hasDoc;
+  docNameButton.textContent = dn ?? t("top.newDocName");
+  docNameButton.classList.toggle("pending", !dn);
+  docNameButton.title = t("top.docName"); docNameButton.setAttribute("aria-label", t("top.docName"));
   cryptoToggle.hidden = !hasDoc;
   useIcon(cryptoToggle, st.encrypted ? "lock" : "unlock");
   cryptoToggle.setAttribute("data-encrypted", st.encrypted ? "true" : "false");
@@ -184,6 +189,15 @@ function renderTopbar(): void {
   renderMicVisibility();
 }
 const keyBanner = $("keyBanner");
+docNameButton.addEventListener("click", () => { void renameCurrentDoc(); });
+/** 顶栏改名 sheet：文件名只是管理句柄，OneDrive 上可见（加密稿也一样）——文案里说清，别把标题写进来。空 = 不改。 */
+async function renameCurrentDoc(): Promise<void> {
+  const st = editor.state;
+  if (!st.name && !st.pendingDate) return;
+  const v = await openInputSheet(t("fn.title"), { message: t(st.encrypted ? "fn.hintEnc" : "fn.hint"), defaultValue: editor.displayName() ?? "", placeholder: t("fn.ph"), okLabel: t("fn.ok") });
+  if (v == null || !v.trim()) return;
+  await editor.renameTo(v);
+}
 $("rekeyButton").addEventListener("click", () => { void editor.rekeyToCurrent(withBusy); });
 cryptoToggle.addEventListener("click", () => {
   void editor.toggleEncryption(
@@ -253,9 +267,8 @@ async function setImeEnabled(on: boolean): Promise<void> {
 async function toggleIme(): Promise<void> { await setImeEnabled(!ime.enabled); }
 imeStatus.addEventListener("mousedown", (e) => e.preventDefault());   // 别抢编辑器焦点
 imeStatus.addEventListener("click", () => {
-  const target = document.activeElement === titleInput ? titleInput : editorEl;
   void ime.toggleAsciiMode().then((r) => {
-    if (r.type === "commit") { commitText(target, r.consumedBuffer, r.text); if (target === editorEl) editor.noteExternalEdit(); else target.dispatchEvent(new Event("input")); }
+    if (r.type === "commit") { commitText(editorEl, r.consumedBuffer, r.text); editor.noteExternalEdit(); }
     renderImeState();
   });
 });
@@ -345,7 +358,7 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     if (routeSyntheticKey(el, key)) event.preventDefault();   // IME 放行 → 让浏览器正常插入
   });
 }
-setupImeOn(editorEl); setupImeOn(titleInput);
+setupImeOn(editorEl);
 
 // RIME 用户词库 ↔ collection（事件驱动节流；idle/unload 无条件 flush）
 let lastDictPushAt = 0, dictPushInFlight = false;
