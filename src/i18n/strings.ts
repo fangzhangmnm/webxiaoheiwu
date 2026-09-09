@@ -172,6 +172,7 @@ export const S = {
   "st.trashEmptyBackups": { zh: "正在清空备份箱…", en: "Emptying backups…" },
   "st.fileEncrypting":   { zh: "正在加密…", en: "Encrypting…" },
   "st.fileDecrypting":   { zh: "正在解密…", en: "Decrypting…" },
+  "st.fileRekeying":     { zh: "正在换钥匙重封…", en: "Re-keying…" },
   "st.fileReuploading":  { zh: "正在重新上传…", en: "Re-uploading…" },
   "st.folderCreating":   { zh: "正在建文件夹…", en: "Creating folder…" },
   "st.folderDeleting":   { zh: "正在删文件夹…", en: "Deleting folder…" },

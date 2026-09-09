@@ -632,6 +632,10 @@ export declare const S: {
         readonly zh: "正在解密…";
         readonly en: "Decrypting…";
     };
+    readonly "st.fileRekeying": {
+        readonly zh: "正在换钥匙重封…";
+        readonly en: "Re-keying…";
+    };
     readonly "st.fileReuploading": {
         readonly zh: "正在重新上传…";
         readonly en: "Re-uploading…";

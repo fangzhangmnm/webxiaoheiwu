@@ -10,8 +10,8 @@
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "./config.ts";
 import { formatDate, parseDocName, splitDocPath, sanitizeTitle } from "./doc-model.ts";
-import { readDoc, saveDoc, createDoc, renameDoc, renameDocToOpaque, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, moveDoc } from "./docs.ts";
-import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword } from "./crypto-state.ts";
+import { readDoc, saveDoc, createDoc, renameDoc, renameDocToOpaque, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, rekeyDoc, moveDoc } from "./docs.ts";
+import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword, currentPassword } from "./crypto-state.ts";
 import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { t } from "./i18n/index.ts";
@@ -431,7 +431,12 @@ export function createEditor(d: EditorDeps) {
     await flushLocal();
     const name = st.name;
     try {
-      await busy(t("busy.rekeying"), async () => { await decryptDoc(name); forgetFilePassword(name); await encryptDoc(name); });
+      await busy(t("busy.rekeying"), async () => {
+        // store 0.12.0 rekey：密文→密文（seam 给这篇的旧钥；新钥 = 当前密码），明文不上云（以前 decrypt→encrypt 的中间态把明文 push 上 OneDrive）
+        const r = await rekeyDoc(name, currentPassword()!);
+        if (r.status !== "swapped" && r.status !== "cloud-deferred" && r.status !== "conflict") throw new Error(r.status);   // offline / locked / no-local → 失败态，表里旧钥保留
+        forgetFilePassword(name);
+      });
       d.setStatus(t("st.rekeyed"));
     } catch (e) { reportError(e); d.setStatus(t("st.rekeyFailed", { e: errMsg(e) }), { error: true }); }
     d.onDocChanged();

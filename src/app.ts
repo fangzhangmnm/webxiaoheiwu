@@ -8,7 +8,7 @@ import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
-import { verifyDocPassword, decryptDoc, encryptDoc, moveDoc, dirtyDocCount, deleteFolder, snapshotFolders } from "./docs.ts";
+import { verifyDocPassword, rekeyDoc, moveDoc, dirtyDocCount, deleteFolder, snapshotFolders } from "./docs.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import type { SyncKind } from "./editor.ts";
@@ -662,9 +662,10 @@ async function changePasswordFlow(): Promise<void> {
         if (it.encrypted === false) continue;
         try {
           if (!(await verifyDocPassword(it.name, old))) { if (it.encrypted) kept++; continue; }   // 别的密码 / 其实不是加密件
-          rememberFilePassword(it.name, old);
-          await decryptDoc(it.name); forgetFilePassword(it.name); await encryptDoc(it.name);
-          moved++;
+          rememberFilePassword(it.name, old);                       // seam 对这篇给旧钥（解旧包用）
+          const r = await rekeyDoc(it.name, next);                  // store 0.12.0：密文→密文，明文不上云（以前 decrypt→encrypt 把明文 push 上 OneDrive）
+          if (r.status === "swapped" || r.status === "cloud-deferred" || r.status === "conflict") { forgetFilePassword(it.name); moved++; }   // 本地已是新钥容器；云端由 push 流接力
+          else { kept++; reportError(new Error(`[change-password] rekey ${it.name}: ${r.status}`), "log"); }   // offline / locked / no-local：这篇仍是旧钥，表里保留
         } catch (e) { reportError(e, "warning"); kept++; }
       }
     }
