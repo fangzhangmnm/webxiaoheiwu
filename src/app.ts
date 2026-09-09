@@ -3,7 +3,7 @@
 import { APP_VERSION } from "./version.ts";
 import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
-import { initErrorBadge, reportError, errorLog } from "./error-badge.ts";
+import { initErrorBadge, reportError} from "./error-badge.ts";
 import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy, showBusy, hideBusy } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
@@ -13,6 +13,8 @@ import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import type { SyncKind } from "./editor.ts";
 import { initPwaShell } from "./pwa-shell.ts";
+import { initDiagLog, note as diagNote } from "./diag-log.ts";   // 2026-09-09 黑匣子
+import { initDiagLogUi } from "./diag-log-ui.ts";
 import { NaturalCodeIME, DEFAULT_SCHEMA, isImeSchema, type ImeSchema, type UserDictDump } from "./ime.ts";
 import type { VoiceSession, VoiceState } from "./voice/session.ts";
 import { isLocalVoiceSupported, LocalSession } from "./voice/local.ts";
@@ -85,6 +87,7 @@ function setStatus(text: string, opts: { error?: boolean; unsynced?: boolean } =
   if (text) toastTimer = setTimeout(() => { toastEl.classList.remove("show"); if (mirror) mirror.hidden = true; toastTimer = null; }, opts.error ? 8000 : 3000);
 }
 initErrorBadge({ status: (text) => setStatus(text), dismissHint: () => t("err.dismissHint") });
+initDiagLog();   // 2026-09-09 黑匣子：页面生命周期/在线态面包屑 + pagehide flush（record 不依赖它）
 initSheets({ ok: t("common.ok"), cancel: t("common.cancel") });
 console.log("[xhw] build:", APP_VERSION);
 $("settingsBuild").textContent = APP_VERSION;
@@ -720,9 +723,7 @@ const factoryReset = () => runFactoryReset({
   beforeWipe: async () => { await editor.flushLocal(); await flushCollections(); editor.clear(); ime.dispose(); },
 });
 $("factoryResetButton").addEventListener("click", () => { void factoryReset(); });
-$("diagButton").addEventListener("click", () => {
-  const pre = $("diagLog"); pre.hidden = !pre.hidden; pre.textContent = errorLog().join("\n") || t("settings.diagEmpty");
-});
+initDiagLogUi({ status: (text) => setStatus(text) });   // 2026-09-09 黑匣子：看/复制/分享或下载 .txt/清空（数据源 diag-log）
 function renderSettings(): void { renderAuthRow(); renderImeSection(); renderPasswordSection(); renderVoiceConfig(); }
 
 // ── 抽屉按钮 ──
@@ -811,7 +812,7 @@ setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown(
 // ── PWA 壳 ──
 const updateToast = $("updateToast");
 const shell = initPwaShell({
-  onUpdateAvailable: () => updateToast.classList.remove("hidden"),
+  onUpdateAvailable: () => { diagNote("sw", "update available → toast"); updateToast.classList.remove("hidden"); },
   onForeground: () => { if (!idle.isShown()) { void editor.refreshIfClean(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh()); } },
   onBeforeReload: async () => { await editor.flushLocal(); await flushCollections(); },
 });
@@ -831,7 +832,7 @@ async function boot(): Promise<void> {
   drawer.subscribe();
 
   // auth（后台探测，不挡首帧）
-  auth.onAuthChanged((st) => { renderAuthRow(); renderTopbar(); drawer.subscribe(); if (st.signedIn) void afterSignIn(); });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
+  auth.onAuthChanged((st) => { diagNote("auth", `changed signedIn=${String(st.signedIn)} reason=${String(st.reason ?? "?")}`); renderAuthRow(); renderTopbar(); drawer.subscribe(); if (st.signedIn) void afterSignIn(); });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
   void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning"));
 
   // 续写：本机上次打开的稿 → 否则最新一篇 → 否则新稿

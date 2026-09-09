@@ -7,6 +7,7 @@ import { joinDocPath, sanitizeFolderName } from "./doc-model.ts";
 import { togglePopupMenu, closePopupMenu } from "./ui/popup-menu.ts";
 import { iconHtml } from "./ui/icon.ts";
 import { reportError } from "./error-badge.ts";
+import { note as diagNote } from "./diag-log.ts";   // 2026-09-09 黑匣子
 import type { SyncState } from "@internal/store";
 
 export type DrawerView = "closed" | "active" | "trash" | "settings";
@@ -74,10 +75,13 @@ export function createDrawer(d: DrawerDeps) {
   function subscribe(): void {
     unsub?.();
     const mine = folder;
+    const t0 = Date.now(); let seen = 0;
+    diagNote("list", `subscribe folder="${mine}"`);   // 2026-09-09 黑匣子面包屑（对账 WeebPaint gallery）
     unsub = watchDocs(mine, (frame) => {
       if (frame.folder !== folder) return;   // 换夹后迟到的旧帧
+      if (seen++ === 0) diagNote("list", `first frame folder="${mine}" items=${frame.items.length} folders=${frame.folders.length} complete=${String(frame.complete)} in ${Date.now() - t0}ms`);
       items = frame.items; folders = frame.folders; frameComplete = frame.complete; resolveFirst?.(); resolveFirst = null; if (view === "active") renderList();
-    }, { onError: (err, phase) => reportError(new Error(`doc list frame failed (${phase}): ${err instanceof Error ? err.message : String(err)}`), "log") });
+    }, { onError: (err, phase) => { diagNote("list", `frame error phase=${phase} folder="${mine}": ${err instanceof Error ? err.message : String(err)}`); reportError(new Error(`doc list frame failed (${phase}): ${err instanceof Error ? err.message : String(err)}`), "log"); } });
   }
   function setFolder(f: string): void {
     if (f === folder) return;

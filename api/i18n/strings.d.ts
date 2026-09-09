@@ -1288,6 +1288,42 @@ export declare const S: {
         readonly zh: "（没有记录）";
         readonly en: "(nothing logged)";
     };
+    readonly "diag.copy": {
+        readonly zh: "复制";
+        readonly en: "Copy";
+    };
+    readonly "diag.share": {
+        readonly zh: "分享 .txt";
+        readonly en: "Share .txt";
+    };
+    readonly "diag.download": {
+        readonly zh: "下载 .txt";
+        readonly en: "Download .txt";
+    };
+    readonly "diag.clear": {
+        readonly zh: "清空";
+        readonly en: "Clear";
+    };
+    readonly "diag.copied": {
+        readonly zh: "已复制 {n} 条诊断日志";
+        readonly en: "Copied {n} log lines";
+    };
+    readonly "diag.copyFailed": {
+        readonly zh: "复制失败：已选中文本，请长按拷贝";
+        readonly en: "Copy failed — text selected, long-press to copy";
+    };
+    readonly "diag.cleared": {
+        readonly zh: "诊断日志已清空";
+        readonly en: "Diagnostics cleared";
+    };
+    readonly "diag.downloaded": {
+        readonly zh: "已下载 {name}";
+        readonly en: "Downloaded {name}";
+    };
+    readonly "diag.shareFailed": {
+        readonly zh: "分享失败";
+        readonly en: "Share failed";
+    };
     readonly "ui.idleAria": {
         readonly zh: "已闲置";
         readonly en: "Idle";
