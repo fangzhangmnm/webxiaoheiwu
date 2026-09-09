@@ -31,8 +31,11 @@ const stripExt = (n: string) => n.replace(/\.txt$/i, "");
 // busy 按 key 路由（store 0.11.4，user 2026-09-03「改库」）：推云 / 改名是后台节律（15s 自动推、标题防抖改名），不上全屏遮罩——
 // 状态栏由 editor.pushNow 自己写「正在同步…」；其余（加解密 / 回收站 / 建删夹 / 拉取）是用户动作，遮罩合理。
 const QUIET_KEYS = new Set<StoreTextKey>(["sync.pushing", "file.renaming"]);
+// 2026-09-09（审计 #6/#7，对账 WeebPaint quietBusy）：安静路径以前**零 UI**——改名/推云在跑用户完全看不到。这里只写一条状态栏（app 注入 sink），不遮罩。
+let _quietStatus: ((text: string) => void) | null = null;
+export function setStoreQuietStatus(fn: (text: string) => void): void { _quietStatus = fn; }
 export const storeUI: StoreUI = {
-  busy: (label, fn, key) => (key && QUIET_KEYS.has(key) ? Promise.resolve().then(fn) : withBusy(label, fn)),
+  busy: (label, fn, key) => (key && QUIET_KEYS.has(key) ? (_quietStatus?.(label), Promise.resolve().then(fn)) : withBusy(label, fn)),
 
   text: (key: StoreTextKey, params?: StoreTextParams): string | undefined => {
     const k = STORE_TEXT_KEYS[key];

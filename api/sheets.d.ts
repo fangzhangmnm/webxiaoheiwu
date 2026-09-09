@@ -28,11 +28,13 @@ export interface InputOpts {
 }
 /** 输入 sheet → string | null（取消）。密码态用 -webkit-text-security 打码（不用 type=password：绕开浏览器记密码弹窗——WeebPaint 教训）。 */
 export declare function openInputSheet(title: string, opts?: InputOpts): Promise<string | null>;
+/** onPick（2026-09-09，对账 WeebPaint sheets）：在按钮 click 监听器里**同步**调——iOS 的 redirect 登录起跳 必须在手势同步栈起跳，resolve 之后的微任务续体会丢手势。 */
 export interface Choice<T> {
     label: string;
     value: T;
     primary?: boolean;
     danger?: boolean;
+    onPick?: () => void;
 }
 export declare function openChoiceSheet<T>(title: string, message: string, choices: Choice<T>[]): Promise<T | null>;
 interface GateAction<T> {

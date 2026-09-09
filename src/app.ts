@@ -8,12 +8,14 @@ import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
-import { verifyDocPassword, rekeyDoc, moveDoc, dirtyDocCount, deleteFolder, snapshotFolders } from "./docs.ts";
+import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders } from "./docs.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import type { SyncKind } from "./editor.ts";
 import { initPwaShell } from "./pwa-shell.ts";
 import { initDiagLog, note as diagNote } from "./diag-log.ts";   // 2026-09-09 黑匣子
+import { holdUntilSettled } from "./settle-hold.ts";   // 2026-09-09 更新提示/reload 等 auth boot 落地
+import { setStoreQuietStatus } from "./store-ui.ts";
 import { initDiagLogUi } from "./diag-log-ui.ts";
 import { NaturalCodeIME, DEFAULT_SCHEMA, isImeSchema, type ImeSchema, type UserDictDump } from "./ime.ts";
 import type { VoiceSession, VoiceState } from "./voice/session.ts";
@@ -160,6 +162,7 @@ const drawer = createDrawer({
     } catch (e) { reportError(e); setStatus(t("st.moveFailed"), { error: true }); }
   },
   onOpenDoc: async (name) => { await editor.open(name, { promptUnlock: true }); },
+  onRenameDoc: async (name) => { if (name === editor.state.name) await renameCurrentDoc(); else await renameOtherDoc(name); },   // 2026-09-09 审计 #6
   onActiveTrashed: async () => { await editor.flushLocal(); editor.clear(); },
   onSettingsShown: () => renderSettings(),
   focusEditor: () => editorEl.focus(),
@@ -197,9 +200,33 @@ docNameButton.addEventListener("click", () => { void renameCurrentDoc(); });
 async function renameCurrentDoc(): Promise<void> {
   const st = editor.state;
   if (!st.name && !st.pendingDate) return;
-  const v = await openInputSheet(t("fn.title"), { message: t(st.encrypted ? "fn.hintEnc" : "fn.hint"), defaultValue: editor.displayName() ?? "", placeholder: t("fn.ph"), okLabel: t("fn.ok") });
-  if (v == null || !v.trim()) return;
-  await editor.renameTo(v);
+  // 2026-09-09 审计 #6：失败不再一次性——保留输入再问（最多三轮），别让用户重打。
+  let typed = editor.displayName() ?? "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const v = await openInputSheet(t("fn.title"), { message: attempt ? t("fn.retryHint") : t(st.encrypted ? "fn.hintEnc" : "fn.hint"), defaultValue: typed, placeholder: t("fn.ph"), okLabel: t("fn.ok") });
+    if (v == null || !v.trim()) return;
+    if (await editor.renameTo(v)) return;
+    typed = v;
+  }
+}
+/** 抽屉行改名（不是当前稿）：docs.renameDoc（tryMove；撞名加后缀）→ 状态行 + 列表重拉。文件名只是管理句柄（ADR-0007），文案同顶栏。 */
+async function renameOtherDoc(name: string): Promise<void> {
+  const enc = drawer.findByName(name)?.encrypted === true;
+  let typed = parseDocName(name).stem;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const v = await openInputSheet(t("fn.title"), { message: attempt ? t("fn.retryHint") : t(enc ? "fn.hintEnc" : "fn.hint"), defaultValue: typed, placeholder: t("fn.ph"), okLabel: t("fn.ok") });
+    if (v == null || !v.trim()) return;
+    typed = v;
+    try {
+      const rr = await renameDoc(name, v);
+      if (!rr) { setStatus(t("st.renameFailed"), { error: true }); continue; }
+      if (rr.oldKept) setStatus(t("st.renameOldKept"), { error: true });
+      else if (rr.cloudDeferred) setStatus(t("st.renameCloudDeferred"), { unsynced: true });
+      else setStatus(t("st.renamed", { name: parseDocName(rr.name).stem }));
+      drawer.subscribe();
+      return;
+    } catch (e) { reportError(e); setStatus(t("st.renameFailed"), { error: true }); }
+  }
 }
 $("rekeyButton").addEventListener("click", () => { void editor.rekeyToCurrent(withBusy); });
 cryptoToggle.addEventListener("click", () => {
@@ -566,12 +593,19 @@ cloudButton.addEventListener("click", () => {
     },
   });
 });
+/** 登录（#60-C 两步手势，2026-09-09 对账 WeebPaint redirectAfterFlush）：先落盘（活稿 + collections），落盘失败不跳（响亮）；再弹「去登录」，
+ *  onPick 在按钮 click 同步栈里起跳 redirect 登录起跳（手势纪律）。为什么：redirect 离场后 pagehide 里的写在 WebKit 上永远 commit 不了、只会把锁冻在旧页里。 */
 async function onSignIn(): Promise<void> {
-  await editor.flushLocal();
-  try { await flushCollections(); } catch (e) { reportError(e, "log"); }   // #60-C：settings 也在 redirect 之前落盘（离场后 pagehide 里的写在 WebKit 上永远 commit 不了）
-  setStatus(t("auth.redirecting"));
-  try { void requestStoragePersistence(); await auth.signIn({ prompt: "select_account" }); }   // 手势里：persist 申请 + 账号选择器（user 2026-08-23 建议）
-  catch (e) { reportError(e); setStatus(t("auth.signInFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+  try { await editor.flushLocal(); await flushCollections(); }
+  catch (e) { reportError(new Error("[sign-in] flush before redirect failed — not navigating: " + String(e)), "error"); setStatus(t("auth.flushFailed"), { error: true }); return; }
+  await openChoiceSheet<"go">(t("auth.readyTitle"), t("auth.readyMsg"), [{
+    label: t("auth.go"), value: "go", primary: true,
+    onPick: () => {
+      setStatus(t("auth.redirecting"));
+      void requestStoragePersistence();   // 手势里：persist 申请 + 账号选择器（user 2026-08-23 建议）
+      auth.signIn({ prompt: "select_account" }).catch((e) => { reportError(e); setStatus(t("auth.signInFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); });
+    },
+  }]);
 }
 async function onSignOut(): Promise<void> {
   if (!(await openConfirmSheet(t("auth.signOutTitle"), t("auth.signOutMsg")))) return;
@@ -765,7 +799,7 @@ async function resumeSync(): Promise<void> {
   await requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
   await editor.refreshIfClean();
   await reconcileCollections();
-  drawer.refresh();
+  drawer.subscribe();   // 2026-09-09 审计 #8：refresh 只重画缓存帧，回线/复查要重拉
   setState(editor.statusForDoc());
 }
 const idle = initIdleGate({
@@ -799,7 +833,11 @@ document.addEventListener("visibilitychange", () => {
 //   IDB 写永远 commit 不了，只会把锁冻在旧页里、让 redirect 回来的新页全挂（WeebPaint ai-docs/20260909-bfcache-idb-lock-daily-reauth-analysis.md）；
 //   store 0.12.1 起也会把这种写直接弃掉。要落盘的必须在导航之前写完（onSignIn 已 await flush）。
 window.addEventListener("pagehide", (e: PageTransitionEvent) => { if (!e.persisted) { void editor.flushLocal(); void flushCollections(); } });
-window.addEventListener("online", () => { renderCloudButton(); renderSaveButton(); if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); } });
+window.addEventListener("online", () => {
+  renderCloudButton(); renderSaveButton();
+  if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); }
+  else void auth.retrySilentSignIn().then((ok) => diagNote("auth", `retrySilentSignIn on online → ${String(ok)}`)).catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回线也试一次静默补登（store 0.12.1 有 60s 闩，不会风暴）
+});
 window.addEventListener("offline", () => { renderCloudButton(); renderSaveButton(); });
 setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void editor.refreshIfClean(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);
 
@@ -811,10 +849,19 @@ setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown(
 }
 // ── PWA 壳 ──
 const updateToast = $("updateToast");
+// 2026-09-09（审计 #5，对账 WeebPaint v0.13.1）：SW 更新提示与 reload 等 boot 期 auth 初始化落地（封顶 8s）——redirect 回程 handleRedirectPromise
+//   正在用 URL 里的 code 换 token 时 reload = code 丢失 → 回来只剩「有缓存账号但没登上」的假离线。
+let _authBootResolve: () => void = () => {};
+const authBootP = new Promise<void>((r) => { _authBootResolve = r; });
+const authBootSettled = () => holdUntilSettled(authBootP, 8000);
 const shell = initPwaShell({
-  onUpdateAvailable: () => { diagNote("sw", "update available → toast"); updateToast.classList.remove("hidden"); },
-  onForeground: () => { if (!idle.isShown()) { void editor.refreshIfClean(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh()); } },
-  onBeforeReload: async () => { await editor.flushLocal(); await flushCollections(); },
+  onUpdateAvailable: () => { void authBootSettled().then((how) => { diagNote("sw", `update available → toast (auth boot ${how})`); updateToast.classList.remove("hidden"); }); },
+  onForeground: () => {
+    if (idle.isShown()) return;
+    if (!auth.isSignedIn() && navigator.onLine !== false) void auth.retrySilentSignIn().catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回前台也试一次静默补登（store 闩住不风暴）
+    void editor.refreshIfClean(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh());
+  },
+  onBeforeReload: async () => { const how = await authBootSettled(); diagNote("sw", `reload requested (auth boot ${how})`); await editor.flushLocal(); await flushCollections(); },
 });
 $("updateReloadButton").addEventListener("click", () => { void shell.reload(); });
 $("updateDismissButton").addEventListener("click", () => updateToast.classList.add("hidden"));
@@ -832,8 +879,13 @@ async function boot(): Promise<void> {
   drawer.subscribe();
 
   // auth（后台探测，不挡首帧）
-  auth.onAuthChanged((st) => { diagNote("auth", `changed signedIn=${String(st.signedIn)} reason=${String(st.reason ?? "?")}`); renderAuthRow(); renderTopbar(); drawer.subscribe(); if (st.signedIn) void afterSignIn(); });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
-  void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning"));
+  auth.onAuthChanged((st) => {
+    diagNote("auth", `changed signedIn=${String(st.signedIn)} reason=${String(st.reason ?? "?")}`);
+    renderAuthRow(); renderTopbar(); drawer.subscribe();
+    if (st.signedIn) void afterSignIn();
+    else if (st.reason === "expired") setStatus(t("auth.expired"), { error: true });   // 2026-09-09 审计 #3：过期 ≠ 主动退出，明说
+  });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
+  void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning")).finally(() => _authBootResolve());
 
   // 续写：本机上次打开的稿 → 否则最新一篇 → 否则新稿
   const last = editor.lastOpenName();
@@ -850,23 +902,33 @@ async function boot(): Promise<void> {
   setState(editor.statusForDoc());
   editorEl.focus();
 }
-let signInHandled = false;
-async function afterSignIn(): Promise<void> {
-  if (signInHandled) return;
-  signInHandled = true;
-  try {
-    await reconcileCollections();
-    await pullUserDict();
-    void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
-    // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切
-    const remote = appState.getItem<{ name?: string }>("lastActive");
-    if (remote?.name && remote.name !== editor.state.name && !editor.isDirty() && !editor.state.pendingDate) {
-      const known = drawer.findByName(remote.name);
-      if (known && !known.encrypted) await editor.open(remote.name);
-    }
-    await editor.refreshIfClean();
-    drawer.refresh();
-  } catch (e) { reportError(e, "warning"); }
+// 2026-09-09（审计 #3，「各种不刷新」头号嫌疑）：以前整函数一次性守卫——凭证过期后再次静默登录时什么都不做：不对齐 collections、
+//   不排空离线队列、不快进当前稿、列表不重拉。现在每次登录都跑同步四件；只有「冷启动切到远端 lastActive」保持一次性（会切当前稿，
+//   会话中途再登录不该跳）。并发合并：同一时刻只跑一份（boot 时 onAuthChanged 与 initAuth.then 会双触发）。
+let bootLastActiveHandled = false;
+let afterSignInInFlight: Promise<void> | null = null;
+function afterSignIn(): Promise<void> {
+  if (afterSignInInFlight) return afterSignInInFlight;
+  afterSignInInFlight = (async () => {
+    try {
+      diagNote("auth", "afterSignIn: reconcile collections + user dict + drain offline queue");
+      await reconcileCollections();
+      await pullUserDict();
+      void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
+      if (!bootLastActiveHandled) {
+        bootLastActiveHandled = true;
+        // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切
+        const remote = appState.getItem<{ name?: string }>("lastActive");
+        if (remote?.name && remote.name !== editor.state.name && !editor.isDirty() && !editor.state.pendingDate) {
+          const known = drawer.findByName(remote.name);
+          if (known && !known.encrypted) await editor.open(remote.name);
+        }
+      }
+      await editor.refreshIfClean();
+      drawer.subscribe();   // 重拉（drawer.refresh 只重画缓存帧——审计 #8）
+    } catch (e) { reportError(e, "warning"); }
+  })().finally(() => { afterSignInInFlight = null; });
+  return afterSignInInFlight;
 }
 
 window.addEventListener("error", (event) => { reportError(new Error(`[window] ${(event.message || "").slice(0, 160)}`)); });

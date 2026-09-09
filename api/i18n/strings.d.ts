@@ -224,6 +224,22 @@ export declare const S: {
         readonly zh: "更多";
         readonly en: "More";
     };
+    readonly "list.rename": {
+        readonly zh: "改名…";
+        readonly en: "Rename…";
+    };
+    readonly "list.stalled": {
+        readonly zh: "列表读取超时（本机存储没有响应）";
+        readonly en: "List timed out (local storage did not respond)";
+    };
+    readonly "list.stalledFailed": {
+        readonly zh: "列表读取失败";
+        readonly en: "List failed to load";
+    };
+    readonly "list.retry": {
+        readonly zh: "重试";
+        readonly en: "Retry";
+    };
     readonly "list.encrypted": {
         readonly zh: "加密稿";
         readonly en: "Encrypted";
@@ -483,6 +499,14 @@ export declare const S: {
     readonly "st.renameFailed": {
         readonly zh: "改名失败（名字被占用？）";
         readonly en: "Rename failed (name taken?)";
+    };
+    readonly "st.renamed": {
+        readonly zh: "已改名：{name}";
+        readonly en: "Renamed: {name}";
+    };
+    readonly "fn.retryHint": {
+        readonly zh: "改名没成功，再试一次或取消。";
+        readonly en: "Rename failed — try again or cancel.";
     };
     readonly "st.wrongPasswordOrLocked": {
         readonly zh: "密码不对，无法解密这篇";
@@ -1267,6 +1291,26 @@ export declare const S: {
     readonly "auth.lockCryptoHint": {
         readonly zh: "清除内存中的密码";
         readonly en: "Forget the password held in memory";
+    };
+    readonly "auth.readyTitle": {
+        readonly zh: "已保存到本机，去登录？";
+        readonly en: "Saved on this device — sign in now?";
+    };
+    readonly "auth.readyMsg": {
+        readonly zh: "接下来会跳到 Microsoft 登录页，登录后自动回来。";
+        readonly en: "Next you'll go to the Microsoft sign-in page and come back automatically.";
+    };
+    readonly "auth.go": {
+        readonly zh: "去登录";
+        readonly en: "Sign in";
+    };
+    readonly "auth.flushFailed": {
+        readonly zh: "本机落盘失败，未跳转登录（看诊断日志）";
+        readonly en: "Local save failed — not redirecting (see diagnostics)";
+    };
+    readonly "auth.expired": {
+        readonly zh: "云端登录已过期，点云图标重新登录";
+        readonly en: "Cloud sign-in expired — tap the cloud icon to sign in again";
     };
     readonly "settings.forceUpdateTitle": {
         readonly zh: "强制更新？";

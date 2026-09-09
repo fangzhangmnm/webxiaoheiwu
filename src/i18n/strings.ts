@@ -66,6 +66,10 @@ export const S = {
   "list.emptyFolderDocs": { zh: "这个夹里还没有稿。", en: "No drafts in this folder yet." },
   "list.moveTo":         { zh: "移到…", en: "Move to…" },
   "list.more":           { zh: "更多", en: "More" },
+  "list.rename":         { zh: "改名…", en: "Rename…" },
+  "list.stalled":        { zh: "列表读取超时（本机存储没有响应）", en: "List timed out (local storage did not respond)" },
+  "list.stalledFailed":  { zh: "列表读取失败", en: "List failed to load" },
+  "list.retry":          { zh: "重试", en: "Retry" },
   "list.encrypted":      { zh: "加密稿", en: "Encrypted" },
   "ui.cloud":            { zh: "云端", en: "Cloud" },
   "cloud.titleIn":       { zh: "OneDrive · {who}", en: "OneDrive · {who}" },
@@ -133,6 +137,8 @@ export const S = {
   "st.saveFailed":       { zh: "保存失败：{e}", en: "Save failed: {e}" },
   "st.syncFailed":       { zh: "同步失败：{e}", en: "Sync failed: {e}" },
   "st.renameFailed":     { zh: "改名失败（名字被占用？）", en: "Rename failed (name taken?)" },
+  "st.renamed":          { zh: "已改名：{name}", en: "Renamed: {name}" },
+  "fn.retryHint":        { zh: "改名没成功，再试一次或取消。", en: "Rename failed — try again or cancel." },
   "st.wrongPasswordOrLocked": { zh: "密码不对，无法解密这篇", en: "Wrong password — cannot decrypt this draft" },
   "st.unavailable":      { zh: "本地没有缓存，云端也连不上", en: "Not cached locally and cloud unreachable" },
   "st.loadedCloudLatest": { zh: "已加载云端最新 {time}", en: "Loaded latest from cloud {time}" },
@@ -343,6 +349,12 @@ export const S = {
   "auth.signInFailed":   { zh: "登录失败：{e}", en: "Sign-in failed: {e}" },
   "auth.lockCrypto":     { zh: "锁定加密", en: "Lock encryption" },
   "auth.lockCryptoHint": { zh: "清除内存中的密码", en: "Forget the password held in memory" },
+  // 2026-09-09 对账 WeebPaint：登录两步手势 / 凭证过期提示
+  "auth.readyTitle":     { zh: "已保存到本机，去登录？", en: "Saved on this device — sign in now?" },
+  "auth.readyMsg":       { zh: "接下来会跳到 Microsoft 登录页，登录后自动回来。", en: "Next you'll go to the Microsoft sign-in page and come back automatically." },
+  "auth.go":             { zh: "去登录", en: "Sign in" },
+  "auth.flushFailed":    { zh: "本机落盘失败，未跳转登录（看诊断日志）", en: "Local save failed — not redirecting (see diagnostics)" },
+  "auth.expired":        { zh: "云端登录已过期，点云图标重新登录", en: "Cloud sign-in expired — tap the cloud icon to sign in again" },
 
   // ── 旧版导入 / 维护 ──
   "settings.forceUpdateTitle": { zh: "强制更新？", en: "Force update?" },

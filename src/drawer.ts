@@ -8,6 +8,7 @@ import { togglePopupMenu, closePopupMenu } from "./ui/popup-menu.ts";
 import { iconHtml } from "./ui/icon.ts";
 import { reportError } from "./error-badge.ts";
 import { note as diagNote } from "./diag-log.ts";   // 2026-09-09 黑匣子
+import { createFirstFrameWatchdog } from "./first-frame-watchdog.ts";   // 2026-09-09 审计 #2：首帧看门狗（对账 WeebPaint gallery A2）
 import type { SyncState } from "@internal/store";
 
 export type DrawerView = "closed" | "active" | "trash" | "settings";
@@ -21,6 +22,8 @@ export interface DrawerDeps {
   /** 把一篇移到别的夹（当前稿由编辑器走 moveTo；其它稿 app 直接调 docs.moveDoc）。 */
   onMoveDoc: (name: string, toDir: string) => Promise<void>;
   onOpenDoc: (name: string) => Promise<void>;
+  /** 抽屉行「改名…」（2026-09-09 审计 #6：以前只能先打开再从顶栏改）。 */
+  onRenameDoc: (name: string) => Promise<void>;
   /** 当前稿被移入回收站/改名后：编辑器清空或切稿。 */
   onActiveTrashed: () => Promise<void>;
   onSettingsShown: () => void;
@@ -72,16 +75,30 @@ export function createDrawer(d: DrawerDeps) {
   const firstFramePromise = new Promise<void>((r) => { resolveFirst = r; });
   let unsub: (() => void) | null = null;
 
+  // 2026-09-09 审计 #2（对账 WeebPaint gallery A2）：首帧 8s 不来 → 卡住态（列表里显「读取超时 + 重试」、warning 横幅、黑匣子记一笔），
+  //   不再永远「加载中…」。本地帧产不出（onError phase=local）→ 立即卡住态，不等 8s；远端帧失败但本地帧已到 → 有内容不打扰。
+  let stalled: string | null = null;
+  const wd = createFirstFrameWatchdog(({ folder: f, elapsedMs }) => {
+    diagNote("list", `first frame timeout folder="${f}" after ${elapsedMs}ms (store listing did not respond — IDB wedged?)`);
+    reportError(new Error(`[list] first frame timeout for folder "${f}" after ${elapsedMs}ms (store listing did not respond — IDB wedged?)`), "warning");
+    stalled = t("list.stalled"); if (view === "active") renderList();
+  });
   function subscribe(): void {
     unsub?.();
     const mine = folder;
     const t0 = Date.now(); let seen = 0;
+    stalled = null; wd.arm(mine);
     diagNote("list", `subscribe folder="${mine}"`);   // 2026-09-09 黑匣子面包屑（对账 WeebPaint gallery）
     unsub = watchDocs(mine, (frame) => {
       if (frame.folder !== folder) return;   // 换夹后迟到的旧帧
+      wd.frame(mine); if (stalled) { stalled = null; }
       if (seen++ === 0) diagNote("list", `first frame folder="${mine}" items=${frame.items.length} folders=${frame.folders.length} complete=${String(frame.complete)} in ${Date.now() - t0}ms`);
       items = frame.items; folders = frame.folders; frameComplete = frame.complete; resolveFirst?.(); resolveFirst = null; if (view === "active") renderList();
-    }, { onError: (err, phase) => { diagNote("list", `frame error phase=${phase} folder="${mine}": ${err instanceof Error ? err.message : String(err)}`); reportError(new Error(`doc list frame failed (${phase}): ${err instanceof Error ? err.message : String(err)}`), "log"); } });
+    }, { onError: (err, phase) => {
+      diagNote("list", `frame error phase=${phase} folder="${mine}": ${err instanceof Error ? err.message : String(err)}`);
+      reportError(new Error(`doc list frame failed (${phase}): ${err instanceof Error ? err.message : String(err)}`), phase === "local" ? "warning" : "log");
+      if (phase === "local" && seen === 0) { wd.cancel(); stalled = t("list.stalledFailed"); if (view === "active") renderList(); }
+    } });
   }
   function setFolder(f: string): void {
     if (f === folder) return;
@@ -116,7 +133,15 @@ export function createDrawer(d: DrawerDeps) {
       li.appendChild(more);
       list.appendChild(li);
     }
-    if (!items.length) { d.docListEmpty.textContent = frameComplete ? (folders.length ? t("list.emptyFolderDocs") : t("list.empty")) : t("list.loading"); d.docListEmpty.classList.remove("hidden"); return; }
+    if (!items.length) {
+      d.docListEmpty.textContent = stalled ?? (frameComplete ? (folders.length ? t("list.emptyFolderDocs") : t("list.empty")) : t("list.loading"));
+      if (stalled) {   // 卡住态：重试（重订阅）——用户自救，不必重开 app
+        const retry = document.createElement("button"); retry.type = "button"; retry.className = "auth-action"; retry.textContent = t("list.retry");
+        retry.addEventListener("click", () => { diagNote("list", `retry folder="${folder}"`); subscribe(); renderList(); });
+        d.docListEmpty.appendChild(document.createElement("br")); d.docListEmpty.appendChild(retry);
+      }
+      d.docListEmpty.classList.remove("hidden"); return;
+    }
     d.docListEmpty.classList.add("hidden");
     const active = d.activeName();
     for (const it of items) {
@@ -139,10 +164,11 @@ export function createDrawer(d: DrawerDeps) {
         togglePopupMenu({
           anchor: more,
           items: () => [
+            { id: "rename", label: t("list.rename"), icon: "edit-enabled" },
             { id: "move", label: t("list.moveTo"), icon: "move-to-file" },
             { id: "trash", label: t("list.toTrash"), icon: "trash-can", danger: true, separatorBefore: true },
           ],
-          onPick: (id) => { if (id === "move") void onMove(it); else void onTrash(it.name); },
+          onPick: (id) => { if (id === "rename") void d.onRenameDoc(it.name); else if (id === "move") void onMove(it); else void onTrash(it.name); },
         });
       });
       li.appendChild(more);

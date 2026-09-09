@@ -17,6 +17,8 @@ export interface DrawerDeps {
     /** 把一篇移到别的夹（当前稿由编辑器走 moveTo；其它稿 app 直接调 docs.moveDoc）。 */
     onMoveDoc: (name: string, toDir: string) => Promise<void>;
     onOpenDoc: (name: string) => Promise<void>;
+    /** 抽屉行「改名…」（2026-09-09 审计 #6：以前只能先打开再从顶栏改）。 */
+    onRenameDoc: (name: string) => Promise<void>;
     /** 当前稿被移入回收站/改名后：编辑器清空或切稿。 */
     onActiveTrashed: () => Promise<void>;
     onSettingsShown: () => void;

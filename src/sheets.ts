@@ -137,7 +137,8 @@ export function openInputSheet(title: string, opts: InputOpts = {}): Promise<str
   });
 }
 
-export interface Choice<T> { label: string; value: T; primary?: boolean; danger?: boolean }
+/** onPick（2026-09-09，对账 WeebPaint sheets）：在按钮 click 监听器里**同步**调——iOS 的 redirect 登录起跳 必须在手势同步栈起跳，resolve 之后的微任务续体会丢手势。 */
+export interface Choice<T> { label: string; value: T; primary?: boolean; danger?: boolean; onPick?: () => void }
 export function openChoiceSheet<T>(title: string, message: string, choices: Choice<T>[]): Promise<T | null> {
   _assertNotBusy("choice");
   return new Promise((resolve) => {
@@ -152,7 +153,7 @@ export function openChoiceSheet<T>(title: string, message: string, choices: Choi
       btn.type = "button";
       btn.className = "sheet-choice" + (c.primary ? " primary" : "") + (c.danger ? " danger" : "");
       btn.textContent = c.label;
-      btn.addEventListener("click", () => { g.cancel().removeEventListener("click", onCancel); _hide(); resolve(c.value); });
+      btn.addEventListener("click", () => { g.cancel().removeEventListener("click", onCancel); _hide(); c.onPick?.(); resolve(c.value); });
       box.appendChild(btn);
     }
     g.cancel().addEventListener("click", onCancel);
