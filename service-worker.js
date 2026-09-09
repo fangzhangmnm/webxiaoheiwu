@@ -98,8 +98,21 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith(SCOPE_PATH)) return;   // 同源但 scope 外（模型包 /pwa-models/ 等）：不接管、不复制进壳缓存
   if (!SCOPE_IS_DEV && url.pathname.includes("/dev/")) return;
-  event.respondWith(SCOPE_IS_DEV ? networkFirst(req) : cacheFirst(req));
+  const p = SCOPE_IS_DEV ? networkFirst(req) : cacheFirst(req);
+  event.respondWith(req.mode === "navigate" ? withNoStore(p) : p);
 });
+
+// #60-A 同款（2026-09-09，对账 WeebPaint v0.14.4）：导航响应加 `Cache-Control: no-store` → WebKit 不把本页放进 bfcache（BackForwardCache.cpp
+//   canCacheLocalFrame 明文项「HTTPS + no-store」）。为什么：登录 redirect 离场时旧页若被冻进 bfcache，会带着 IDB 事务把锁握到死、新页全挂。
+//   ⚠ 只是 Safari 上的额外一层，正确性不押在它身上：store 0.12.1 的 pagehide 闸门 + app 的 pagehide 写门控才是承重层。只改导航响应的头。
+async function withNoStore(p) {
+  const r = await p;
+  if (!(r instanceof Response)) return r;
+  const h = new Headers();
+  if (r.headers && typeof r.headers.forEach === "function") r.headers.forEach((v, k) => h.set(k, v));
+  h.set("Cache-Control", "no-store");
+  return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
+}
 
 async function cacheFirst(req) {
   const cache = await caches.open(await currentCacheName());

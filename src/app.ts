@@ -565,6 +565,7 @@ cloudButton.addEventListener("click", () => {
 });
 async function onSignIn(): Promise<void> {
   await editor.flushLocal();
+  try { await flushCollections(); } catch (e) { reportError(e, "log"); }   // #60-C：settings 也在 redirect 之前落盘（离场后 pagehide 里的写在 WebKit 上永远 commit 不了）
   setStatus(t("auth.redirecting"));
   try { void requestStoragePersistence(); await auth.signIn({ prompt: "select_account" }); }   // 手势里：persist 申请 + 账号选择器（user 2026-08-23 建议）
   catch (e) { reportError(e); setStatus(t("auth.signInFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
@@ -793,7 +794,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") { void editor.flushLocal().then(() => { if (auth.isSignedIn()) return editor.pushNow(); }); void pushUserDict(); void flushCollections(); }
 });
-window.addEventListener("pagehide", () => { void editor.flushLocal(); void flushCollections(); });
+// #60-C 同款（2026-09-09，对账 WeebPaint v0.14.4）：只在 persisted=false（页面真在销毁）时写。persisted=true = 要进 bfcache：WebKit 上 pagehide 里起的
+//   IDB 写永远 commit 不了，只会把锁冻在旧页里、让 redirect 回来的新页全挂（WeebPaint ai-docs/20260909-bfcache-idb-lock-daily-reauth-analysis.md）；
+//   store 0.12.1 起也会把这种写直接弃掉。要落盘的必须在导航之前写完（onSignIn 已 await flush）。
+window.addEventListener("pagehide", (e: PageTransitionEvent) => { if (!e.persisted) { void editor.flushLocal(); void flushCollections(); } });
 window.addEventListener("online", () => { renderCloudButton(); renderSaveButton(); if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); } });
 window.addEventListener("offline", () => { renderCloudButton(); renderSaveButton(); });
 setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void editor.refreshIfClean(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);

@@ -18,7 +18,11 @@ class MockResponse {
     this._h = init.headers ?? {};
   }
   clone() { return this; }
-  get headers() { return { get: (k) => this._h[k] ?? null }; }
+  get headers() {
+    const h = this._h;
+    if (h && typeof h.get === "function" && typeof h.forEach === "function") return h;   // 真 Headers（withNoStore 产出）
+    return { get: (k) => h[k] ?? null, forEach: (fn) => { for (const k of Object.keys(h)) fn(h[k], k); } };
+  }
 }
 
 // scopePath = SW 脚本自己的 pathname（决定 SCOPE_IS_DEV）。返回驱动句柄。
@@ -41,6 +45,7 @@ function loadSW(scopePath) {
     caches: { open: async () => cache, keys: async () => [], delete: async () => true, match: cache.match },
     fetch: (req) => fetchImpl(req),
     Response: MockResponse,
+    Headers,   // #60-A withNoStore 用；真 SW 全局有
     URL, AbortController, setTimeout, clearTimeout,
     __NETWORK_FIRST_TIMEOUT_MS: 50,
     console: { warn() {}, log() {}, error() {} },
@@ -123,5 +128,27 @@ describe("service-worker · 策略路由 (prod cache-first / dev network-first)"
     sw.setFetch(async () => new MockResponse("FRESH"));
     await drive(sw.handlers, { url: `${ORIGIN}/dev/index.html` });   // 在线一次 → cache.put
     assert(sw.store.get(`${ORIGIN}/dev/index.html`)?.body === "FRESH", "network-first 应顺手刷缓存");
+  });
+
+  // #60-A 同款（2026-09-09，对账 WeebPaint v0.14.4）：导航响应带 Cache-Control: no-store（WebKit 据此不把页面放进 bfcache——登录 redirect 离场时
+  //   旧页不再冻着 IDB 锁）；子资源不带。只是 Safari 上的额外一层，承重在 store 0.12.1 闸门 + app pagehide 写门控。
+  it("导航响应带 Cache-Control: no-store（prod 缓存命中 / dev 抓网 / 离线回退壳）；子资源不带", async () => {
+    const prod = loadSW("/service-worker.js");
+    prod.seed(`${ORIGIN}/index.html`, new MockResponse("CACHED", { headers: { etag: "e1" } }));
+    prod.setFetch(async () => new MockResponse("NET"));
+    const r1 = await drive(prod.handlers, { url: `${ORIGIN}/index.html`, mode: "navigate" });
+    assert(r1.body === "CACHED" && r1.headers.get("Cache-Control") === "no-store", "prod 导航：缓存命中也带 no-store");
+    assert(r1.headers.get("etag") === "e1", "原有头照抄");
+    const sub = await drive(prod.handlers, { url: `${ORIGIN}/index.html`, mode: "no-cors" });
+    assert(sub.headers.get("Cache-Control") === null, "子资源不加头");
+    const dev = loadSW("/dev/service-worker.js");
+    dev.setFetch(async () => new MockResponse("NET"));
+    const r2 = await drive(dev.handlers, { url: `${ORIGIN}/dev/`, mode: "navigate" });
+    assert(r2.body === "NET" && r2.headers.get("Cache-Control") === "no-store", "dev 导航：抓网响应也带");
+    const off = loadSW("/service-worker.js");
+    off.seed("./index.html", new MockResponse("INDEX"));
+    off.setFetch(async () => { throw new Error("offline"); });
+    const r3 = await drive(off.handlers, { url: `${ORIGIN}/some/route`, mode: "navigate" });
+    assert(r3.body === "INDEX" && r3.headers.get("Cache-Control") === "no-store", "离线回退壳也带");
   });
 });
