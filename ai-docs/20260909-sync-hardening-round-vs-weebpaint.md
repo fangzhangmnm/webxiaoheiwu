@@ -33,7 +33,12 @@ store 侧（两家共用）：0.12.0 `rekey`（换密码不经明文，v0.2.18 �
 3. 抽屉行「改名…」；改名失败时输入不丢。
 4. 首帧超时时列表显示「读取超时 + 重试」而不是永远加载中。
 
-## 4. 待 user 拍板（本轮刻意没动）
+## 4. 拍板结果（user 2026-09-09，同日）
+
+- **改名丢日期前缀 → 排序跳位：「是 feature 不是 bug」**。不动。已钉进 `src/docs.ts renameDoc` 注释——以后别有 agent 再来「修」。
+- **抽 gallery / 平台公共库：择日集体轮**——「找个良辰吉日叫上 jrp jrb realhome, catsup 一起」，且「不是可以不给反馈光挂机的任务」（需要 user 在场逐步给反馈）。本轮不抽；两仓的逐字相同拷贝（diag-log / settle-hold / first-frame-watchdog）原地保留。
+
+### 4.1 原议题（存档）
 
 - **改名丢日期前缀 → 排序跳位**：这是 ADR-0007 命名模型（文件名 = 管理句柄；加密稿出生名 = 日期码）的产品层问题。选项：(a) 改名保留原日期前缀；(b) 列表按 lastModified 排而非名字；(c) 保持现状。
 - **抽 gallery 公共库**：本轮三件在两仓已是**逐字相同**的拷贝（`diag-log.ts` 除版本常量、`settle-hold.ts`、`first-frame-watchdog.ts`），外加 store-ui 的 busy 路由与 redirect 两步手势形状相同。要抽的话我先按 API ritual 出现状 .h + 提案 .h。家族既有政策「PWA 平台层 WET 复制非库」（memory：pwa-shell/sw-kit parked），所以默认不抽，等你一句话。
