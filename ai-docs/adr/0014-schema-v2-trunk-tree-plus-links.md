@@ -33,3 +33,4 @@
 - ADR-0008：zip 目录清单不变（graph.json 内容换 v2）；2.1.0 的 `Thumbnails/thumbnail.png` 与图片页照旧（ADR-0012/0013，隔壁「wxhw v2 image thumbnail specs」session 落档）。ADR-0010 不变。
 - 实现 handoff = `ai-docs/20260910-v2-tree-schema-handoff.md`；迁移夹具 = `tmp/migration/`（不进 git，`build_books.py` 可重生成）。
 - app 版本号归 user / 实现 session 定（家规：AI 不提 major）。
+- **落地 2026-09-10 深夜 v2.1.1**（树 session，Claude Fable 5.1；状态见 `ai-docs/20260910-v2-ui-handoff.md` §4 末「v2.1.1」节）。实现时定的两条读法：§8「升级」= x 出到父亲那一层、插到父亲之后（x 已是顶层 → no-op）；「+ 兄弟 / + 子节」打已在树里的名 = 位置不动只跳过去，打散页名 = 归档到这里。

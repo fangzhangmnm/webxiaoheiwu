@@ -1,10 +1,13 @@
-// 工程会话（headless；ADR-0008/0009/0010）：一个打开的 `<名字>.webxiaoheiwu.zip` 的内存态 + 落盘节律。
-// created 2026-09-10 by Claude Fable 5.1。UI 归 user（边栏 = 出边列表、spawn 手势、跳转）；这里只管数据与不变量：
+// 书会话（headless；ADR-0008/0009/0010/0014）：一个打开的 `<名字>.webxiaoheiwu.zip` 的内存态 + 落盘节律。
+// created 2026-09-10 by Claude Fable 5.1；v2 树动词同日由树 session 落地。UI 归 user；这里只管数据与不变量：
 //   · 正文改了才 dirty；**跳转 / 滚动不标脏**（ADR-0010）——editor-state.last 随下一次保存写
 //   · 落盘 = 整包重写（ADR-0008 §4），字节源 = packProject（同内容同字节）
-//   · 撞名 = 链接不是新建；占位符跳上去才生文件（ADR-0009）
+//   · 撞名 = 链接不是新建；占位符已废（ADR-0014 §4）：跳到没有的名字 = 抛，不再「跳上去才生文件」
+//   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 丢引用 / 彻底删 /
+//     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页 / 封面 / 断入边 / 修改锁本身
 import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
-import { createNode, setNodeText, link, unlink, renameNode, deleteNode, search, neighbors, backlinks, resolveName, isStub, dropRef, purgeOrphan, isOrphan, createBytesNode, replaceNodeBytes, type NowFn } from "./graph.ts";
+import { createNode, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, dropRef, purgeOrphan, isOrphan, createBytesNode, replaceNodeBytes,
+  inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detach, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 
 export interface ProjectSessionDeps {
   read(name: string): Promise<Blob | null>;                                     // store file(name,{isZip:true}).open()
@@ -21,10 +24,9 @@ export function createProjectSession(d: ProjectSessionDeps) {
   let readOnly = false;          // too-new 只读、禁覆盖（ADR-0009 §9）
   let gen = 0;
 
-  const requireCurrent = (): string => { const c = project.editorState.last; if (!c) throw new Error("project session: no current node"); return c; };
+  const requireCurrent = (): string => { const c = project.editorState.last; if (!c) throw new Error("project session: no current page"); return c; };
   const touch = () => { dirty = true; };
-  /** 能不能改：太新（格式）或作品自己上了修改锁 → 一律不能。**所有**改动动词都经这一道（user 2026-09-10「锁的话就是各种删除、修改、拓扑操作都要加，所以不要 ad hoc add hooks…workpiece 级别」）；
-   *  UI 只是读它画灰，不再各处自己判。无头 / 无地同一份 session，天然同守。 */
+  /** 能不能改：太新（格式）或作品自己上了修改锁 → 一律不能。**所有**改动动词都经这一道；UI 只是读它画灰，不再各处自己判。无头 / 无地同一份 session，天然同守。 */
   const canMutate = (): boolean => !readOnly && !project.readOnly;
   const assertMutable = (): void => { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly) throw new LockedBookError(); };
 
@@ -40,20 +42,21 @@ export function createProjectSession(d: ProjectSessionDeps) {
       return r;
     }
     name = projectName; project = r.project; dirty = false; readOnly = false;
-    if (!project.editorState.last) { const first = [...project.contents.keys()].sort()[0] ?? null; project.editorState.last = first; }
+    if (!project.editorState.last) project.editorState.last = dfsOrder(project)[0] ?? [...project.contents.keys()].sort()[0] ?? null;   // 没记位置：树首；没树：名字序第一
     return { kind: "ok", warnings: r.warnings };
   }
-  /** 新工程：空图 + 一个空节点（名字由调用方给，默认日期码风格由 UI 定）。 */
+  /** 新书：空图 + 一个空页（名字由调用方给）= 树的第一个节点。 */
   function create(projectName: string, firstNode: string): void {
     gen++;
     name = projectName; project = emptyProject(); readOnly = false;
     const r = createNode(project, firstNode, "", now);
+    project.tree = [r.name];
     project.editorState.last = r.name;
     dirty = true;
   }
   function close(): void { gen++; name = null; project = emptyProject(); dirty = false; readOnly = false; }
 
-  // ── 当前节点 ──
+  // ── 当前页 ──
   const current = (): string | null => project.editorState.last;
   const currentText = (): string => { const c = current(); return c ? (readNodeText(project, c) ?? "") : ""; };
   function setCurrentText(text: string): boolean {
@@ -63,16 +66,14 @@ export function createProjectSession(d: ProjectSessionDeps) {
     if (changed) touch();
     return changed;
   }
-  /** 跳转：占位符 → 先生文件（空正文）再跳；跳转本身不标脏（editor-state 随下次保存写）。返回落到的名字。 */
+  /** 跳转（不标脏，editor-state 随下次保存写）。目标没文件 → 抛（占位符已废）。返回落到的名字。 */
   function jump(target: string): string {
     const existing = resolveName(project, target);
-    if (existing) { project.editorState.last = existing; return existing; }
-    assertMutable();   // 占位符要生文件 = 改动
-    const r = createNode(project, target, "", now); touch();
-    project.editorState.last = r.name;
-    return r.name;
+    if (!existing) throw new Error(`no such page: ${target}`);
+    project.editorState.last = existing;
+    return existing;
   }
-  /** spawn（主动作）：选中文字 → 新节点，边自动从当前节点指向它（末尾），光标跳过去。撞名 → 链接已有节点并跳（正文不覆盖）。 */
+  /** spawn：新页带正文、边自动从当前页指向它（末尾）、光标跳过去。撞名 → 链接已有页并跳（正文不覆盖）。不进树（散页上的「+ 子节」= 链出去的新散页）。 */
   function spawn(newName: string, selectedText: string): string {
     assertMutable();
     const from = requireCurrent();
@@ -82,19 +83,33 @@ export function createProjectSession(d: ProjectSessionDeps) {
     project.editorState.last = r.name;
     return r.name;
   }
-  /** 改身份（工程文件在 store 里改了名）：只换 name，不动内存图、不标脏。 */
+  /** 改身份（书文件在 store 里改了名）：只换 name，不动内存图、不标脏。 */
   function adoptName(newName: string): void { if (name) name = newName; }
   const guard = <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A): R => { assertMutable(); const r = fn(...a); touch(); return r; };
   const addLink = guard((to: string, at: "top" | "bottom" = "bottom") => link(project, requireCurrent(), to, { at, now }));
   const removeLink = guard((to: string) => unlink(project, requireCurrent(), to, now));
-  const setLinksOrder = guard((links: string[]) => { const m = project.nodes.get(requireCurrent()); if (m) m.links = links.slice(); });
+  const setLinksOrder = guard((list: string[]) => setLinks(project, requireCurrent(), list, now));
   const rename = guard((from: string, to: string) => renameNode(project, from, to, now));
   const remove = guard((target: string) => deleteNode(project, target));
   /** 修改锁（跟着作品进 graph.json）：切换 = 正经改动（标脏；调用方随即落盘/推云）。唯一不受锁挡的改动（解锁本身）；格式太新仍不许。 */
   function setReadOnly(v: boolean): void { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly === v) return; project.readOnly = v; touch(); }
   const drop = guard((to: string, orphanPrefix: string) => dropRef(project, requireCurrent(), to, orphanPrefix, now));
-  /** 断一条**入**边：from → 当前页（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能，这样整理起来才舒服」）。纯断边，不走「移出」的孤儿改名（你正站在这页上）。 */
+  /** 断一条**入**边：from → 当前页（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能」）。纯断边，不走「移出」的孤儿改名。 */
   const cutIncoming = guard((from: string) => { const src = resolveName(project, from); if (!src) return false; return unlink(project, src, requireCurrent(), now); });
+  // ── 主干树（ADR-0014 §8：全部是对一个数组的编辑，links 不动）──
+  const treeUp = guard((target: string) => moveUp(project, target));
+  const treeDown = guard((target: string) => moveDown(project, target));
+  const treeOutdent = guard((target: string) => outdent(project, target));
+  const treeIndent = guard((target: string) => indent(project, target));
+  /** 移出树：页变散页（带着子树），不删、不改名。 */
+  const treeDetach = guard((target: string) => detach(project, target) != null);
+  /** 归档：散页（或树里别处的页，子树跟着走）放到 anchor 之后 / parent 之下 / 树末尾。 */
+  const archiveAfter = guard((target: string, anchor: string) => attachAfter(project, target, anchor));
+  const archiveUnder = guard((target: string, parent: string) => attachUnder(project, target, parent));
+  const archiveAtEnd = guard((target: string) => attachAtEnd(project, target));
+  /** 「+ 兄弟」/「+ 子节」（相对当前页；当前页必须在树里）：新名当场建空文件；已有散页 = 归档到这里；已在树里 = 不动位置。都跳过去。 */
+  const newSibling = guard((newName: string) => { const r = insertSibling(project, requireCurrent(), newName, now); project.editorState.last = r.name; return r; });
+  const newChild = guard((newName: string) => { const r = insertChild(project, requireCurrent(), newName, now); project.editorState.last = r.name; return r; });
   // ── 图片页（2.1，ADR-0012/0013）：字节页 + 封面 ──
   /** 图片进门：减肥后的字节 → 新页（撞名 hex4）+ 当前页末尾长一条边。不跳转（UI 自己 jump，同加页手感）。返回最终名。 */
   const addBytesPage = guard((pageName: string, bytes: Uint8Array) => { const from = requireCurrent(); const n = createBytesNode(project, pageName, bytes, now); link(project, from, n, { at: "bottom", now }); return n; });
@@ -108,11 +123,23 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const purge = guard((target: string) => purgeOrphan(project, target));
   const orphan = (target: string) => isOrphan(project, target);
 
-  // ── 查询（零态度：无全图、无计数） ──
-  const sidebar = () => (current() ? neighbors(project, current()!) : []);
+  // ── 查询（零态度：无全图、无计数）──
+  /** 当前页的邻域（侧栏数据；ADR-0014 §7）：树里 = 父 / 兄弟 / 孩子；links = 出边；incoming = 谁指向这里。 */
+  const neighborhood = () => {
+    const c = current();
+    if (!c) return { current: null, inTree: false, parent: null, siblings: [] as string[], children: [] as string[], links: [] as string[], incoming: [] as string[], prev: null, next: null };
+    const tin = inTree(project, c);
+    return { current: c, inTree: tin, parent: tin ? treeParent(project, c) : null, siblings: tin ? treeSiblings(project, c) : [], children: tin ? treeChildren(project, c) : [], links: linksOf(project, c), incoming: backlinks(project, c), prev: tin ? dfsPrev(project, c) : null, next: tin ? dfsNext(project, c) : null };
+  };
+  const sidebar = (): string[] => { const c = current(); return c ? linksOf(project, c) : []; };
   const backlinksOf = (target: string) => backlinks(project, target);
   const find = (q: string, limit = 50) => search(project, q, { limit, minChars: 1 });
-  const exists = (target: string) => !isStub(project, target);
+  const exists = (target: string) => resolveName(project, target) != null;
+  const pathOf = (target: string) => treePath(project, target);
+  const isInTree = (target: string) => inTree(project, target);
+  const order = () => dfsOrder(project);
+  /** 导出这一支：target 子树 DFS 拼接的正文（ADR-0014 §6）。 */
+  const exportBranch = (target: string) => exportSubtree(project, target);
 
   // ── 落盘 ──
   /** opts.force：不脏也写（推云节律用——本地 200ms 落盘已清 dirty，15s 后推云还得把同一份字节以 tryPush 再交给库，否则永远推不出去）。 */
@@ -135,7 +162,8 @@ export function createProjectSession(d: ProjectSessionDeps) {
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, drop, purge, orphan, setReadOnly,
     cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail,
-    sidebar, backlinksOf, find, exists, canMutate,
+    treeUp, treeDown, treeOutdent, treeIndent, treeDetach, archiveAfter, archiveUnder, archiveAtEnd, newSibling, newChild,
+    neighborhood, sidebar, backlinksOf, find, exists, pathOf, isInTree, order, exportBranch, canMutate,
   };
 }
 export type ProjectSession = ReturnType<typeof createProjectSession>;

@@ -8,14 +8,15 @@ import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openC
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
-import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc } from "./docs.ts";
+import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary } from "./docs.ts";
 import { docKind, formatDate, statsForText, decodeTextBytes, hex4 } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
 import { importPageName } from "./image/policy.ts";
 import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD } from "@internal/gallery";
 import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
-import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
+import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
+import { nodeDisplayName } from "./project/naming.ts";
 import { packProject, emptyProject } from "./project/format.ts";
 import { createNode } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
@@ -178,7 +179,7 @@ const project = createProjectMode({
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderMicVisibility(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderMicVisibility(); renderPageNav(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
@@ -187,20 +188,52 @@ const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
   onLibrary: () => { void galleryHost.open(); },
   onSettings: () => { drawer.open("settings"); },
-  onAddPage: () => addPageFlow(),
+  onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"),
+  onExportBranch: (name) => exportBranchFlow(name),
   onLift: () => liftDraftToBook(), canLift: () => !project.active() && editor.canEdit() && editorEl.value.trim().length > 0,
   onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
 });
-/** 加一页（顶栏「+」与侧栏列表末尾「+」同一个流程）：问名字，**不提示不预填**（user 2026-09-10「不用自动第 xx 章命名。不同的人会用节，幕，所以不要替用户做决定」「只有一个 default 就是默认节点」）→ 新页加在当前页末尾并跳过去。 */
-async function addPageFlow(): Promise<boolean> {
+/** 加一页（ADR-0014：「+」拆成「+ 兄弟」「+ 子节」；顶栏「+」的菜单与侧栏两条「+」行同一个流程）：问名字，**不提示不预填**（user 2026-09-10「不用自动第 xx 章命名。不同的人会用节，幕，所以不要替用户做决定」）
+ *  → 当场建空文件并入树、跳过去；打已有名 = 归档 / 链接（ADR-0009 §6）。散页上只有「子节」= 链出去的新散页。 */
+async function addPageFlow(where: "sibling" | "child"): Promise<boolean> {
   if (!project.canEdit()) return false;
-  const v = await openInputSheet(t("edge.newNodeTitle"), { message: t("edge.newNodeHint"), placeholder: t("edge.namePh"), okLabel: t("common.ok"), secondary: { label: t("edge.fromImage") } });   // 「从图片…」= 同一个 sheet 的副按钮（user 2026-09-10 同意）
+  const cur = project.current(); if (!cur) return false;
+  const inTree = project.isInTree(cur);
+  if (where === "sibling" && !inTree) return false;
+  const hint = where === "sibling" ? t("edge.addSiblingHint") : inTree ? t("edge.addChildHint") : t("edge.addLooseHint");
+  const v = await openInputSheet(t(where === "sibling" ? "edge.addSiblingTitle" : "edge.addChildTitle"), { message: hint, placeholder: t("edge.namePh"), okLabel: t("common.ok"), secondary: { label: t("edge.fromImage") } });   // 「从图片…」= 同一个 sheet 的副按钮（user 2026-09-10 同意）
   if (v === INPUT_SECONDARY) { void pickImagesFlow(); return false; }
   if (v == null || !v.trim()) return false;
-  const ok = project.newNode(v);
+  const ok = where === "sibling" ? project.newSibling(v) : project.newChild(v);
   if (ok) { edgeSidebar.render(); editorEl.focus(); }
   return ok;
 }
+/** 导出这一支（ADR-0014 §6）：子树 DFS 拼成一篇 txt → 存进书库（撞名 hex4）或下载一份；无地的书只有下载。名字归 user（默认 = 页名）。 */
+async function exportBranchFlow(name: string): Promise<void> {
+  if (!project.active()) return;
+  const isLocal = project.home()?.kind === "local";
+  const def = nodeDisplayName(name).replace(/\.[A-Za-z0-9]{1,8}$/, "");
+  const v = await openInputSheet(t("edge.exportTitle", { name: nodeDisplayName(name) }), { message: t("edge.exportHint"), defaultValue: def, placeholder: t("edge.namePh"), okLabel: isLocal ? t("edge.exportDownload") : t("edge.exportSave"), secondary: isLocal ? undefined : { label: t("edge.exportDownload") } });
+  if (v == null) return;
+  const download = isLocal || v === INPUT_SECONDARY;
+  const title = (download && v === INPUT_SECONDARY ? def : v).trim() || def;
+  try {
+    const text = project.exportBranchText(name);
+    if (download) { triggerDownload(new Blob([text], { type: "text/plain;charset=utf-8" }), `${title}.txt`); setStatus(t("edge.exportDone", { name: title })); return; }
+    const created = await exportBranchToLibrary(title, text, parseDocName(project.name() ?? "").dir);
+    setStatus(t("edge.exportDone", { name: parseDocName(created).stem }));
+  } catch (e) { reportError(e); setStatus(t("edge.exportFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+}
+/** 纸面页脚的上一页 / 下一页（全树前序 DFS；树首 / 树尾 / 散页 → 灰）。 */
+const pageNav = $("pageNav"), pagePrev = $<HTMLButtonElement>("pagePrev"), pageNext = $<HTMLButtonElement>("pageNext");
+function renderPageNav(): void {
+  const nb = project.active() && !project.locked() ? project.neighborhood() : null;
+  pageNav.hidden = !nb;
+  pagePrev.disabled = !nb?.prev; pageNext.disabled = !nb?.next;
+  pagePrev.title = nb?.prev ? nodeDisplayName(nb.prev) : t("edge.prev"); pageNext.title = nb?.next ? nodeDisplayName(nb.next) : t("edge.next");
+}
+pagePrev.addEventListener("click", () => { if (project.prevPage()) edgeSidebar.render(); });
+pageNext.addEventListener("click", () => { if (project.nextPage()) edgeSidebar.render(); });
 // ── 图片页（2.1，ADR-0012/0013）：单一漏斗 importImageFiles（文件选择 / 多选 / 拖放 / 粘贴 / 替换都走 slimImage）──
 const imageFileInput = $<HTMLInputElement>("imageFileInput"), imageReplaceInput = $<HTMLInputElement>("imageReplaceInput");
 let pendingHd = false;   // 「保留高清」勾（sheet 里选，跟着这一次选择）
@@ -319,7 +352,16 @@ async function liftDraftToBook(): Promise<boolean> {
   } catch (e) { reportError(e); setStatus(t("lift.failed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); return false; }
 }
 const addPageButton = $<HTMLButtonElement>("addPageButton");
-addPageButton.addEventListener("click", () => { void addPageFlow(); });
+/** 顶栏「+」（书模式，☰ 左边）：菜单 = 加兄弟页（树里才有）/ 加子节 / 从图片…（ADR-0014 把「+」拆成兄弟 / 子节）。 */
+addPageButton.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const cur = project.current(); const inTree = !!cur && project.isInTree(cur);
+  togglePopupMenu({ anchor: addPageButton, align: "right", items: () => [
+    { id: "sibling", label: t("edge.addSibling"), icon: "new", hidden: !inTree },
+    { id: "child", label: t("edge.addChild"), icon: "new" },
+    { id: "image", label: t("edge.fromImage"), icon: "image", separatorBefore: true },
+  ], onPick: (id) => { if (id === "image") void pickImagesFlow(); else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+});
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());
 const canEditNow = () => (project.active() ? project.canEdit() : editor.canEdit());
@@ -361,6 +403,10 @@ async function newProjectFlow(): Promise<void> {
 async function openLocalProjectFlow(): Promise<void> {
   const lh = await pickLocalProject();
   if (!lh) return;
+  await openLocalHome(lh);
+}
+/** 开一个本机的书（LocalHome 已在手；也给 ui-audit 直接喂夹具用）。 */
+async function openLocalHome(lh: LocalHome): Promise<void> {
   if (!editor.isParked()) await editor.park();
   const ok = await project.openLocal(lh);
   document.body.dataset.project = "1";
@@ -1108,6 +1154,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); editorEl.focus(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
   if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }
+  if (project.active() && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey) { event.preventDefault(); if (event.key === "ArrowUp" ? project.prevPage() : project.nextPage()) edgeSidebar.render(); }   // 上一页 / 下一页（DFS）
 });
 
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
@@ -1265,4 +1312,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

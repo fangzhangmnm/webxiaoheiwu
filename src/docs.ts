@@ -137,6 +137,9 @@ export async function createDoc(title: string, text: string, date = formatDate(D
   throw new Error("too many name collisions creating a document");
 }
 
+/** 「导出这一支」（ADR-0014 §6，2026-09-10 树 session）：子树 DFS 拼好的正文 → 书库里一篇新 txt（撞名 hex4，同 createDoc）。返回身份。下载那条路走 local-home.triggerDownload，不经 store。 */
+export function exportBranchToLibrary(title: string, text: string, dir = ""): Promise<string> { return createDoc(title, text, formatDate(Date.now()), dir); }
+
 export interface RenameResult { name: string; oldKept?: boolean; cloudDeferred?: boolean }
 /** 改文件名 = 改身份（tryMove；ADR-0007：文件名是管理句柄不是标题）。撞名追加后缀。
  *  ⚠ 改名后新名不带日期前缀 → 名字降序排序下这篇会跳位——**user 2026-09-09 拍板「是 feature 不是 bug」**，别「修」（ai-docs/20260909-sync-hardening-round-vs-weebpaint.md §4）。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */

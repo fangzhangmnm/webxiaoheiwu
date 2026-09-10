@@ -1,5 +1,7 @@
 // 开发工具：无头 chromium 走一遍 2.0 UI 流程，逐步截图到 tmp/ui/。用法：node tools/ui-audit.mjs [宽x高 ...]。created 2026-09-10 by Claude Fable 5.1。不进 bundle。
-// 2026-09-10 晚 v2.0.4 改流程：☰ = 侧栏（默认关；顶部 书库/设置 入口 + 工程内导航）；新节点 = 列表末尾「+」；节点名 = 纸面顶部章节名框；显示不带 .txt；新边加末尾。
+// 2026-09-10 晚 v2.0.4 改流程：☰ = 侧栏（默认关；顶部 书库/设置 入口 + 工程内导航）；节点名 = 纸面顶部章节名框；显示不带 .txt；新边加末尾。
+// 2026-09-10 深夜 v2 树（ADR-0014）：侧栏 = `..` / 兄弟 / 子节 / 链接 / 谁指向这里（无第三层）；「+」拆成 + 兄弟 / + 子节；树移动六件走行菜单；上一页/下一页 = 页脚（DFS 首尾不绕回）；
+//   末尾对着 tmp/migration/ 的狗粮书（不进 git，没有就 SKIP）走完整本 DFS + 导出这一支 + readOnly 菜单全灰。
 import { createRequire } from "node:module";
 import http from "node:http";
 import { readFile } from "node:fs/promises";
@@ -31,7 +33,22 @@ for (const [w, h] of sizes) {
   const shot = (name) => page.screenshot({ path: `tmp/ui/${tag}-${name}.png` });
   const wait = (ms) => page.waitForTimeout(ms);
   const sidebarShown = () => page.evaluate(() => document.body.dataset.edges === "1" && getComputedStyle(document.getElementById("edgeSidebar")).display !== "none");
-  const rows = () => page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row:not(.add):not(.header):not(.empty) .edge-name")].map((e) => e.textContent));
+  const rows = () => page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row:not(.add):not(.header):not(.empty):not(.parent) .edge-name")].map((e) => e.textContent));
+  const rowsIn = (block) => page.evaluate((b) => [...document.querySelectorAll(`#edgeList .edge-row[data-block="${b}"]:not(.parent) .edge-name`)].map((e) => e.textContent), block);
+  const parentRow = () => page.evaluate(() => { const r = document.querySelector("#edgeList .edge-row.parent"); return r ? { name: r.querySelector(".edge-name")?.textContent ?? "", root: r.classList.contains("root"), disabled: r.querySelector(".edge-main")?.disabled ?? false } : null; });
+  const blocks = () => page.evaluate(() => [...new Set([...document.querySelectorAll("#edgeList .edge-row[data-block]")].map((r) => r.dataset.block))]);
+  const noThirdLayer = () => page.evaluate(() => document.querySelectorAll("#edgeList ul, #edgeList li li").length === 0);
+  /** 打开某块里某一行的菜单并点某个菜单项（按文案正则）。 */
+  const rowMenu = async (block, name, labelRe) => {
+    const opened = await page.evaluate(({ b, n }) => { const r = [...document.querySelectorAll(`#edgeList .edge-row[data-block="${b}"]`)].find((x) => x.dataset.name === n); const btn = r?.querySelector(".edge-more"); if (!btn) return false; btn.click(); return true; }, { b: block, n: name });
+    if (!opened) return { opened: false };
+    await wait(200);
+    const items = await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => ({ label: (b.textContent ?? "").trim(), disabled: b.disabled })));
+    if (labelRe) { const hit = await page.evaluate((re) => { const it = [...document.querySelectorAll(".popup-menu button")].find((b) => new RegExp(re).test(b.textContent ?? "")); if (!it) return false; it.click(); return true; }, labelRe.source); await wait(300); return { opened: true, items, hit }; }
+    return { opened: true, items };
+  };
+  const cur = () => page.evaluate(() => window.__xhw.project.current());
+  const navState = () => page.evaluate(() => ({ hidden: document.getElementById("pageNav").hidden, prev: document.getElementById("pagePrev").disabled, next: document.getElementById("pageNext").disabled }));
   const ensureSidebar = async (open) => { if ((await sidebarShown()) !== open) { await page.click("#menuButton"); await wait(300); } };
   const clickEditor = async () => { if (w < 900) await ensureSidebar(false); await page.click("#editor"); };   // 窄屏浮层不再自动收：点纸面前探针自己收
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
@@ -80,61 +97,89 @@ for (const [w, h] of sizes) {
   await clickEditor(); await page.keyboard.type("她推开门。他在窗边。窗外是雨。"); await wait(300);
   { const before = await page.inputValue("#editor"); await page.keyboard.press("End"); await page.keyboard.press("Backspace"); await wait(100);
     const after = await page.inputValue("#editor"); probe(tag, "backspace in project", after.length === before.length - 1, `(${before.length}→${after.length})`); await page.keyboard.type("。"); }
-  // 侧栏：工程内导航 + 「+」新节点 → 第二章，章节名框全选 → 改名「序章」→ Enter
+  // 侧栏 = 当前页的邻域（ADR-0014 §7）：`..`（顶层 = 书，不可点）/ 兄弟（当前高亮）/ + 兄弟 / 子节 / + 子节 / 链接；没有第三层
   await ensureSidebar(true); await shot("07-sidebar-project");
   probe(tag, "project pane visible", !(await page.evaluate(() => document.getElementById("edgePane").hidden)));
-  probe(tag, "empty list has + row", await page.evaluate(() => !!document.getElementById("edgeAdd")));
+  { const pr = await parentRow(); probe(tag, "`..` row at top level = the book, not clickable", !!pr && pr.root && pr.disabled && pr.name === "作品", JSON.stringify(pr)); }
+  probe(tag, "siblings block = [作品] (current), + sibling and + child rows present", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品"]) && await page.evaluate(() => !!document.getElementById("edgeAddSibling") && !!document.getElementById("edgeAddChild") && document.querySelector("#edgeList .edge-row.current .edge-name")?.textContent === "作品"), JSON.stringify(await rowsIn("siblings")));
+  probe(tag, "sidebar has no third layer (flat rows, blocks ⊆ parent/siblings/children/links/incoming)", (await noThirdLayer()) && (await blocks()).every((b) => ["parent", "siblings", "children", "links", "incoming"].includes(b)), JSON.stringify(await blocks()));
   { await page.click("#edgeSearch"); await page.keyboard.type("nihao"); await wait(300);
     const comp = await page.evaluate(() => { const c = document.getElementById("candidateBar"); return c ? getComputedStyle(c).display !== "none" && (c.textContent ?? "").trim().length > 0 : false; });
     const raw = await page.inputValue("#edgeSearch"); probe(tag, "ime on edgeSearch", comp || raw === "", `(value=${JSON.stringify(raw)})`);
     await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(100); }
   await ensureSidebar(true);
-  await page.click("#edgeAdd"); await wait(400);
-  probe(tag, "+ → asks for a name (no chapter suggestion, not prefilled)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && !/章/.test(document.getElementById("sheetInput").placeholder) && document.getElementById("sheetInput").value === ""));
+  // 「+ 兄弟」→ 第二章（作品 的兄弟），章节名框全选 → 改名「序章」→ Enter
+  await page.click("#edgeAddSibling"); await wait(400);
+  probe(tag, "+ sibling → asks for a name (no chapter suggestion, not prefilled)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && !/章/.test(document.getElementById("sheetInput").placeholder) && document.getElementById("sheetInput").value === ""));
   await page.fill("#sheetInput", "第二章"); await page.click("#sheetConfirm"); await wait(400);
-  probe(tag, "+ → new node 第二章 opened, title shows it", await page.evaluate(() => document.getElementById("nodeTitle").value === "第二章" && window.__xhw.project.current() === "第二章.txt"));
+  probe(tag, "+ sibling → new page 第二章 opened as a sibling of 作品, empty file, title shows it", await page.evaluate(() => document.getElementById("nodeTitle").value === "第二章" && window.__xhw.project.current() === "第二章.txt" && document.getElementById("editor").value === "") && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "第二章"]), JSON.stringify(await rowsIn("siblings")));
   probe(tag, "sidebar stays open after + (no auto-close)", await sidebarShown());
   if (w < 900) await ensureSidebar(false);   // 窄屏浮层盖住章节名框，探针自己收
   await page.click("#nodeTitle"); await page.evaluate(() => document.getElementById("nodeTitle").select()); await page.keyboard.type("序章"); await page.keyboard.press("Enter"); await wait(300);
   probe(tag, "title Enter → renamed + focus body", await page.evaluate(() => document.activeElement?.id === "editor" && window.__xhw.project.current() === "序章.txt"), await page.evaluate(() => window.__xhw.project.current()));
   await clickEditor(); await page.keyboard.type("序章正文。"); await wait(300);
   await shot("08-after-plus-rename");
-  // 回退 → 作品：列表应有「序章」（无 .txt）
+  // 回退 → 作品：兄弟块 = 作品(当前)、序章（无 .txt；改名重写了树）
   await page.keyboard.press("Alt+ArrowLeft"); await wait(300);
   await ensureSidebar(true);
-  probe(tag, "back to 作品; list shows 序章 without .txt", JSON.stringify(await rows()) === JSON.stringify(["序章"]), JSON.stringify(await rows()));
-  probe(tag, "row shows modified time as small text", await page.evaluate(() => /\d+\/\d+ \d\d:\d\d/.test(document.querySelector("#edgeList .edge-row .edge-sub")?.textContent ?? "")));
-  // Ctrl+Enter 分裂已去掉（user 2026-09-10「先不要做去奇怪的静默行为」）：无入口 → 顶栏「+」加第二页「她推开门。」
+  probe(tag, "back to 作品; siblings = 作品 (current), 序章 without .txt (rename rewrote the tree)", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && (await cur()) === "作品.txt", JSON.stringify(await rowsIn("siblings")));
+  probe(tag, "row shows modified time as small text", await page.evaluate(() => /\d+\/\d+ \d\d:\d\d/.test(document.querySelector("#edgeList .edge-row[data-block='siblings'] .edge-sub")?.textContent ?? "")));
+  // Ctrl+Enter 分裂已去掉（user 2026-09-10「先不要做去奇怪的静默行为」）：无入口
   if (w < 900) await ensureSidebar(false);
   await page.evaluate(() => { const el = document.getElementById("editor"); el.focus(); el.setSelectionRange(0, 5); });
   await page.keyboard.press("Control+Enter"); await wait(300);
   probe(tag, "Ctrl+Enter does nothing (no sheet, text intact)", await page.evaluate(() => document.getElementById("sheet").classList.contains("hidden") && document.getElementById("editor").value.startsWith("她推开门。")));
-  await page.click("#addPageButton"); await wait(300); await page.fill("#sheetInput", "她推开门。"); await page.click("#sheetConfirm"); await wait(400);
-  probe(tag, "top-bar + → page 她推开门。 opened", (await page.inputValue("#nodeTitle")) === "她推开门。", await page.inputValue("#nodeTitle"));
-  await shot("09-after-topbar-add");
-  await page.keyboard.press("Escape"); await page.keyboard.press("Alt+ArrowLeft"); await wait(300);
+  // 顶栏「+」= 菜单（加兄弟页 / 加子节 / 从图片…）→ 加子节 → 她推开门。（作品 的孩子）
+  await page.click("#addPageButton"); await wait(250);
+  { const items = await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()));
+    probe(tag, "top-bar + opens a menu: 加兄弟页 / 加子节 / 从图片…", items.some((x) => /兄弟/.test(x)) && items.some((x) => /子节/.test(x)) && items.some((x) => /图片/.test(x)), JSON.stringify(items)); }
+  await page.evaluate(() => { const it = [...document.querySelectorAll(".popup-menu button")].find((b) => /子节/.test(b.textContent ?? "")); it.click(); }); await wait(300);
+  await page.fill("#sheetInput", "她推开门。"); await page.click("#sheetConfirm"); await wait(400);
   await ensureSidebar(true);
-  probe(tag, "added page appended at END", JSON.stringify(await rows()) === JSON.stringify(["序章", "她推开门。"]), JSON.stringify(await rows()));
-  // 连边动词还在 mode（钮已按 user 2026-09-10 去掉）：占位符加末尾（虚线）
-  await page.evaluate(() => window.__xhw.project.addLink("祭祀线")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(200);
-  probe(tag, "addLink (no button) → stub appended at end", await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row.stub .edge-name")]; return r.length === 1 && r[0].textContent === "祭祀线"; }) && (await rows()).at(-1) === "祭祀线", JSON.stringify(await rows()));
-  probe(tag, "no spawn/link/backlinks buttons in sidebar", await page.evaluate(() => !document.getElementById("edgeSpawn") && !document.getElementById("edgeLink") && !document.getElementById("edgeBacklinks") && document.getElementById("edgeFoot").hidden));
-  // 检索：一个字就搜（孤儿也能扫）
-  await page.fill("#edgeSearch", "章"); await wait(300); await shot("10-sidebar-search");
-  probe(tag, "search with 1 char works", (await rows()).length >= 1 && (await rows()).includes("序章"), JSON.stringify(await rows()));
-  await page.fill("#edgeSearch", ""); await wait(200);
-  await page.click(".edge-row .edge-more"); await wait(300); await shot("12-sidebar-rowmenu");
-  probe(tag, "row menu = 上移/下移/移出 (no rename, no hard delete)", await page.evaluate(() => { const items = [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()); return items.some((x) => /移出/.test(x)) && !items.some((x) => /改名|彻底/.test(x)); }), JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => b.textContent.trim()))));
-  await page.keyboard.press("Escape"); await wait(200);
-  // 删除模型：移出（丢引用）→ 孤儿改名 _废-；检索能找到；孤儿行菜单 = 彻底删除
-  { const ok = await page.evaluate(() => window.__xhw.project.dropRef("她推开门。.txt")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(200);
-    const names = await page.evaluate(() => window.__xhw.project.nodeNames());
-    probe(tag, "drop reference → orphan renamed _废-她推开门。, gone from list", ok && names.includes("_废-她推开门。.txt") && !names.includes("她推开门。.txt") && !(await rows()).includes("她推开门。"), JSON.stringify(names));
+  probe(tag, "top-bar + → child 她推开门。 opened; `..` = 作品 (clickable); siblings block = just itself", (await page.inputValue("#nodeTitle")) === "她推开门。" && JSON.stringify(await parentRow()) === JSON.stringify({ name: "作品", root: false, disabled: false }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["她推开门。"]), `${await page.inputValue("#nodeTitle")} ${JSON.stringify(await parentRow())}`);
+  await shot("09-after-topbar-add");
+  await page.click("#edgeParent"); await wait(300);
+  probe(tag, "`..` click → jumps to the parent 作品; children block = [她推开门。]", (await cur()) === "作品.txt" && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]), JSON.stringify(await rowsIn("children")));
+  // 树移动六件（行菜单）：序章 降级 → 作品 的孩子末尾；上移；升级 → 回顶层；到头 no-op 只 toast
+  { let r = await rowMenu("siblings", "序章.txt", /降级/); probe(tag, "row menu 降级 → 序章 becomes the last child of 作品", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。", "序章"]) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品"]), JSON.stringify(await rowsIn("children")));
+    r = await rowMenu("children", "序章.txt", /上移/); probe(tag, "row menu 上移 → children = [序章, 她推开门。]", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["序章", "她推开门。"]), JSON.stringify(await rowsIn("children")));
+    r = await rowMenu("children", "序章.txt", /升级/); probe(tag, "row menu 升级 → 序章 back to top level right after 作品", r.hit && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]), JSON.stringify(await rowsIn("siblings")));
+    r = await rowMenu("siblings", "作品.txt", /上移/); probe(tag, "row menu 上移 at the top → no-op + toast, tree unchanged", r.hit && /到头/.test(await page.textContent("#toast")) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]), await page.textContent("#toast"));
+    r = await rowMenu("siblings", "作品.txt"); probe(tag, "tree row menu = 上移/下移/升级/降级/移出树/导出这一支 (no rename, no hard delete, no 移出丢引用)", r.opened && r.items.some((x) => /升级/.test(x.label)) && r.items.some((x) => /移出树/.test(x.label)) && r.items.some((x) => /导出这一支/.test(x.label)) && !r.items.some((x) => /改名|彻底|丢引用/.test(x.label)) && r.items.every((x) => !x.disabled), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(150); }
+  await shot("10-tree-moves");
+  // 上一页 / 下一页 = 全树前序 DFS（作品 → 她推开门。 → 序章）；首尾不绕回
+  { let n = await navState(); probe(tag, "page nav: at tree head prev is grey, next is live", !n.hidden && n.prev && !n.next, JSON.stringify(n));
+    if (w < 900) await ensureSidebar(false);
+    await page.click("#pageNext"); await wait(250); probe(tag, "next → 她推开门。 (child before the next sibling)", (await cur()) === "她推开门。.txt", await cur());
+    await page.click("#pageNext"); await wait(250); n = await navState(); probe(tag, "next → 序章 = tree tail: next grey, no wrap", (await cur()) === "序章.txt" && n.next && !n.prev, `${await cur()} ${JSON.stringify(n)}`);
+    await page.keyboard.press("Alt+ArrowUp"); await wait(250); probe(tag, "Alt+↑ → previous page 她推开门。", (await cur()) === "她推开门。.txt", await cur());
+    await ensureSidebar(true); await page.click("#edgeParent"); await wait(250); }
+  // 链接层与占位符废止：连到没有的页被拒；连到已有页进「链接」块；树里的页的链接行没有归档项；移出树 → 散页（不改名）→ 检索找得到、孤儿菜单 = 彻底删除；从链接行归档回来；再移出 + 丢引用 → _废-
+  { const refused = await page.evaluate(() => window.__xhw.project.addLink("祭祀线")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
+    probe(tag, "addLink to a page that does not exist is refused (no placeholders, no dashed rows)", refused === false && /没有这一页/.test(await page.textContent("#toast")) && (await rowsIn("links")).length === 0 && (await page.evaluate(() => document.querySelectorAll("#edgeList .edge-row.stub").length)) === 0, await page.textContent("#toast"));
+    await page.evaluate(() => window.__xhw.project.addLink("序章")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
+    probe(tag, "addLink to an existing page → links block", JSON.stringify(await rowsIn("links")) === JSON.stringify(["序章"]), JSON.stringify(await rowsIn("links")));
+    let r = await rowMenu("links", "序章.txt"); probe(tag, "link row of an in-tree page: 上移/下移/移出（丢引用）, no 归档 items", r.opened && r.items.some((x) => /丢引用/.test(x.label)) && !r.items.some((x) => /归档/.test(x.label)), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(150);
+    r = await rowMenu("children", "她推开门。.txt", /移出树/); const names = await page.evaluate(() => window.__xhw.project.nodeNames());
+    probe(tag, "row menu 移出树 → gone from children, file kept, NOT renamed, prev/next of the parent skip it", r.hit && (await rowsIn("children")).length === 0 && names.includes("她推开门。.txt") && !names.some((x) => /_废-/.test(x)) && (await navState()).next === false && (await page.evaluate(() => window.__xhw.project.neighborhood().next)) === "序章.txt", JSON.stringify(names));
+    await page.fill("#edgeSearch", "她推"); await wait(300);
+    r = await rowMenu("results", "她推开门。.txt"); probe(tag, "search finds the loose page; as an orphan its menu = 彻底删除 only", r.opened && r.items.length === 1 && /彻底删除/.test(r.items[0].label), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(200);
+    await page.evaluate(() => window.__xhw.project.addLink("她推开门。")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
+    r = await rowMenu("links", "她推开门。.txt", /归档到这页之下/); probe(tag, "link row of a loose page offers 归档到这页之后/之下 → files it back under 作品", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]) && /已归档/.test(await page.textContent("#toast")), `${JSON.stringify(await rowsIn("children"))} ${await page.textContent("#toast")}`);
+    await rowMenu("children", "她推开门。.txt", /移出树/);
+    const ok = await page.evaluate(() => window.__xhw.project.dropRef("她推开门。.txt")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(200);
+    const names2 = await page.evaluate(() => window.__xhw.project.nodeNames());
+    probe(tag, "drop reference (out of tree + last link) → orphan renamed _废-她推开门。, gone from list", ok && names2.includes("_废-她推开门。.txt") && !names2.includes("她推开门。.txt") && !(await rows()).includes("她推开门。"), JSON.stringify(names2));
     await page.fill("#edgeSearch", "废"); await wait(300);
     probe(tag, "search finds the orphan; its row menu = 彻底删除 only", (await rows()).includes("_废-她推开门。") && await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row")].find((x) => /_废-她推开门/.test(x.textContent)); return !!r?.querySelector(".edge-more"); }));
     await page.click("#edgeList .edge-row .edge-more"); await wait(200);
     probe(tag, "orphan menu = 彻底删除 only", await page.evaluate(() => { const items = [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()); return items.length === 1 && /彻底删除/.test(items[0]); }));
     await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(200); }
+  probe(tag, "no spawn/link/backlinks buttons in sidebar", await page.evaluate(() => !document.getElementById("edgeSpawn") && !document.getElementById("edgeLink") && !document.getElementById("edgeBacklinks") && document.getElementById("edgeFoot").hidden));
+  // 检索：一个字就搜（孤儿也能扫）
+  await page.fill("#edgeSearch", "章"); await wait(300); await shot("11-sidebar-search");
+  probe(tag, "search with 1 char works", (await rows()).length >= 1 && (await rows()).includes("序章"), JSON.stringify(await rows()));
+  await page.fill("#edgeSearch", ""); await wait(200);
   // 章节名撞名：改成已有名 → 提示、不改
   await ensureSidebar(false); await page.click("#nodeTitle"); await page.fill("#nodeTitle", "序章"); await wait(700);
   probe(tag, "title collision → refused + toast", await page.evaluate(() => window.__xhw.project.current() === "作品.txt" && /同名/.test(document.getElementById("toast").textContent)), await page.evaluate(() => window.__xhw.project.current()));
@@ -146,7 +191,7 @@ for (const [w, h] of sizes) {
   probe(tag, `project rename → top bar updates without reload (${renamedIn}ms)`, renamedIn >= 0, `topbar=${await page.textContent("#docNameButton")} renamedIn=${renamedIn}`);
   // 0.x 的只读保护（user 2026-09-10「0.x 的锁写功能我们不小心丢了」）：工程也有，per-device
   await page.click("#lockToggle"); await wait(300);
-  probe(tag, "project read-only: textarea+title readOnly, + refuses", await page.evaluate(() => document.getElementById("editor").readOnly && document.getElementById("nodeTitle").readOnly && window.__xhw.project.readOnly() && window.__xhw.project.newNode("x") === false));
+  probe(tag, "project read-only: textarea+title readOnly, + refuses, tree moves refuse, row menu items grey", await page.evaluate(() => document.getElementById("editor").readOnly && document.getElementById("nodeTitle").readOnly && window.__xhw.project.readOnly() && window.__xhw.project.newNode("x") === false && window.__xhw.project.newSibling("x") === false && window.__xhw.project.treeMove("序章.txt", "up") === false) && await (async () => { await ensureSidebar(true); const r = await rowMenu("siblings", "序章.txt"); await page.keyboard.press("Escape"); await wait(100); return r.opened && r.items.filter((x) => !/导出/.test(x.label)).every((x) => x.disabled) && r.items.some((x) => /导出/.test(x.label) && !x.disabled); })());
   await page.click("#lockToggle"); await wait(300);
   probe(tag, "project read-only off again", await page.evaluate(() => !document.getElementById("editor").readOnly && !window.__xhw.project.readOnly()));
   await page.click("#lockToggle"); await wait(600);   // 锁上 → 刷新后仍锁（跟着作品进 zip）
@@ -155,7 +200,8 @@ for (const [w, h] of sizes) {
   await page.click("#lockToggle"); await wait(600);
   probe(tag, "txt has no lock toggle", await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return false; await window.__xhw.openAny(it.name); return !window.__xhw.project.active() && document.getElementById("lockToggle").hidden; }));
   await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.openAny(it.name); }); await wait(800);
-  probe(tag, "project rename keeps node + edges", await page.evaluate(() => window.__xhw.project.current() === "作品.txt") && (await rows()).length === 2, JSON.stringify(await rows()));
+  await ensureSidebar(true);
+  probe(tag, "project rename keeps pages + tree + links", await page.evaluate(() => window.__xhw.project.current() === "作品.txt") && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && JSON.stringify(await rowsIn("links")) === JSON.stringify(["序章"]), JSON.stringify(await rows()));
   if (w >= 900) { await ensureSidebar(false);
     const centered = await page.evaluate(() => { const r = document.querySelector(".page").getBoundingClientRect(); return getComputedStyle(document.getElementById("edgeSidebar")).display === "none" && Math.abs(r.left - (innerWidth - r.width) / 2) < 2; });
     probe(tag, "wide: sidebar closed → page centered", centered); await shot("13-wide-sidebar-collapsed");
@@ -164,6 +210,7 @@ for (const [w, h] of sizes) {
     const overlay = await page.evaluate((b) => { const p = document.querySelector(".page").getBoundingClientRect(), s = document.getElementById("edgeSidebar").getBoundingClientRect(); return JSON.stringify(p) === b && s.right <= innerWidth && s.left > innerWidth / 2; }, before);
     probe(tag, "wide: sidebar is an overlay on the RIGHT, page does not move", overlay); await shot("13b-wide-sidebar-right"); await ensureSidebar(false); }
   // 回退栈随保存写（不标脏）：跳进 序章 → 打一个字触发落盘 → 刷新后 Alt+← 仍能回 第一章
+  if (w < 900) await ensureSidebar(false);   // 上一条探针开了侧栏；窄屏浮层盖着纸面
   await page.evaluate(() => window.__xhw.project.jump("序章.txt")); await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type("。"); await wait(700);
   // 刷新：boot 走 openAny(last) → 书回来、章节名回来、无红条
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
@@ -225,7 +272,7 @@ for (const [w, h] of sizes) {
   probe(tag, "toast reports compression (已压缩 A → B)", /已压缩/.test(await page.textContent("#toast")), await page.textContent("#toast"));
   await ensureSidebar(true); await shot("21-image-page");
   await page.click("#edgeBack"); await wait(300);   // 回到 作品：它的出边列表里才有两张图
-  probe(tag, "sidebar rows for image pages carry the image icon", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row")].filter((r) => r.querySelector(".edge-kind")).length === 2), await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row .edge-name")].map((e) => e.textContent).join("|")));
+  probe(tag, "sidebar rows for image pages carry the image icon (in the links block)", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row[data-block='links']")].filter((r) => r.querySelector(".edge-kind")).length === 2), await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row .edge-name")].map((e) => e.textContent).join("|")));
   await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row .edge-main")].find((b) => /地图\.jpg/.test(b.textContent)); if (!r) throw new Error("地图 row missing"); r.click(); }); await page.waitForFunction(() => window.__xhw.project.current() === "地图.jpg", null, { timeout: 5000 }); await wait(300);
   // 设为封面
   if (w < 900) await ensureSidebar(false);   // 窄屏侧栏是浮层，盖着纸面上的钮
@@ -261,6 +308,29 @@ for (const [w, h] of sizes) {
   probe(tag, "active tile tag says 打开中 (not 编辑中)", await page.evaluate(() => { const tag = document.querySelector("#galleryMount .gallery-tile.active .gallery-tile-active-tag"); return !!tag && tag.textContent.trim() === "打开中"; }));
   await shot("23-library-covers");
   await page.click("#galleryBack"); await wait(300);
+  // ── 狗粮书（tmp/migration/，不进 git；没有就 SKIP）：3 层树 → 侧栏仍只两层；prev/next 走完整本不绕回；导出「正文」= 整本小说、散页不在里面；readOnly → 树菜单全灰
+  { const FIX = "20250216 樱川 AI参考.webxiaoheiwu.zip";
+    const res = await page.evaluate(async (f) => { const r = await fetch("/tmp/migration/" + encodeURIComponent(f)); if (!r.ok) return null; const blob = await r.blob(); await window.__xhw.openLocalBook({ fileName: f, canWriteBack: false, read: async () => blob, write: async () => "downloaded" }); return blob.size; }, FIX);
+    if (res == null) console.log(tag, "dogfood book: SKIP (tmp/migration fixture not present)");
+    else {
+      await wait(800); await ensureSidebar(true); await shot("24-dogfood-book");
+      probe(tag, "dogfood: opens at 第一幕 (editor-state.last), readOnly lock on, no error state", (await cur()) === "第一幕.txt" && await page.evaluate(() => window.__xhw.project.readOnly() && !document.getElementById("saveStatus").classList.contains("error") && document.getElementById("editor").readOnly), `${await cur()} ${await page.textContent("#saveStatus")}`);
+      probe(tag, "dogfood: `..` = 正文, siblings = three acts, children = 9 话, no third layer", JSON.stringify(await parentRow()) === JSON.stringify({ name: "正文", root: false, disabled: false }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["第一幕", "第二幕", "第三幕"]) && (await rowsIn("children")).length === 9 && (await noThirdLayer()), `${JSON.stringify(await parentRow())} ${JSON.stringify(await rowsIn("siblings"))} ${(await rowsIn("children")).length}`);
+      { const r = await rowMenu("siblings", "第一幕.txt"); probe(tag, "dogfood readOnly: tree row menu all grey except 导出这一支", r.opened && r.items.filter((x) => !/导出/.test(x.label)).every((x) => x.disabled) && r.items.some((x) => /导出/.test(x.label) && !x.disabled), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(100); }
+      const walk = await page.evaluate(() => { const p = window.__xhw.project; const order = p.session().order(); p.jump(order[0]); const seen = [p.current()]; let guard = 0; while (p.nextPage() && guard++ < 200) seen.push(p.current()); const atEnd = !p.neighborhood().next; p.jump(order[0]); const atHead = !p.neighborhood().prev; return { seen, order, atEnd, atHead, loose: p.nodeNames().filter((n) => !p.isInTree(n)) }; });
+      probe(tag, "dogfood: next walks the whole 41-page trunk in DFS order, stops at the tail (no wrap), prev grey at the head", walk.seen.length === 41 && JSON.stringify(walk.seen) === JSON.stringify(walk.order) && walk.atEnd && walk.atHead && walk.seen[0] === "正文.txt" && walk.seen.at(-1) === "20250505 AI bkup.txt", `${walk.seen.length} ${walk.seen[0]} → ${walk.seen.at(-1)}`);
+      probe(tag, "dogfood: DFS crosses acts: after 第一幕 Chapter 10 comes the 第二幕 page, then 第二幕 老技术员", (() => { const i = walk.seen.indexOf("第一幕 Chapter 10：夏音改造联盟.txt"); return i > 0 && walk.seen[i + 1] === "第二幕.txt" && walk.seen[i + 2] === "第二幕 老技术员.txt"; })(), walk.seen.slice(9, 13).join("|"));
+      probe(tag, "dogfood: exactly one loose page (the style note) and it has no prev/next", walk.loose.length === 1 && /轻小说口语调/.test(walk.loose[0]) && await page.evaluate((n) => { const p = window.__xhw.project; p.jump(n); const nb = p.neighborhood(); return !nb.inTree && nb.prev === null && nb.next === null && document.getElementById("pagePrev").disabled && document.getElementById("pageNext").disabled; }, walk.loose[0]), JSON.stringify(walk.loose));
+      await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
+      probe(tag, "dogfood loose page: sidebar has no `..`/siblings/children, only links + 谁指向这里 + 「+ 子节」", (await parentRow()) === null && (await rowsIn("siblings")).length === 0 && JSON.stringify(await rowsIn("incoming")) === JSON.stringify(["第一幕 夏音把大扫除弄得一塌糊涂"]) && await page.evaluate(() => !document.getElementById("edgeAddSibling") && !!document.getElementById("edgeAddChild")), JSON.stringify(await blocks()));
+      const exp = await page.evaluate(() => ({ novel: window.__xhw.project.exportBranchText("正文.txt"), act2: window.__xhw.project.exportBranchText("第二幕.txt"), style: window.__xhw.project.session().currentText() }));
+      probe(tag, "dogfood: export 正文 = whole novel in TOC order, style note (loose) not inside; export 第二幕 = one act", exp.novel.indexOf("# 第一幕") < exp.novel.indexOf("## 第一话") && exp.novel.indexOf("Chapter 10") < exp.novel.indexOf("# 第二幕") && exp.novel.indexOf("# 第二幕") < exp.novel.indexOf("# 第三幕") && /学期结束和新的开始/.test(exp.novel) && !exp.novel.includes(exp.style.trim().split("\n")[0]) && exp.act2.startsWith("# 第二幕") && !/第三幕/.test(exp.act2) && /孤独的特权者/.test(exp.act2), `${exp.novel.length} chars`);
+      await page.evaluate(() => window.__xhw.project.jump("第二幕 老技术员.txt")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
+      probe(tag, "dogfood: on a 话, `..` = its act, siblings = the act's 话, children empty", JSON.stringify(await parentRow()) === JSON.stringify({ name: "第二幕", root: false, disabled: false }) && (await rowsIn("siblings")).length === 12 && (await rowsIn("children")).length === 0, JSON.stringify(await parentRow()));
+      await page.click("#edgeParent"); await wait(200); await page.click("#edgeParent"); await wait(200);
+      probe(tag, "dogfood: `..` twice → 正文 at the top level (`..` = book, grey)", (await cur()) === "正文.txt" && JSON.stringify(await parentRow()) === JSON.stringify({ name: "20250216 樱川 AI参考", root: true, disabled: true }), JSON.stringify(await parentRow()));
+      await shot("25-dogfood-toc");
+    } }
   await ctx.close();
 }
 await browser.close(); srv.close();

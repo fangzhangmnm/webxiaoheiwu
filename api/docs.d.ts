@@ -59,6 +59,8 @@ export declare function saveDoc(name: string, text: string, opts: {
 }): Promise<SaveResult>;
 /** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份（全路径）。 */
 export declare function createDoc(title: string, text: string, date?: string, dir?: string): Promise<string>;
+/** 「导出这一支」（ADR-0014 §6，2026-09-10 树 session）：子树 DFS 拼好的正文 → 书库里一篇新 txt（撞名 hex4，同 createDoc）。返回身份。下载那条路走 local-home.triggerDownload，不经 store。 */
+export declare function exportBranchToLibrary(title: string, text: string, dir?: string): Promise<string>;
 export interface RenameResult {
     name: string;
     oldKept?: boolean;

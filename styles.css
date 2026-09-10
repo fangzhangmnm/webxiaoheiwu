@@ -1632,11 +1632,21 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-row.current .edge-main { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .edge-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .edge-sub { flex: none; color: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; }   /* 同一行小字：修改时间 */
-.edge-row.stub .edge-name { opacity: .7; border-bottom: 1px dashed currentColor; }   /* 占位符：只是还没有文件的名字 */
 .edge-row.add .edge-main { color: var(--ink-soft); border: 1px dashed var(--line); justify-content: center; margin-top: 4px; }   /* 列表末尾的「+」 */
 .edge-row.add .edge-main .ico { width: 14px; height: 14px; }
 .edge-more { flex: none; }
 .edge-foot { display: flex; flex-wrap: wrap; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
+/* v2 邻域（ADR-0014 §7）：`..` 行 = 父页（顶层 = 书，不可点）；块头 = 兄弟 / 子节 / 链接 / 谁指向这里；没有第三层。 */
+.edge-row.parent .edge-main { font-weight: 600; }
+.edge-row.parent .edge-dots { flex: none; color: var(--ink-soft); font-family: var(--font-ui); letter-spacing: 1px; }
+.edge-row.parent.root .edge-main { color: var(--ink-soft); font-weight: 500; cursor: default; }
+.edge-row.parent.root .edge-main:hover { background: transparent; }
+/* 纸面页脚：上一页 / 下一页（全树前序 DFS；首尾灰、散页灰）。书模式才显示；图片页也要有（DFS 会经过图片页）。 */
+.page-nav { display: none; flex: none; justify-content: flex-start; gap: 8px; padding: 6px 72px 0 0; font-family: var(--font-ui); }   /* 靠左、右边留给话筒（.mic-button 绝对定位在纸面右下角，ui-audit 抓到过遮挡） */
+body[data-project] .page-nav:not([hidden]) { display: flex; }
+.page-nav-btn { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; color: var(--ink-soft); font: inherit; font-size: 12px; cursor: pointer; }
+.page-nav-btn:hover:not(:disabled), .page-nav-btn:focus-visible:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.page-nav-btn:disabled { opacity: .35; cursor: default; }
 @media (max-width: 900px) {
   .edge-sidebar { width: min(82vw, 320px); }
   body[data-edges="1"] .edge-backdrop { display: block; }

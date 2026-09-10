@@ -1601,8 +1601,8 @@ export declare const S: {
         readonly en: "The book file is damaged (bad zip or graph.json)";
     };
     readonly "project.notProject": {
-        readonly zh: "这个 zip 不是小黑屋的书（没有 graph.json 也没有 pages/）";
-        readonly en: "This zip is not a WebXiaoHeiWu book (no graph.json, no pages/)";
+        readonly zh: "这个 zip 不是本版小黑屋的书：没有 graph.json / pages/，或是 v2 之前的旧格式（本版只读 v2，不读也不覆盖旧书）";
+        readonly en: "This zip is not a book this version reads: no graph.json / pages/, or a pre-v2 format (only v2 is read; old books are neither read nor overwritten)";
     };
     readonly "lift.entry": {
         readonly zh: "把这篇变成书…";
@@ -1636,10 +1636,6 @@ export declare const S: {
         readonly zh: "上次打开的「{name}」现在打不开，先给你一张新稿；它还在书库里";
         readonly en: "“{name}” from last time can’t be opened right now — here’s a new draft; it is still in the library";
     };
-    readonly "project.legacy": {
-        readonly zh: "这本书是 2026-09-10 前的旧格式（contents/），本版不读、也不会覆盖它；解压后把 contents/ 改名 pages/ 再压回去就能开";
-        readonly en: "This book is in the pre-2026-09-10 format (contents/); this version won't read or overwrite it — unzip, rename contents/ to pages/, zip again";
-    };
     readonly "project.unavailable": {
         readonly zh: "本地没有这本书，云端也拿不到";
         readonly en: "Book not available locally, and the cloud is unreachable";
@@ -1672,21 +1668,13 @@ export declare const S: {
         readonly zh: "没有";
         readonly en: "Nothing";
     };
-    readonly "edge.empty": {
-        readonly zh: "这一页还没有边。按「+」加一页。";
-        readonly en: "No edges yet. Press “+” to add a page.";
+    readonly "edge.noLinks": {
+        readonly zh: "还没有链接";
+        readonly en: "No links yet";
     };
-    readonly "edge.newNode": {
-        readonly zh: "加一页";
-        readonly en: "Add a page";
-    };
-    readonly "edge.newNodeTitle": {
-        readonly zh: "这一页叫什么";
-        readonly en: "Name the page";
-    };
-    readonly "edge.newNodeHint": {
-        readonly zh: "打已有页的名字 = 从这里连过去。";
-        readonly en: "An existing page’s name = link to it from here.";
+    readonly "edge.loose": {
+        readonly zh: "散页：不在书的主干里（从链接或检索到达）";
+        readonly en: "Loose page: not in the book’s trunk (reached via links or search)";
     };
     readonly "edge.spawnTitle": {
         readonly zh: "分裂出去的页叫什么";
@@ -1780,9 +1768,137 @@ export declare const S: {
         readonly zh: "创建 {created} · 修改 {modified}";
         readonly en: "Created {created} · modified {modified}";
     };
-    readonly "edge.stub": {
-        readonly zh: "{name}（还没有这一页，点它就生出来）";
-        readonly en: "{name} (no page yet; click to create)";
+    readonly "edge.parentTitle": {
+        readonly zh: "父页：{name}";
+        readonly en: "Parent: {name}";
+    };
+    readonly "edge.root": {
+        readonly zh: "书";
+        readonly en: "Book";
+    };
+    readonly "edge.rootTitle": {
+        readonly zh: "这一层就是书的顶层";
+        readonly en: "This is the book’s top level";
+    };
+    readonly "edge.siblings": {
+        readonly zh: "兄弟";
+        readonly en: "Siblings";
+    };
+    readonly "edge.children": {
+        readonly zh: "子节";
+        readonly en: "Children";
+    };
+    readonly "edge.links": {
+        readonly zh: "链接";
+        readonly en: "Links";
+    };
+    readonly "edge.addSibling": {
+        readonly zh: "加兄弟页";
+        readonly en: "Add a sibling";
+    };
+    readonly "edge.addChild": {
+        readonly zh: "加子节";
+        readonly en: "Add a child";
+    };
+    readonly "edge.addSiblingTitle": {
+        readonly zh: "兄弟页叫什么";
+        readonly en: "Name the sibling page";
+    };
+    readonly "edge.addChildTitle": {
+        readonly zh: "子节叫什么";
+        readonly en: "Name the child page";
+    };
+    readonly "edge.addSiblingHint": {
+        readonly zh: "新页放到这页之后。打已有页的名字 = 把那页归档到这里。";
+        readonly en: "The new page goes right after this one. An existing page’s name = file that page here.";
+    };
+    readonly "edge.addChildHint": {
+        readonly zh: "新页放到这页之下（末尾）。打已有页的名字 = 把那页归档到这里。";
+        readonly en: "The new page goes under this one (at the end). An existing page’s name = file that page here.";
+    };
+    readonly "edge.addLooseHint": {
+        readonly zh: "这页不在书的主干里：新页从这里链出去，也是散页。打已有页的名字 = 从这里连过去。";
+        readonly en: "This page is not in the trunk: the new page is linked from here and stays loose. An existing page’s name = link to it from here.";
+    };
+    readonly "edge.outdent": {
+        readonly zh: "升级（出到上一层）";
+        readonly en: "Promote (out one level)";
+    };
+    readonly "edge.indent": {
+        readonly zh: "降级（进到上一个兄弟之下）";
+        readonly en: "Demote (under the previous sibling)";
+    };
+    readonly "edge.detach": {
+        readonly zh: "移出树（变散页）";
+        readonly en: "Take out of the tree (loose page)";
+    };
+    readonly "edge.archiveAfter": {
+        readonly zh: "归档到这页之后";
+        readonly en: "File after this page";
+    };
+    readonly "edge.archiveUnder": {
+        readonly zh: "归档到这页之下";
+        readonly en: "File under this page";
+    };
+    readonly "edge.exportBranch": {
+        readonly zh: "导出这一支…";
+        readonly en: "Export this branch…";
+    };
+    readonly "edge.moveNoop": {
+        readonly zh: "已经到头了，没动";
+        readonly en: "Already at the edge; nothing moved";
+    };
+    readonly "edge.detached": {
+        readonly zh: "已移出树：「{name}」成了散页（检索能找到；链接不动）";
+        readonly en: "Out of the tree: “{name}” is now a loose page (search finds it; links untouched)";
+    };
+    readonly "edge.archived": {
+        readonly zh: "已归档「{name}」";
+        readonly en: "Filed “{name}”";
+    };
+    readonly "edge.alreadyInTree": {
+        readonly zh: "「{name}」已在书的主干里，位置没动";
+        readonly en: "“{name}” is already in the trunk; its place was kept";
+    };
+    readonly "edge.noSuchPage": {
+        readonly zh: "没有这一页";
+        readonly en: "No such page";
+    };
+    readonly "edge.exportTitle": {
+        readonly zh: "导出「{name}」这一支";
+        readonly en: "Export the branch “{name}”";
+    };
+    readonly "edge.exportHint": {
+        readonly zh: "这页和它下面的所有页按目录顺序拼成一篇 txt（只拼正文页）。";
+        readonly en: "This page and everything under it, in table-of-contents order, joined into one txt (text pages only).";
+    };
+    readonly "edge.exportSave": {
+        readonly zh: "存进书库";
+        readonly en: "Save to library";
+    };
+    readonly "edge.exportDownload": {
+        readonly zh: "下载一份";
+        readonly en: "Download a copy";
+    };
+    readonly "edge.exportDone": {
+        readonly zh: "已导出为「{name}」";
+        readonly en: "Exported as “{name}”";
+    };
+    readonly "edge.exportFailed": {
+        readonly zh: "导出失败：{e}";
+        readonly en: "Export failed: {e}";
+    };
+    readonly "edge.prev": {
+        readonly zh: "上一页";
+        readonly en: "Previous page";
+    };
+    readonly "edge.next": {
+        readonly zh: "下一页";
+        readonly en: "Next page";
+    };
+    readonly "edge.pageNav": {
+        readonly zh: "上一页 / 下一页（沿目录顺序）";
+        readonly en: "Previous / next page (table-of-contents order)";
     };
     readonly "gal.aria": {
         readonly zh: "书库";

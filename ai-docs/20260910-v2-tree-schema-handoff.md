@@ -1,4 +1,5 @@
 # 2026-09-10 handoff：实现 schema v2（主干树 + link）——给下一个 app session
+> **as-of v2.1.1 / 2026-09-10 深夜：§1 的 1–8 全部落地（树 session，Claude Fable 5.1）**——format v2 拒开 v1 零 legacy 分支 / graph 树操作 + exportSubtree / session 树动词一道守卫 / 侧栏邻域（`..` · 兄弟 · 子节 · 链接 · 谁指向这里，无第三层）/ 页脚上一页·下一页 + Alt+↑↓ / 顶栏「+」菜单 = 加兄弟页 · 加子节 · 从图片… / 「导出这一支…」（存进书库或下载）/ 104 测绿 / ui-audit 两尺寸 202（1280×800 102 + 400×800 100） 探针全绿（含 tmp/migration 狗粮书整本 DFS 走完不绕回、导出「正文」= 整本）/ 四本夹具 `tmp/migration/verify.mjs` 全 ok 零 warning、两次打包字节相等。AI 定的两条读法：`outdent` 的「P 是顶层 → no-op」读成「x 已是顶层（没有父亲）→ no-op；父亲是顶层时 x 出到顶层」；「+ 兄弟 / + 子节」打**已在树里**的名 = 位置不动只跳过去（toast 说一声），打**散页**名 = 归档到这里。状态细节见 `20260910-v2-ui-handoff.md` §4 末「v2.1.1」节。真机零。
 > as-of v2.0.16 工作树 / 2026-09-10 深夜 · created 2026-09-10 by Claude Fable 5.1 (claude-fable-5-1)。**SSoT = ADR-0014**，本文只是把它翻成活。图片 / 缩略图那条线归隔壁「wxhw v2 image thumbnail specs」session（ADR-0012/0013，2.1.0），先读它的未提交改动再动 `format.ts`，别互相覆盖。
 
 ## 0. 一句话

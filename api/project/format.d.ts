@@ -1,5 +1,5 @@
 export declare const PROJECT_FORMAT = "webxiaoheiwu";
-export declare const PROJECT_FORMAT_VERSION = 1;
+export declare const PROJECT_FORMAT_VERSION = 2;
 export declare const GRAPH_ENTRY = "graph.json";
 export declare const CONTENTS_DIR = "pages/";
 export declare const EDITOR_STATE_ENTRY = ".webxiaoheiwu/editor-state.json";
@@ -15,11 +15,17 @@ export interface NodeMeta {
     created: number;
     modified: number;
 }
+/** 主干树节点：名字字符串（叶）或 { name, children }（组 = 有孩子的页）。`{ name, children: [] }` 与字符串同义，写出时折成字符串。 */
+export type TreeNode = string | {
+    name: string;
+    children: TreeNode[];
+};
 export interface ProjectGraphJson {
     format: typeof PROJECT_FORMAT;
     version: number;
     wroteWith: string;
     readOnly?: boolean;
+    tree: TreeNode[];
     pages: Record<string, NodeMeta>;
 }
 export interface EditorState {
@@ -30,6 +36,8 @@ export declare const BACK_STACK_MAX = 50;
 export interface Project {
     nodes: Map<string, NodeMeta>;
     contents: Map<string, Uint8Array>;
+    /** 主干树（ADR-0014）。只经 graph.ts 的树操作改；散页 = 有文件但不在这里。 */
+    tree: TreeNode[];
     editorState: EditorState;
     /** 读到的清单 version（太新 → 横幅 + 禁覆盖，宿主看这个）。 */
     readVersion: number;
@@ -49,8 +57,6 @@ export type UnpackResult = {
     kind: "too-new";
     version: number;
 } | {
-    kind: "legacy";
-} | {
     kind: "corrupt";
     reason: string;
 };
@@ -63,10 +69,14 @@ export declare const nodeExt: (name: string) => string;
 /** 页的种类（只看扩展名）：txt 正文 / image 图片页 / other（合法但不打开）。 */
 export declare const nodeKind: (name: string) => NodeKind;
 export declare function emptyProject(): Project;
-/** 打包（整包重写；ADR-0008 §4）。graph.json 只写 pages/ 里真有的页；links 原样（可含占位符）。 */
+export declare const treeNodeName: (n: TreeNode) => string;
+export declare const treeNodeChildren: (n: TreeNode) => TreeNode[];
+/** 规范形：`{ name, children: [] }` 折成字符串；递归。 */
+export declare function normalizeTree(nodes: TreeNode[]): TreeNode[];
+/** 打包（整包重写；ADR-0008 §4）。严格写：pages 只写有文件的页、links 只留有文件的目标、tree 只留有文件的名字（写出绝不产生悬空，ADR-0014 §3）。 */
 export declare function packProject(p: Project): Promise<Blob>;
-/** 解包。宽容读、严格写：pages/ 里的文件没进 graph.json 也是页（一包 txt 的 zip 也是合法的书）；graph.json 里指向不存在文件的条目丢弃。 */
+/** 解包。宽容读、严格写：pages/ 里的文件没进 graph.json 也是页（一包 txt 的 zip 也是合法的书，全是散页）；graph.json 里指向不存在文件的条目 / 悬空 link / 悬空 tree 名字丢弃 + warning；tree 重名 → corrupt。 */
 export declare function unpackProject(blob: Blob): Promise<UnpackResult>;
-/** 文本节点的解码（txt 走 doc-model 的编码链；写回永远 UTF-8）。 */
+/** 文本页的解码（txt 走 doc-model 的编码链；写回永远 UTF-8）。 */
 export declare const readNodeText: (p: Project, name: string) => string | null;
 export declare const writeNodeText: (p: Project, name: string, text: string) => void;

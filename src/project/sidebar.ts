@@ -1,13 +1,14 @@
-// 侧栏（☰ 唯一入口）：顶部两个入口（书库 / 设置）+ 工程内导航 = 当前节点的出边列表（journal 2026-09-09 拍板：左栏不是 folder tree，是这个节点的边；反链是一次查询）。
-// created 2026-09-10 by Claude Fable 5.1；同日晚按 user 打回重做：「editor sidebar 只有一个三条杠，打开之后是工程内导航，上面是回书库和设置的入口」
-//   「侧栏不应默认开」「新建节点用 list 最下面的一个加号按钮」「节点应该加在末尾」「检索不限字数，这样可以搜全量孤儿」「还是不显示扩展名吧」
-//   「分裂选中 连接已有 指向这里这三个先去掉。我以后觉得有必要了再加 ui」（分裂仍有 Ctrl+Enter；连边/反链的动词留在 mode/session，只是没钮）。
-// 零态度：无全图、无计数、无衰减；占位符只是虚线名字。节点改名不在这里（章节名框，mode.ts）。
+// 侧栏（☰ 唯一入口）：顶部两个入口（书库 / 设置）+ 书内导航 = **当前页的邻域**（ADR-0014 §7 反清单化：不铺整棵树、不画第三层）：
+//   `..`（父；顶层 = 书，不可点）→ 兄弟（当前页高亮）→ 子节 → 链接（出边，手排）→ 谁指向这里（反链 = 查询）。散页没有 ../兄弟/子节，只有链接 + 「+ 子节」（链出去）。
+// created 2026-09-10 by Claude Fable 5.1；同日晚按 user 打回重做（「editor sidebar 只有一个三条杠」「侧栏不应默认开」「检索不限字数」「还是不显示扩展名吧」「分裂选中 连接已有 指向这里这三个先去掉」）；
+//   深夜 v2 树 session 接入邻域（user「树重新变成清单 → 看到的是 sibling 和一个 ..」「上一章下一章就是对主树做 dfs」）。
+// 行菜单：树行 = 上移 / 下移 / 升级 / 降级 / 移出树 / 导出这一支；链接行 = 上移 / 下移 / 归档到这页之后·之下（目标是散页时）/ 移出（丢引用）；入边行 = 断开；检索里的孤儿 = 彻底删除。
+// 零态度：无全图、无计数、无衰减。页改名不在这里（章节名框，mode.ts）。
 import type { ProjectMode } from "./mode.ts";
 import { nodeDisplayName } from "./naming.ts";
 import { nodeKind } from "./format.ts";
 import { t } from "../i18n/index.ts";
-import { togglePopupMenu, closePopupMenu } from "../ui/popup-menu.ts";
+import { togglePopupMenu, closePopupMenu, type PopupMenuItem } from "../ui/popup-menu.ts";
 import { openConfirmSheet } from "../sheets.ts";
 
 export interface EdgeSidebarDeps {
@@ -18,16 +19,20 @@ export interface EdgeSidebarDeps {
   /** 顶部两个入口。 */
   onLibrary: () => void;
   onSettings: () => void;
-  /** 加一页（问名字 → mode.newNode）；顶栏「+」与列表末尾「+」同一个流程。返回 true = 已建/已跳。 */
-  onAddPage: () => Promise<boolean>;
+  /** 「+ 兄弟」「+ 子节」（问名字 → mode.newSibling / newChild；散页上的子节 = 链出去）。返回 true = 已建/已跳。 */
+  onAddSibling: () => Promise<boolean>;
+  onAddChild: () => Promise<boolean>;
+  /** 「导出这一支…」（app 层：问名字 → 落库 / 下载）。 */
+  onExportBranch: (name: string) => Promise<void>;
   /** txt 模式：把这篇草稿变成书（user 2026-09-10）。canLift = 有正文可 lift。 */
   onLift: () => Promise<boolean>;
   canLift: () => boolean;
-  /** 无地工程：「下载一份」入口（store 工程不显示）。 */
+  /** 无地的书：「下载一份」入口（store 的书不显示）。 */
   onDownload?: () => void;
 }
+type Block = "parent" | "siblings" | "children" | "links" | "incoming" | "results";
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-/** 节点时间戳的短显示：今年 → M/D HH:mm；别的年 → YYYY/M/D。0 = 不知道 → 空。 */
+/** 页时间戳的短显示：今年 → M/D HH:mm；别的年 → YYYY/M/D。0 = 不知道 → 空。 */
 function fmtTime(ms: number): string {
   if (!ms) return "";
   const d = new Date(ms), now = new Date(); const p2 = (n: number) => String(n).padStart(2, "0");
@@ -60,50 +65,70 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   const $ = <T extends HTMLElement = HTMLElement>(id: string) => el.querySelector<T>("#" + id)!;
   const pane = $("edgePane"), list = $("edgeList"), nodeEl = $("edgeNode"), projEl = $("edgeProject"), search = $<HTMLInputElement>("edgeSearch");
 
-  function row(name: string, opts: { stub?: boolean; menu?: "edge" | "orphan" | "incoming" }): HTMLLIElement {
-    const li = document.createElement("li"); li.className = "edge-row" + (opts.stub ? " stub" : "") + (name === d.mode.current() ? " current" : "");
+  /** 一行 = 一页：点 = 跳；`block` 决定行菜单。 */
+  function row(name: string, block: Block): HTMLLIElement {
+    const li = document.createElement("li"); li.className = "edge-row" + (name === d.mode.current() ? " current" : ""); li.dataset.block = block; li.dataset.name = name;
     const main = document.createElement("button"); main.type = "button"; main.className = "edge-main";
     const shown = nodeDisplayName(name);
-    const meta = opts.stub ? null : d.mode.session()?.project.nodes.get(name);
-    main.title = opts.stub ? t("edge.stub", { name: shown }) : meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : shown;
-    const kindIcon = !opts.stub && nodeKind(name) === "image" ? `<svg class="ico edge-kind" aria-hidden="true"><use href="#image"/></svg>` : "";   // 图片页行首图标（2.1）
+    const meta = d.mode.session()?.project.nodes.get(name);
+    main.title = meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : shown;
+    const kindIcon = nodeKind(name) === "image" ? `<svg class="ico edge-kind" aria-hidden="true"><use href="#image"/></svg>` : "";   // 图片页行首图标（2.1）
     main.innerHTML = kindIcon + `<span class="edge-name">${esc(shown)}</span>` + (meta && meta.modified ? `<span class="edge-sub">${esc(fmtTime(meta.modified))}</span>` : "");   // 同一行小字 = 修改时间（user 2026-09-10）
     main.addEventListener("click", () => { d.mode.jump(name); clearQuery(); d.focusEditor(); });   // 不自动收（user 2026-09-10「进节点的时候也不要自动弹回」）
     li.appendChild(main);
-    if (opts.menu) {
+    const items = menuItems(name, block);
+    if (items.length) {
       const more = document.createElement("button"); more.type = "button"; more.className = "row-icon-button edge-more"; more.title = t("edge.more"); more.setAttribute("aria-label", t("edge.more")); more.innerHTML = icon("more");
-      more.addEventListener("click", (e) => {
-        e.stopPropagation();
-        togglePopupMenu({ anchor: more, align: "left", items: () => (opts.menu === "orphan"
-          ? [{ id: "purge", label: t("edge.purge"), icon: "trash-can", danger: true }]                       // 孤儿：只有彻底删除（弹框确认）
-          : opts.menu === "incoming"
-          ? [{ id: "cut", label: t("edge.cutIncoming"), icon: "x" }]                                         // 入边：断开（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能」）
-          : [
-            { id: "up", label: t("edge.up") }, { id: "down", label: t("edge.down") },
-            { id: "drop", label: t("edge.drop"), icon: "x", separatorBefore: true },                        // 删除模型 = 丢引用（GC 语义）
-          ]), onPick: (id) => { void onRowAction(id, name); } });
-      });
+      more.addEventListener("click", (e) => { e.stopPropagation(); togglePopupMenu({ anchor: more, align: "left", items: () => menuItems(name, block), onPick: (id) => { void onRowAction(id, name); } }); });
       li.appendChild(more);
     }
     return li;
   }
-  /** 列表末尾的「+」：问名字（user 2026-09-10「不应该自动生成名字，而是让你输入」；placeholder 提示下一个章号，不预填）→ 新节点，边加末尾，跳过去。 */
-  function addRow(): HTMLLIElement {
+  /** 行菜单。修改锁 / 加密未解锁 / 格式太新 → 改动项全灰（导出仍可用）：UI 只画灰，判定在 session（user「不要 ad hoc add hooks」）。 */
+  function menuItems(name: string, block: Block): PopupMenuItem[] {
+    const m = d.mode; const cur = m.current(); const ro = !m.canEdit();
+    const grey = (items: PopupMenuItem[]) => items.map((it) => (it.id === "export" ? it : { ...it, disabled: ro }));
+    return grey(rawMenuItems(name, block, cur));
+  }
+  function rawMenuItems(name: string, block: Block, cur: string | null): PopupMenuItem[] {
+    const m = d.mode;
+    if (block === "results") return m.isOrphan(name) ? [{ id: "purge", label: t("edge.purge"), icon: "trash-can", danger: true }] : [];   // 检索结果里的孤儿：只有彻底删除（弹框确认）
+    if (block === "incoming") return [{ id: "cut", label: t("edge.cutIncoming"), icon: "x" }];   // 入边：断开（user「显示入度的时候需要加一个删除入度边的功能」）
+    if (block === "links") {
+      const items: PopupMenuItem[] = [{ id: "lup", label: t("edge.up") }, { id: "ldown", label: t("edge.down") }];
+      if (cur && m.isInTree(cur) && !m.isInTree(name)) items.push({ id: "after", label: t("edge.archiveAfter"), separatorBefore: true }, { id: "under", label: t("edge.archiveUnder") });   // 散页归档进主干（ADR-0014 §8）
+      items.push({ id: "drop", label: t("edge.drop"), icon: "x", separatorBefore: true });   // 删除模型 = 丢引用（GC 语义）
+      return items;
+    }
+    if (block === "parent") return [{ id: "export", label: t("edge.exportBranch"), icon: "download" }];
+    return [   // 树行（兄弟 / 子节）：树移动六件 + 导出这一支
+      { id: "up", label: t("edge.up") }, { id: "down", label: t("edge.down") }, { id: "outdent", label: t("edge.outdent") }, { id: "indent", label: t("edge.indent") },
+      { id: "detach", label: t("edge.detach"), icon: "x", separatorBefore: true },
+      { id: "export", label: t("edge.exportBranch"), icon: "download", separatorBefore: true },
+    ];
+  }
+  function addRow(id: "edgeAddSibling" | "edgeAddChild", label: string, onClick: () => Promise<boolean>): HTMLLIElement {
     const li = document.createElement("li"); li.className = "edge-row add";
-    const b = document.createElement("button"); b.type = "button"; b.className = "edge-main edge-add"; b.id = "edgeAdd"; b.title = t("edge.newNode");
-    b.innerHTML = `${icon("new")}<span class="edge-name">${esc(t("edge.newNode"))}</span>`;
-    b.addEventListener("click", () => { void d.onAddPage().then((ok) => { if (ok) { clearQuery(); render(); } }); });
+    const b = document.createElement("button"); b.type = "button"; b.className = "edge-main edge-add"; b.id = id; b.title = label;
+    b.innerHTML = `${icon("new")}<span class="edge-name">${esc(label)}</span>`;
+    b.addEventListener("click", () => { void onClick().then((ok) => { if (ok) { clearQuery(); render(); } }); });
     li.appendChild(b);
     return li;
   }
   async function onRowAction(id: string, name: string): Promise<void> {
-    if (id === "cut") { if (d.mode.cutIncoming(name)) d.setStatus(t("edge.cutDone", { name: nodeDisplayName(name) })); }
-    else if (id === "up") d.mode.moveLink(name, -1);
-    else if (id === "down") d.mode.moveLink(name, 1);
-    else if (id === "drop") { if (d.mode.dropRef(name)) { const nn = d.mode.lastDropped(); d.setStatus(nn ? t("edge.droppedOrphan", { name: nodeDisplayName(nn) }) : t("edge.dropped")); } }
+    const m = d.mode;
+    if (id === "cut") { if (m.cutIncoming(name)) d.setStatus(t("edge.cutDone", { name: nodeDisplayName(name) })); }
+    else if (id === "lup") m.moveLink(name, -1);
+    else if (id === "ldown") m.moveLink(name, 1);
+    else if (id === "up" || id === "down" || id === "outdent" || id === "indent") m.treeMove(name, id);
+    else if (id === "detach") { if (m.detachFromTree(name)) d.setStatus(t("edge.detached", { name: nodeDisplayName(name) })); }
+    else if (id === "after") { if (m.archiveAfterCurrent(name)) d.setStatus(t("edge.archived", { name: nodeDisplayName(name) })); }
+    else if (id === "under") { if (m.archiveUnderCurrent(name)) d.setStatus(t("edge.archived", { name: nodeDisplayName(name) })); }
+    else if (id === "export") { await d.onExportBranch(name); }
+    else if (id === "drop") { if (m.dropRef(name)) { const nn = m.lastDropped(); d.setStatus(nn ? t("edge.droppedOrphan", { name: nodeDisplayName(nn) }) : t("edge.dropped")); } }
     else if (id === "purge") {
-      if (!d.mode.isOrphan(name)) { d.setStatus(t("edge.notOrphan"), { error: true }); }
-      else if (await openConfirmSheet(t("edge.purgeTitle", { name: nodeDisplayName(name) }), t("edge.purgeMsg"), { danger: true, okLabel: t("edge.purge") })) d.mode.purgeOrphan(name);
+      if (!m.isOrphan(name)) { d.setStatus(t("edge.notOrphan"), { error: true }); }
+      else if (await openConfirmSheet(t("edge.purgeTitle", { name: nodeDisplayName(name) }), t("edge.purgeMsg"), { danger: true, okLabel: t("edge.purge") })) m.purgeOrphan(name);
     }
     render();
   }
@@ -126,15 +151,45 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
       const hits = s.find(query);
       list.appendChild(headerRow(t("edge.results", { q: query })));
       if (!hits.length) list.appendChild(emptyRow(t("edge.noResults")));
-      for (const n of hits) list.appendChild(row(n, { menu: m.isOrphan(n) ? "orphan" : undefined }));   // 检索结果里的孤儿：行菜单只有「彻底删除」
+      for (const n of hits) list.appendChild(row(n, "results"));
       return;
     }
-    const edges = s.sidebar();
-    if (!edges.length) list.appendChild(emptyRow(t("edge.empty")));
-    for (const e of edges) list.appendChild(row(e.name, { stub: e.stub, menu: "edge" }));
-    list.appendChild(addRow());
-    const incoming = m.backlinksOfCurrent();   // 入度：谁指向这里（有才显示，零态度）；行菜单 = 断开
-    if (incoming.length) { list.appendChild(headerRow(t("edge.backlinks"))); for (const n of incoming) list.appendChild(row(n, { menu: "incoming" })); }
+    const nb = s.neighborhood();
+    if (!nb.current) return;
+    if (nb.inTree) {
+      // `..`：父页（可点）；顶层 = 书（不可点，user「看到的是 sibling 和一个 ..」）
+      list.appendChild(parentRow(nb.parent));
+      list.appendChild(headerRow(t("edge.siblings")));
+      for (const n of nb.siblings) list.appendChild(row(n, "siblings"));
+      list.appendChild(addRow("edgeAddSibling", t("edge.addSibling"), d.onAddSibling));
+      list.appendChild(headerRow(t("edge.children")));
+      for (const n of nb.children) list.appendChild(row(n, "children"));
+      list.appendChild(addRow("edgeAddChild", t("edge.addChild"), d.onAddChild));
+    } else {
+      list.appendChild(emptyRow(t("edge.loose")));
+    }
+    list.appendChild(headerRow(t("edge.links")));
+    if (!nb.links.length) list.appendChild(emptyRow(t("edge.noLinks")));
+    for (const n of nb.links) list.appendChild(row(n, "links"));
+    if (!nb.inTree) list.appendChild(addRow("edgeAddChild", t("edge.addChild"), d.onAddChild));   // 散页上只有「+ 子节」= 链出去的新散页（引用层，保持现状语义）
+    if (nb.incoming.length) { list.appendChild(headerRow(t("edge.backlinks"))); for (const n of nb.incoming) list.appendChild(row(n, "incoming")); }   // 入度：谁指向这里（有才显示，零态度）
+  }
+  /** `..` 行：父页可点跳上去；顶层 = 书名不可点。 */
+  function parentRow(parent: string | null): HTMLLIElement {
+    const li = document.createElement("li"); li.className = "edge-row parent" + (parent ? "" : " root"); li.dataset.block = "parent"; if (parent) li.dataset.name = parent;
+    const main = document.createElement("button"); main.type = "button"; main.className = "edge-main"; main.id = "edgeParent";
+    const shown = parent ? nodeDisplayName(parent) : (d.mode.displayName() ?? t("edge.root"));
+    main.title = parent ? t("edge.parentTitle", { name: shown }) : t("edge.rootTitle");
+    main.innerHTML = `<span class="edge-dots" aria-hidden="true">..</span><span class="edge-name">${esc(shown)}</span>`;
+    if (parent) main.addEventListener("click", () => { d.mode.jump(parent); clearQuery(); d.focusEditor(); });
+    else { main.disabled = true; main.setAttribute("aria-disabled", "true"); }
+    li.appendChild(main);
+    if (parent) {
+      const more = document.createElement("button"); more.type = "button"; more.className = "row-icon-button edge-more"; more.title = t("edge.more"); more.setAttribute("aria-label", t("edge.more")); more.innerHTML = icon("more");
+      more.addEventListener("click", (e) => { e.stopPropagation(); togglePopupMenu({ anchor: more, align: "left", items: () => menuItems(parent, "parent"), onPick: (id) => { void onRowAction(id, parent); } }); });
+      li.appendChild(more);
+    }
+    return li;
   }
   const headerRow = (text: string) => { const li = document.createElement("li"); li.className = "edge-row header"; li.textContent = text; return li; };
   const emptyRow = (text: string) => { const li = document.createElement("li"); li.className = "edge-row empty"; li.textContent = text; return li; };

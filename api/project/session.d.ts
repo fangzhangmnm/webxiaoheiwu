@@ -41,7 +41,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     spawn: (newName: string, selectedText: string) => string;
     addLink: (to: string, at?: "bottom" | "top" | undefined) => boolean;
     removeLink: (to: string) => boolean;
-    setLinksOrder: (links: string[]) => void;
+    setLinksOrder: (list: string[]) => void;
     rename: (from: string, to: string) => void;
     remove: (target: string) => boolean;
     drop: (to: string, orphanPrefix: string) => string | null;
@@ -55,13 +55,45 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     bytesOf: (target: string) => Uint8Array | null;
     setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => void;
     thumbnail: () => Uint8Array | null;
-    sidebar: () => {
-        name: string;
-        stub: boolean;
-    }[];
+    treeUp: (target: string) => boolean;
+    treeDown: (target: string) => boolean;
+    treeOutdent: (target: string) => boolean;
+    treeIndent: (target: string) => boolean;
+    treeDetach: (target: string) => boolean;
+    archiveAfter: (target: string, anchor: string) => void;
+    archiveUnder: (target: string, parent: string) => void;
+    archiveAtEnd: (target: string) => void;
+    newSibling: (newName: string) => import("./graph.ts").InsertResult;
+    newChild: (newName: string) => import("./graph.ts").InsertResult;
+    neighborhood: () => {
+        current: null;
+        inTree: boolean;
+        parent: null;
+        siblings: string[];
+        children: string[];
+        links: string[];
+        incoming: string[];
+        prev: null;
+        next: null;
+    } | {
+        current: string;
+        inTree: boolean;
+        parent: string | null;
+        siblings: string[];
+        children: string[];
+        links: string[];
+        incoming: string[];
+        prev: string | null;
+        next: string | null;
+    };
+    sidebar: () => string[];
     backlinksOf: (target: string) => string[];
     find: (q: string, limit?: number) => string[];
     exists: (target: string) => boolean;
+    pathOf: (target: string) => string[];
+    isInTree: (target: string) => boolean;
+    order: () => string[];
+    exportBranch: (target: string) => string;
     canMutate: () => boolean;
 };
 export type ProjectSession = ReturnType<typeof createProjectSession>;

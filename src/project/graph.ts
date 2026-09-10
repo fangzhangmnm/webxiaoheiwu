@@ -1,24 +1,27 @@
-// 工程图操作（ADR-0009；无 DOM）：节点 = contents 文件；边 = 出边数组（有向、零属性、顺序 = 用户手排；ADR-0014 否决边属性）；反链 = 查询；占位符 = 无文件的名字（ADR-0014 废止，实现归树 session）。
-// created 2026-09-10 by Claude Fable 5.1。系统对图零态度：这里没有全图、没有计数面板、没有衰减。图片页（2.1）= 字节页：同一张表，进门撞名走 hex4 不走「撞名=链接」（新字节不是同一页）。
-import { type Project, type NodeMeta, nameKey, isValidNodeName, writeNodeText, readNodeText, nodeKind } from "./format.ts";
+// 书的图操作（ADR-0009 / ADR-0014；无 DOM）：页 = pages/ 文件；tree = 整理（主干树，一页至多一个父亲、兄弟有序、成员可选）；links = 指向（有向、零属性、顺序 = 用户手排）；反链 = 查询。
+// created 2026-09-10 by Claude Fable 5.1；v2 树操作同日由树 session 落地。系统对图零态度：没有全图、没有计数面板、没有衰减。
+//   · 占位符已废（ADR-0014 §4）：links / tree 里的每个名字必有文件；打新名 = 当场建空文件。
+//   · 树操作全部是对一个数组的编辑，links 一个字节不动（ADR-0014 §8）。语义钉在 handoff §2：兄弟顺序 = 数组顺序；升级 = 出到父亲那一层（插到父亲之后）；
+//     降级 = 进到上一个兄弟的孩子末尾；移出树 = 整个子树拿掉（页文件、links 不动）；归档 = 放到锚之后 / 之下；一页只有一个位置。
+//   · 图片页（2.1）= 字节页：同一张表，进门撞名走 hex4 不走「撞名=链接」（新字节不是同一页）。
+import { type Project, type NodeMeta, type TreeNode, nameKey, isValidNodeName, writeNodeText, readNodeText, nodeKind, treeNodeName, treeNodeChildren } from "./format.ts";
 import { hex4 } from "../doc-model.ts";
 
 export type NowFn = () => number;
 const DEFAULT_NOW: NowFn = () => Date.now();
 
-/** 按撞名口径找已存在的节点名（大小写/NFC 不敏感）；没有 → null。 */
+/** 按撞名口径找已存在的页名（大小写/NFC 不敏感）；没有 → null。 */
 export function resolveName(p: Project, name: string): string | null {
   const k = nameKey(name);
   for (const n of p.contents.keys()) if (nameKey(n) === k) return n;
   return null;
 }
-export const isStub = (p: Project, name: string): boolean => resolveName(p, name) == null;
 export function meta(p: Project, name: string): NodeMeta { let m = p.nodes.get(name); if (!m) { m = { links: [], created: 0, modified: 0 }; p.nodes.set(name, m); } return m; }
 
-/** 新建节点：撞名 = 链接不是新建（ADR-0009 §6）→ 返回已有名并不覆盖。返回最终名。 */
+/** 新建页：撞名 = 链接不是新建（ADR-0009 §6）→ 返回已有名并不覆盖。返回最终名。不进树（进树走 insertSibling / insertChild）。 */
 export function createNode(p: Project, name: string, text = "", now: NowFn = DEFAULT_NOW): { name: string; created: boolean } {
   const nfc = name.normalize("NFC");
-  if (!isValidNodeName(nfc)) throw new Error(`invalid node name: ${name}`);
+  if (!isValidNodeName(nfc)) throw new Error(`invalid page name: ${name}`);
   const existing = resolveName(p, nfc);
   if (existing) return { name: existing, created: false };
   writeNodeText(p, nfc, text);
@@ -34,14 +37,18 @@ export function setNodeText(p: Project, name: string, text: string, now: NowFn =
   const m = meta(p, name); m.modified = now(); if (!m.created) m.created = m.modified;
   return true;
 }
+/** 重排出边（只准重排：目标必须都是已有文件的页，悬空一律丢）。 */
 export function setLinks(p: Project, name: string, links: string[], now: NowFn = DEFAULT_NOW): void {
   const m = meta(p, name);
-  m.links = links.map((l) => l.normalize("NFC")).filter((l) => l.length > 0);
+  const out: string[] = [];
+  for (const l of links) { const r = resolveName(p, l); if (r && !out.some((x) => nameKey(x) === nameKey(r))) out.push(r); }
+  m.links = out;
   m.modified = now();
 }
-/** 加一条出边（默认末尾：user 2026-09-10「节点应该加在末尾」，取代 09-09 journal 的「顶部最新最热」；ADR-0009 修订）；已有则不重复。 */
+/** 加一条出边（默认末尾：user 2026-09-10「节点应该加在末尾」；ADR-0009 修订）；目标必须有文件（占位符已废）→ 没有则抛；已有则不重复。 */
 export function link(p: Project, from: string, to: string, opts: { at?: "top" | "bottom"; now?: NowFn } = {}): boolean {
-  const m = meta(p, from); const t = to.normalize("NFC");
+  const t = resolveName(p, to); if (!t) throw new Error(`no such page: ${to}`);
+  const m = meta(p, from);
   if (m.links.some((l) => nameKey(l) === nameKey(t))) return false;
   if (opts.at === "top") m.links.unshift(t); else m.links.push(t);
   m.modified = (opts.now ?? DEFAULT_NOW)();
@@ -53,6 +60,8 @@ export function unlink(p: Project, from: string, to: string, now: NowFn = DEFAUL
   if (m.links.length !== before) { m.modified = now(); return true; }
   return false;
 }
+/** 一页的出边（侧栏「链接」段的数据；数组顺序 = 用户手排）。 */
+export const links = (p: Project, name: string): string[] => [...meta(p, name).links];
 // ── 图片页 / 字节页（2.1） ──
 /** 唯一化：撞名 → `stem-hex4.ext`（user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑」）。不撞 → 原名（NFC）。 */
 export function uniqueNodeName(p: Project, name: string): string {
@@ -65,14 +74,14 @@ export function uniqueNodeName(p: Project, name: string): string {
 /** 新建字节页（图片进门）：撞名不链接、加 hex4（新字节不是同一页）。返回最终名。 */
 export function createBytesNode(p: Project, name: string, bytes: Uint8Array, now: NowFn = DEFAULT_NOW): string {
   const n = uniqueNodeName(p, name);
-  if (!isValidNodeName(n)) throw new Error(`invalid node name: ${name}`);
+  if (!isValidNodeName(n)) throw new Error(`invalid page name: ${name}`);
   p.contents.set(n, bytes);
   const t = now(); p.nodes.set(n, { links: [], created: t, modified: t });
   return n;
 }
 /** 替换字节（「替换图片」：保名保边，只换内容）。 */
 export function replaceNodeBytes(p: Project, name: string, bytes: Uint8Array, now: NowFn = DEFAULT_NOW): void {
-  const n = resolveName(p, name); if (!n) throw new Error(`no such node: ${name}`);
+  const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
   p.contents.set(n, bytes);
   const m = meta(p, n); m.modified = now(); if (!m.created) m.created = m.modified;
 }
@@ -82,11 +91,11 @@ export function backlinks(p: Project, name: string): string[] {
   for (const [n, m] of p.nodes) if (m.links.some((l) => nameKey(l) === k)) out.push(n);
   return out.sort();
 }
-/** 改名 = 改 entry 名 + 重写所有引用它的 links（ADR-0009 §7）。目标撞名 → 抛。 */
+/** 改名 = 改 entry 名 + 重写所有引用它的 links + tree 里的条目 + editor-state（ADR-0009 §7 / ADR-0014 §11）。目标撞名 → 抛。 */
 export function renameNode(p: Project, from: string, to: string, now: NowFn = DEFAULT_NOW): void {
-  const src = resolveName(p, from); if (!src) throw new Error(`no such node: ${from}`);
+  const src = resolveName(p, from); if (!src) throw new Error(`no such page: ${from}`);
   const t = to.normalize("NFC");
-  if (!isValidNodeName(t)) throw new Error(`invalid node name: ${to}`);
+  if (!isValidNodeName(t)) throw new Error(`invalid page name: ${to}`);
   const clash = resolveName(p, t);
   if (clash && clash !== src) throw new Error(`name taken: ${clash}`);
   if (clash === src && t === src) return;
@@ -95,34 +104,42 @@ export function renameNode(p: Project, from: string, to: string, now: NowFn = DE
   p.contents.set(t, bytes); p.nodes.set(t, { ...m, modified: now() });
   const k = nameKey(src);
   for (const [, mm] of p.nodes) mm.links = mm.links.map((l) => (nameKey(l) === k ? t : l));
+  p.tree = mapTreeNames(p.tree, (n) => (nameKey(n) === k ? t : n));
   if (p.editorState.last && nameKey(p.editorState.last) === k) p.editorState.last = t;
+  p.editorState.back = p.editorState.back.map((n) => (nameKey(n) === k ? t : n));
 }
-/** 孤儿：有文件、但没有任何节点指向它。 */
-export const isOrphan = (p: Project, name: string): boolean => !!resolveName(p, name) && backlinks(p, name).length === 0;
-/** 丢引用（user 2026-09-10「删除模型就是 gc 里面的丢引用」）：断开 from→to；to 若因此成孤儿（有文件、没人再指向）→ 改名 `<prefix><名>`（唯一化）让原名腾出来
+/** 孤儿：有文件、不在树里、也没有任何页指向它（ADR-0014 之后树也是引用）。 */
+export const isOrphan = (p: Project, name: string): boolean => { const n = resolveName(p, name); return !!n && !inTree(p, n) && backlinks(p, n).length === 0; };
+/** 丢引用（user 2026-09-10「删除模型就是 gc 里面的丢引用」）：断开 from→to；to 若因此成孤儿（有文件、不在树、没人再指向）→ 改名 `<prefix><名>`（唯一化）让原名腾出来
  *  （prefix 由调用方按界面语言给，如 zh `_废-`、en `_dropped-`——user「英文界面不要自动生成中文名字」；ADR-0009 §2 的沉底前缀）。
- *  **只有这个动作改名**：别的途径成孤儿（根页本来就没人指、读进来的散 txt）一律不动（user「非删除的变成孤儿不应自动改名」）。返回孤儿的新名；没成孤儿 / 占位符 → null。 */
+ *  **只有这个动作改名**：别的途径成孤儿（移出树、读进来的散 txt）一律不动（user「非删除的变成孤儿不应自动改名」）。返回孤儿的新名；没成孤儿 → null。 */
 export function dropRef(p: Project, from: string, to: string, prefix: string, now: NowFn = DEFAULT_NOW): string | null {
   const n = resolveName(p, to);
-  const before = n ? backlinks(p, n).length : 0;
-  const removed = unlink(p, from, to, now);
-  if (!n || !removed || before !== 1) return null;   // 只有「这一断让它成了孤儿」才改名：没边可断 / 本来就是孤儿 / 别处还指着 → 不动
+  if (!n) return null;
+  const removed = unlink(p, from, n, now);
+  if (!removed || !isOrphan(p, n)) return null;   // 没边可断 / 树里还有它 / 别处还指着 → 不动
   if (prefix && n.startsWith(prefix)) return n;
   const m = n.match(/^(.*?)(\.[A-Za-z0-9]{1,8})?$/); const base = m?.[1] ?? n, ext = m?.[2] ?? "";
   let cand = `${prefix}${base}${ext}`; for (let i = 2; resolveName(p, cand); i++) cand = `${prefix}${base} ${i}${ext}`;
   renameNode(p, n, cand, now);
   return cand;
 }
-/** 彻底删除：只准孤儿（还有人指向 → 抛；UI 先弹框确认）。 */
+/** 彻底删除：只准孤儿（还有人指向 / 在树里 → 抛；UI 先弹框确认）。 */
 export function purgeOrphan(p: Project, name: string): boolean { if (!isOrphan(p, name)) throw new Error(`not an orphan: ${name}`); return deleteNode(p, name); }
-/** 删除节点（正文没了；别人指向它的边留着 = 变占位符）。2.0.7 起 UI 不直接用它（走 dropRef / purgeOrphan）。 */
+/** 删除页（正文没了）。不留悬空：指向它的边一并断掉；在树里则拿掉（它的孩子提到它的位置）。2.0.7 起 UI 不直接用它（走 dropRef / purgeOrphan）。 */
 export function deleteNode(p: Project, name: string): boolean {
   const n = resolveName(p, name); if (!n) return false;
   p.contents.delete(n); p.nodes.delete(n);
+  const k = nameKey(n);
+  for (const [, m] of p.nodes) m.links = m.links.filter((l) => nameKey(l) !== k);
+  const loc = locate(p.tree, n);
+  if (loc) loc.arr.splice(loc.index, 1, ...treeNodeChildren(loc.arr[loc.index]!));
+  collapseEmpty(p);
   if (p.editorState.last === n) p.editorState.last = null;
+  p.editorState.back = p.editorState.back.filter((x) => x !== n);
   return true;
 }
-/** 检索（结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。最少字数默认 1（user 2026-09-10「检索不限字数，这样可以搜全量孤儿」，取代 ADR-0009 的「至少两个字」）。 */
+/** 检索（结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。最少字数默认 1（user 2026-09-10「检索不限字数，这样可以搜全量孤儿」）。 */
 export function search(p: Project, q: string, opts: { minChars?: number; limit?: number } = {}): string[] {
   const min = opts.minChars ?? 1; const needle = q.normalize("NFC").toLowerCase();
   if (needle.length < min) return [];
@@ -135,7 +152,134 @@ export function search(p: Project, q: string, opts: { minChars?: number; limit?:
   hits.sort((a, b) => b.modified - a.modified || a.name.localeCompare(b.name));
   return hits.slice(0, opts.limit ?? 50).map((h) => h.name);
 }
-/** 一个节点的邻居面（边栏的数据）：出边按数组顺序，每条带「有没有文件」。 */
-export function neighbors(p: Project, name: string): { name: string; stub: boolean }[] {
-  return meta(p, name).links.map((l) => ({ name: l, stub: isStub(p, l) }));
+
+// ══ 主干树（ADR-0014）：全部只改 p.tree，不碰 links ══
+interface TreeLoc { arr: TreeNode[]; index: number; parent: string | null }
+/** 在树里找名字（撞名口径）：所在数组 + 下标 + 父名（顶层 = null）；不在树里 → null。 */
+function locate(nodes: TreeNode[], name: string, parent: string | null = null): TreeLoc | null {
+  const k = nameKey(name);
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i]!;
+    if (nameKey(treeNodeName(n)) === k) return { arr: nodes, index: i, parent };
+    if (typeof n !== "string") { const r = locate(n.children, name, n.name); if (r) return r; }
+  }
+  return null;
+}
+function mapTreeNames(nodes: TreeNode[], f: (n: string) => string): TreeNode[] {
+  return nodes.map((n) => (typeof n === "string" ? f(n) : { name: f(n.name), children: mapTreeNames(n.children, f) }));
+}
+/** `{ name, children: [] }` → 字符串（组没了孩子就是普通页）。 */
+function collapseEmpty(p: Project): void {
+  const walk = (nodes: TreeNode[]): TreeNode[] => nodes.map((n) => (typeof n === "string" ? n : n.children.length ? { name: n.name, children: walk(n.children) } : n.name));
+  p.tree = walk(p.tree);
+}
+const subtreeHas = (n: TreeNode, name: string): boolean => nameKey(treeNodeName(n)) === nameKey(name) || treeNodeChildren(n).some((c) => subtreeHas(c, name));
+
+export const inTree = (p: Project, name: string): boolean => !!locate(p.tree, name);
+/** 父页名；顶层 / 不在树里 → null（配 inTree 区分）。 */
+export function treeParent(p: Project, name: string): string | null { return locate(p.tree, name)?.parent ?? null; }
+/** 同一层的兄弟（含自己，数组顺序）；不在树里 → []。 */
+export function treeSiblings(p: Project, name: string): string[] { const l = locate(p.tree, name); return l ? l.arr.map(treeNodeName) : []; }
+/** 孩子（数组顺序）；不在树里 / 没孩子 → []。 */
+export function treeChildren(p: Project, name: string): string[] { const l = locate(p.tree, name); return l ? treeNodeChildren(l.arr[l.index]!).map(treeNodeName) : []; }
+/** 祖先链：根 → … → 自己；不在树里 → []。 */
+export function treePath(p: Project, name: string): string[] {
+  const out: string[] = []; let cur: string | null = resolveName(p, name);
+  if (!cur || !inTree(p, cur)) return [];
+  while (cur) { out.unshift(cur); cur = treeParent(p, cur); }
+  return out;
+}
+/** 前序 DFS：自己 → 孩子 → 下一个兄弟 → 回溯（ADR-0014 §6；上一页/下一页与导出的顺序）。只走 tree，不看 links。 */
+export function dfsOrder(p: Project, root?: TreeNode[]): string[] {
+  const out: string[] = [];
+  const walk = (nodes: TreeNode[]) => { for (const n of nodes) { out.push(treeNodeName(n)); walk(treeNodeChildren(n)); } };
+  walk(root ?? p.tree);
+  return out;
+}
+/** 上一页 / 下一页（首尾不绕回：树首 prev = null、树尾 next = null；散页 = null）。 */
+export function dfsPrev(p: Project, name: string): string | null { const o = dfsOrder(p); const i = o.findIndex((n) => nameKey(n) === nameKey(name)); return i > 0 ? o[i - 1]! : null; }
+export function dfsNext(p: Project, name: string): string | null { const o = dfsOrder(p); const i = o.findIndex((n) => nameKey(n) === nameKey(name)); return i >= 0 && i < o.length - 1 ? o[i + 1]! : null; }
+/** 上移 / 下移：只在同一个 children 数组内交换；到头 / 不在树里 → false。 */
+export function moveUp(p: Project, name: string): boolean { const l = locate(p.tree, name); if (!l || l.index === 0) return false; [l.arr[l.index - 1], l.arr[l.index]] = [l.arr[l.index]!, l.arr[l.index - 1]!]; return true; }
+export function moveDown(p: Project, name: string): boolean { const l = locate(p.tree, name); if (!l || l.index >= l.arr.length - 1) return false; [l.arr[l.index + 1], l.arr[l.index]] = [l.arr[l.index]!, l.arr[l.index + 1]!]; return true; }
+/** 升级：x 从父 P 的 children 移除，插到 P 在它所在数组中的位置之后；x 已是顶层（没有 P）→ false。 */
+export function outdent(p: Project, name: string): boolean {
+  const l = locate(p.tree, name); if (!l || l.parent == null) return false;
+  const [x] = l.arr.splice(l.index, 1);
+  const pl = locate(p.tree, l.parent)!;
+  pl.arr.splice(pl.index + 1, 0, x!);
+  collapseEmpty(p);
+  return true;
+}
+/** 降级：x 移除，追加到上一个兄弟 S 的 children 末尾（S 是字符串 → 升格为 { name: S, children: [x] }）；没有上一个兄弟 → false。 */
+export function indent(p: Project, name: string): boolean {
+  const l = locate(p.tree, name); if (!l || l.index === 0) return false;
+  const [x] = l.arr.splice(l.index, 1);
+  const s = l.arr[l.index - 1]!;
+  const group = typeof s === "string" ? { name: s, children: [] as TreeNode[] } : s;
+  group.children.push(x!);
+  l.arr[l.index - 1] = group;
+  return true;
+}
+/** 移出树：整个子树拿掉（x 的孩子跟着 x 走——树是唯一的容器，它们也都成散页）。页文件、links 一个字节不动。返回拿掉的子树（归档 / 移动时原样放回）；不在树里 → null。 */
+export function detach(p: Project, name: string): TreeNode | null {
+  const l = locate(p.tree, name); if (!l) return null;
+  const [x] = l.arr.splice(l.index, 1);
+  collapseEmpty(p);
+  return x!;
+}
+/** 归档 / 移动：x 放到 anchor 之后（同一层）。x 已在树里 → 先 detach（子树跟着走）再放；anchor 在 x 的子树里 → 抛（不能把自己放进自己）。x / anchor 没文件 → 抛。 */
+export function attachAfter(p: Project, name: string, anchor: string): void {
+  const x = resolveName(p, name), a = resolveName(p, anchor);
+  if (!x) throw new Error(`no such page: ${name}`); if (!a) throw new Error(`no such page: ${anchor}`);
+  if (nameKey(x) === nameKey(a)) throw new Error("cannot attach a page after itself");
+  const cur = locate(p.tree, x);
+  if (cur && subtreeHas(cur.arr[cur.index]!, a)) throw new Error("anchor is inside the page's own subtree");
+  const node: TreeNode = detach(p, x) ?? x;
+  const al = locate(p.tree, a); if (!al) throw new Error(`anchor not in tree: ${anchor}`);
+  al.arr.splice(al.index + 1, 0, node);
+}
+/** 归档 / 移动：x 放到 parent 之下（孩子末尾；parent 是字符串 → 升格为组）。规则同 attachAfter。 */
+export function attachUnder(p: Project, name: string, parent: string): void {
+  const x = resolveName(p, name), pa = resolveName(p, parent);
+  if (!x) throw new Error(`no such page: ${name}`); if (!pa) throw new Error(`no such page: ${parent}`);
+  if (nameKey(x) === nameKey(pa)) throw new Error("cannot attach a page under itself");
+  const cur = locate(p.tree, x);
+  if (cur && subtreeHas(cur.arr[cur.index]!, pa)) throw new Error("parent is inside the page's own subtree");
+  const node: TreeNode = detach(p, x) ?? x;
+  const pl = locate(p.tree, pa); if (!pl) throw new Error(`parent not in tree: ${parent}`);
+  const s = pl.arr[pl.index]!;
+  const group = typeof s === "string" ? { name: s, children: [] as TreeNode[] } : s;
+  group.children.push(node);
+  pl.arr[pl.index] = group;
+}
+/** 放到树的最末尾（顶层）：没有锚时的归档。 */
+export function attachAtEnd(p: Project, name: string): void {
+  const x = resolveName(p, name); if (!x) throw new Error(`no such page: ${name}`);
+  const node: TreeNode = detach(p, x) ?? x;
+  p.tree.push(node);
+}
+export type InsertResult = { name: string; created: boolean; placed: boolean };
+/** 「+ 兄弟」：打新名 = 当场建空文件并接在 after 之后；打已有名（ADR-0009 §6「撞名 = 链接」在树上的读法）= 散页 → 归档到这里；已在树里的页 → 不动它的位置（placed:false，调用方跳过去即可）。 */
+export function insertSibling(p: Project, after: string, newName: string, now: NowFn = DEFAULT_NOW): InsertResult {
+  const a = resolveName(p, after); if (!a || !inTree(p, a)) throw new Error(`anchor not in tree: ${after}`);
+  const r = createNode(p, newName, "", now);
+  if (!r.created && inTree(p, r.name)) return { name: r.name, created: false, placed: false };
+  attachAfter(p, r.name, a);
+  return { name: r.name, created: r.created, placed: true };
+}
+/** 「+ 子节」：同 insertSibling，但放到 parent 的孩子末尾。 */
+export function insertChild(p: Project, parent: string, newName: string, now: NowFn = DEFAULT_NOW): InsertResult {
+  const pa = resolveName(p, parent); if (!pa || !inTree(p, pa)) throw new Error(`parent not in tree: ${parent}`);
+  const r = createNode(p, newName, "", now);
+  if (!r.created && inTree(p, r.name)) return { name: r.name, created: false, placed: false };
+  attachUnder(p, r.name, pa);
+  return { name: r.name, created: r.created, placed: true };
+}
+/** 导出这一支（ADR-0014 §6）：选中页的子树前序 DFS，把 txt 页的正文用 `\n\n` 拼成一个文本（图片页 / 其他页跳过）。不在树里 → 只有它自己。 */
+export function exportSubtree(p: Project, name: string): string {
+  const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
+  const l = locate(p.tree, n);
+  const order = l ? dfsOrder(p, [l.arr[l.index]!]) : [n];
+  return order.filter((x) => nodeKind(x) === "txt").map((x) => (readNodeText(p, x) ?? "").replace(/\s+$/, "")).join("\n\n") + "\n";
 }

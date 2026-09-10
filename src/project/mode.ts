@@ -1,6 +1,7 @@
-// 工程模式控制器（app 层）：把一个 ProjectSession 绑到 textarea + 章节名框，节律与 txt 编辑器同款（200ms 本地 / 15s·30s 推云）。
-// created 2026-09-10 by Claude Fable 5.1。UI 决定（user 委托）：跳转 = 回退栈内存态；spawn = 选中文字分裂成新节点、源稿里那段字移走；
-//   占位符跳上去才生文件；无地 = LocalHome（FSA 写回或下载）。
+// 书模式控制器（app 层）：把一个 ProjectSession 绑到 textarea + 章节名框，节律与 txt 编辑器同款（200ms 本地 / 15s·30s 推云）。
+// created 2026-09-10 by Claude Fable 5.1；v2 树动词（ADR-0014）同日由树 session 接入。UI 决定（user 委托）：跳转 = 回退栈内存态；无地 = LocalHome（FSA 写回或下载）。
+//   占位符已废（ADR-0014 §4）：跳到没有的名字 = 报错不生文件；「+ 兄弟」「+ 子节」当场建空文件并入树；散页上「+ 子节」= 链出去的新散页（spawn）。
+//   上一页 / 下一页 = 全树前序 DFS（首尾不绕回，散页灰）；「导出这一支」= 子树 DFS 拼成一篇 txt（app 层落库 / 下载）。
 // 2026-09-10 晚 user 打回后：节点名 = 纸面顶部的章节名框（v0.2.15 被 ADR-0007 撤掉的 #titleInput 捞回来当节点名用——
 //   「节点名就用之前很可惜被弃置的章节名的 ui」「当前节点的改名也用这个章节名的机制」）；新节点 = 「第 N 章」直接生、不弹框（「新建节点用 list 最下面的一个加号按钮」
 //   「默认节点就叫第一章」）；新边加末尾（「节点应该加在末尾」）；显示不带扩展名（「吃书：还是不显示扩展名吧」）。
@@ -224,7 +225,6 @@ export function createProjectMode(d: ProjectModeDeps) {
   function reportOpen(r: OpenResult): boolean {
     if (r.kind === "ok") { if (r.warnings.length) reportError(new Error("[project] open warnings: " + r.warnings.join("; ")), "log"); return true; }
     if (r.kind === "too-new") { d.setStatus(t("project.tooNew", { v: r.version }), { error: true }); return true; }
-    if (r.kind === "legacy") { d.setStatus(t("project.legacy"), { error: true }); return false; }
     d.setStatus(t(r.kind === "corrupt" ? "project.corrupt" : r.kind === "not-project" ? "project.notProject" : "project.unavailable"), { error: true });
     return false;
   }
@@ -335,20 +335,24 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.titleEl.value = ""; d.titleEl.readOnly = false; d.titleEl.classList.remove("locked");
   }
 
-  // ── 导航（不标脏） ──
+  // ── 导航（不标脏；目标必须有文件——占位符已废） ──
   function jump(target: string): void {
     if (!active()) return;
+    if (!session!.exists(target)) { d.setStatus(t("edge.noSuchPage"), { error: true }); return; }
     commitEditor();
     const from = session!.current();
     let to: string;
     try { to = session!.jump(target); } catch (e) { d.setStatus(errMsg(e), { error: true }); return; }
     if (from && from !== to) pushBack(from);
-    if (session!.dirty && home!.kind === "store") scheduleLocalSave();   // 占位符生了文件 → 顺带落盘
     loadCurrentIntoEditor(); d.onChanged();
   }
+  /** 上一页 / 下一页 = 全树前序 DFS（ADR-0014 §6）：树首 / 树尾 / 散页 → 没有（钮灰）。 */
+  const neighborhood = () => session?.neighborhood() ?? null;
+  function prevPage(): boolean { const n = neighborhood()?.prev; if (!n) return false; jump(n); return true; }
+  function nextPage(): boolean { const n = neighborhood()?.next; if (!n) return false; jump(n); return true; }
   function goBack(): boolean {
     if (!active()) return false;
-    let prev = popBack(); while (prev && !session!.exists(prev)) prev = popBack();   // 历史里改名/删掉的名字跳过（jump 到不存在的名字会生占位文件）
+    let prev = popBack(); while (prev && !session!.exists(prev)) prev = popBack();   // 历史里改名/删掉的名字跳过（jump 到不存在的名字会抛）
     if (!prev) return false;
     commitEditor();
     try { session!.jump(prev); } catch { return false; }
@@ -376,7 +380,47 @@ export function createProjectMode(d: ProjectModeDeps) {
     loadCurrentIntoEditor(); d.onChanged();
     return true;
   }
-  /** 「+」新节点：调用方问好名字再来（撞已有名 = 连过去并跳，ADR-0009 §6）；边加在当前节点末尾，跳过去。 */
+  /** 「+ 兄弟」/「+ 子节」（当前页在树里）：新名当场建空文件并入树；已有散页 = 归档到这里；已在树里 = 位置不动、只跳过去（toast 说一声）。散页上的「+ 子节」退到 newNode（链出去）。 */
+  function newTreePage(rawName: string, where: "sibling" | "child"): boolean {
+    if (!canEdit()) return false;
+    const cur = session!.current(); if (!cur) return false;
+    if (!session!.isInTree(cur)) return where === "child" ? newNode(rawName) : false;
+    const nn = normalizeNodeName(rawName);
+    if (!nn) { d.setStatus(t("edge.badName"), { error: true }); return false; }
+    commitEditor();
+    let r: { name: string; created: boolean; placed: boolean };
+    try { r = where === "sibling" ? session!.newSibling(nn) : session!.newChild(nn); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; }
+    if (!r.placed) d.setStatus(t("edge.alreadyInTree", { name: nodeDisplayName(r.name) }));
+    else if (!r.created) d.setStatus(t("edge.archived", { name: nodeDisplayName(r.name) }));
+    if (cur !== session!.current()) pushBack(cur);
+    scheduleLocalSave();
+    loadCurrentIntoEditor(); d.onChanged();
+    return true;
+  }
+  const newSibling = (rawName: string) => newTreePage(rawName, "sibling");
+  const newChild = (rawName: string) => newTreePage(rawName, "child");
+  /** 改动动词的公共门：锁着 → toast 说原因；抛了 → toast；成了 → 落盘 + 重画。 */
+  const guardEdit = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { if (!canEdit()) { if (active() && !locked && userReadOnly()) d.setStatus(t("edge.lockedHint"), { error: true }); return false; } try { fn(...a); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; } scheduleLocalSave(); d.onChanged(); return true; };
+  // ── 主干树的移动（ADR-0014 §8：菜单先行，拖拽等手感再议）──
+  /** 上移 / 下移 / 升级 / 降级：到头 / 没有上一个兄弟 = no-op（toast 说一声，不算错）。 */
+  function treeMove(target: string, op: "up" | "down" | "outdent" | "indent"): boolean {
+    if (!canEdit()) { if (active() && !locked && userReadOnly()) d.setStatus(t("edge.lockedHint"), { error: true }); return false; }
+    commitEditor();
+    let moved = false;
+    try { moved = op === "up" ? session!.treeUp(target) : op === "down" ? session!.treeDown(target) : op === "outdent" ? session!.treeOutdent(target) : session!.treeIndent(target); }
+    catch (e) { d.setStatus(errMsg(e), { error: true }); return false; }
+    if (!moved) { d.setStatus(t("edge.moveNoop")); return false; }
+    scheduleLocalSave(); d.onChanged();
+    return true;
+  }
+  /** 移出树：页变散页（带着子树），文件与 links 不动、不改名（只有丢引用会改名）。 */
+  const detachFromTree = guardEdit((target: string) => { commitEditor(); if (!session!.treeDetach(target)) throw new Error(t("edge.noSuchPage")); });
+  /** 归档到当前页之后 / 之下（散页从 links / 谁指向这里 收进主干；树里的页 = 搬家，子树跟着）。 */
+  const archiveAfterCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveAfter(target, session!.current()!); });
+  const archiveUnderCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveUnder(target, session!.current()!); });
+  /** 导出这一支：子树 DFS 拼成的正文（落库 / 下载归 app 层）。 */
+  const exportBranchText = (target: string): string => { commitEditor(); return session!.exportBranch(target); };
+  /** 「+」散页：调用方问好名字再来（撞已有名 = 连过去并跳，ADR-0009 §6）；边加在当前页末尾，跳过去。拖进来的 txt 也走这里。 */
   function newNode(rawName: string, text = ""): boolean {
     if (!canEdit()) return false;
     const nn = normalizeNodeName(rawName);
@@ -389,8 +433,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     loadCurrentIntoEditor(); d.onChanged();
     return true;
   }
-  const guardEdit = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { if (!canEdit()) { if (active() && !locked && userReadOnly()) d.setStatus(t("edge.lockedHint"), { error: true }); return false; } try { fn(...a); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; } scheduleLocalSave(); d.onChanged(); return true; };
-  const addLink = guardEdit((to: string) => { const nn = normalizeNodeName(to); if (!nn) throw new Error(t("edge.badName")); session!.addLink(nn); });
+  const addLink = guardEdit((to: string) => { const nn = normalizeNodeName(to); if (!nn) throw new Error(t("edge.badName")); if (!session!.exists(nn)) throw new Error(t("edge.noSuchPage")); session!.addLink(nn); });
   const removeLink = guardEdit((to: string) => { session!.removeLink(to); });
   /** 断入边（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能」）：纯 unlink from → 当前页。 */
   const cutIncoming = guardEdit((from: string) => { if (!session!.cutIncoming(from)) throw new Error("no such incoming link"); });
@@ -415,7 +458,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   });
   const setThumbnail = guardEdit((png: Uint8Array | null) => { session!.setThumbnail(png); });
   const thumbnail = (): Uint8Array | null => session?.thumbnail() ?? null;
-  const moveLink = guardEdit((to: string, dir: -1 | 1) => { const links = session!.sidebar().map((n) => n.name); const i = links.indexOf(to); const j = i + dir; if (i < 0 || j < 0 || j >= links.length) return; [links[i], links[j]] = [links[j]!, links[i]!]; session!.setLinksOrder(links); });
+  const moveLink = guardEdit((to: string, dir: -1 | 1) => { const links = session!.sidebar(); const i = links.indexOf(to); const j = i + dir; if (i < 0 || j < 0 || j >= links.length) return; [links[i], links[j]] = [links[j]!, links[i]!]; session!.setLinksOrder(links); });
   /** 丢引用（删除模型）：断边；成孤儿则改名 `_废-…`（回退栈跟着改名）。返回孤儿新名（toast 用）。 */
   let lastDropped: string | null = null;
   const dropRef = guardEdit((to: string) => { commitEditor(); const nn = session!.drop(to, t("edge.orphanPrefix")); lastDropped = nn; if (nn && nn !== to) renameInBack(to, nn); });
@@ -426,7 +469,8 @@ export function createProjectMode(d: ProjectModeDeps) {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit,
-    jump, goBack, canGoBack: () => back.length > 0, spawnFromSelection, newNode, addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
+    jump, goBack, canGoBack: () => back.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, exportBranchText,
+    addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
     cutIncoming, backlinksOfCurrent, addImagePages, lastAdded: () => lastAdded, pageBytes, replaceImage, setThumbnail, thumbnail,
   };

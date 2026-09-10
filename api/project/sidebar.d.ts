@@ -9,12 +9,15 @@ export interface EdgeSidebarDeps {
     /** 顶部两个入口。 */
     onLibrary: () => void;
     onSettings: () => void;
-    /** 加一页（问名字 → mode.newNode）；顶栏「+」与列表末尾「+」同一个流程。返回 true = 已建/已跳。 */
-    onAddPage: () => Promise<boolean>;
+    /** 「+ 兄弟」「+ 子节」（问名字 → mode.newSibling / newChild；散页上的子节 = 链出去）。返回 true = 已建/已跳。 */
+    onAddSibling: () => Promise<boolean>;
+    onAddChild: () => Promise<boolean>;
+    /** 「导出这一支…」（app 层：问名字 → 落库 / 下载）。 */
+    onExportBranch: (name: string) => Promise<void>;
     /** txt 模式：把这篇草稿变成书（user 2026-09-10）。canLift = 有正文可 lift。 */
     onLift: () => Promise<boolean>;
     canLift: () => boolean;
-    /** 无地工程：「下载一份」入口（store 工程不显示）。 */
+    /** 无地的书：「下载一份」入口（store 的书不显示）。 */
     onDownload?: () => void;
 }
 export declare function createEdgeSidebar(d: EdgeSidebarDeps): {
