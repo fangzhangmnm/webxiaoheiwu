@@ -1637,5 +1637,5 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .gallery-chrome .auth-action .ico, .gallery-trashbar .auth-action .ico { width: 14px; height: 14px; margin-right: 4px; }
 .gallery-trashbar { display: flex; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
 .gallery-trashbar.hidden { display: none; }
-.gallery-mount { flex: 1 1 auto; overflow: auto; padding: 12px 14px 24px; }
+.gallery-mount { flex: 1 1 auto; overflow: auto; padding: 0 0 12px; }   /* 横向 padding 归包内 .gallery-grid（16px）；宿主再叠 14px 曾让 375px 宽只剩 315px、排不下两列（user 2026-09-10 iPhone SE2 打回） */
 .gallery-mount .sheet-action { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); font: inherit; cursor: pointer; }

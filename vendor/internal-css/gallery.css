@@ -389,7 +389,10 @@
    * ⚠⚠ `min-height: 0` 是命门：本网格是 flex 链里的滚动视口，少了它 → 非-rigid 卡片建不起滚动区，
    *   容器把内容强行 fit-all、卡片被压扁成一条（v284-287 用 aspect/内容高全栽在这——不是 aspect 的错，
    *   是这行漏了；当年用 rigid 238px 死高才掩盖过去）。#galleryMount 早有同一行同一注释。 */
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(150px, calc(50% - 8px)), 1fr));
+  /* 窄屏永远至少两列（user 2026-09-10「iphone se2 上 gallery 一行只有一个 card，应该还是两个 card 这样缩放」）：
+   *   列的下限 = min(150px, 容器一半减半个 gap)——容器装不下两个 150 时，两列各自缩到正好一半；宽屏行为不变。
+   *   `8px` 与下面 gap 16px 耦合（半个 gap），改 gap 要一起改。edited by Claude Fable 5.1 2026-09-10 */
   gap: 16px;
   align-content: start;
 }
