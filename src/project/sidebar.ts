@@ -19,6 +19,9 @@ export interface EdgeSidebarDeps {
   onSettings: () => void;
   /** 加一页（问名字 → mode.newNode）；顶栏「+」与列表末尾「+」同一个流程。返回 true = 已建/已跳。 */
   onAddPage: () => Promise<boolean>;
+  /** txt 模式：把这篇草稿变成书（user 2026-09-10）。canLift = 有正文可 lift。 */
+  onLift: () => Promise<boolean>;
+  canLift: () => boolean;
   /** 无地工程：「下载一份」入口（store 工程不显示）。 */
   onDownload?: () => void;
 }
@@ -38,6 +41,9 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     <div class="edge-entries">
       <button type="button" class="edge-entry" id="edgeLibrary">${icon("gallery")}<span>${esc(t("sidebar.library"))}</span></button>
       <button type="button" class="edge-entry" id="edgeSettings">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
+    </div>
+    <div class="edge-txt" id="edgeTxtPane" hidden>
+      <button type="button" class="edge-entry edge-lift" id="edgeLift">${icon("book")}<span>${esc(t("lift.entry"))}</span></button>
     </div>
     <div class="edge-pane" id="edgePane" hidden>
       <div class="edge-head">
@@ -101,6 +107,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     closePopupMenu();
     const m = d.mode;
     pane.hidden = !m.active();
+    $("edgeTxtPane").hidden = m.active() || !d.canLift();
     if (!m.active()) return;
     const cur = m.current();
     nodeEl.textContent = cur ? nodeDisplayName(cur) : "";
@@ -126,6 +133,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   const emptyRow = (text: string) => { const li = document.createElement("li"); li.className = "edge-row empty"; li.textContent = text; return li; };
 
   $("edgeLibrary").addEventListener("click", () => d.onLibrary());
+  $("edgeLift").addEventListener("click", () => { void d.onLift().then((ok) => { if (ok) render(); }); });
   $("edgeSettings").addEventListener("click", () => d.onSettings());
   $("edgeBack").addEventListener("click", () => { if (d.mode.goBack()) { clearQuery(); render(); d.focusEditor(); } });   // 不自动收（user「点 return back 的时候侧栏不应自动弹回」）
   search.addEventListener("input", () => { query = search.value.trim(); render(); });

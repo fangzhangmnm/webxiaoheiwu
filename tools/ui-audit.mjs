@@ -42,7 +42,15 @@ for (const [w, h] of sizes) {
   // ☰ → 侧栏（txt 稿：只有书库/设置两个入口）
   await page.click("#menuButton"); await wait(300); await shot("02-sidebar-txt");
   probe(tag, "☰ opens sidebar", await sidebarShown());
-  probe(tag, "txt mode: project pane hidden", await page.evaluate(() => document.getElementById("edgePane").hidden));
+  probe(tag, "txt mode: project pane hidden, lift entry visible", await page.evaluate(() => document.getElementById("edgePane").hidden && !document.getElementById("edgeTxtPane").hidden));
+  { const draftName = await page.evaluate(() => window.__xhw.editor.state.name); const draftText = await page.inputValue("#editor");
+    await page.click("#edgeLift"); await wait(300);
+    probe(tag, "lift sheet: book name defaults to the draft name", (await page.inputValue("#sheetInput")) === draftName.replace(/\.txt$/i, ""), await page.inputValue("#sheetInput"));
+    await page.click("#sheetConfirm"); await wait(1200);
+    probe(tag, "lift → book mode, first page = draft name, text carried over", await page.evaluate(({ dn, dt }) => window.__xhw.project.active() && document.getElementById("nodeTitle").value === dn.replace(/\.txt$/i, "") && document.getElementById("editor").value === dt, { dn: draftName, dt: draftText }), await page.evaluate(() => `active=${window.__xhw.project.active()} title=${document.getElementById("nodeTitle").value}`));
+    probe(tag, "lift keeps the draft in the library", await page.evaluate((dn) => window.__xhw.drawer.items().some((x) => x.name === dn), draftName));
+    await page.evaluate(async (dn) => { await window.__xhw.openAny(dn); }, draftName); await wait(500);   // 回到 txt 稿，后面的流程照旧
+    await ensureSidebar(true); }
   // 书库
   await page.click("#edgeLibrary"); await wait(1200); await shot("03-library");
   probe(tag, "library title says 书库", (await page.textContent(".gallery-chrome-title")).trim() === "书库");

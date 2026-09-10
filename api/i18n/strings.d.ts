@@ -1492,6 +1492,34 @@ export declare const S: {
         readonly zh: "这个 zip 不是小黑屋的书（没有 graph.json 也没有 pages/）";
         readonly en: "This zip is not a WebXiaoHeiWu book (no graph.json, no pages/)";
     };
+    readonly "lift.entry": {
+        readonly zh: "把这篇变成书…";
+        readonly en: "Turn this draft into a book…";
+    };
+    readonly "lift.title": {
+        readonly zh: "变成书";
+        readonly en: "Turn into a book";
+    };
+    readonly "lift.hint": {
+        readonly zh: "这篇稿的正文成为新书的第一页（页名 = 稿名）。原稿留在书库里，不要了再送回收站。";
+        readonly en: "This draft's text becomes the first page of a new book (page name = draft name). The draft stays in the library; trash it later if you don't want it.";
+    };
+    readonly "lift.needText": {
+        readonly zh: "先写点东西再变成书";
+        readonly en: "Write something first";
+    };
+    readonly "lift.done": {
+        readonly zh: "已变成书「{name}」；原稿还在书库里";
+        readonly en: "Now a book: “{name}”. The draft is still in the library";
+    };
+    readonly "lift.doneEncrypted": {
+        readonly zh: "已变成书「{name}」并加密（原稿是加密的）；原稿还在书库里";
+        readonly en: "Now a book: “{name}”, encrypted like the draft. The draft is still in the library";
+    };
+    readonly "lift.failed": {
+        readonly zh: "变成书失败：{e}";
+        readonly en: "Could not turn into a book: {e}";
+    };
     readonly "st.lastOpenFailed": {
         readonly zh: "上次打开的「{name}」现在打不开，先给你一张新稿；它还在书库里";
         readonly en: "“{name}” from last time can’t be opened right now — here’s a new draft; it is still in the library";

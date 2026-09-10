@@ -14,6 +14,8 @@ import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
 import { packProject, emptyProject } from "./project/format.ts";
+import { createNode } from "./project/graph.ts";
+import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
@@ -181,6 +183,7 @@ const edgeSidebar = createEdgeSidebar({
   onLibrary: () => { void galleryHost.open(); },
   onSettings: () => { drawer.open("settings"); },
   onAddPage: () => addPageFlow(),
+  onLift: () => liftDraftToBook(), canLift: () => !project.active() && editor.canEdit() && editorEl.value.trim().length > 0,
   onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
 });
 /** 加一页（顶栏「+」与侧栏列表末尾「+」同一个流程）：问名字，**不提示不预填**（user 2026-09-10「不用自动第 xx 章命名。不同的人会用节，幕，所以不要替用户做决定」「只有一个 default 就是默认节点」）→ 新页加在当前页末尾并跳过去。 */
@@ -191,6 +194,29 @@ async function addPageFlow(): Promise<boolean> {
   const ok = project.newNode(v);
   if (ok) { edgeSidebar.render(); editorEl.focus(); }
   return ok;
+}
+/** 把当前 txt 草稿变成书（user 2026-09-10「加一个把 draft lift 成书的机制（保留 draft?）」）：正文 → 新书第一页（页名 = 稿名），书名默认 = 稿名；
+ *  原稿**保留**（非破坏；不要了自己送回收站）；原稿是加密的 → 新书立即加密（明文只在本地 IDB 停留一步，同「新建即加密」）。 */
+async function liftDraftToBook(): Promise<boolean> {
+  if (project.active() || !editor.canEdit()) return false;
+  await editor.flushLocal();
+  const text = editorEl.value;
+  if (!text.trim()) { setStatus(t("lift.needText")); return false; }
+  const stem = editor.displayName() ?? t("project.defaultName");
+  const pageName = normalizeNodeName(stem) ?? `${t("project.defaultName")}.txt`;
+  const raw = await openInputSheet(t("lift.title"), { message: t("lift.hint"), defaultValue: stem, placeholder: t("project.defaultName"), okLabel: t("common.ok") });
+  if (raw == null) return false;
+  const wasEncrypted = editor.state.encrypted;
+  try {
+    const p = emptyProject(); const r = createNode(p, pageName, text); p.editorState.last = r.name;
+    const name = await createProjectDoc(raw.trim() || stem, await packProject(p), formatDate(Date.now()), editor.currentDir());
+    const ok = await openAny(name);
+    if (!ok) return false;
+    if (wasEncrypted) await project.toggleEncryption(() => Promise.resolve(false), withBusy);   // 原稿加密 → 新书也封（改日期码名由 toggleEncryption 内部做）
+    edgeSidebar.render();
+    setStatus(t(wasEncrypted ? "lift.doneEncrypted" : "lift.done", { name: project.displayName() ?? name }));
+    return true;
+  } catch (e) { reportError(e); setStatus(t("lift.failed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); return false; }
 }
 const addPageButton = $<HTMLButtonElement>("addPageButton");
 addPageButton.addEventListener("click", () => { void addPageFlow(); });

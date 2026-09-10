@@ -1600,6 +1600,8 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-entry { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; cursor: pointer; }
 .edge-entry:hover, .edge-entry:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--bg-0)); }
 .edge-entry .ico { width: 16px; height: 16px; flex: none; }
+.edge-txt { display: flex; }
+.edge-txt[hidden] { display: none; }
 .edge-pane { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .edge-pane[hidden] { display: none; }
 .edge-head { display: flex; align-items: center; gap: 6px; }
