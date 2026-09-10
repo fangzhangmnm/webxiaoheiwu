@@ -22,7 +22,15 @@ export declare function unlink(p: Project, from: string, to: string, now?: NowFn
 export declare function backlinks(p: Project, name: string): string[];
 /** 改名 = 改 entry 名 + 重写所有引用它的 links（ADR-0009 §7）。目标撞名 → 抛。 */
 export declare function renameNode(p: Project, from: string, to: string, now?: NowFn): void;
-/** 删除节点（正文没了；别人指向它的边留着 = 变占位符，符合「打已有名字 = 链接」的逆）。 */
+/** 孤儿：有文件、但没有任何节点指向它。 */
+export declare const isOrphan: (p: Project, name: string) => boolean;
+/** 丢引用（user 2026-09-10「删除模型就是 gc 里面的丢引用」）：断开 from→to；to 若因此成孤儿（有文件、没人再指向）→ 改名 `<prefix><名>`（唯一化）让原名腾出来
+ *  （prefix 由调用方按界面语言给，如 zh `_废-`、en `_dropped-`——user「英文界面不要自动生成中文名字」；ADR-0009 §2 的沉底前缀）。
+ *  **只有这个动作改名**：别的途径成孤儿（根页本来就没人指、读进来的散 txt）一律不动（user「非删除的变成孤儿不应自动改名」）。返回孤儿的新名；没成孤儿 / 占位符 → null。 */
+export declare function dropRef(p: Project, from: string, to: string, prefix: string, now?: NowFn): string | null;
+/** 彻底删除：只准孤儿（还有人指向 → 抛；UI 先弹框确认）。 */
+export declare function purgeOrphan(p: Project, name: string): boolean;
+/** 删除节点（正文没了；别人指向它的边留着 = 变占位符）。2.0.7 起 UI 不直接用它（走 dropRef / purgeOrphan）。 */
 export declare function deleteNode(p: Project, name: string): boolean;
 /** 检索（结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。最少字数默认 1（user 2026-09-10「检索不限字数，这样可以搜全量孤儿」，取代 ADR-0009 的「至少两个字」）。 */
 export declare function search(p: Project, q: string, opts?: {

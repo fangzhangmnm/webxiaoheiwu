@@ -9,8 +9,8 @@ export interface EdgeSidebarDeps {
     /** 顶部两个入口。 */
     onLibrary: () => void;
     onSettings: () => void;
-    /** 跳到某节点之后（窄屏浮层要收起）。 */
-    afterNavigate?: () => void;
+    /** 加一页（问名字 → mode.newNode）；顶栏「+」与列表末尾「+」同一个流程。返回 true = 已建/已跳。 */
+    onAddPage: () => Promise<boolean>;
     /** 无地工程：「下载一份」入口（store 工程不显示）。 */
     onDownload?: () => void;
 }

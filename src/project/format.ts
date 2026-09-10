@@ -5,7 +5,7 @@
 //   ├─ contents/                  abandonware 时唯一的东西。扁平，不许子目录
 //   │   └─ *.txt（2.0 只开 .txt；别的扩展名合法但不打开）
 //   └─ .webxiaoheiwu/
-//       └─ editor-state.json      { last }：上次所在节点。随保存写，导航不标脏（ADR-0010）
+//       └─ editor-state.json      { last, back }：上次所在节点 + 回退栈（≤50，旧在前）。随保存写，导航不标脏（ADR-0010；back 2026-09-10 补，user「navigation history 跟着书持久化…save 的时候随手捞」）
 import { zipPack, zipUnpack, levelForPath } from "../zip.ts";
 import { encodeText, decodeTextBytes } from "../doc-model.ts";
 import { APP_VERSION } from "../version.ts";
@@ -20,7 +20,8 @@ export const PINNED_MTIME = new Date(Date.UTC(1980, 0, 1));
 
 export interface NodeMeta { links: string[]; created: number; modified: number }
 export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; wroteWith: string; nodes: Record<string, NodeMeta> }
-export interface EditorState { last: string | null }
+export interface EditorState { last: string | null; back: string[] }
+export const BACK_STACK_MAX = 50;
 export interface Project {
   nodes: Map<string, NodeMeta>;               // key = 完整文件名（contents/ 下 entry 名）
   contents: Map<string, Uint8Array>;          // key 同上；值 = 原始字节（txt 就是 UTF-8）
@@ -43,7 +44,7 @@ export function isValidNodeName(name: string): boolean {
 /** 渲染用扩展名（最后一个点之后；没有 → ""）。身份不看它（ADR-0009 §5）。 */
 export const nodeExt = (name: string): string => { const i = name.lastIndexOf("."); return i > 0 && i < name.length - 1 ? name.slice(i + 1).toLowerCase() : ""; };
 
-export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), editorState: { last: null }, readVersion: PROJECT_FORMAT_VERSION }; }
+export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION }; }
 
 /** 打包（整包重写；ADR-0008 §4）。graph.json 只写 contents/ 里真有的节点；links 原样（可含占位符）。 */
 export async function packProject(p: Project): Promise<Blob> {
@@ -55,7 +56,7 @@ export async function packProject(p: Project): Promise<Blob> {
   const graph: ProjectGraphJson = { format: PROJECT_FORMAT, version: PROJECT_FORMAT_VERSION, wroteWith: APP_VERSION, nodes };
   const entries: { path: string; data: Uint8Array | string }[] = [{ path: GRAPH_ENTRY, data: JSON.stringify(graph, null, 1) }];
   for (const name of [...p.contents.keys()].sort()) entries.push({ path: CONTENTS_DIR + name, data: p.contents.get(name)! });
-  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null }) });
+  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX) }) });
   return zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
 }
 
@@ -93,10 +94,15 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
   }
   if (graph) for (const n of Object.keys(graph.nodes ?? {})) { if (!p.contents.has(n.normalize("NFC"))) warnings.push(`graph.json node without contents file dropped: ${n}`); }
   if (EDITOR_STATE_ENTRY in entries) {
-    try { const st = JSON.parse(new TextDecoder().decode(entries[EDITOR_STATE_ENTRY]!)) as Partial<EditorState>; p.editorState.last = typeof st.last === "string" ? st.last.normalize("NFC") : null; }
+    try {
+      const st = JSON.parse(new TextDecoder().decode(entries[EDITOR_STATE_ENTRY]!)) as Partial<EditorState>;
+      p.editorState.last = typeof st.last === "string" ? st.last.normalize("NFC") : null;
+      p.editorState.back = Array.isArray(st.back) ? st.back.filter((x): x is string => typeof x === "string").map((x) => x.normalize("NFC")).slice(-BACK_STACK_MAX) : [];
+    }
     catch { warnings.push("editor-state.json unreadable; ignored"); }
   }
   if (p.editorState.last && !p.contents.has(p.editorState.last)) p.editorState.last = null;
+  p.editorState.back = p.editorState.back.filter((n) => p.contents.has(n));   // 指向已删节点的历史条目丢弃
   return { kind: "ok", project: p, warnings };
 }
 

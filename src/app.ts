@@ -13,8 +13,8 @@ import { docKind, formatDate } from "./doc-model.ts";
 import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
-import { packProject } from "./project/format.ts";
-import { nextChapterName } from "./project/naming.ts";
+import { packProject, emptyProject } from "./project/format.ts";
+import { nextChapterName, nodeDisplayName } from "./project/naming.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
@@ -174,15 +174,27 @@ const project = createProjectMode({
   isSignedIn: () => auth.isSignedIn(),
   onChanged: () => { renderTopbar(); renderSaveButton(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
+  askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
 });
 const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
-  onLibrary: () => { if (NARROW_MQ.matches) setSidebar(false); void galleryHost.open(); },
-  onSettings: () => { if (NARROW_MQ.matches) setSidebar(false); drawer.open("settings"); },
-  afterNavigate: () => { if (NARROW_MQ.matches) setSidebar(false); },   // 窄屏浮层：跳完就收，露出纸面
+  onLibrary: () => { void galleryHost.open(); },
+  onSettings: () => { drawer.open("settings"); },
+  onAddPage: () => addPageFlow(),
   onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
 });
+/** 加一页（顶栏「+」与侧栏列表末尾「+」同一个流程）：问名字（placeholder 提示下一个章号，不预填；user 2026-09-10「不应该自动生成名字，而是让你输入」）→ 新页加在当前页末尾并跳过去。 */
+async function addPageFlow(): Promise<boolean> {
+  if (!project.canEdit()) return false;
+  const v = await openInputSheet(t("edge.newNodeTitle"), { message: t("edge.newNodeHint"), placeholder: nodeDisplayName(nextChapterName(project.nodeNames())), okLabel: t("common.ok") });
+  if (v == null || !v.trim()) return false;
+  const ok = project.newNode(v);
+  if (ok) { edgeSidebar.render(); editorEl.focus(); }
+  return ok;
+}
+const addPageButton = $<HTMLButtonElement>("addPageButton");
+addPageButton.addEventListener("click", () => { void addPageFlow(); });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());
 const canEditNow = () => (project.active() ? project.canEdit() : editor.canEdit());
@@ -211,7 +223,7 @@ async function newProjectFlow(): Promise<void> {
   const date = formatDate(Date.now());
   const firstNode = nextChapterName([]);
   try {
-    const empty = await packProject({ nodes: new Map(), contents: new Map(), editorState: { last: null }, readVersion: 1 });
+    const empty = await packProject(emptyProject());
     const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder());
     if (!editor.isParked()) await editor.park();
     await project.createInStore(name, firstNode);
@@ -283,10 +295,15 @@ function renderTopbar(): void {
     cryptoToggle.setAttribute("data-encrypted", project.encrypted() ? "true" : "false");
     cryptoToggle.title = project.encrypted() ? (project.locked() ? t("top.unlockDoc") : t("top.decryptDoc")) : t("top.encryptDoc");
     cryptoToggle.setAttribute("aria-label", cryptoToggle.title);
-    lockToggle.hidden = true; keyBanner.hidden = true;
+    addPageButton.hidden = !project.canEdit();   // 书模式 ☰ 左边的「+」= 加页（user 2026-09-10）
+    lockToggle.hidden = project.locked() || project.home()?.kind !== "store";   // 0.x 的只读保护（per-device）工程也有
+    useIcon(lockToggle, project.readOnly() ? "edit-disabled" : "edit-enabled");
+    lockToggle.title = project.readOnly() ? t("top.readOnlyOff") : t("top.readOnlyOn"); lockToggle.setAttribute("aria-label", lockToggle.title);
+    keyBanner.hidden = true;
     renderMicVisibility();
     return;
   }
+  addPageButton.hidden = true;
   const st = editor.state;
   const hasDoc = !!st.name || !!st.pendingDate;
   const dn = editor.displayName();
@@ -380,7 +397,7 @@ cryptoToggle.addEventListener("click", () => {
     withBusy,
   );
 });
-lockToggle.addEventListener("click", () => editor.toggleReadOnly());
+lockToggle.addEventListener("click", () => { if (project.active()) void project.toggleReadOnly(); else editor.toggleReadOnly(); });
 
 // ── 跨设备 lastActive 指针（Separated 模式：只在冷启动尊重远端，不在 session 中途切）──
 let booted = false;

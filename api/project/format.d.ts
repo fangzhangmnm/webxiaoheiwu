@@ -18,7 +18,9 @@ export interface ProjectGraphJson {
 }
 export interface EditorState {
     last: string | null;
+    back: string[];
 }
+export declare const BACK_STACK_MAX = 50;
 export interface Project {
     nodes: Map<string, NodeMeta>;
     contents: Map<string, Uint8Array>;

@@ -121,6 +121,9 @@
   color: rgba(0,0,0,0.35);
   font-size: 32px;
 }
+/* 0.1.2：宿主给的占位图标（ui.tilePlaceholderHtml），替代名字首字 */
+.gallery-tile-ph-icon { display: inline-flex; width: 40%; height: 40%; color: var(--ink-soft, rgba(0,0,0,0.45)); }
+.gallery-tile-ph-icon svg { width: 100%; height: 100%; }
 /* 加密作品锁定态：点锁可解锁预览（ADR-0012） */
 .gallery-tile-thumb.placeholder.locked {
   cursor: pointer;

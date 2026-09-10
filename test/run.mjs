@@ -11,6 +11,7 @@ import "./project-format.test.mjs";
 import "./project-graph.test.mjs";
 import "./project-session.test.mjs";
 import "./project-naming.test.mjs";
+import "./z-index.test.mjs";
 import { run } from "./runner.mjs";
 console.log("\n  WebXiaoHeiWu —— app 域测试（store 契约在 internal-store/test/）\n");
 await run();

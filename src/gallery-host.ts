@@ -79,7 +79,7 @@ export function initGalleryHost(d: GalleryHostDeps) {
       status: (msg, isError) => d.setStatus(msg, { error: !!isError }),
       busy: (label, fn) => withBusy(label, fn),
     },
-    ui: { iconHtml: (name, opts) => iconHtml(name, opts) },
+    ui: { iconHtml: (name, opts) => iconHtml(name, opts), tilePlaceholderHtml: (name) => iconHtml(isProjectName(name) ? "book" : "file") },   // 0.1.2：占位图 = 图标，不再取名字首字（user 2026-09-10「所有的预览图都是 2」）
     naming: NAMING,
     isZipDoc: (n) => isProjectName(n),
     policy: { isDoc: (p) => docKind(p) != null, isImage: () => false, naming: NAMING },

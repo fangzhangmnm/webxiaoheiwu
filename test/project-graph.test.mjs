@@ -47,3 +47,26 @@ describe("project/graph · 撞名=链接、占位符、反链=查询", () => {
     eq(search(p, "厕纸").join("|"), "老.txt|新.txt", "刚改过的排前面");
   });
 });
+
+describe("project/graph · 删除模型 = 丢引用（user 2026-09-10）", () => {
+  it("dropRef：断边；成孤儿 → 改名 <prefix>名（撞名加序号）；仍有人指向 → 不改名；占位符 → null；purgeOrphan 只准孤儿", async () => {
+    const { emptyProject } = await import("../src/project/format.ts");
+    const { createNode, link, dropRef, purgeOrphan, isOrphan, neighbors, backlinks } = await import("../src/project/graph.ts");
+    const p = emptyProject(); const now = tick();
+    createNode(p, "第一章.txt", "", now); createNode(p, "第二章.txt", "B", now); createNode(p, "第三章.txt", "C", now);
+    link(p, "第一章.txt", "第二章.txt", { now }); link(p, "第一章.txt", "第三章.txt", { now }); link(p, "第三章.txt", "第二章.txt", { now });
+    eq(dropRef(p, "第一章.txt", "第二章.txt", "_废-", now), null, "第三章 还指着它 → 不改名");
+    assert(p.contents.has("第二章.txt")); eq(neighbors(p, "第一章.txt").map((n) => n.name).join(), "第三章.txt");
+    eq(dropRef(p, "第一章.txt", "第三章.txt", "_废-", now), "_废-第三章.txt", "没人指了 → 孤儿改名");
+    assert(!p.contents.has("第三章.txt") && p.contents.has("_废-第三章.txt")); eq(backlinks(p, "第二章.txt").join(), "_废-第三章.txt", "改名重写了它的出边持有者");
+    createNode(p, "第三章.txt", "again", now); link(p, "第一章.txt", "第三章.txt", { now });
+    eq(dropRef(p, "第一章.txt", "第三章.txt", "_废-", now), "_废-第三章 2.txt", "同名孤儿已存在 → 加序号");
+    eq(dropRef(p, "第一章.txt", "占位.txt", "_废-", now), null, "占位符：没文件");
+    assert(isOrphan(p, "第一章.txt"), "根页本来就没人指——但只有 dropRef 会改名，它不动");
+    let threw = false; try { purgeOrphan(p, "第二章.txt"); } catch { threw = true; } assert(threw, "还有人指向 → 不准彻底删");
+    assert(purgeOrphan(p, "_废-第三章.txt")); assert(!p.contents.has("_废-第三章.txt"));
+    eq(dropRef(p, "第一章.txt", "_废-第三章 2.txt", "_dropped-", now), null, "没边可断（早是孤儿）→ 不动，不套第二层前缀");
+    createNode(p, "根.txt", "", now); link(p, "根.txt", "第二章.txt", { now }); link(p, "第一章.txt", "根.txt", { now });
+    eq(dropRef(p, "第一章.txt", "根.txt", "_废-", now), "_废-根.txt"); eq(backlinks(p, "第二章.txt").sort().join("|"), "_废-根.txt", "孤儿改名后它自己的出边持有者名跟着变");
+  });
+});

@@ -20,6 +20,7 @@ describe("project/format · 目录清单（ADR-0008 §3）与往返", () => {
     eq(g.nodes["夏音-第三次见面.txt"].links.join("|"), "夏音.txt|_废-第一版开场.txt", "占位符照写、顺序照写");
     eq(g.nodes["夏音.txt"].created, 1000);
     eq(JSON.parse(td.decode(entries[".webxiaoheiwu/editor-state.json"])).last, "夏音-第三次见面.txt");
+    eq(JSON.stringify(JSON.parse(td.decode(entries[".webxiaoheiwu/editor-state.json"])).back), "[]", "back 随保存写（ADR-0010 口径）");
   });
   it("往返无损；同内容同字节（钉 1980 时间戳 + JS deflate）", async () => {
     const p = emptyProject(); createNode(p, "a.txt", "hello", () => 1); createNode(p, "b.txt", "world", () => 2); link(p, "a.txt", "b.txt", { now: () => 3 });
@@ -67,5 +68,18 @@ describe("project/format · 宽容读严格写", () => {
   it("nameKey / isValidNodeName / nodeExt", () => {
     eq(nameKey("É.TXT"), "é.txt"); assert(isValidNodeName("夏音.第三次.txt")); assert(!isValidNodeName(".hidden")); assert(!isValidNodeName("a/b.txt")); assert(!isValidNodeName(""));
     eq(nodeExt("夏音.webxiaoheiwu.zip"), "zip"); eq(nodeExt("bare"), ""); eq(nodeExt(".hidden"), "");
+  });
+});
+
+describe("project/format · editor-state.back（回退栈跟着书持久化；不标脏、保存随手捞）", () => {
+  it("pack 写 back（≤50）；unpack 读回、NFC、丢掉指向不存在节点的条目", async () => {
+    const { emptyProject, packProject, unpackProject } = await import("../src/project/format.ts");
+    const { createNode } = await import("../src/project/graph.ts");
+    const p = emptyProject(); createNode(p, "a.txt", "A"); createNode(p, "b.txt", "B");
+    p.editorState.last = "b.txt"; p.editorState.back = ["a.txt", "gone.txt", "b.txt"];
+    const r = await unpackProject(await packProject(p));
+    eq(r.kind, "ok"); eq(r.project.editorState.back.join("|"), "a.txt|b.txt"); eq(r.project.editorState.last, "b.txt");
+    p.editorState.back = Array.from({ length: 80 }, (_, i) => (i % 2 ? "a.txt" : "b.txt"));
+    const r2 = await unpackProject(await packProject(p)); eq(r2.project.editorState.back.length, 50, "封顶 50");
   });
 });

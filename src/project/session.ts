@@ -4,7 +4,7 @@
 //   · 落盘 = 整包重写（ADR-0008 §4），字节源 = packProject（同内容同字节）
 //   · 撞名 = 链接不是新建；占位符跳上去才生文件（ADR-0009）
 import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
-import { createNode, setNodeText, link, unlink, renameNode, deleteNode, search, neighbors, backlinks, resolveName, isStub, type NowFn } from "./graph.ts";
+import { createNode, setNodeText, link, unlink, renameNode, deleteNode, search, neighbors, backlinks, resolveName, isStub, dropRef, purgeOrphan, isOrphan, type NowFn } from "./graph.ts";
 
 export interface ProjectSessionDeps {
   read(name: string): Promise<Blob | null>;                                     // store file(name,{isZip:true}).open()
@@ -86,6 +86,9 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const setLinksOrder = guard((links: string[]) => { const m = project.nodes.get(requireCurrent()); if (m) m.links = links.slice(); });
   const rename = guard((from: string, to: string) => renameNode(project, from, to, now));
   const remove = guard((target: string) => deleteNode(project, target));
+  const drop = guard((to: string, orphanPrefix: string) => dropRef(project, requireCurrent(), to, orphanPrefix, now));
+  const purge = guard((target: string) => purgeOrphan(project, target));
+  const orphan = (target: string) => isOrphan(project, target);
 
   // ── 查询（零态度：无全图、无计数） ──
   const sidebar = () => (current() ? neighbors(project, current()!) : []);
@@ -104,13 +107,15 @@ export function createProjectSession(d: ProjectSessionDeps) {
     if (g === gen) dirty = false;
     return { wrote: true, pushed: r.pushed };
   }
+  /** 回退栈（UI 的内存态镜像进 editor-state；不标脏，随下次保存写——ADR-0010 口径）。 */
+  function setBack(list: readonly string[]): void { project.editorState.back = list.slice(-50); }
   /** 只写 editor-state 变化（跳转后想记住位置但没改正文）：不算脏、由调用方在「本来就要保存」时顺带。 */
   const toBlob = () => packProject(project);
 
   return {
-    open, create, close, flush, toBlob, adoptName,
+    open, create, close, flush, toBlob, adoptName, setBack,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
-    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove,
+    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, drop, purge, orphan,
     sidebar, backlinksOf, find, exists,
   };
 }

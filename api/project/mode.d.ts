@@ -24,6 +24,8 @@ export interface ProjectModeDeps {
     /** 身份/节点/脏态变了 → 顶栏 + 边栏重画。 */
     onChanged: () => void;
     onBeforeLoad?: () => void;
+    /** 新节点 / 分裂的名字框（app 注入 in-app sheet）。返回 null = 取消。 */
+    askName: (title: string, def: string, hint: string) => Promise<string | null>;
     /** 加密：解锁循环（手势里才调）；锁态查询；锁态变化订阅（crypto-state）。 */
     isUnlocked: () => boolean;
     ensureUnlocked: () => Promise<boolean>;
@@ -49,6 +51,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         }>;
         toBlob: () => Promise<Blob>;
         adoptName: (newName: string) => void;
+        setBack: (list: readonly string[]) => void;
         readonly name: string | null;
         readonly dirty: boolean;
         readonly readOnly: boolean;
@@ -63,6 +66,9 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         setLinksOrder: (links: string[]) => void;
         rename: (from: string, to: string) => void;
         remove: (target: string) => boolean;
+        drop: (to: string, orphanPrefix: string) => string | null;
+        purge: (target: string) => boolean;
+        orphan: (target: string) => boolean;
         sidebar: () => {
             name: string;
             stub: boolean;
@@ -75,6 +81,8 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     locked: () => boolean;
     unlock: () => Promise<boolean>;
     toggleEncryption: (confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
+    readOnly: () => boolean;
+    toggleReadOnly: () => Promise<void>;
     openStore: (projectName: string, opts?: {
         promptUnlock?: boolean;
     }) => Promise<boolean>;
@@ -89,13 +97,17 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     goBack: () => boolean;
     canGoBack: () => boolean;
     spawnFromSelection: () => Promise<boolean>;
-    newNode: () => boolean;
+    newNode: (rawName: string) => boolean;
     addLink: (to: string) => boolean;
     removeLink: (to: string) => boolean;
     moveLink: (to: string, dir: 1 | -1) => boolean;
-    deleteNode: (target: string) => boolean;
+    dropRef: (to: string) => boolean;
+    lastDropped: () => string | null;
+    purgeOrphan: (target: string) => boolean;
+    isOrphan: (n: string) => boolean;
     commitTitle: () => boolean;
     focusTitle: () => void;
+    nodeNames: () => string[];
     current: () => string | null;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;

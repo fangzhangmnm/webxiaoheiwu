@@ -29,6 +29,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     }>;
     toBlob: () => Promise<Blob>;
     adoptName: (newName: string) => void;
+    setBack: (list: readonly string[]) => void;
     readonly name: string | null;
     readonly dirty: boolean;
     readonly readOnly: boolean;
@@ -43,6 +44,9 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     setLinksOrder: (links: string[]) => void;
     rename: (from: string, to: string) => void;
     remove: (target: string) => boolean;
+    drop: (to: string, orphanPrefix: string) => string | null;
+    purge: (target: string) => boolean;
+    orphan: (target: string) => boolean;
     sidebar: () => {
         name: string;
         stub: boolean;

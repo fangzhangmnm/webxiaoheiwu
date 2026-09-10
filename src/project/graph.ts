@@ -73,7 +73,25 @@ export function renameNode(p: Project, from: string, to: string, now: NowFn = DE
   for (const [, mm] of p.nodes) mm.links = mm.links.map((l) => (nameKey(l) === k ? t : l));
   if (p.editorState.last && nameKey(p.editorState.last) === k) p.editorState.last = t;
 }
-/** 删除节点（正文没了；别人指向它的边留着 = 变占位符，符合「打已有名字 = 链接」的逆）。 */
+/** 孤儿：有文件、但没有任何节点指向它。 */
+export const isOrphan = (p: Project, name: string): boolean => !!resolveName(p, name) && backlinks(p, name).length === 0;
+/** 丢引用（user 2026-09-10「删除模型就是 gc 里面的丢引用」）：断开 from→to；to 若因此成孤儿（有文件、没人再指向）→ 改名 `<prefix><名>`（唯一化）让原名腾出来
+ *  （prefix 由调用方按界面语言给，如 zh `_废-`、en `_dropped-`——user「英文界面不要自动生成中文名字」；ADR-0009 §2 的沉底前缀）。
+ *  **只有这个动作改名**：别的途径成孤儿（根页本来就没人指、读进来的散 txt）一律不动（user「非删除的变成孤儿不应自动改名」）。返回孤儿的新名；没成孤儿 / 占位符 → null。 */
+export function dropRef(p: Project, from: string, to: string, prefix: string, now: NowFn = DEFAULT_NOW): string | null {
+  const n = resolveName(p, to);
+  const before = n ? backlinks(p, n).length : 0;
+  const removed = unlink(p, from, to, now);
+  if (!n || !removed || before !== 1) return null;   // 只有「这一断让它成了孤儿」才改名：没边可断 / 本来就是孤儿 / 别处还指着 → 不动
+  if (prefix && n.startsWith(prefix)) return n;
+  const m = n.match(/^(.*?)(\.[A-Za-z0-9]{1,8})?$/); const base = m?.[1] ?? n, ext = m?.[2] ?? "";
+  let cand = `${prefix}${base}${ext}`; for (let i = 2; resolveName(p, cand); i++) cand = `${prefix}${base} ${i}${ext}`;
+  renameNode(p, n, cand, now);
+  return cand;
+}
+/** 彻底删除：只准孤儿（还有人指向 → 抛；UI 先弹框确认）。 */
+export function purgeOrphan(p: Project, name: string): boolean { if (!isOrphan(p, name)) throw new Error(`not an orphan: ${name}`); return deleteNode(p, name); }
+/** 删除节点（正文没了；别人指向它的边留着 = 变占位符）。2.0.7 起 UI 不直接用它（走 dropRef / purgeOrphan）。 */
 export function deleteNode(p: Project, name: string): boolean {
   const n = resolveName(p, name); if (!n) return false;
   p.contents.delete(n); p.nodes.delete(n);

@@ -1429,44 +1429,44 @@ export declare const S: {
         readonly en: "Wiped, but {n} residue item(s) remain — reload and run again";
     };
     readonly "project.new": {
-        readonly zh: "新建工程…";
-        readonly en: "New project…";
+        readonly zh: "新建书…";
+        readonly en: "New book…";
     };
     readonly "project.newTitle": {
-        readonly zh: "新建工程";
-        readonly en: "New project";
+        readonly zh: "新建书";
+        readonly en: "New book";
     };
     readonly "project.newHint": {
-        readonly zh: "一个工程 = 一个 zip：里面是一堆 txt 和它们之间的边。文件名只是管理用（OneDrive 上可见），撞名自动加序号。";
-        readonly en: "A project is one zip: a pile of txt files and the edges between them. The file name is just a handle (visible on OneDrive); a clash gets a number.";
+        readonly zh: "一本书 = 一个 zip：里面是一堆章节（txt）和它们之间的边。文件名只是管理用（OneDrive 上可见），撞名自动加序号。";
+        readonly en: "A book is one zip: a pile of chapters (txt) and the edges between them. The file name is just a handle (visible on OneDrive); a clash gets a number.";
     };
     readonly "project.defaultName": {
         readonly zh: "作品";
         readonly en: "Work";
     };
     readonly "project.created": {
-        readonly zh: "已新建工程 {name}";
-        readonly en: "Project {name} created";
+        readonly zh: "已新建书 {name}";
+        readonly en: "Book {name} created";
     };
     readonly "project.createFailed": {
-        readonly zh: "新建工程失败：{e}";
-        readonly en: "Could not create project: {e}";
+        readonly zh: "新建书失败：{e}";
+        readonly en: "Could not create the book: {e}";
     };
     readonly "project.openLocal": {
-        readonly zh: "打开本机工程…";
-        readonly en: "Open local project…";
+        readonly zh: "打开本机的书…";
+        readonly en: "Open a local book…";
     };
     readonly "project.localWriteBack": {
-        readonly zh: "本机工程：保存写回原文件";
-        readonly en: "Local project: saves write back to the file";
+        readonly zh: "本机的书：保存写回原文件";
+        readonly en: "Local book: saves write back to the file";
     };
     readonly "project.localDownloadOnly": {
-        readonly zh: "本机工程：改动只在内存，用保存钮下载一份";
-        readonly en: "Local project: edits live in memory; use Save to download a copy";
+        readonly zh: "本机的书：改动只在内存，用保存钮下载一份";
+        readonly en: "Local book: edits live in memory; use Save to download a copy";
     };
     readonly "project.localRenameHint": {
-        readonly zh: "本机工程的文件名在磁盘上自己改";
-        readonly en: "Rename a local project on disk yourself";
+        readonly zh: "本机的书的文件名在磁盘上自己改";
+        readonly en: "Rename a local book on disk yourself";
     };
     readonly "project.writeBackDenied": {
         readonly zh: "浏览器没让写回文件——点一下保存钮，在弹出的授权里选「允许」";
@@ -1481,28 +1481,32 @@ export declare const S: {
         readonly en: "Downloaded a copy";
     };
     readonly "project.tooNew": {
-        readonly zh: "这个工程是更新版本的小黑屋写的（格式 v{v}），本版只读不覆盖";
-        readonly en: "This project was written by a newer WebXiaoHeiWu (format v{v}); read-only here, never overwritten";
+        readonly zh: "这本书是更新版本的小黑屋写的（格式 v{v}），本版只读不覆盖";
+        readonly en: "This book was written by a newer WebXiaoHeiWu (format v{v}); read-only here, never overwritten";
     };
     readonly "project.corrupt": {
-        readonly zh: "工程文件坏了，打不开（zip 或 graph.json 不对）";
-        readonly en: "Project file is damaged (bad zip or graph.json)";
+        readonly zh: "这本书的文件坏了，打不开（zip 或 graph.json 不对）";
+        readonly en: "The book file is damaged (bad zip or graph.json)";
     };
     readonly "project.notProject": {
-        readonly zh: "这个 zip 不是小黑屋工程（没有 graph.json 也没有 contents/）";
-        readonly en: "This zip is not a WebXiaoHeiWu project (no graph.json, no contents/)";
+        readonly zh: "这个 zip 不是小黑屋的书（没有 graph.json 也没有 contents/）";
+        readonly en: "This zip is not a WebXiaoHeiWu book (no graph.json, no contents/)";
     };
     readonly "project.unavailable": {
-        readonly zh: "本地没有这个工程，云端也拿不到";
-        readonly en: "Project not available locally, and the cloud is unreachable";
+        readonly zh: "本地没有这本书，云端也拿不到";
+        readonly en: "Book not available locally, and the cloud is unreachable";
     };
     readonly "edge.aria": {
-        readonly zh: "节点边栏";
-        readonly en: "Edge sidebar";
+        readonly zh: "侧栏";
+        readonly en: "Sidebar";
+    };
+    readonly "top.addPage": {
+        readonly zh: "加一页";
+        readonly en: "Add a page";
     };
     readonly "edge.back": {
-        readonly zh: "回到上一个节点";
-        readonly en: "Back to previous node";
+        readonly zh: "回到上一页";
+        readonly en: "Back to the previous page";
     };
     readonly "edge.search": {
         readonly zh: "检索";
@@ -1521,32 +1525,28 @@ export declare const S: {
         readonly en: "Nothing";
     };
     readonly "edge.empty": {
-        readonly zh: "这个节点还没有边。按下面的「+」新建节点，或选中一段字按 Ctrl+Enter 分裂出去。";
-        readonly en: "No edges yet. Press “+” below to add a node, or select text and press Ctrl+Enter to split it off.";
+        readonly zh: "这一页还没有边。按「+」加一页，或选中一段字按 Ctrl+Enter 分裂出去。";
+        readonly en: "No edges yet. Press “+” to add a page, or select text and press Ctrl+Enter to split it off.";
     };
     readonly "edge.newNode": {
-        readonly zh: "新节点";
-        readonly en: "New node";
+        readonly zh: "加一页";
+        readonly en: "Add a page";
     };
-    readonly "edge.linkExisting": {
-        readonly zh: "连接已有…";
-        readonly en: "Link existing…";
+    readonly "edge.newNodeTitle": {
+        readonly zh: "这一页叫什么";
+        readonly en: "Name the page";
     };
-    readonly "edge.linkTitle": {
-        readonly zh: "连一条边";
-        readonly en: "Add an edge";
+    readonly "edge.newNodeHint": {
+        readonly zh: "打已有页的名字 = 从这里连过去。";
+        readonly en: "An existing page’s name = link to it from here.";
     };
-    readonly "edge.linkHint": {
-        readonly zh: "打已有节点的名字 = 从这里连过去；新名字 = 占位符（点它才生文件）。";
-        readonly en: "An existing node’s name = link to it from here; a new name = placeholder (click it to create the file).";
-    };
-    readonly "edge.spawn": {
-        readonly zh: "分裂选中";
-        readonly en: "Split selection";
+    readonly "edge.spawnTitle": {
+        readonly zh: "分裂出去的页叫什么";
+        readonly en: "Name the split-off page";
     };
     readonly "edge.spawnHint": {
-        readonly zh: "选中的字移进一个新节点，当前节点指向它（Ctrl+Enter）";
-        readonly en: "Move the selection into a new node linked from here (Ctrl+Enter)";
+        readonly zh: "选中的字会移进这一新页，当前页指向它。";
+        readonly en: "The selection moves into the new page, linked from here.";
     };
     readonly "edge.spawnNoSelection": {
         readonly zh: "先在正文里选中一段字";
@@ -1560,17 +1560,37 @@ export declare const S: {
         readonly zh: "名字不合法（不能有 / 之类的路径字符，不能以点开头）";
         readonly en: "Invalid name (no path characters like /, no leading dot)";
     };
-    readonly "edge.backlinks": {
-        readonly zh: "谁指向这里";
-        readonly en: "Backlinks";
+    readonly "edge.drop": {
+        readonly zh: "移出（丢引用）";
+        readonly en: "Remove (drop reference)";
     };
-    readonly "edge.backlinksOf": {
-        readonly zh: "指向「{name}」的";
-        readonly en: "Linking to “{name}”";
+    readonly "edge.orphanPrefix": {
+        readonly zh: "_废-";
+        readonly en: "_dropped-";
     };
-    readonly "edge.backlinksNone": {
-        readonly zh: "没有";
-        readonly en: "None";
+    readonly "edge.dropped": {
+        readonly zh: "已移出这一页的边（那页还有别处指向，仍在）";
+        readonly en: "Edge removed (that page is still referenced elsewhere)";
+    };
+    readonly "edge.droppedOrphan": {
+        readonly zh: "已移出；没有页再指向它，改名为「{name}」（孤儿，检索能找到，只有孤儿能彻底删除）";
+        readonly en: "Removed; nothing points to it now, renamed “{name}” (an orphan — search finds it; only orphans can be deleted for good)";
+    };
+    readonly "edge.purge": {
+        readonly zh: "彻底删除";
+        readonly en: "Delete for good";
+    };
+    readonly "edge.purgeTitle": {
+        readonly zh: "彻底删除「{name}」？";
+        readonly en: "Delete “{name}” for good?";
+    };
+    readonly "edge.purgeMsg": {
+        readonly zh: "没有任何页指向这一页（孤儿）。删了正文就没了，书里没有回收站。";
+        readonly en: "No page points to this one (an orphan). Its text will be gone; there is no trash inside a book.";
+    };
+    readonly "edge.notOrphan": {
+        readonly zh: "还有页指向它，先移出（丢引用）";
+        readonly en: "Still referenced — remove the references first";
     };
     readonly "edge.download": {
         readonly zh: "下载一份";
@@ -1589,16 +1609,16 @@ export declare const S: {
         readonly en: "Move down";
     };
     readonly "edge.nameTaken": {
-        readonly zh: "已有同名节点";
-        readonly en: "A node with that name already exists";
+        readonly zh: "已有同名的页";
+        readonly en: "A page with that name already exists";
     };
     readonly "edge.title.ph": {
-        readonly zh: "章节名";
-        readonly en: "Chapter name";
+        readonly zh: "页名";
+        readonly en: "Page name";
     };
     readonly "edge.title.aria": {
-        readonly zh: "节点名（改了就是改名）";
-        readonly en: "Node name (edit to rename)";
+        readonly zh: "页名（改了就是改名）";
+        readonly en: "Page name (edit to rename)";
     };
     readonly "chapter.name": {
         readonly zh: "第{n}章";
@@ -1608,25 +1628,13 @@ export declare const S: {
         readonly zh: "书库";
         readonly en: "Library";
     };
-    readonly "edge.unlink": {
-        readonly zh: "断开这条边";
-        readonly en: "Unlink";
-    };
-    readonly "edge.delete": {
-        readonly zh: "删除节点";
-        readonly en: "Delete node";
-    };
-    readonly "edge.deleteTitle": {
-        readonly zh: "删除「{name}」？";
-        readonly en: "Delete “{name}”?";
-    };
-    readonly "edge.deleteMsg": {
-        readonly zh: "正文会没掉（工程 zip 整包重写，没有回收站）；别的节点指向它的边留着，变成占位符。";
-        readonly en: "Its text will be gone (the project zip is rewritten; no trash inside a project). Edges pointing to it stay as placeholders.";
+    readonly "edge.times": {
+        readonly zh: "创建 {created} · 修改 {modified}";
+        readonly en: "Created {created} · modified {modified}";
     };
     readonly "edge.stub": {
-        readonly zh: "{name}（还没有正文，点它就生出来）";
-        readonly en: "{name} (no text yet; click to create)";
+        readonly zh: "{name}（还没有这一页，点它就生出来）";
+        readonly en: "{name} (no page yet; click to create)";
     };
     readonly "gal.aria": {
         readonly zh: "书库";
@@ -1677,8 +1685,8 @@ export declare const S: {
         readonly en: "Both";
     };
     readonly "galx.emptyNone": {
-        readonly zh: "还没有稿。点「新建」开始写，或打开本机工程。";
-        readonly en: "No documents yet. Tap New to start writing, or open a local project.";
+        readonly zh: "还没有稿。点「新建」开始写，或打开本机的书。";
+        readonly en: "No documents yet. Tap New to start writing, or open a local book.";
     };
     readonly "galx.emptyFolder": {
         readonly zh: "「{f}」是空的";

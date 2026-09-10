@@ -8,12 +8,12 @@ import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
-import { deviceKvSet } from "../device-kv.ts";
+import { deviceKvSet, deviceKvGetJson, deviceKvSetJson } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
 import { reportError } from "../error-badge.ts";
 import { parseDocName } from "../doc-model.ts";
 import { isValidNodeName, nameKey } from "./format.ts";
-import { nextChapterName, nodeDisplayName } from "./naming.ts";
+import { nodeDisplayName } from "./naming.ts";
 import type { SyncKind } from "../editor.ts";
 import { t } from "../i18n/index.ts";
 
@@ -28,12 +28,15 @@ export interface ProjectModeDeps {
   /** 身份/节点/脏态变了 → 顶栏 + 边栏重画。 */
   onChanged: () => void;
   onBeforeLoad?: () => void;
+  /** 新节点 / 分裂的名字框（app 注入 in-app sheet）。返回 null = 取消。 */
+  askName: (title: string, def: string, hint: string) => Promise<string | null>;
   /** 加密：解锁循环（手势里才调）；锁态查询；锁态变化订阅（crypto-state）。 */
   isUnlocked: () => boolean;
   ensureUnlocked: () => Promise<boolean>;
   onLockChange: (cb: (unlocked: boolean) => void) => void;
 }
 const KV_LAST_OPEN = "last-open";
+const KV_READONLY = "readonly-names";   // 与 txt 编辑器同一张 per-device 只读名单（0.x 的锁写；user 2026-09-10「0.x 的锁写功能我们不小心丢了」）
 const TITLE_DEBOUNCE_MS = 500;
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -47,9 +50,15 @@ export function createProjectMode(d: ProjectModeDeps) {
   let persistInFlight: Promise<void> | null = null;
   let titleTimer: ReturnType<typeof setTimeout> | null = null;
   let encrypted = false, locked = false;   // 工程整包加密（store 透明层）：locked = 加密且未解锁 → 空白只读，锁图标 = 手势才弹密码
+  let userReadOnly = false;                // per-device 只读保护（顶栏笔图标）
+  const readOnlyNames = (): string[] => deviceKvGetJson<string[]>(KV_READONLY, []);
 
+  const syncBack = () => { session?.setBack(back); };
+  const pushBack = (n: string) => { back.push(n); if (back.length > 50) back.shift(); syncBack(); };
+  const popBack = (): string | undefined => { const v = back.pop(); syncBack(); return v; };
+  const renameInBack = (from: string, to: string) => { let hit = false; back = back.map((n) => (n === from ? (hit = true, to) : n)); if (hit) syncBack(); };
   const active = () => !!session && !!home;
-  const canEdit = () => active() && !session!.readOnly && !locked;
+  const canEdit = () => active() && !session!.readOnly && !locked && !userReadOnly;
   const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
   const displayName = (): string | null => (home ? (home.kind === "store" ? parseDocName(home.name).stem : home.home.fileName.replace(/\.webxiaoheiwu\.zip$/i, "")) : null);
   const name = (): string | null => (home?.kind === "store" ? home.name : null);
@@ -78,6 +87,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (nn === cur) { syncTitle(); return true; }
     if (nameKey(nn) !== nameKey(cur) && session!.exists(nn)) { d.setStatus(t("edge.nameTaken"), { error: true }); return false; }
     try { session!.rename(cur, nn); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; }
+    renameInBack(cur, nn);
     syncTitle(); scheduleLocalSave(); d.onChanged();
     return true;
   }
@@ -170,11 +180,24 @@ export function createProjectMode(d: ProjectModeDeps) {
     const s = session!;
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
     d.editorEl.value = s.currentText();
-    d.editorEl.readOnly = s.readOnly;
-    d.editorEl.classList.toggle("locked", s.readOnly);
-    syncTitle(); d.titleEl.readOnly = s.readOnly; d.titleEl.classList.toggle("locked", s.readOnly);
+    applyReadOnly();
+    syncTitle();
     try { d.editorEl.selectionStart = d.editorEl.selectionEnd = 0; } catch { /* ignore */ }
     d.editorEl.scrollTop = 0;
+  }
+  function applyReadOnly(): void {
+    const ro = (session?.readOnly ?? false) || userReadOnly;
+    d.editorEl.readOnly = ro; d.editorEl.classList.toggle("locked", ro);
+    d.titleEl.readOnly = ro; d.titleEl.classList.toggle("locked", ro);
+  }
+  /** 顶栏笔图标：切 per-device 只读（先落盘再切；锁态/本机工程不切）。 */
+  async function toggleReadOnly(): Promise<void> {
+    const n = name(); if (!n || locked) return;
+    await flushLocal();
+    userReadOnly = !userReadOnly;
+    const names = readOnlyNames();
+    deviceKvSetJson(KV_READONLY, userReadOnly ? [...new Set([...names, n])] : names.filter((x) => x !== n));
+    applyReadOnly(); d.setState(stateText()); d.onChanged();
   }
   function reportOpen(r: OpenResult): boolean {
     if (r.kind === "ok") { if (r.warnings.length) reportError(new Error("[project] open warnings: " + r.warnings.join("; ")), "log"); return true; }
@@ -208,7 +231,8 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.setStatus(t("st.loading"));
     const r = await s.open(projectName);
     if (g !== gen) return false;
-    home = { kind: "store", name: projectName }; session = s; locked = false; back = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;
+    home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
+    userReadOnly = readOnlyNames().includes(projectName);
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
     const ok = reportOpen(r);
@@ -219,6 +243,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 工程文件在 store 里改了名（顶栏改名）：只换身份，不重开、不重载正文、回退栈不丢。 */
   function adoptName(newName: string): void {
     if (!session || home?.kind !== "store") return;
+    const old = home.name; const names = readOnlyNames(); if (names.includes(old)) deviceKvSetJson(KV_READONLY, names.map((x) => (x === old ? newName : x)));
     home = { kind: "store", name: newName }; session.adoptName(newName);
     setActiveDoc(newName); deviceKvSet(KV_LAST_OPEN, newName);
     d.onChanged();
@@ -258,7 +283,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     const s = createProjectSession({ read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
     if (g !== gen) return false;
-    home = { kind: "local", home: lh }; session = s; back = []; pushPending = false; encrypted = false; locked = false;
+    home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; pushPending = false; encrypted = false; locked = false; userReadOnly = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -270,7 +295,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++;
     const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
-    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false; encrypted = false; locked = false;
+    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false; encrypted = false; locked = false; userReadOnly = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     await s.flush(false);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -282,7 +307,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
-    home = null; session = null; back = []; pushPending = false; encrypted = false; locked = false;
+    home = null; session = null; back = []; pushPending = false; encrypted = false; locked = false; userReadOnly = false;
     d.editorEl.readOnly = false; d.editorEl.classList.remove("locked");
     d.titleEl.value = ""; d.titleEl.readOnly = false; d.titleEl.classList.remove("locked");
   }
@@ -294,60 +319,68 @@ export function createProjectMode(d: ProjectModeDeps) {
     const from = session!.current();
     let to: string;
     try { to = session!.jump(target); } catch (e) { d.setStatus(errMsg(e), { error: true }); return; }
-    if (from && from !== to) back.push(from);
+    if (from && from !== to) pushBack(from);
     if (session!.dirty && home!.kind === "store") scheduleLocalSave();   // 占位符生了文件 → 顺带落盘
     loadCurrentIntoEditor(); d.onChanged();
   }
   function goBack(): boolean {
-    const prev = back.pop(); if (!prev || !active()) return false;
+    if (!active()) return false;
+    let prev = popBack(); while (prev && !session!.exists(prev)) prev = popBack();   // 历史里改名/删掉的名字跳过（jump 到不存在的名字会生占位文件）
+    if (!prev) return false;
     commitEditor();
     try { session!.jump(prev); } catch { return false; }
     loadCurrentIntoEditor(); d.onChanged(); return true;
   }
-  /** spawn：选中文字 → 新节点带那段字（名字 = 选中首行前 12 字，撞名则退到「第 N 章」；不弹框，改名在章节名框）、源稿里那段字移走（走 replaceRange 保 undo）、
-   *  边从当前指向它（末尾）、光标跳过去、章节名框全选待改。 */
+  /** spawn：选中文字 → 问名字（默认 = 选中首行前 12 字）→ 新节点带那段字、源稿里那段字移走（走 replaceRange 保 undo）、边从当前指向它（末尾）、光标跳过去。
+   *  撞已有名 → 拒绝（并进别人的节点会把选中的字弄丢），改名在章节名框。user 2026-09-10「新建节点的时候不应该自动生成名字，而是让你输入吧」→ 分裂也问。 */
   async function spawnFromSelection(): Promise<boolean> {
     if (!canEdit()) return false;
     commitTitle();
     const el = d.editorEl; const start = el.selectionStart ?? 0, end = el.selectionEnd ?? 0;
     const sel = el.value.slice(start, end);
     if (!sel.trim()) { d.setStatus(t("edge.spawnNoSelection")); return false; }
-    let nn = normalizeNodeName(defaultNodeName(sel));
-    if (!nn || session!.exists(nn)) nn = nextChapterName(session!.project.contents.keys());   // 撞名不许静默并进别人的节点（那会把选中的字弄丢）
+    const raw = await d.askName(t("edge.spawnTitle"), defaultNodeName(sel), t("edge.spawnHint"));
+    if (raw == null || !raw.trim() || !canEdit()) return false;
+    const nn = normalizeNodeName(raw);
+    if (!nn) { d.setStatus(t("edge.badName"), { error: true }); return false; }
+    if (session!.exists(nn)) { d.setStatus(t("edge.nameTaken"), { error: true }); return false; }
     replaceRange(el, start, end, "");   // 源稿分裂：这段字移走（input 事件 → 本地节律）
     commitTextarea();
     const from = session!.current();
     session!.spawn(nn, sel);
-    if (from) back.push(from);
+    if (from) pushBack(from);
     scheduleLocalSave();
     loadCurrentIntoEditor(); d.onChanged();
-    focusTitle();
     return true;
   }
-  /** 「+」新节点：「第 N 章」直接生（不弹框），边加在当前节点末尾，跳过去，章节名框全选待改。 */
-  function newNode(): boolean {
+  /** 「+」新节点：调用方问好名字再来（撞已有名 = 连过去并跳，ADR-0009 §6）；边加在当前节点末尾，跳过去。 */
+  function newNode(rawName: string): boolean {
     if (!canEdit()) return false;
+    const nn = normalizeNodeName(rawName);
+    if (!nn) { d.setStatus(t("edge.badName"), { error: true }); return false; }
     commitEditor();
-    const nn = nextChapterName(session!.project.contents.keys());
     const from = session!.current();
     try { session!.spawn(nn, ""); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; }
-    if (from) back.push(from);
+    if (from && from !== session!.current()) pushBack(from);
     scheduleLocalSave();
     loadCurrentIntoEditor(); d.onChanged();
-    focusTitle();
     return true;
   }
   const guardEdit = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { if (!canEdit()) return false; try { fn(...a); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; } scheduleLocalSave(); d.onChanged(); return true; };
   const addLink = guardEdit((to: string) => { const nn = normalizeNodeName(to); if (!nn) throw new Error(t("edge.badName")); session!.addLink(nn); });
   const removeLink = guardEdit((to: string) => { session!.removeLink(to); });
   const moveLink = guardEdit((to: string, dir: -1 | 1) => { const links = session!.sidebar().map((n) => n.name); const i = links.indexOf(to); const j = i + dir; if (i < 0 || j < 0 || j >= links.length) return; [links[i], links[j]] = [links[j]!, links[i]!]; session!.setLinksOrder(links); });
-  const deleteNode = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.remove(target); if (wasCurrent) { const next = back.pop() ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
+  /** 丢引用（删除模型）：断边；成孤儿则改名 `_废-…`（回退栈跟着改名）。返回孤儿新名（toast 用）。 */
+  let lastDropped: string | null = null;
+  const dropRef = guardEdit((to: string) => { commitEditor(); const nn = session!.drop(to, t("edge.orphanPrefix")); lastDropped = nn; if (nn && nn !== to) renameInBack(to, nn); });
+  /** 彻底删除：只准孤儿（调用方先弹框确认）。当前页被删 → 回退或落到任一页。 */
+  const purgeOrphan = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.purge(target); back = back.filter((n) => n !== target); syncBack(); if (wasCurrent) { const next = popBack() ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
 
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
-    encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption,
+    encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly, toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit,
-    jump, goBack, canGoBack: () => back.length > 0, spawnFromSelection, newNode, addLink, removeLink, moveLink, deleteNode, commitTitle, focusTitle,
+    jump, goBack, canGoBack: () => back.length > 0, spawnFromSelection, newNode, addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null,
   };
 }

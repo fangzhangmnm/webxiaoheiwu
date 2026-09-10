@@ -30,6 +30,7 @@ for (const [w, h] of sizes) {
   const sidebarShown = () => page.evaluate(() => document.body.dataset.edges === "1" && getComputedStyle(document.getElementById("edgeSidebar")).display !== "none");
   const rows = () => page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row:not(.add):not(.header):not(.empty) .edge-name")].map((e) => e.textContent));
   const ensureSidebar = async (open) => { if ((await sidebarShown()) !== open) { await page.click("#menuButton"); await wait(300); } };
+  const clickEditor = async () => { if (w < 900) await ensureSidebar(false); await page.click("#editor"); };   // 窄屏浮层不再自动收：点纸面前探针自己收
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
   await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 15000 });   // boot 开出新稿后才能打字（之前在 __xhw 一出现就打，字被「不可用」守卫吞掉 → 整轮没有 txt 稿）
   await page.click("#editor"); await page.keyboard.type("第一篇：她推开门。他在窗边。窗外是雨。"); await wait(700);
@@ -50,7 +51,7 @@ for (const [w, h] of sizes) {
   await page.keyboard.press("Escape"); await wait(200);
   // 新建工程：菜单 → sheet（默认名「作品」）
   await page.click("#galleryNewBtn"); await wait(200);
-  await page.evaluate(() => { const it = [...document.querySelectorAll("button")].find((b) => /新建工程/.test(b.textContent ?? "")); if (!it) throw new Error("new-project menu item not found"); it.click(); }); await wait(400);
+  await page.evaluate(() => { const it = [...document.querySelectorAll("button")].find((b) => /新建书/.test(b.textContent ?? "")); if (!it) throw new Error("new-project menu item not found"); it.click(); }); await wait(400);
   probe(tag, "new project sheet default = 作品", (await page.inputValue("#sheetInput")) === "作品");
   await shot("05-newproject-sheet");
   await page.click("#sheetConfirm"); await wait(1200);
@@ -59,9 +60,10 @@ for (const [w, h] of sizes) {
   probe(tag, "first node = 第一章 in title field (no .txt)", (await page.inputValue("#nodeTitle")) === "第一章", await page.inputValue("#nodeTitle"));
   probe(tag, "top-bar state not an error", !(await page.$eval("#saveStatus", (e) => e.classList.contains("error"))) && !/没有缓存/.test(await page.textContent("#saveStatus")), await page.textContent("#saveStatus"));
   probe(tag, "no warning banner", await page.evaluate(() => { const b = document.getElementById("errBanner"); return !b || b.classList.contains("hidden"); }));
-  if (w >= 900) probe(tag, "wide: sidebar keeps the state it had when 书库 was opened from it", await sidebarShown()); else probe(tag, "narrow: sidebar closed after 书库", !(await sidebarShown()));
+  probe(tag, "sidebar keeps the state it had when 书库 was opened from it (no auto-close)", await sidebarShown());
   // 工程：写 + 退格探针
-  await page.click("#editor"); await page.keyboard.type("她推开门。他在窗边。窗外是雨。"); await wait(300);
+  probe(tag, "book mode: top-bar + (add page) visible, left of ☰", await page.evaluate(() => { const a = document.getElementById("addPageButton"), m = document.getElementById("menuButton"); return !a.hidden && a.getBoundingClientRect().right <= m.getBoundingClientRect().left + 1; }));
+  await clickEditor(); await page.keyboard.type("她推开门。他在窗边。窗外是雨。"); await wait(300);
   { const before = await page.inputValue("#editor"); await page.keyboard.press("End"); await page.keyboard.press("Backspace"); await wait(100);
     const after = await page.inputValue("#editor"); probe(tag, "backspace in project", after.length === before.length - 1, `(${before.length}→${after.length})`); await page.keyboard.type("。"); }
   // 侧栏：工程内导航 + 「+」新节点 → 第二章，章节名框全选 → 改名「序章」→ Enter
@@ -74,46 +76,66 @@ for (const [w, h] of sizes) {
     await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(100); }
   await ensureSidebar(true);
   await page.click("#edgeAdd"); await wait(400);
-  probe(tag, "+ → new node 第二章, title focused & selected", await page.evaluate(() => document.activeElement?.id === "nodeTitle" && document.getElementById("nodeTitle").value === "第二章" && document.getElementById("nodeTitle").selectionEnd === 3));
-  if (w < 900) probe(tag, "narrow: sidebar auto-closes after +", !(await sidebarShown()));
-  await page.keyboard.type("序章"); await page.keyboard.press("Enter"); await wait(300);
+  probe(tag, "+ → asks for a name (placeholder = next chapter 第二章, not prefilled)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && document.getElementById("sheetInput").placeholder === "第二章" && document.getElementById("sheetInput").value === ""));
+  await page.fill("#sheetInput", "第二章"); await page.click("#sheetConfirm"); await wait(400);
+  probe(tag, "+ → new node 第二章 opened, title shows it", await page.evaluate(() => document.getElementById("nodeTitle").value === "第二章" && window.__xhw.project.current() === "第二章.txt"));
+  probe(tag, "sidebar stays open after + (no auto-close)", await sidebarShown());
+  if (w < 900) await ensureSidebar(false);   // 窄屏浮层盖住章节名框，探针自己收
+  await page.click("#nodeTitle"); await page.evaluate(() => document.getElementById("nodeTitle").select()); await page.keyboard.type("序章"); await page.keyboard.press("Enter"); await wait(300);
   probe(tag, "title Enter → renamed + focus body", await page.evaluate(() => document.activeElement?.id === "editor" && window.__xhw.project.current() === "序章.txt"), await page.evaluate(() => window.__xhw.project.current()));
-  await page.keyboard.type("序章正文。"); await wait(300);
+  await clickEditor(); await page.keyboard.type("序章正文。"); await wait(300);
   await shot("08-after-plus-rename");
   // 回退 → 第一章：列表应有「序章」（无 .txt）
   await page.keyboard.press("Alt+ArrowLeft"); await wait(300);
   await ensureSidebar(true);
   probe(tag, "back to 第一章; list shows 序章 without .txt", JSON.stringify(await rows()) === JSON.stringify(["序章"]), JSON.stringify(await rows()));
+  probe(tag, "row shows modified time as small text", await page.evaluate(() => /\d+\/\d+ \d\d:\d\d/.test(document.querySelector("#edgeList .edge-row .edge-sub")?.textContent ?? "")));
   // spawn（Ctrl+Enter）：不弹框，名字 = 选中首行；边加末尾
+  if (w < 900) await ensureSidebar(false);
   await page.evaluate(() => { const el = document.getElementById("editor"); el.focus(); el.setSelectionRange(0, 5); });
   await page.keyboard.press("Control+Enter"); await wait(400);
-  probe(tag, "spawn without sheet; title = 她推开门。", await page.evaluate(() => document.getElementById("sheet").classList.contains("hidden") && document.getElementById("nodeTitle").value === "她推开门。"), await page.inputValue("#nodeTitle"));
+  probe(tag, "spawn asks for a name (default = selection head)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && document.getElementById("sheetInput").value === "她推开门。"));
+  await page.click("#sheetConfirm"); await wait(400);
+  probe(tag, "spawn → title = 她推开门。", (await page.inputValue("#nodeTitle")) === "她推开门。", await page.inputValue("#nodeTitle"));
   await shot("09-after-spawn");
   await page.keyboard.press("Escape"); await page.keyboard.press("Alt+ArrowLeft"); await wait(300);
   await ensureSidebar(true);
   probe(tag, "spawned edge appended at END", JSON.stringify(await rows()) === JSON.stringify(["序章", "她推开门。"]), JSON.stringify(await rows()));
-  // 连接已有… → 占位符加末尾（虚线）
-  await page.click("#edgeLink"); await wait(300); await page.fill("#sheetInput", "祭祀线"); await page.click("#sheetConfirm"); await wait(300);
-  probe(tag, "link existing/new name → stub appended at end", await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row.stub .edge-name")]; return r.length === 1 && r[0].textContent === "祭祀线"; }) && (await rows()).at(-1) === "祭祀线", JSON.stringify(await rows()));
+  // 连边动词还在 mode（钮已按 user 2026-09-10 去掉）：占位符加末尾（虚线）
+  await page.evaluate(() => window.__xhw.project.addLink("祭祀线")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(200);
+  probe(tag, "addLink (no button) → stub appended at end", await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row.stub .edge-name")]; return r.length === 1 && r[0].textContent === "祭祀线"; }) && (await rows()).at(-1) === "祭祀线", JSON.stringify(await rows()));
+  probe(tag, "no spawn/link/backlinks buttons in sidebar", await page.evaluate(() => !document.getElementById("edgeSpawn") && !document.getElementById("edgeLink") && !document.getElementById("edgeBacklinks") && document.getElementById("edgeFoot").hidden));
   // 检索：一个字就搜（孤儿也能扫）
   await page.fill("#edgeSearch", "章"); await wait(300); await shot("10-sidebar-search");
   probe(tag, "search with 1 char works", (await rows()).length >= 2, JSON.stringify(await rows()));
   await page.fill("#edgeSearch", ""); await wait(200);
-  await page.click("#edgeBacklinks"); await wait(300); await shot("11-sidebar-backlinks");
-  await page.click("#edgeBacklinks"); await wait(200);
   await page.click(".edge-row .edge-more"); await wait(300); await shot("12-sidebar-rowmenu");
-  probe(tag, "row menu has no rename item", await page.evaluate(() => ![...document.querySelectorAll(".popup-menu button")].some((b) => /改名/.test(b.textContent ?? ""))));
+  probe(tag, "row menu = 上移/下移/移出 (no rename, no hard delete)", await page.evaluate(() => { const items = [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()); return items.some((x) => /移出/.test(x)) && !items.some((x) => /改名|彻底/.test(x)); }), JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => b.textContent.trim()))));
   await page.keyboard.press("Escape"); await wait(200);
+  // 删除模型：移出（丢引用）→ 孤儿改名 _废-；检索能找到；孤儿行菜单 = 彻底删除
+  { const ok = await page.evaluate(() => window.__xhw.project.dropRef("她推开门。.txt")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(200);
+    const names = await page.evaluate(() => window.__xhw.project.nodeNames());
+    probe(tag, "drop reference → orphan renamed _废-她推开门。, gone from list", ok && names.includes("_废-她推开门。.txt") && !names.includes("她推开门。.txt") && !(await rows()).includes("她推开门。"), JSON.stringify(names));
+    await page.fill("#edgeSearch", "废"); await wait(300);
+    probe(tag, "search finds the orphan; its row menu = 彻底删除 only", (await rows()).includes("_废-她推开门。") && await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row")].find((x) => /_废-她推开门/.test(x.textContent)); return !!r?.querySelector(".edge-more"); }));
+    await page.click("#edgeList .edge-row .edge-more"); await wait(200);
+    probe(tag, "orphan menu = 彻底删除 only", await page.evaluate(() => { const items = [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()); return items.length === 1 && /彻底删除/.test(items[0]); }));
+    await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(200); }
   // 章节名撞名：改成已有名 → 提示、不改
   await ensureSidebar(false); await page.click("#nodeTitle"); await page.fill("#nodeTitle", "序章"); await wait(700);
   probe(tag, "title collision → refused + toast", await page.evaluate(() => window.__xhw.project.current() === "第一章.txt" && /同名/.test(document.getElementById("toast").textContent)), await page.evaluate(() => window.__xhw.project.current()));
   await page.keyboard.press("Escape"); await wait(100);
   probe(tag, "title Escape → reverted", (await page.inputValue("#nodeTitle")) === "第一章");
   // 顶栏改名工程 → 不重开，正文/边栏不动，顶栏即时换名
-  await page.click("#docNameButton"); await wait(300); await page.fill("#sheetInput", "秋音"); const t0 = Date.now(); await page.click("#sheetConfirm");
-  let renamedIn = -1; for (let i = 0; i < 50; i++) { await wait(100); if ((await page.textContent("#docNameButton")).trim() === "秋音") { renamedIn = Date.now() - t0; break; } }
-  probe(tag, `project rename → top bar updates without reload (${renamedIn}ms)`, renamedIn >= 0, await page.textContent("#docNameButton"));
-  probe(tag, "project rename keeps node + edges", await page.evaluate(() => window.__xhw.project.current() === "第一章.txt") && (await rows()).length === 3, JSON.stringify(await rows()));
+  await page.click("#docNameButton"); await wait(300); await page.fill("#sheetInput", "秋音"); const tRename = performance.now(); await page.click("#sheetConfirm");
+  let renamedIn = -1; for (let i = 0; i < 50; i++) { await wait(100); if ((await page.textContent("#docNameButton")).trim() === "秋音") { renamedIn = Math.round(performance.now() - tRename); break; } }
+  probe(tag, `project rename → top bar updates without reload (${renamedIn}ms)`, renamedIn >= 0, `topbar=${await page.textContent("#docNameButton")} renamedIn=${renamedIn}`);
+  // 0.x 的只读保护（user 2026-09-10「0.x 的锁写功能我们不小心丢了」）：工程也有，per-device
+  await page.click("#lockToggle"); await wait(300);
+  probe(tag, "project read-only: textarea+title readOnly, + refuses", await page.evaluate(() => document.getElementById("editor").readOnly && document.getElementById("nodeTitle").readOnly && window.__xhw.project.readOnly() && window.__xhw.project.newNode("x") === false));
+  await page.click("#lockToggle"); await wait(300);
+  probe(tag, "project read-only off again", await page.evaluate(() => !document.getElementById("editor").readOnly && !window.__xhw.project.readOnly()));
+  probe(tag, "project rename keeps node + edges", await page.evaluate(() => window.__xhw.project.current() === "第一章.txt") && (await rows()).length === 2, JSON.stringify(await rows()));
   if (w >= 900) { await ensureSidebar(false);
     const centered = await page.evaluate(() => { const r = document.querySelector(".page").getBoundingClientRect(); return getComputedStyle(document.getElementById("edgeSidebar")).display === "none" && Math.abs(r.left - (innerWidth - r.width) / 2) < 2; });
     probe(tag, "wide: sidebar closed → page centered", centered); await shot("13-wide-sidebar-collapsed");
@@ -121,11 +143,14 @@ for (const [w, h] of sizes) {
     await ensureSidebar(true);
     const overlay = await page.evaluate((b) => { const p = document.querySelector(".page").getBoundingClientRect(), s = document.getElementById("edgeSidebar").getBoundingClientRect(); return JSON.stringify(p) === b && s.right <= innerWidth && s.left > innerWidth / 2; }, before);
     probe(tag, "wide: sidebar is an overlay on the RIGHT, page does not move", overlay); await shot("13b-wide-sidebar-right"); await ensureSidebar(false); }
-  // 刷新：boot 走 openAny(last) → 工程回来、章节名回来、无红条
+  // 回退栈随保存写（不标脏）：跳进 序章 → 打一个字触发落盘 → 刷新后 Alt+← 仍能回 第一章
+  await page.evaluate(() => window.__xhw.project.jump("序章.txt")); await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type("。"); await wait(700);
+  // 刷新：boot 走 openAny(last) → 书回来、章节名回来、无红条
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
-  probe(tag, "reload → project reopened at 第一章, title shown", await page.evaluate(() => document.body.dataset.project === "1" && document.getElementById("nodeTitle").value === "第一章"), await page.inputValue("#nodeTitle"));
+  probe(tag, "reload → book reopened at 序章 (last saved position), title shown", await page.evaluate(() => document.body.dataset.project === "1" && document.getElementById("nodeTitle").value === "序章"), await page.inputValue("#nodeTitle"));
   probe(tag, "reload → no error state / banner", await page.evaluate(() => { const b = document.getElementById("errBanner"); return (!b || b.classList.contains("hidden")) && !document.getElementById("saveStatus").classList.contains("error"); }), await page.textContent("#saveStatus"));
   probe(tag, "reload → sidebar closed", !(await sidebarShown()));
+  probe(tag, "reload → back stack persisted with the book (Alt+← → 第一章)", await page.evaluate(() => window.__xhw.project.canGoBack() && window.__xhw.project.goBack() && window.__xhw.project.current() === "第一章.txt"), await page.evaluate(() => window.__xhw.project.current()));
   // last-open 真的生效：开一篇旧 txt 再刷新，回来的是它而不是最新的（2026-09-10 实锤：以前 JSON.parse 裸字符串永远 null）
   { const oldTxt = await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return null; await window.__xhw.editor.open(it.name); return it.name; });
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);

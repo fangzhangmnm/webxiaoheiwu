@@ -1,4 +1,21 @@
+/* ═══ z-index band 表（2026-09-10，抄 WeebPaint styles.css 顶部：**全仓唯一允许出现 z-index 数字的地方**；test/z-index.test.mjs 机械执法，局部 ≤3 的层内小序放行）
+   不变量：page（纸面内浮件：话筒/候选/锁卡/横幅）< chrome（顶栏/侧栏；侧栏遮罩 = chrome-1）< overlay（书库一屏）< drawer（设置抽屉，能开在书库之上；其遮罩 = drawer-1）
+           < menu（弹出菜单，能从抽屉行弹）< popover（菜单内再弹）< toast < idle（闲置模糊）< busy < modal（sheet；解锁循环在 busy 外）< gate（冲突必 surface）< notice < error
+   user 2026-09-10「麦克风按钮和边栏的 z order 乱了。z order 的问题系统解决一下」：话筒以前 7 > 侧栏 5。 ═══ */
 :root {
+  --z-page: 5;
+  --z-chrome: 10;
+  --z-overlay: 300;
+  --z-drawer: 350;
+  --z-menu: 400;
+  --z-popover: 420;
+  --z-toast: 450;
+  --z-idle: 470;
+  --z-busy: 490;
+  --z-modal: 500;
+  --z-gate: 540;
+  --z-notice: 560;
+  --z-error: 9999;
   /* 配色 token：与 WeebPaint 同名同值（user 2026-09-03「配色换 weebpaint 的，以后再加别的配色」）。
      基础 token 在下面；本仓旧变量名（--bg-0/1/2/3、--ink-muted、--accent-strong/soft、--danger-soft）改为派生，主题只换基础 token。 */
   --bg: #f6f4ef;
@@ -104,7 +121,7 @@ body {
   gap: 4px;
   padding: 0;
   background: transparent;
-  z-index: 5;
+  z-index: var(--z-chrome);
   min-height: 28px;
 }
 
@@ -403,7 +420,7 @@ body {
   backdrop-filter: blur(14px);
   padding: 4px 8px;
   border-radius: 10px;
-  z-index: 6;
+  z-index: var(--z-page);
   max-width: calc(100% - 24px);
   overflow-x: auto;
   scrollbar-width: none;
@@ -464,7 +481,7 @@ body {
   box-shadow: 0 6px 18px rgba(58, 40, 24, 0.18);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  z-index: 7;
+  z-index: var(--z-page);
   transition: background 140ms, color 140ms, transform 140ms, border-color 140ms;
   padding: 0;
 }
@@ -552,7 +569,7 @@ body {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 10;
+  z-index: calc(var(--z-drawer) - 1);
 }
 
 .backdrop.hidden { display: none; }
@@ -567,7 +584,7 @@ body {
   border-left: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  z-index: 11;
+  z-index: var(--z-drawer);
   transition: transform 200ms cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
@@ -1126,7 +1143,7 @@ body {
   background: rgba(45, 27, 15, 0.5);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
-  z-index: 30;
+  z-index: var(--z-idle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1170,7 +1187,7 @@ body {
 
 .busy-overlay {
   cursor: default;
-  z-index: 35;
+  z-index: var(--z-busy);
 }
 
 /* New-version toast (SW signaled an asset update) */
@@ -1189,7 +1206,7 @@ body {
   border-radius: 24px;
   box-shadow: 0 10px 24px rgba(58, 40, 24, 0.32);
   font-size: 12px;
-  z-index: 20;
+  z-index: var(--z-toast);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   animation: toast-in 220ms ease-out;
@@ -1280,7 +1297,7 @@ body {
   background: rgba(45, 27, 15, 0.5);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
-  z-index: 40;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1416,7 +1433,7 @@ body {
 .crypto-button.danger:hover { background: var(--accent-strong, #8f2f2c); color: #fff; }
 .crypto-button.hidden { display: none; }   /* choice sheet 不该有「确定」（审计 UI-5） */
 .crypto-hint.warning { color: var(--danger, #b0413e); }
-.gate-sheet { z-index: 45; }
+.gate-sheet { z-index: var(--z-gate); }
 .gate-card { max-width: 420px; }
 .gate-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
 .gate-actions button { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line-strong, #c9b89a); background: var(--paper, #f1e6cf); color: inherit; font: inherit; cursor: pointer; }
@@ -1425,7 +1442,7 @@ body {
 .gate-note.hidden, .gate-spinner.hidden { display: none; }
 .gate-spinner { width: 22px; height: 22px; margin: 12px auto 0; border: 2px solid rgba(0,0,0,.15); border-top-color: var(--accent, #a05826); border-radius: 50%; animation: xhw-spin .9s linear infinite; }
 @keyframes xhw-spin { to { transform: rotate(360deg); } }
-.err-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(env(safe-area-inset-bottom, 0px), 12px); z-index: 50; width: calc(100% - 24px); max-width: 640px; box-sizing: border-box; padding: 10px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.35); background: #c0392b; color: #fff; font: 13px/1.4 system-ui, sans-serif; white-space: pre-wrap; word-break: break-word; max-height: 50vh; overflow: auto; cursor: pointer; }
+.err-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(env(safe-area-inset-bottom, 0px), 12px); z-index: var(--z-error); width: calc(100% - 24px); max-width: 640px; box-sizing: border-box; padding: 10px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.35); background: #c0392b; color: #fff; font: 13px/1.4 system-ui, sans-serif; white-space: pre-wrap; word-break: break-word; max-height: 50vh; overflow: auto; cursor: pointer; }
 .err-banner.warning { background: #b7791f; }
 .err-banner.hidden { display: none; }
 .settings-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1448,7 +1465,7 @@ body {
 
 /* ── 审计修补（2026-09-03）── */
 .crypto-toggle[hidden], .lock-toggle[hidden] { display: none !important; }   /* 作者层 display 压掉了 UA 的 [hidden]（审计 UI-2） */
-.key-banner { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: 6; margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
+.key-banner { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: var(--z-page); margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
 .status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* 长状态别把标题挤没（审计 UI-11） */
 .voice-config-save.is-danger { color: var(--danger, #b0413e); }   /* 暗色遗留的 #ff8a8a 在淡底上看不见（审计 UI-17） */
 .drawer.hidden { visibility: hidden; transition: transform 0.25s ease, visibility 0s linear 0.25s; }   /* 屏外按钮不可 Tab 到（审计 UI-18） */
@@ -1480,7 +1497,7 @@ body {
 .doc-row .row-icon-button { opacity: 0.55; }
 .doc-row:hover .row-icon-button, .doc-row:focus-within .row-icon-button { opacity: 1; }
 .menu-panel { background: var(--bg); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 180px; max-width: min(92vw, 320px); }
-.popup-menu { z-index: 25; }   /* 抽屉 11 之上、sheet 40 之下 */
+.popup-menu { z-index: var(--z-menu); }   /* 抽屉 11 之上、sheet 40 之下 */
 .menu-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: transparent; border: 0; border-radius: 6px; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; text-align: left; }
 .menu-item:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .menu-item:disabled { opacity: 0.6; cursor: default; }
@@ -1522,7 +1539,7 @@ body.ruled-lines .body {
 .doc-badge { margin-left: 0; }
 .doc-lead { width: 13px; flex: none; }
 .toast {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 9;   /* 图库屏（8）之上：图库里的状态提示也得看见 */
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: var(--z-toast);   /* 图库屏（8）之上：图库里的状态提示也得看见 */
   max-width: min(86%, 560px); padding: 6px 12px; border-radius: 999px;
   background: color-mix(in srgb, var(--ink) 86%, transparent); color: var(--bg);
   font-family: var(--font-ui); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1535,7 +1552,7 @@ body.ruled-lines .body {
 .mic-side { right: 70px; width: 40px; height: 40px; bottom: 18px; }
 .mic-side .ico { width: 18px; height: 18px; }
 /* 锁卡（0.2 护栏，2026-09-04）：锁着 / 不可用的稿不再假装是编辑器 */
-.lock-card { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
+.lock-card { position: absolute; inset: 0; z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
 .lock-card[hidden] { display: none; }
 .lock-card-ico { width: 28px; height: 28px; color: var(--enc); }
 .lock-card-text { margin: 0; font-family: var(--font-ui); font-size: 14px; color: var(--ink-soft); max-width: 36em; }
@@ -1575,10 +1592,10 @@ button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -
   position: fixed; top: 52px; bottom: 12px; right: 12px; width: 240px;
   display: none; flex-direction: column; gap: 8px; padding: 10px;
   border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg-1); color: var(--ink);
-  font-family: var(--font-ui); font-size: 13px; z-index: 5; box-sizing: border-box; box-shadow: var(--shadow);
+  font-family: var(--font-ui); font-size: 13px; z-index: var(--z-chrome); box-sizing: border-box; box-shadow: var(--shadow);
 }
 body[data-edges="1"] .edge-sidebar { display: flex; }
-.edge-backdrop { display: none; position: fixed; inset: 0; z-index: 4; background: rgba(58, 40, 24, 0.22); }   /* 顶栏（5）之下：☰ 仍可点 */
+.edge-backdrop { display: none; position: fixed; inset: 0; z-index: calc(var(--z-chrome) - 1); background: rgba(58, 40, 24, 0.22); }   /* 顶栏（5）之下：☰ 仍可点 */
 .edge-entries { display: flex; gap: 6px; }
 .edge-entry { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; cursor: pointer; }
 .edge-entry:hover, .edge-entry:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--bg-0)); }
@@ -1597,7 +1614,8 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-main { flex: 1; min-width: 0; text-align: left; background: transparent; border: none; border-radius: 6px; padding: 7px 8px; color: var(--ink); font: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; }
 .edge-main:hover, .edge-main:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .edge-row.current .edge-main { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.edge-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edge-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edge-sub { flex: none; color: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; }   /* 同一行小字：修改时间 */
 .edge-row.stub .edge-name { opacity: .7; border-bottom: 1px dashed currentColor; }   /* 占位符：只是还没有文件的名字 */
 .edge-row.add .edge-main { color: var(--ink-soft); border: 1px dashed var(--line); justify-content: center; margin-top: 4px; }   /* 列表末尾的「+」 */
 .edge-row.add .edge-main .ico { width: 14px; height: 14px; }
@@ -1610,7 +1628,7 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 
 
 /* ═══ 2.0 图库屏（@internal/gallery card view，独立一屏替代抽屉列表；网格/tile 皮在 vendor/internal-css/gallery.css）═══ */
-.gallery-full { --z-menu: 400; --z-popover: 420; --z-modal: 500; --z-toast: 540; --z-notice: 560; position: fixed; inset: 0; z-index: 8;   /* 顶栏 5 / toast 9 之间；抽屉 10-11、弹出菜单 25、闲置 30、busy 35、sheet 40 都要压过它（2026-09-10 user：「图库和编辑器的遮挡顺序错误」） */ display: flex; flex-direction: column; background: var(--bg-0); color: var(--ink); font-family: var(--font-ui); }
+.gallery-full { position: fixed; inset: 0; z-index: var(--z-overlay);   /* 包内菜单/弹层用 :root 的 --z-menu/--z-popover/--z-modal/--z-toast/--z-notice（与 WeebPaint 同表） */ display: flex; flex-direction: column; background: var(--bg-0); color: var(--ink); font-family: var(--font-ui); }
 .gallery-full.hidden { display: none; }
 .gallery-chrome { display: flex; align-items: center; gap: 8px; padding: max(env(safe-area-inset-top, 0px), 8px) 14px 8px; border-bottom: 1px solid var(--line); }
 .gallery-chrome-title { font-weight: 600; }

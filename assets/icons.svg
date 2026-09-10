@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  35 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  36 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
@@ -33,6 +33,8 @@
   <symbol id="rename" data-cat="file" data-src="own" data-note="重命名:文字光标+铅笔" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5V5.5h9v2"/><path d="M8 5.5v13"/><path d="M6 18.5h4"/><path d="M14.5 16.8 L19.2 12.1 L21.3 14.2 L16.6 18.9 L13.9 19.5 Z"/></symbol>
   <!-- gallery — 图库入口:图片堆叠(沿用 image 的太阳+山母题) -->
   <symbol id="gallery" data-cat="file" data-src="own" data-note="图库入口:图片堆叠(沿用 image 的太阳+山母题)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="icGalM"><rect width="24" height="24" fill="#fff"/><rect x="2.5" y="7.5" width="16" height="13" rx="1.6" fill="#000" stroke="#000" stroke-width="2.4"/></mask><g mask="url(#icGalM)"><rect x="6" y="3" width="15.5" height="13" rx="1.6"/></g><rect x="2.5" y="7.5" width="16" height="13" rx="1.6"/><circle cx="7.21" cy="12.15" r="1.51"/><path d="M3.03 18.83 L7.83 13.81 L11.39 17.53 L14.06 14.74 L17.97 18.83"/></symbol>
+  <!-- book — 书:合上的书侧视——左脊直立、封面与书页在右、脊底一道弧连回封面(与 file 单张纸同族体量,不画文字)【WebXiaoHeiWu 书库工程卡片占位图（无缩略图时,替代名字首字）；2026-09-10 fable 自画未过目】 -->
+  <symbol id="book" data-cat="file" data-src="own" data-note="书:合上的书侧视——左脊直立、封面与书页在右、脊底一道弧连回封面(与 file 单张纸同族体量,不画文字)【WebXiaoHeiWu 书库工程卡片占位图（无缩略图时,替代名字首字）；2026-09-10 fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19.5 V4.6 A2.1 2.1 0 0 1 7.1 2.5 H19.5 V17.3 H7.1"/><path d="M7.1 17.3 A2.2 2.2 0 0 0 7.1 21.7 H19.5 V17.3"/><path d="M9.5 6.5 H16"/></symbol>
   <!-- hierarchy -->
   <!-- lock — 锁:体 13x11+锁梁抬高(腿3.5),整体居中 -->
   <symbol id="lock" data-cat="hierarchy" data-src="own" data-note="锁:体 13x11+锁梁抬高(腿3.5),整体居中" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="10" width="13" height="11"/><path d="M8.8 10 V6.5 a3.2 3.2 0 0 1 6.4 0 V10"/></symbol>
