@@ -173,7 +173,7 @@ let voiceAbortHook: (() => void) | null = null;
 const project = createProjectMode({
   editorEl, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderSaveButton(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },

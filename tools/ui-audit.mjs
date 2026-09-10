@@ -192,6 +192,23 @@ for (const [w, h] of sizes) {
   await page.click("#galleryBack"); await wait(400); await shot("19-back-to-editor");
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1800);
   probe(tag, "reload after leaving the library → comes back in the editor", await page.evaluate(() => document.body.dataset.mode !== "gallery" && document.getElementById("galleryFull").classList.contains("hidden")));
+  // 锁卡不串场（user 2026-09-10「一开始是 xxx 是加密稿，然后我开新书之后 editor 还是 xxx 是加密稿」）：txt 稿设密码 → 锁定 → 锁卡出现 → 书库新建书 → 锁卡必须消失
+  await page.waitForFunction(() => window.__xhw.editor.canEdit(), null, { timeout: 15000 });
+  const encOk = await page.evaluate(async () => {
+    if (!window.__xhw.editor.state.name) return "no doc";
+    const p = new Promise((resolve) => { const tick = setInterval(async () => { const sheet = document.getElementById("sheet"); if (!sheet.classList.contains("hidden")) { clearInterval(tick); document.getElementById("sheetInput").value = "audit-pw-1"; document.getElementById("sheetInput2").value = "audit-pw-1"; document.getElementById("sheetConfirm").click(); for (let i = 0; i < 100; i++) { await new Promise((r) => setTimeout(r, 200)); if (window.__xhw.editor.state.encrypted) return resolve("encrypted"); } resolve("timeout"); } }, 100); });
+    document.getElementById("cryptoToggle").click();
+    return await p;
+  });
+  probe(tag, "txt draft can be encrypted (audit precondition)", encOk === "encrypted", encOk);
+  await page.evaluate(() => window.__xhw.lockNow()); await wait(1500);
+  probe(tag, "locked encrypted draft shows the lock card", await page.evaluate(() => !document.getElementById("lockCard").hidden && /加密稿/.test(document.getElementById("lockCardText").textContent ?? "")));
+  await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(1200);
+  await page.click("#galleryNewBtn"); await wait(200);
+  await page.evaluate(() => { const it = [...document.querySelectorAll("button")].find((b) => /新建书/.test(b.textContent ?? "")); if (!it) throw new Error("new-project menu item not found"); it.click(); }); await wait(400);
+  await page.fill("#sheetInput", "锁卡测试书"); await page.click("#sheetConfirm"); await wait(1500);
+  probe(tag, "new book after a locked draft: lock card gone, book mode on", await page.evaluate(() => document.getElementById("lockCard").hidden && document.body.dataset.project === "1"));
+  await shot("20-book-after-locked-draft");
   await ctx.close();
 }
 await browser.close(); srv.close();
