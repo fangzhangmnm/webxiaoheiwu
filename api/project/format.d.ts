@@ -3,6 +3,11 @@ export declare const PROJECT_FORMAT_VERSION = 1;
 export declare const GRAPH_ENTRY = "graph.json";
 export declare const CONTENTS_DIR = "pages/";
 export declare const EDITOR_STATE_ENTRY = ".webxiaoheiwu/editor-state.json";
+/** 封面缩略图（ORA 同款路径；ADR-0012）。写时永远最后一个 entry（store getPeek 一次尾读命中）。 */
+export declare const THUMBNAIL_ENTRY = "Thumbnails/thumbnail.png";
+/** 图片页扩展名（2.1）：认这些就当图片页打开；GIF 动图原字节直通。 */
+export declare const IMAGE_EXTS: readonly string[];
+export type NodeKind = "txt" | "image" | "other";
 /** entry 时间戳钉死 → 同内容同字节（ADR-0008 §4/§6）。 */
 export declare const PINNED_MTIME: Date;
 export interface NodeMeta {
@@ -30,6 +35,8 @@ export interface Project {
     readVersion: number;
     /** 修改锁（user 2026-09-10「zip 锁跟着作品」）：成品不想被误改。切换 = 正经改动（标脏、推云）。 */
     readOnly: boolean;
+    /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
+    thumbnail: Uint8Array | null;
 }
 export type UnpackResult = {
     kind: "ok";
@@ -53,6 +60,8 @@ export declare const nameKey: (name: string) => string;
 export declare function isValidNodeName(name: string): boolean;
 /** 渲染用扩展名（最后一个点之后；没有 → ""）。身份不看它（ADR-0009 §5）。 */
 export declare const nodeExt: (name: string) => string;
+/** 页的种类（只看扩展名）：txt 正文 / image 图片页 / other（合法但不打开）。 */
+export declare const nodeKind: (name: string) => NodeKind;
 export declare function emptyProject(): Project;
 /** 打包（整包重写；ADR-0008 §4）。graph.json 只写 pages/ 里真有的页；links 原样（可含占位符）。 */
 export declare function packProject(p: Project): Promise<Blob>;

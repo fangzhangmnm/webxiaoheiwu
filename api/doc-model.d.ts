@@ -32,7 +32,7 @@ export declare function makeDocName(date: string, title: string, dir?: string, s
 export declare function isOpaqueStem(stem: string): boolean;
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export declare function sanitizeFolderName(s: string): string;
-/** 第 n 个碰撞候选：n=0 原名，n≥1 追加 " n"。 */
+/** 第 n 个碰撞候选：n=0 原名，n≥1 追加 `-hex4`（2.1 起；user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑。如果是四位数 hash 就不会 pile of shame」，取代 WeebPaint 式 " 1" " 2"）。 */
 export declare function collisionCandidate(name: string, n: number): string;
 /** 降序自然序比较器（新在前）。 */
 export declare function compareDocNamesDesc(a: string, b: string): number;

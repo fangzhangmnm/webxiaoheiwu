@@ -91,3 +91,33 @@ describe("project/session · 修改锁在工件层：锁住 = 所有改动动词
     ps.setReadOnly(false); assert(ps.canMutate()); eq(ps.setCurrentText("B2"), true);
   });
 });
+
+describe("project/session · 2.1 图片页 / 封面 / 断入边（ADR-0012/0013 + user 2026-09-10）", () => {
+  it("addBytesPage：撞名 hex4、当前页末尾长一条边、不跳转；replaceBytes 保名保边；整包往返字节相同", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("书.webxiaoheiwu.zip", "作品.txt"); await ps.flush(false);
+    const n1 = ps.addBytesPage("夏音.jpg", new Uint8Array([1, 2, 3])); eq(n1, "夏音.jpg"); eq(ps.current(), "作品.txt");
+    const n2 = ps.addBytesPage("夏音.jpg", new Uint8Array([4])); assert(/^夏音-[0-9a-f]{4}\.jpg$/.test(n2), n2);
+    eq(ps.sidebar().map((x) => x.name).join("|"), `夏音.jpg|${n2}`);
+    ps.replaceBytes("夏音.jpg", new Uint8Array([7, 7, 7, 7])); eq(ps.bytesOf("夏音.jpg").length, 4); eq(ps.sidebar().length, 2);
+    assert(ps.dirty); await ps.flush(false);
+    const ps2 = createProjectSession(s.deps); eq((await ps2.open("书.webxiaoheiwu.zip")).kind, "ok"); eq(Array.from(ps2.bytesOf("夏音.jpg")).join(), "7,7,7,7"); eq(ps2.sidebar().length, 2);
+  });
+  it("setThumbnail 标脏并随整包落盘；null 清掉；修改锁下拒绝（LockedBookError）", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("书.webxiaoheiwu.zip", "作品.txt"); await ps.flush(false); assert(!ps.dirty);
+    ps.setThumbnail(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0])); assert(ps.dirty); await ps.flush(false);
+    const ps2 = createProjectSession(s.deps); await ps2.open("书.webxiaoheiwu.zip"); eq(ps2.thumbnail().length, 5);
+    ps2.setThumbnail(null); eq(ps2.thumbnail(), null); assert(ps2.dirty);
+    ps2.setReadOnly(true); let threw = null; try { ps2.setThumbnail(new Uint8Array([1])); } catch (e) { threw = e; } eq(threw?.name, "LockedBookError");
+    try { ps2.cutIncoming("x.txt"); } catch (e) { threw = e; } eq(threw?.name, "LockedBookError");
+    try { ps2.addBytesPage("a.png", new Uint8Array([1])); } catch (e) { threw = e; } eq(threw?.name, "LockedBookError");
+  });
+  it("cutIncoming：断掉 from → 当前页 的入边（纯断边，不改名）；来源不存在 → false", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("书.webxiaoheiwu.zip", "作品.txt"); ps.addLink("b.txt"); ps.jump("b.txt"); ps.addLink("作品.txt"); ps.jump("作品.txt");
+    eq(ps.backlinksOf("作品.txt").join(), "b.txt");
+    assert(ps.cutIncoming("b.txt")); eq(ps.backlinksOf("作品.txt").length, 0); eq(ps.exists("作品.txt"), true); eq(ps.current(), "作品.txt");
+    eq(ps.cutIncoming("nope.txt"), false); eq(ps.cutIncoming("b.txt"), false);
+  });
+});

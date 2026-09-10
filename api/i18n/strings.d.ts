@@ -412,6 +412,118 @@ export declare const S: {
         readonly zh: "写字线";
         readonly en: "Ruled lines";
     };
+    readonly "ui.reading.wordCount": {
+        readonly zh: "字数统计";
+        readonly en: "Word count";
+    };
+    readonly "foot.wordCount": {
+        readonly zh: "{cjk} 字 {en} 词";
+        readonly en: "{cjk} chars · {en} words";
+    };
+    readonly "edge.fromImage": {
+        readonly zh: "从图片…";
+        readonly en: "From image…";
+    };
+    readonly "edge.backlinks": {
+        readonly zh: "谁指向这里";
+        readonly en: "Linked from";
+    };
+    readonly "edge.cutIncoming": {
+        readonly zh: "断开";
+        readonly en: "Unlink from here";
+    };
+    readonly "edge.cutDone": {
+        readonly zh: "已断开「{name}」指向这页的边";
+        readonly en: "Unlinked “{name}” from this page";
+    };
+    readonly "img.pickTitle": {
+        readonly zh: "加图片页";
+        readonly en: "Add image pages";
+    };
+    readonly "img.pickHint": {
+        readonly zh: "长边超过 2048 会缩小并转成 JPEG；小图只剥掉隐私 metadata；动图 GIF 原样进来。";
+        readonly en: "Long edge over 2048 is downscaled to JPEG; small images only lose their privacy metadata; animated GIFs pass through as-is.";
+    };
+    readonly "img.hd": {
+        readonly zh: "保留高清（上限 4096）";
+        readonly en: "Keep high-res (up to 4096)";
+    };
+    readonly "img.pick": {
+        readonly zh: "选择图片…";
+        readonly en: "Choose images…";
+    };
+    readonly "img.fatGifTitle": {
+        readonly zh: "这张动图有点胖";
+        readonly en: "Big animated GIF";
+    };
+    readonly "img.fatGifMsg": {
+        readonly zh: "「{name}」有 {size}，书会跟着变胖，推云也慢。仍要加进来？";
+        readonly en: "“{name}” is {size}; the book gets heavier and cloud sync slower. Add it anyway?";
+    };
+    readonly "img.fatGifOk": {
+        readonly zh: "仍要加";
+        readonly en: "Add anyway";
+    };
+    readonly "img.notImage": {
+        readonly zh: "「{name}」不是图片（jpg / png / webp / gif）";
+        readonly en: "“{name}” is not an image (jpg / png / webp / gif)";
+    };
+    readonly "img.added": {
+        readonly zh: "已加入 {n} 张图片";
+        readonly en: "Added {n} image(s)";
+    };
+    readonly "img.addedCompressed": {
+        readonly zh: "已加入 {n} 张图片（已压缩 {from} → {to}）";
+        readonly en: "Added {n} image(s) (compressed {from} → {to})";
+    };
+    readonly "img.txtAdded": {
+        readonly zh: "已加入「{name}」";
+        readonly en: "Added “{name}”";
+    };
+    readonly "img.dropDraft": {
+        readonly zh: "已新建稿「{name}」";
+        readonly en: "New draft “{name}”";
+    };
+    readonly "img.setCover": {
+        readonly zh: "设为封面";
+        readonly en: "Set as cover";
+    };
+    readonly "img.coverSet": {
+        readonly zh: "已设为封面";
+        readonly en: "Cover set";
+    };
+    readonly "img.replace": {
+        readonly zh: "替换图片…";
+        readonly en: "Replace image…";
+    };
+    readonly "img.replaced": {
+        readonly zh: "已替换";
+        readonly en: "Replaced";
+    };
+    readonly "img.replacedCover": {
+        readonly zh: "已替换，封面跟着换了";
+        readonly en: "Replaced; cover updated too";
+    };
+    readonly "img.dropTxtMode": {
+        readonly zh: "图片要放进书里：先把这篇变成书";
+        readonly en: "Images live in books: turn this draft into a book first";
+    };
+    readonly "img.making": {
+        readonly zh: "处理图片…";
+        readonly en: "Processing image…";
+    };
+    readonly "img.meta": {
+        readonly zh: "{name} · {w}×{h} · {size}";
+        readonly en: "{name} · {w}×{h} · {size}";
+    };
+    readonly "img.failed": {
+        readonly zh: "图片处理失败：{e}";
+        readonly en: "Image failed: {e}";
+    };
+    readonly "galx.tileActive": {
+        readonly zh: "打开中";
+        readonly en: "Open";
+    };
     readonly "ui.reading.hint": {
         readonly zh: "短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。";
         readonly en: "Short-line mode narrows the page and opens up line spacing for web-novel dialogue rhythm.";

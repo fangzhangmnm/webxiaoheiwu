@@ -18,6 +18,12 @@ export declare function link(p: Project, from: string, to: string, opts?: {
     now?: NowFn;
 }): boolean;
 export declare function unlink(p: Project, from: string, to: string, now?: NowFn): boolean;
+/** 唯一化：撞名 → `stem-hex4.ext`（user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑」）。不撞 → 原名（NFC）。 */
+export declare function uniqueNodeName(p: Project, name: string): string;
+/** 新建字节页（图片进门）：撞名不链接、加 hex4（新字节不是同一页）。返回最终名。 */
+export declare function createBytesNode(p: Project, name: string, bytes: Uint8Array, now?: NowFn): string;
+/** 替换字节（「替换图片」：保名保边，只换内容）。 */
+export declare function replaceNodeBytes(p: Project, name: string, bytes: Uint8Array, now?: NowFn): void;
 /** 反链 = 查询（不存）：谁的 links 里有这个名字。 */
 export declare function backlinks(p: Project, name: string): string[];
 /** 改名 = 改 entry 名 + 重写所有引用它的 links（ADR-0009 §7）。目标撞名 → 抛。 */

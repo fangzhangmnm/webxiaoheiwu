@@ -3,7 +3,7 @@
 //   · **文件名 = 管理用句柄，不是标题**（ADR-0007，user 2026-09-04「文件名不是标题的语义，可以变，是管理用的」）：顶栏显示、改名 sheet 改；编辑器里没有标题。
 //   · **有名保名，无名日期**：用户给了名就用（`<名>.txt`，只做路径字符清洗）；没给 → `yyyymmdd-hex4.txt`（WeebPaint naming.ts v217 惯例：日粒度 + 4 位随机 hex 消歧）。
 //     加密稿出生名一律日期码（藏标题：云端只见 `yyyymmdd-hex4.txt.zip`）；明文稿转加密也改成日期码（`isOpaqueStem` 判已是日期码则不动）。
-//   · 撞名才加后缀 ` 1` ` 2`…（后缀不是名字的一部分，是碰撞产物）。禁「未命名」：改名成空 = 不改。
+//   · 撞名才加后缀 `-hex4`（2.1 起，取代 ` 1` ` 2`；后缀不是名字的一部分，是碰撞产物）。禁「未命名」：改名成空 = 不改。
 //   · never trust remote filenames：任何字符串都解析得出，title = 整个 stem（= 显示名）；不再拆日期前缀（老稿 `YYYYMMDD 标题.txt` 原名保留、原样显示）。
 //   · 排序 = zh-CN 自然序降序（与 WeebPaint 图库同：新日期名在上，稳定不随存盘时间跳）。
 //   · 多文件夹（ADR-0006）：身份 = `[夹/]<名>.txt`，夹只一层；根 = 默认夹。
@@ -86,11 +86,11 @@ export function sanitizeFolderName(s: string): string {
   return String(s ?? "").replace(/[\r\n]+/g, " ").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").replace(/^\.+/, "").trim().slice(0, 80);
 }
 
-/** 第 n 个碰撞候选：n=0 原名，n≥1 追加 " n"。 */
+/** 第 n 个碰撞候选：n=0 原名，n≥1 追加 `-hex4`（2.1 起；user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑。如果是四位数 hash 就不会 pile of shame」，取代 WeebPaint 式 " 1" " 2"）。 */
 export function collisionCandidate(name: string, n: number): string {
   if (n === 0) return name;
   const ext = PROJECT_EXT_RE.test(name) ? PROJECT_EXT : DOC_EXT;
-  return `${name.replace(ANY_EXT_RE, "")} ${n}${ext}`;
+  return `${name.replace(ANY_EXT_RE, "")}-${hex4()}${ext}`;
 }
 
 const NAME_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });

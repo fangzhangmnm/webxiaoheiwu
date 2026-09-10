@@ -23,13 +23,13 @@ describe("doc-model · 文件名（有名保名，无名 yyyymmdd-hex4；2026-09
     eq(makeDocName("20260903", "a/b:c"), "a-b-c.txt");
     eq(sanitizeTitle("  多  空  格 \n x"), "多 空 格 x");
   });
-  it("碰撞后缀只在 n≥1 追加", () => { eq(collisionCandidate("x.txt", 0), "x.txt"); eq(collisionCandidate("x.txt", 2), "x 2.txt"); });
+  it("碰撞后缀只在 n≥1 追加，且是 -hex4 不是序号（user 2026-09-10「最讨厌 123 序号焦虑」）", () => { eq(collisionCandidate("x.txt", 0), "x.txt"); assert(/^x-[0-9a-f]{4}\.txt$/.test(collisionCandidate("x.txt", 2)), collisionCandidate("x.txt", 2)); assert(/^b-[0-9a-f]{4}\.webxiaoheiwu\.zip$/.test(collisionCandidate("b.webxiaoheiwu.zip", 1))); });
   it("isDocName：任一夹下的 .txt（ADR-0006）；容器/空段/点头段不算", () => { assert(isDocName("a.txt")); assert(isDocName("sub/a.txt")); assert(!isDocName("a.TXT.zip")); assert(!isDocName("a.bin")); assert(!isDocName("/a.txt")); assert(!isDocName(".hid/a.txt")); });
   it("多文件夹：split/join/parse 带夹；sanitizeFolderName", () => {
     eq(splitDocPath("小说/20260903 x.txt").dir, "小说"); eq(splitDocPath("小说/20260903 x.txt").base, "20260903 x.txt"); eq(splitDocPath("a.txt").dir, "");
     eq(joinDocPath("", "a.txt"), "a.txt"); eq(joinDocPath("f", "a.txt"), "f/a.txt");
     const p = parseDocName("小说/第一章.txt"); eq(p.dir, "小说"); eq(p.title, "第一章");
-    eq(collisionCandidate("小说/x.txt", 1), "小说/x 1.txt");
+    assert(/^小说\/x-[0-9a-f]{4}\.txt$/.test(collisionCandidate("小说/x.txt", 1)));
     eq(sanitizeFolderName(" a/b:c  d "), "a-b-c d"); eq(sanitizeFolderName("..x"), "x"); eq(sanitizeFolderName("   "), "");
   });
   it("formatDate", () => { eq(formatDate(new Date(2026, 8, 3).getTime()), "20260903"); });

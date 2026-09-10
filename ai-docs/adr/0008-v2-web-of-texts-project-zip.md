@@ -33,3 +33,15 @@
 - ADR-0006 一层文件夹作废（ADR-0011）。
 - bump 到 2.0.0 之前，按家规先问 user 要不要把 0.2.x 先 push prod（2026-09-09 已问一次，未答）。
 - 计划全貌与顺序见家族根 `ai-docs/20260909-wxhw-2.0-long-haul-plan.md`。
+
+## 修订 2026-09-10 深夜 4（2.1.0 图片页 + 封面；user「thumb 和图片页实锤了不是 scope creeping」；edited by Claude Fable 5.1）
+§5「2.0 不做」两条作废（ADR-0012 / ADR-0013）。完整目录清单（as-of v2.1.0；graph.json 内容随 ADR-0014 换 v2，entry 清单不变）：
+```
+作品.webxiaoheiwu.zip
+├─ graph.json                       清单（ADR-0009 / 0014）
+├─ pages/                           扁平；txt 正文页 + 图片页（jpg / jpeg / png / webp / gif，STORE；GIF 原字节）
+│   ├─ 作品.txt
+│   └─ 夏音.jpg
+├─ .webxiaoheiwu/editor-state.json  { last, back }（ADR-0010）
+└─ Thumbnails/thumbnail.png         封面本体（ADR-0012；ORA 路径）：**永远最后一个 entry**、STORE、≤256²、≤70 KB，可带 iTXt Description = 腰封；没封面就没有这个 entry
+```

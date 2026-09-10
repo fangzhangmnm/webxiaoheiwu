@@ -1522,6 +1522,18 @@ body[data-project] .node-title { display: block; }
 .node-title::placeholder { color: var(--ink-muted); font-weight: 400; opacity: 0.7; }
 .page-foot { flex: none; text-align: right; font-size: 12px; line-height: 1.4; color: var(--ink-muted); padding-top: 6px; font-variant-numeric: tabular-nums; user-select: none; }   /* 页脚字数统计（user 2026-09-10「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」） */
 .page-foot[hidden] { display: none; }
+/* 图片页（2.1，ADR-0012/0013）：textarea 让位给 img；contain 不放大（user「如果超框就缩小 to fit…小图不要放大，不然 jumpscale」）；点击切 1:1（滚动看细节）。 */
+body[data-page-kind="image"] #editor, body[data-page-kind="image"] .page-foot, body[data-page-kind="image"] .candidates { display: none; }
+.page-image { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; overflow: auto; }
+.page-image[hidden] { display: none; }
+.page-image img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; cursor: zoom-in; flex: 0 1 auto; min-height: 0; }
+.page-image.natural { justify-content: flex-start; align-items: flex-start; }
+.page-image.natural img { max-width: none; max-height: none; cursor: zoom-out; }
+.page-image-bar { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--ink-soft); }
+.page-image-meta { font-variant-numeric: tabular-nums; }
+.edge-kind { flex: none; width: 14px; height: 14px; color: var(--ink-soft); }
+.sheet-check { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 14px; cursor: pointer; }
+.sheet-check.hidden { display: none; }
 .node-title.locked { color: var(--ink-muted); }
 .node-title::selection { background: rgba(160, 88, 38, 0.22); }
 #saveStatus:empty + .sep { display: none; }

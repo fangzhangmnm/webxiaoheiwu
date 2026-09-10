@@ -79,4 +79,11 @@ user 原话（按时序）：「工程改名之后得刷新页面」「一开始
 - **v2.0.15**：锁卡串场修（user「一开始是 xxx 是加密稿，然后我开新书之后 editor 还是 xxx 是加密稿」）：书模式 `onChanged` 没重画锁卡，上一篇锁定加密稿的卡一直盖着 → 补 `renderLockCard()`；探针 +3（设密码 / 锁定出卡 / 新建书卡消失）。
 - **v2.0.16**：页脚字数统计「N 字 M 词」（user「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」）：`.page-foot` 在纸面正文下、`statsForText`、300ms 防抖、prefs `wordCount` 跟云默认开、设置「阅读」节 toggle；探针 +2。
 - **待 user**：域名（见本轮报告分析）；「保存会错」需要新黑匣子；`book` 图标过目。
+
+### v2.1.0 图片页 + 封面纪元（2026-09-10 深夜，user 两圈 grill 拍板；SSoT = ADR-0012 / ADR-0013；edited by Claude Fable 5.1）
+- **落地**：`src/image/`（policy / metadata / codec / import-image）+ vendor upng / fflate / jpeg-js；format `Thumbnails/thumbnail.png`（最后 entry）+ `nodeKind`；graph `createBytesNode` / `replaceNodeBytes` / `uniqueNodeName`（hex4）；session `addBytesPage` / `replaceBytes` / `setThumbnail` / `cutIncoming`；mode 图片页视图（`body[data-page-kind=image]`、`#pageImage`、点击切 1:1）+ `addImagePages` / `replaceImage`（扩展名跟字节类型）/ `setThumbnail`；app 单一漏斗 `importImageFiles`（sheet「从图片…」副按钮 + 「保留高清」勾 sheet + 隐藏 file input 多选 / 拖放 / 粘贴 / 替换）、`setCoverFlow`（腰封保留）、`replaceImageFlow`（重算 thumb 比对 = 封面跟着换）；sidebar 图片图标 + 「谁指向这里」入边段「断开」；gallery-host `policy.thumbs`（has = 书、IDB `webxiaoheiwu-thumbs`、尾窗 128 KB）+ 加密 peek 解密 + tile 2:3 + 角标「打开中」；app-store `makePeek` 抽封面；sheets `INPUT_SECONDARY` / `openConfirmSheetEx`。
+- **包**：gallery 0.2.0（make-thumb 抽包、png-text、tooltip、tile.aspect）/ 0.2.1（`gal.tile.active` i18n、`thumbs.has`、解锁无封面显占位）。WeebPaint 收货时换掉自家 `renderThumbnailAdaptive`。
+- **撤掉的**：edges / dim 属性袋（本 session 提案、user 在树 session 拍板 ADR-0014「灰 = 不在树里，算出来不存」→ 落地前整个拿掉，91 测绿）。
+- **验证**：`npm test` 91 绿；`tools/ui-audit.mjs` 图片页整链探针（进门两张 / 视图 / 封面 / 替换 / 断入边 / 拖 txt / 粘贴位图 / 书库 2:3 三列 + 封面缩略图 + 角标）；boot smoke；bundle 581 → 646 KB。真机零。
+- **待 user**：腰封写入口（ADR-0012 §3 说先不做 UI）；「设为封面」图标（先文字钮）；心跳 a/b/c（已批未排期）；v2 树 schema 由树 session 接（handoff `20260910-v2-tree-schema-handoff.md`）。
 - **无头复现脚本**（tmp/，不进 git）：`tmp/repro-2026-09-10.mjs`（刷新 → spawn → 连边 → 改名 → 再刷新）、`tmp/repro-rename-gallery.mjs`、`tmp/repro-rename2.mjs`。

@@ -35,6 +35,9 @@ const g = {
   input2: () => $("sheetInput2") as HTMLInputElement,
   error: () => $("sheetError"),
   choices: () => $("sheetChoices"),
+  check: () => $("sheetCheck"),
+  checkInput: () => $("sheetCheckInput") as HTMLInputElement,
+  checkLabel: () => $("sheetCheckLabel"),
   confirm: () => $("sheetConfirm") as HTMLButtonElement,
   cancel: () => $("sheetCancel") as HTMLButtonElement,
 };
@@ -51,6 +54,7 @@ function _reset(): void {
   g.input().classList.add("hidden"); g.input2().classList.add("hidden");
   g.error().classList.add("hidden"); g.error().textContent = "";
   g.choices().classList.add("hidden"); g.choices().innerHTML = "";
+  g.check().classList.add("hidden"); g.checkInput().checked = false;
   g.confirm().classList.remove("hidden", "danger"); g.cancel().classList.remove("hidden");
   g.input().value = ""; g.input2().value = "";
   g.input().style.setProperty("-webkit-text-security", ""); g.input2().style.setProperty("-webkit-text-security", "");
@@ -64,8 +68,12 @@ export function initSheets(labels: { ok: string; cancel: string }): void {
   }, true);
 }
 
-export interface ConfirmOpts { danger?: boolean; okLabel?: string; cancelLabel?: string; warning?: boolean }
+export interface ConfirmOpts { danger?: boolean; okLabel?: string; cancelLabel?: string; warning?: boolean; /** 一个勾（2.1「保留高清」）：结果经 openConfirmSheetEx 拿。 */ checkbox?: { label: string; checked?: boolean } }
 export function openConfirmSheet(title: string, message: string, opts: ConfirmOpts = {}): Promise<boolean> {
+  return openConfirmSheetEx(title, message, opts).then((r) => r.ok);
+}
+/** confirm + 可选一个复选框；返回 { ok, checked }。 */
+export function openConfirmSheetEx(title: string, message: string, opts: ConfirmOpts = {}): Promise<{ ok: boolean; checked: boolean }> {
   _assertNotBusy("confirm");
   return new Promise((resolve) => {
     _reset();
@@ -76,10 +84,12 @@ export function openConfirmSheet(title: string, message: string, opts: ConfirmOp
     if (opts.okLabel) g.confirm().textContent = opts.okLabel;
     if (opts.cancelLabel) g.cancel().textContent = opts.cancelLabel;
     g.confirm().classList.toggle("danger", !!opts.danger);
+    if (opts.checkbox) { g.checkLabel().textContent = opts.checkbox.label; g.checkInput().checked = !!opts.checkbox.checked; g.check().classList.remove("hidden"); }
     const done = (v: boolean) => {
+      const checked = g.checkInput().checked;
       g.confirm().removeEventListener("click", onOk); g.cancel().removeEventListener("click", onCancel);
       g.confirm().textContent = okDefault; g.cancel().textContent = cancelDefault;
-      _hide(); resolve(v);
+      _hide(); resolve({ ok: v, checked });
     };
     const onOk = () => done(true), onCancel = () => done(false);
     g.confirm().addEventListener("click", onOk); g.cancel().addEventListener("click", onCancel);
@@ -97,7 +107,11 @@ export interface InputOpts {
   validate?: (value: string, second: string) => string | null;
   /** 初始错误提示（上一轮密码错时重开）。 */
   error?: string;
+  /** 副按钮（2.1 加页 sheet 的「从图片…」）：点了 resolve INPUT_SECONDARY。 */
+  secondary?: { label: string };
 }
+/** openInputSheet 的副按钮结果哨兵（不会和用户输入撞：含 NUL）。 */
+export const INPUT_SECONDARY = "\u0000secondary";
 /** 输入 sheet → string | null（取消）。密码态用 -webkit-text-security 打码（不用 type=password：绕开浏览器记密码弹窗——WeebPaint 教训）。 */
 export function openInputSheet(title: string, opts: InputOpts = {}): Promise<string | null> {
   _assertNotBusy("input");
@@ -113,12 +127,18 @@ export function openInputSheet(title: string, opts: InputOpts = {}): Promise<str
     if (opts.error) { g.error().textContent = opts.error; g.error().classList.remove("hidden"); }
     const okDefault = g.confirm().textContent;
     if (opts.okLabel) g.confirm().textContent = opts.okLabel;
+    let secondaryBtn: HTMLButtonElement | null = null;
+    if (opts.secondary) {
+      secondaryBtn = document.createElement("button"); secondaryBtn.type = "button"; secondaryBtn.className = "sheet-choice"; secondaryBtn.id = "sheetSecondary"; secondaryBtn.textContent = opts.secondary.label;
+      g.choices().appendChild(secondaryBtn); g.choices().classList.remove("hidden");
+    }
     const cleanup = () => {
       g.confirm().removeEventListener("click", onOk); g.cancel().removeEventListener("click", onCancel);
       inp.removeEventListener("keydown", onKey); inp2.removeEventListener("keydown", onKey);
       g.confirm().textContent = okDefault;
       inp.value = ""; inp2.value = "";
     };
+    if (secondaryBtn) secondaryBtn.addEventListener("click", () => { cleanup(); _hide(); resolve(INPUT_SECONDARY); });
     const onOk = () => {
       const err = opts.validate?.(inp.value, inp2.value) ?? null;
       if (err) { g.error().textContent = err; g.error().classList.remove("hidden"); return; }

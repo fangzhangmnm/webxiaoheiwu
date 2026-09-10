@@ -4,7 +4,7 @@
 //   · 落盘 = 整包重写（ADR-0008 §4），字节源 = packProject（同内容同字节）
 //   · 撞名 = 链接不是新建；占位符跳上去才生文件（ADR-0009）
 import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
-import { createNode, setNodeText, link, unlink, renameNode, deleteNode, search, neighbors, backlinks, resolveName, isStub, dropRef, purgeOrphan, isOrphan, type NowFn } from "./graph.ts";
+import { createNode, setNodeText, link, unlink, renameNode, deleteNode, search, neighbors, backlinks, resolveName, isStub, dropRef, purgeOrphan, isOrphan, createBytesNode, replaceNodeBytes, type NowFn } from "./graph.ts";
 
 export interface ProjectSessionDeps {
   read(name: string): Promise<Blob | null>;                                     // store file(name,{isZip:true}).open()
@@ -93,6 +93,18 @@ export function createProjectSession(d: ProjectSessionDeps) {
   /** 修改锁（跟着作品进 graph.json）：切换 = 正经改动（标脏；调用方随即落盘/推云）。唯一不受锁挡的改动（解锁本身）；格式太新仍不许。 */
   function setReadOnly(v: boolean): void { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly === v) return; project.readOnly = v; touch(); }
   const drop = guard((to: string, orphanPrefix: string) => dropRef(project, requireCurrent(), to, orphanPrefix, now));
+  /** 断一条**入**边：from → 当前页（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能，这样整理起来才舒服」）。纯断边，不走「移出」的孤儿改名（你正站在这页上）。 */
+  const cutIncoming = guard((from: string) => { const src = resolveName(project, from); if (!src) return false; return unlink(project, src, requireCurrent(), now); });
+  // ── 图片页（2.1，ADR-0012/0013）：字节页 + 封面 ──
+  /** 图片进门：减肥后的字节 → 新页（撞名 hex4）+ 当前页末尾长一条边。不跳转（UI 自己 jump，同加页手感）。返回最终名。 */
+  const addBytesPage = guard((pageName: string, bytes: Uint8Array) => { const from = requireCurrent(); const n = createBytesNode(project, pageName, bytes, now); link(project, from, n, { at: "bottom", now }); return n; });
+  /** 替换图片：保名保边只换字节。 */
+  const replaceBytes = guard((target: string, bytes: Uint8Array) => replaceNodeBytes(project, target, bytes, now));
+  const currentBytes = (): Uint8Array | null => { const c = current(); return c ? (project.contents.get(c) ?? null) : null; };
+  const bytesOf = (target: string): Uint8Array | null => { const n = resolveName(project, target); return n ? (project.contents.get(n) ?? null) : null; };
+  /** 封面 = Thumbnails/thumbnail.png 本身（ADR-0012；没有 cover 字段）：设 / 清都是正经改动。 */
+  const setThumbnail = guard((png: Uint8Array | null) => { project.thumbnail = png && png.length ? png : null; });
+  const thumbnail = (): Uint8Array | null => project.thumbnail;
   const purge = guard((target: string) => purgeOrphan(project, target));
   const orphan = (target: string) => isOrphan(project, target);
 
@@ -122,6 +134,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
     open, create, close, flush, toBlob, adoptName, setBack,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, drop, purge, orphan, setReadOnly,
+    cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail,
     sidebar, backlinksOf, find, exists, canMutate,
   };
 }

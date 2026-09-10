@@ -17,6 +17,8 @@ import { storeUI } from "./store-ui.ts";
 import { appEncryption } from "./encryption.ts";
 import { getPassword } from "./crypto-state.ts";
 import { looksLikeTextDoc } from "./doc-model.ts";
+import { zipReadEntry } from "./zip.ts";
+import { THUMBNAIL_ENTRY } from "./project/format.ts";
 
 const od = createOneDriveProvider({ clientId: CLIENT_ID, scopes: SCOPES, authority: AUTHORITY, msalUrl: MSAL_URL });
 /** OneDrive auth 面（signIn/signOut/isSignedIn/onAuthChanged）。 */
@@ -33,7 +35,8 @@ const store: Store = createStore({
   persistence: "app-managed",
   encryption: appEncryption,
   reconcilePolicy: "app-driven",
-  crypt: { ext: "txt", getPassword, makePeek: async () => null },   // peek 空也加密（verifyPassword 靠它便宜验密码）
+  // peek（2.1，ADR-0012）：加密书的封面另封成密文尾片——明文是书（zip 魔数）就抽 Thumbnails/thumbnail.png；txt 稿 / 没封面 → null（空 peek 也加密，verifyPassword 靠它便宜验密码）。
+  crypt: { ext: "txt", getPassword, makePeek: async (plain) => { const head = new Uint8Array(await plain.slice(0, 4).arrayBuffer()); if (!(head.length === 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04)) return null; try { return await zipReadEntry(plain, THUMBNAIL_ENTRY); } catch { return null; } } },
   // 2.0 两档：txt 走编码链验真；工程 zip 只看魔数 PK\x03\x04（内容在 project/format.ts 解包时再验）。挡的是 captive-portal HTML / 截断字节。
   validateAdopt: async (plain) => { const b = new Uint8Array(await plain.arrayBuffer()); return (b.length >= 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04) || looksLikeTextDoc(b); },
   // store 0.13.0（ADR-0008 §7 前置）：云端名 → 身份。默认只去尾一个 .zip 会把明文工程 `X.webxiaoheiwu.zip` 当加密容器；

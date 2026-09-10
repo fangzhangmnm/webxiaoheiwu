@@ -5,6 +5,7 @@
 // 零态度：无全图、无计数、无衰减；占位符只是虚线名字。节点改名不在这里（章节名框，mode.ts）。
 import type { ProjectMode } from "./mode.ts";
 import { nodeDisplayName } from "./naming.ts";
+import { nodeKind } from "./format.ts";
 import { t } from "../i18n/index.ts";
 import { togglePopupMenu, closePopupMenu } from "../ui/popup-menu.ts";
 import { openConfirmSheet } from "../sheets.ts";
@@ -59,13 +60,14 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   const $ = <T extends HTMLElement = HTMLElement>(id: string) => el.querySelector<T>("#" + id)!;
   const pane = $("edgePane"), list = $("edgeList"), nodeEl = $("edgeNode"), projEl = $("edgeProject"), search = $<HTMLInputElement>("edgeSearch");
 
-  function row(name: string, opts: { stub?: boolean; menu?: "edge" | "orphan" }): HTMLLIElement {
+  function row(name: string, opts: { stub?: boolean; menu?: "edge" | "orphan" | "incoming" }): HTMLLIElement {
     const li = document.createElement("li"); li.className = "edge-row" + (opts.stub ? " stub" : "") + (name === d.mode.current() ? " current" : "");
     const main = document.createElement("button"); main.type = "button"; main.className = "edge-main";
     const shown = nodeDisplayName(name);
     const meta = opts.stub ? null : d.mode.session()?.project.nodes.get(name);
     main.title = opts.stub ? t("edge.stub", { name: shown }) : meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : shown;
-    main.innerHTML = `<span class="edge-name">${esc(shown)}</span>` + (meta && meta.modified ? `<span class="edge-sub">${esc(fmtTime(meta.modified))}</span>` : "");   // 同一行小字 = 修改时间（user 2026-09-10）
+    const kindIcon = !opts.stub && nodeKind(name) === "image" ? `<svg class="ico edge-kind" aria-hidden="true"><use href="#image"/></svg>` : "";   // 图片页行首图标（2.1）
+    main.innerHTML = kindIcon + `<span class="edge-name">${esc(shown)}</span>` + (meta && meta.modified ? `<span class="edge-sub">${esc(fmtTime(meta.modified))}</span>` : "");   // 同一行小字 = 修改时间（user 2026-09-10）
     main.addEventListener("click", () => { d.mode.jump(name); clearQuery(); d.focusEditor(); });   // 不自动收（user 2026-09-10「进节点的时候也不要自动弹回」）
     li.appendChild(main);
     if (opts.menu) {
@@ -74,6 +76,8 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
         e.stopPropagation();
         togglePopupMenu({ anchor: more, align: "left", items: () => (opts.menu === "orphan"
           ? [{ id: "purge", label: t("edge.purge"), icon: "trash-can", danger: true }]                       // 孤儿：只有彻底删除（弹框确认）
+          : opts.menu === "incoming"
+          ? [{ id: "cut", label: t("edge.cutIncoming"), icon: "x" }]                                         // 入边：断开（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能」）
           : [
             { id: "up", label: t("edge.up") }, { id: "down", label: t("edge.down") },
             { id: "drop", label: t("edge.drop"), icon: "x", separatorBefore: true },                        // 删除模型 = 丢引用（GC 语义）
@@ -93,7 +97,8 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     return li;
   }
   async function onRowAction(id: string, name: string): Promise<void> {
-    if (id === "up") d.mode.moveLink(name, -1);
+    if (id === "cut") { if (d.mode.cutIncoming(name)) d.setStatus(t("edge.cutDone", { name: nodeDisplayName(name) })); }
+    else if (id === "up") d.mode.moveLink(name, -1);
     else if (id === "down") d.mode.moveLink(name, 1);
     else if (id === "drop") { if (d.mode.dropRef(name)) { const nn = d.mode.lastDropped(); d.setStatus(nn ? t("edge.droppedOrphan", { name: nodeDisplayName(nn) }) : t("edge.dropped")); } }
     else if (id === "purge") {
@@ -128,6 +133,8 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     if (!edges.length) list.appendChild(emptyRow(t("edge.empty")));
     for (const e of edges) list.appendChild(row(e.name, { stub: e.stub, menu: "edge" }));
     list.appendChild(addRow());
+    const incoming = m.backlinksOfCurrent();   // 入度：谁指向这里（有才显示，零态度）；行菜单 = 断开
+    if (incoming.length) { list.appendChild(headerRow(t("edge.backlinks"))); for (const n of incoming) list.appendChild(row(n, { menu: "incoming" })); }
   }
   const headerRow = (text: string) => { const li = document.createElement("li"); li.className = "edge-row header"; li.textContent = text; return li; };
   const emptyRow = (text: string) => { const li = document.createElement("li"); li.className = "edge-row empty"; li.textContent = text; return li; };

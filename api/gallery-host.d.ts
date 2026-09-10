@@ -23,11 +23,15 @@ export declare function initGalleryHost(d: GalleryHostDeps): {
     open: () => Promise<void>;
     close: () => void;
     isOpen: () => boolean;
+    /** boot 用：上次是在书库里离开的（刷新 / 关标签 / SW 更新重载）。 */
+    wasInGallery: () => boolean;
     refresh: () => void | undefined;
     setView: (v: "files" | "trash") => void;
     getView: () => "files" | "trash";
     emptyTrash: (scope: "local" | "cloud" | "both") => void;
     currentFolder: () => string;
     invalidateEncrypted: (name: string) => void | undefined;
+    /** 封面变了（设为封面 / 替换图片）：丢掉这本书的缩略图缓存，下次露面重取。 */
+    invalidateThumb: (name: string) => void;
 };
 export type GalleryHost = ReturnType<typeof initGalleryHost>;

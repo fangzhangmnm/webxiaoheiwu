@@ -105,7 +105,7 @@
 .gallery-tile-thumb {
   /* 大厂现行做法：aspect-ratio 让缩略图随卡片宽变成方块（块布局里 width:100% 先定宽、aspect 求等高）。
    * 同一行卡片等宽→等高。object-fit:contain：方图整张可见、比例正确。 */
-  width: 100%; aspect-ratio: 1 / 1; height: auto;
+  width: 100%; aspect-ratio: var(--tile-aspect, 1 / 1); height: auto;   /* 0.2.0：比例由 .gallery-grid 的 --tile-aspect 定（方图 / 2:3 书封） */
   display: block;
   object-fit: contain;
   border-radius: 7px 7px 0 0;   /* v0.5.39：卡片放开 overflow 后圆角自理（8px 外框内贴 1px 边） */
@@ -225,9 +225,8 @@
    其余 badge 保持 --ink-soft 灰。 */
 .gallery-tile-state-icon.b-conflictBoth { color: var(--warn); }
 .gallery-tile-state-icon.b-newerOnCloud { color: var(--accent); }
-/* "编辑中" 角标叠在第 1 行（name）右侧，可压住右端文字（用户：可重叠） */
-.gallery-tile.active .gallery-tile-name-row::after {
-  content: "编辑中";
+/* 「编辑中」角标叠在第 1 行（name）右侧，可压住右端文字（用户：可重叠）。0.2.1：文字从 CSS content 搬进模板走 i18n（gal.tile.active；WXHW 改「打开中」） */
+.gallery-tile-active-tag {
   position: absolute; right: 6px; top: 8px;
   pointer-events: none;
   font-size: 10px;
@@ -389,13 +388,16 @@
    * ⚠⚠ `min-height: 0` 是命门：本网格是 flex 链里的滚动视口，少了它 → 非-rigid 卡片建不起滚动区，
    *   容器把内容强行 fit-all、卡片被压扁成一条（v284-287 用 aspect/内容高全栽在这——不是 aspect 的错，
    *   是这行漏了；当年用 rigid 238px 死高才掩盖过去）。#galleryMount 早有同一行同一注释。 */
-  grid-template-columns: repeat(auto-fill, minmax(min(150px, calc(50% - 8px)), 1fr));
-  /* 窄屏永远至少两列（user 2026-09-10「iphone se2 上 gallery 一行只有一个 card，应该还是两个 card 这样缩放」）：
-   *   列的下限 = min(150px, 容器一半减半个 gap)——容器装不下两个 150 时，两列各自缩到正好一半；宽屏行为不变。
-   *   `8px` 与下面 gap 16px 耦合（半个 gap），改 gap 要一起改。edited by Claude Fable 5.1 2026-09-10 */
+  /* 列宽两档变量（0.2.0）：--tile-min = 宽屏下限；--tile-min-narrow = 窄屏下限（容器装不下 N 个 --tile-min 时按 N 等分）。
+   *   方图（默认）：150px / 两列；竖版书封（.tall，WXHW 书库）：120px / 三列（user 2026-09-10「iphone se2 可以一排三本」）。
+   *   窄屏永远至少 N 列（user「应该还是两个 card 这样缩放」）：minmax(min(宽屏下限, 窄屏下限), 1fr)。
+   *   窄屏下限里的减数 = gap × (N-1) / N（16px 时两列 8px、三列 10.667px），改 gap 要一起改。edited by Claude Fable 5.1 2026-09-10 */
+  --tile-min: 150px; --tile-min-narrow: calc(50% - 8px); --tile-aspect: 1 / 1;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--tile-min), var(--tile-min-narrow)), 1fr));
   gap: 16px;
   align-content: start;
 }
+.gallery-grid.tall { --tile-min: 120px; --tile-min-narrow: calc(33.333% - 10.667px); --tile-aspect: 2 / 3; }
 /*
  * 滚动条策略：默认（含移动/触摸）走系统 overlay/auto，不常显，保移动端观感。
  * 仅 Windows 桌面（粗略地 pointer:fine = 鼠标）常显一条窄滚动条，否则桌面上看不出能滚。

@@ -1,5 +1,6 @@
 import { type OpenResult } from "./session.ts";
 import { type LocalHome } from "./local-home.ts";
+import { type NodeKind } from "./format.ts";
 import type { SyncKind } from "../editor.ts";
 export type ProjectHome = {
     kind: "store";
@@ -10,8 +11,19 @@ export type ProjectHome = {
 };
 export interface ProjectModeDeps {
     editorEl: HTMLTextAreaElement;
-    /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。 */
+    /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
     titleEl: HTMLInputElement;
+    /** 图片页视图（2.1）：#pageImage 容器 / <img> / 元信息行。当前页是图片时 textarea 让位。 */
+    imageBox: HTMLElement;
+    imageEl: HTMLImageElement;
+    imageMeta: HTMLElement;
+    /** 图片元信息行文案（宿主 i18n）。 */
+    imageMetaText: (o: {
+        name: string;
+        w: number;
+        h: number;
+        bytes: number;
+    }) => string;
     setStatus: (text: string, opts?: {
         error?: boolean;
         unsynced?: boolean;
@@ -61,7 +73,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         setCurrentText: (text: string) => boolean;
         jump: (target: string) => string;
         spawn: (newName: string, selectedText: string) => string;
-        addLink: (to: string, at?: "top" | "bottom" | undefined) => boolean;
+        addLink: (to: string, at?: "bottom" | "top" | undefined) => boolean;
         removeLink: (to: string) => boolean;
         setLinksOrder: (links: string[]) => void;
         rename: (from: string, to: string) => void;
@@ -70,6 +82,13 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         purge: (target: string) => boolean;
         orphan: (target: string) => boolean;
         setReadOnly: (v: boolean) => void;
+        cutIncoming: (from: string) => boolean;
+        addBytesPage: (pageName: string, bytes: Uint8Array<ArrayBufferLike>) => string;
+        replaceBytes: (target: string, bytes: Uint8Array<ArrayBufferLike>) => void;
+        currentBytes: () => Uint8Array | null;
+        bytesOf: (target: string) => Uint8Array | null;
+        setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => void;
+        thumbnail: () => Uint8Array | null;
         sidebar: () => {
             name: string;
             stub: boolean;
@@ -99,7 +118,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     goBack: () => boolean;
     canGoBack: () => boolean;
     spawnFromSelection: () => Promise<boolean>;
-    newNode: (rawName: string) => boolean;
+    newNode: (rawName: string, text?: string) => boolean;
     addLink: (to: string) => boolean;
     removeLink: (to: string) => boolean;
     moveLink: (to: string, dir: 1 | -1) => boolean;
@@ -111,6 +130,18 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     focusTitle: () => void;
     nodeNames: () => string[];
     current: () => string | null;
+    currentKind: () => NodeKind | null;
+    cutIncoming: (from: string) => boolean;
+    backlinksOfCurrent: () => string[];
+    addImagePages: (items: {
+        name: string;
+        bytes: Uint8Array;
+    }[]) => boolean;
+    lastAdded: () => string[];
+    pageBytes: () => Uint8Array | null;
+    replaceImage: (bytes: Uint8Array<ArrayBufferLike>, ext: string) => boolean;
+    setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => boolean;
+    thumbnail: () => Uint8Array | null;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;
 /** spawn 默认名：选中文字首行前 12 个字（去路径字符）。空 → ""（调用方退到章节名）。 */

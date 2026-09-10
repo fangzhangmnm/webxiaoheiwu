@@ -1,11 +1,14 @@
 // 书的容器格式（ADR-0008 / ADR-0009 / ADR-0010 + 2026-09-10 修订）：`<名字>.webxiaoheiwu.zip` = graph.json + pages/ + .webxiaoheiwu/editor-state.json。
 // created 2026-09-10 by Claude Fable 5.1。硬规则：zip 内 entry 增删改名必须给 user 完整目录清单（ADR-0008 §3 是 as-of 清单）。
 //   作品.webxiaoheiwu.zip
-//   ├─ graph.json                 清单：format / version / wroteWith / readOnly?（修改锁跟着作品）/ pages{ <完整文件名>: { links[], created, modified } }
+//   ├─ graph.json                 清单：format / version / wroteWith / readOnly?（修改锁跟着作品）/ pages{ <完整文件名>: { links[], created, modified } }（v2 = 主干树 + links，ADR-0014，实现归树 session）
 //   ├─ pages/                     abandonware 时唯一的东西。扁平，不许子目录（user 2026-09-10「zip/pages，是吃这个书」；不读旧 contents/，读到 = legacy 拒开）
-//   │   └─ *.txt（2.0 只开 .txt；别的扩展名合法但不打开——地图、插画将来也是一页）
-//   └─ .webxiaoheiwu/
-//       └─ editor-state.json      { last, back }：上次所在节点 + 回退栈（≤50，旧在前）。随保存写，导航不标脏（ADR-0010；back 2026-09-10 补，user「navigation history 跟着书持久化…save 的时候随手捞」）
+//   │   ├─ *.txt                  正文页
+//   │   └─ *.jpg|png|webp|gif      图片页（2.1，user 2026-09-10「thumb 和图片页实锤了不是 scope creeping」）：同一张 pages 表，STORE；别的扩展名合法但不打开
+//   ├─ .webxiaoheiwu/
+//   │   └─ editor-state.json      { last, back }：上次所在节点 + 回退栈（≤50，旧在前）。随保存写，导航不标脏（ADR-0010；back 2026-09-10 补，user「navigation history 跟着书持久化…save 的时候随手捞」）
+//   └─ Thumbnails/thumbnail.png   封面（2.1，ADR-0012；ORA 同款路径）：**永远最后一个 entry**、STORE、≤256²、≤70 KB，可带 iTXt Description = 腰封。
+//                                 它本身就是封面：「设为封面」从某图片页生成写入，之后与页无关；graph.json 没有 cover 字段（user「不要帮用户发明字段」）。
 import { zipPack, zipUnpack, levelForPath } from "../zip.ts";
 import { encodeText, decodeTextBytes } from "../doc-model.ts";
 import { APP_VERSION } from "../version.ts";
@@ -16,6 +19,11 @@ export const GRAPH_ENTRY = "graph.json";
 export const CONTENTS_DIR = "pages/";   // 目录名 pages/（2026-09-10 吃书）；内存里的 Map 仍叫 contents/nodes（代码标识符不动）
 const LEGACY_DIR = "contents/";
 export const EDITOR_STATE_ENTRY = ".webxiaoheiwu/editor-state.json";
+/** 封面缩略图（ORA 同款路径；ADR-0012）。写时永远最后一个 entry（store getPeek 一次尾读命中）。 */
+export const THUMBNAIL_ENTRY = "Thumbnails/thumbnail.png";
+/** 图片页扩展名（2.1）：认这些就当图片页打开；GIF 动图原字节直通。 */
+export const IMAGE_EXTS: readonly string[] = ["jpg", "jpeg", "png", "webp", "gif"];
+export type NodeKind = "txt" | "image" | "other";
 /** entry 时间戳钉死 → 同内容同字节（ADR-0008 §4/§6）。 */
 export const PINNED_MTIME = new Date(Date.UTC(1980, 0, 1));
 
@@ -31,6 +39,8 @@ export interface Project {
   readVersion: number;
   /** 修改锁（user 2026-09-10「zip 锁跟着作品」）：成品不想被误改。切换 = 正经改动（标脏、推云）。 */
   readOnly: boolean;
+  /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
+  thumbnail: Uint8Array | null;
 }
 export type UnpackResult =
   | { kind: "ok"; project: Project; warnings: string[] }
@@ -47,8 +57,10 @@ export function isValidNodeName(name: string): boolean {
 }
 /** 渲染用扩展名（最后一个点之后；没有 → ""）。身份不看它（ADR-0009 §5）。 */
 export const nodeExt = (name: string): string => { const i = name.lastIndexOf("."); return i > 0 && i < name.length - 1 ? name.slice(i + 1).toLowerCase() : ""; };
+/** 页的种类（只看扩展名）：txt 正文 / image 图片页 / other（合法但不打开）。 */
+export const nodeKind = (name: string): NodeKind => { const e = nodeExt(name); return e === "txt" ? "txt" : IMAGE_EXTS.includes(e) ? "image" : "other"; };
 
-export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false }; }
+export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null }; }
 
 /** 打包（整包重写；ADR-0008 §4）。graph.json 只写 pages/ 里真有的页；links 原样（可含占位符）。 */
 export async function packProject(p: Project): Promise<Blob> {
@@ -61,6 +73,7 @@ export async function packProject(p: Project): Promise<Blob> {
   const entries: { path: string; data: Uint8Array | string }[] = [{ path: GRAPH_ENTRY, data: JSON.stringify(graph, null, 1) }];
   for (const name of [...p.contents.keys()].sort()) entries.push({ path: CONTENTS_DIR + name, data: p.contents.get(name)! });
   entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX) }) });
+  if (p.thumbnail && p.thumbnail.length) entries.push({ path: THUMBNAIL_ENTRY, data: p.thumbnail });   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
   return zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
 }
 
@@ -108,6 +121,7 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
     }
     catch { warnings.push("editor-state.json unreadable; ignored"); }
   }
+  if (THUMBNAIL_ENTRY in entries && entries[THUMBNAIL_ENTRY]!.length) p.thumbnail = entries[THUMBNAIL_ENTRY]!;
   if (p.editorState.last && !p.contents.has(p.editorState.last)) p.editorState.last = null;
   p.editorState.back = p.editorState.back.filter((n) => p.contents.has(n));   // 指向已删节点的历史条目丢弃
   return { kind: "ok", project: p, warnings };

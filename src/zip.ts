@@ -43,6 +43,16 @@ export async function zipPack(entries: { path: string; data: Uint8Array | string
   return await writer.close();
 }
 
+/** 只读一个 entry 的字节（按名；找不到 → null）。给 makePeek 抽封面用：不解整本书。 */
+export async function zipReadEntry(blob: Blob, path: string): Promise<Uint8Array | null> {
+  const z = await Z();
+  const reader = new z.ZipReader(new z.BlobReader(blob));
+  try {
+    const entries = await reader.getEntries();
+    const e = entries.find((x: { filename: string; directory: boolean }) => !x.directory && x.filename === path);
+    return e ? await e.getData(new z.Uint8ArrayWriter()) : null;
+  } finally { await reader.close(); }
+}
 export async function zipUnpack(blob: Blob): Promise<Record<string, Uint8Array>> {
   const z = await Z();
   const reader = new z.ZipReader(new z.BlobReader(blob));

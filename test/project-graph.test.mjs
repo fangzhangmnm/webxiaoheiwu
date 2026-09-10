@@ -1,6 +1,6 @@
 import { describe, it, eq, assert } from "./runner.mjs";
 import { emptyProject } from "../src/project/format.ts";
-import { createNode, setNodeText, link, unlink, backlinks, renameNode, deleteNode, search, neighbors, isStub, resolveName } from "../src/project/graph.ts";
+import { createNode, setNodeText, link, unlink, backlinks, renameNode, deleteNode, search, neighbors, isStub, resolveName, uniqueNodeName, createBytesNode, replaceNodeBytes } from "../src/project/graph.ts";
 const tick = () => { let t = 0; return () => ++t; };
 
 describe("project/graph · 撞名=链接、占位符、反链=查询", () => {
@@ -68,5 +68,19 @@ describe("project/graph · 删除模型 = 丢引用（user 2026-09-10）", () =>
     eq(dropRef(p, "第一章.txt", "_废-第三章 2.txt", "_dropped-", now), null, "没边可断（早是孤儿）→ 不动，不套第二层前缀");
     createNode(p, "根.txt", "", now); link(p, "根.txt", "第二章.txt", { now }); link(p, "第一章.txt", "根.txt", { now });
     eq(dropRef(p, "第一章.txt", "根.txt", "_废-", now), "_废-根.txt"); eq(backlinks(p, "第二章.txt").sort().join("|"), "_废-根.txt", "孤儿改名后它自己的出边持有者名跟着变");
+  });
+});
+
+describe("project/graph · 2.1 图片页 / 字节页（ADR-0012/0013）", () => {
+  it("uniqueNodeName：撞名 → stem-hex4.ext（大小写不敏感）；createBytesNode 不链接已有页；replaceNodeBytes 保名", () => {
+    const p = emptyProject(); const now = tick(); createNode(p, "作品.txt", "", now);
+    eq(uniqueNodeName(p, "夏音.jpg"), "夏音.jpg");
+    const n1 = createBytesNode(p, "夏音.jpg", new Uint8Array([1]), now); eq(n1, "夏音.jpg");
+    const n2 = createBytesNode(p, "夏音.JPG", new Uint8Array([2]), now); assert(/^夏音-[0-9a-f]{4}\.JPG$/.test(n2), n2); eq(p.contents.size, 3);
+    replaceNodeBytes(p, "夏音.jpg", new Uint8Array([9, 9]), now); eq(p.contents.get("夏音.jpg").length, 2); eq(p.nodes.get("夏音.jpg").links.length, 0);
+  });
+  it("search 不进图片字节：只搜名字", () => {
+    const p = emptyProject(); const now = tick(); createNode(p, "a.txt", "hello", now); p.contents.set("h.png", new TextEncoder().encode("hello bytes")); p.nodes.set("h.png", { links: [], created: 1, modified: 1 });
+    eq(search(p, "hello").join("|"), "a.txt"); eq(search(p, "h.p").join("|"), "h.png");
   });
 });

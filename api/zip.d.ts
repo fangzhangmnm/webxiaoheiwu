@@ -9,4 +9,6 @@ export declare function zipPack(entries: {
     path: string;
     data: Uint8Array | string;
 }[], opts?: ZipPackOpts): Promise<Blob>;
+/** 只读一个 entry 的字节（按名；找不到 → null）。给 makePeek 抽封面用：不解整本书。 */
+export declare function zipReadEntry(blob: Blob, path: string): Promise<Uint8Array | null>;
 export declare function zipUnpack(blob: Blob): Promise<Record<string, Uint8Array>>;

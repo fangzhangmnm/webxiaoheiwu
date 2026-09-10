@@ -1,7 +1,7 @@
 import { describe, it, eq, assert } from "./runner.mjs";
 import { ensureZipLoaded } from "./zip-node.mjs";
 ensureZipLoaded();
-const { packProject, unpackProject, emptyProject, nameKey, isValidNodeName, nodeExt, PROJECT_FORMAT_VERSION } = await import("../src/project/format.ts");
+const { packProject, unpackProject, emptyProject, nameKey, isValidNodeName, nodeExt, nodeKind, PROJECT_FORMAT_VERSION, THUMBNAIL_ENTRY } = await import("../src/project/format.ts");
 const { createNode, link } = await import("../src/project/graph.ts");
 const { zipUnpack } = await import("../src/zip.ts");
 const td = new TextDecoder();
@@ -101,5 +101,25 @@ describe("project/format · 2026-09-10 吃书：pages/ + graph.json pages；旧 
     p.readOnly = true;
     const blob = await packProject(p); const g1 = JSON.parse(new TextDecoder().decode((await zipUnpack(blob))["graph.json"])); eq(g1.readOnly, true);
     const r = await unpackProject(blob); eq(r.kind, "ok"); eq(r.project.readOnly, true);
+  });
+});
+
+describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/0012；edges 属性袋已按 ADR-0014 撤）", () => {
+  it("Thumbnails/thumbnail.png 是最后一个 entry、STORE、往返字节相同；没封面就没有这个 entry", async () => {
+    const p = emptyProject(); createNode(p, "作品.txt", "x", () => 1);
+    const noThumb = await zipUnpack(await packProject(p)); assert(!(THUMBNAIL_ENTRY in noThumb));
+    p.thumbnail = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const blob = await packProject(p);
+    const u8 = new Uint8Array(await blob.arrayBuffer());
+    // 最后一个 local header 的文件名 = Thumbnails/thumbnail.png（central directory 之前的最后一个 PK\x03\x04）
+    let last = -1; for (let i = 0; i + 4 <= u8.length; i++) if (u8[i] === 0x50 && u8[i + 1] === 0x4b && u8[i + 2] === 3 && u8[i + 3] === 4) last = i;
+    const nameLen = u8[last + 26] | (u8[last + 27] << 8); const method = u8[last + 8] | (u8[last + 9] << 8);
+    eq(td.decode(u8.subarray(last + 30, last + 30 + nameLen)), THUMBNAIL_ENTRY); eq(method, 0, "STORE");
+    const r = await unpackProject(blob); eq(r.kind, "ok"); eq(Array.from(r.project.thumbnail).join(), Array.from(p.thumbnail).join());
+  });
+  it("nodeKind：txt / image / other；图片页字节往返", async () => {
+    eq(nodeKind("a.txt"), "txt"); eq(nodeKind("夏音.JPG"), "image"); eq(nodeKind("x.webp"), "image"); eq(nodeKind("动.gif"), "image"); eq(nodeKind("a.md"), "other"); eq(nodeKind("noext"), "other");
+    const p = emptyProject(); createNode(p, "作品.txt", "", () => 1); p.contents.set("夏音.jpg", new Uint8Array([255, 216, 255, 1, 2, 3])); p.nodes.set("夏音.jpg", { links: [], created: 1, modified: 1 });
+    const r = await unpackProject(await packProject(p)); eq(Array.from(r.project.contents.get("夏音.jpg")).join(), "255,216,255,1,2,3");
   });
 });

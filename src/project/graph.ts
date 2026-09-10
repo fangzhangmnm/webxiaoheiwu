@@ -1,6 +1,7 @@
-// 工程图操作（ADR-0009；无 DOM）：节点 = contents 文件；边 = 出边数组（有向、零属性、顺序 = 用户手排）；反链 = 查询；占位符 = 无文件的名字。
-// created 2026-09-10 by Claude Fable 5.1。系统对图零态度：这里没有全图、没有计数面板、没有衰减。
-import { type Project, type NodeMeta, nameKey, isValidNodeName, writeNodeText, readNodeText } from "./format.ts";
+// 工程图操作（ADR-0009；无 DOM）：节点 = contents 文件；边 = 出边数组（有向、零属性、顺序 = 用户手排；ADR-0014 否决边属性）；反链 = 查询；占位符 = 无文件的名字（ADR-0014 废止，实现归树 session）。
+// created 2026-09-10 by Claude Fable 5.1。系统对图零态度：这里没有全图、没有计数面板、没有衰减。图片页（2.1）= 字节页：同一张表，进门撞名走 hex4 不走「撞名=链接」（新字节不是同一页）。
+import { type Project, type NodeMeta, nameKey, isValidNodeName, writeNodeText, readNodeText, nodeKind } from "./format.ts";
+import { hex4 } from "../doc-model.ts";
 
 export type NowFn = () => number;
 const DEFAULT_NOW: NowFn = () => Date.now();
@@ -51,6 +52,29 @@ export function unlink(p: Project, from: string, to: string, now: NowFn = DEFAUL
   m.links = m.links.filter((l) => nameKey(l) !== k);
   if (m.links.length !== before) { m.modified = now(); return true; }
   return false;
+}
+// ── 图片页 / 字节页（2.1） ──
+/** 唯一化：撞名 → `stem-hex4.ext`（user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑」）。不撞 → 原名（NFC）。 */
+export function uniqueNodeName(p: Project, name: string): string {
+  const nfc = name.normalize("NFC");
+  if (!resolveName(p, nfc)) return nfc;
+  const m = nfc.match(/^(.*?)(\.[A-Za-z0-9]{1,8})?$/); const base = m?.[1] ?? nfc, ext = m?.[2] ?? "";
+  for (let i = 0; i < 64; i++) { const cand = `${base}-${hex4()}${ext}`; if (!resolveName(p, cand)) return cand; }
+  throw new Error("could not find a unique name");
+}
+/** 新建字节页（图片进门）：撞名不链接、加 hex4（新字节不是同一页）。返回最终名。 */
+export function createBytesNode(p: Project, name: string, bytes: Uint8Array, now: NowFn = DEFAULT_NOW): string {
+  const n = uniqueNodeName(p, name);
+  if (!isValidNodeName(n)) throw new Error(`invalid node name: ${name}`);
+  p.contents.set(n, bytes);
+  const t = now(); p.nodes.set(n, { links: [], created: t, modified: t });
+  return n;
+}
+/** 替换字节（「替换图片」：保名保边，只换内容）。 */
+export function replaceNodeBytes(p: Project, name: string, bytes: Uint8Array, now: NowFn = DEFAULT_NOW): void {
+  const n = resolveName(p, name); if (!n) throw new Error(`no such node: ${name}`);
+  p.contents.set(n, bytes);
+  const m = meta(p, n); m.modified = now(); if (!m.created) m.created = m.modified;
 }
 /** 反链 = 查询（不存）：谁的 links 里有这个名字。 */
 export function backlinks(p: Project, name: string): string[] {
@@ -105,7 +129,7 @@ export function search(p: Project, q: string, opts: { minChars?: number; limit?:
   const hits: { name: string; modified: number }[] = [];
   for (const n of p.contents.keys()) {
     const inName = n.toLowerCase().includes(needle);
-    const inText = !inName && (readNodeText(p, n) ?? "").toLowerCase().includes(needle);
+    const inText = !inName && nodeKind(n) === "txt" && (readNodeText(p, n) ?? "").toLowerCase().includes(needle);   // 图片页只搜名字（字节不是文字）
     if (inName || inText) hits.push({ name: n, modified: p.nodes.get(n)?.modified ?? 0 });
   }
   hits.sort((a, b) => b.modified - a.modified || a.name.localeCompare(b.name));

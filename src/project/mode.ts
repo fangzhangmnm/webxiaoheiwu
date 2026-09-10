@@ -11,8 +11,8 @@ import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
 import { deviceKvSet } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
 import { reportError } from "../error-badge.ts";
-import { parseDocName } from "../doc-model.ts";
-import { isValidNodeName, nameKey } from "./format.ts";
+import { parseDocName, hex4 } from "../doc-model.ts";
+import { isValidNodeName, nameKey, nodeKind, nodeExt, type NodeKind } from "./format.ts";
 import { nodeDisplayName } from "./naming.ts";
 import type { SyncKind } from "../editor.ts";
 import { t } from "../i18n/index.ts";
@@ -20,8 +20,14 @@ import { t } from "../i18n/index.ts";
 export type ProjectHome = { kind: "store"; name: string } | { kind: "local"; home: LocalHome };
 export interface ProjectModeDeps {
   editorEl: HTMLTextAreaElement;
-  /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。 */
+  /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
   titleEl: HTMLInputElement;
+  /** 图片页视图（2.1）：#pageImage 容器 / <img> / 元信息行。当前页是图片时 textarea 让位。 */
+  imageBox: HTMLElement;
+  imageEl: HTMLImageElement;
+  imageMeta: HTMLElement;
+  /** 图片元信息行文案（宿主 i18n）。 */
+  imageMetaText: (o: { name: string; w: number; h: number; bytes: number }) => string;
   setStatus: (text: string, opts?: { error?: boolean; unsynced?: boolean }) => void;
   setState: (text: string, opts?: { error?: boolean; unsynced?: boolean }) => void;
   isSignedIn: () => boolean;
@@ -72,7 +78,9 @@ export function createProjectMode(d: ProjectModeDeps) {
   function stateText(): string { return home?.kind === "local" ? (home.home.canWriteBack ? t("project.localWriteBack") : t("project.localDownloadOnly")) : ""; }
 
   // ── 章节名框 = 当前节点名（改了就是改名；撞名响亮、不吞）──
-  function syncTitle(): void { const cur = session?.current() ?? null; d.titleEl.value = cur ? nodeDisplayName(cur) : ""; }
+  const currentKind = (): NodeKind | null => { const c = session?.current(); return c ? nodeKind(c) : null; };
+  const stemOf = (n: string): string => { const i = n.lastIndexOf("."); return i > 0 ? n.slice(0, i) : n; };
+  function syncTitle(): void { const cur = session?.current() ?? null; d.titleEl.value = cur ? (nodeKind(cur) === "image" ? stemOf(cur) : nodeDisplayName(cur)) : ""; }
   /** 把章节名框里的字落成改名。返回 true = 名字已与框一致（含「没改」）；false = 没落成（撞名/非法），框保留用户打的字让人改。 */
   function commitTitle(): boolean {
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
@@ -80,7 +88,8 @@ export function createProjectMode(d: ProjectModeDeps) {
     const cur = session!.current(); if (!cur) return true;
     const raw = d.titleEl.value.replace(/[\r\n]+/g, " ");
     if (!raw.trim()) { syncTitle(); return true; }   // 空 = 不改名（有名保名）
-    const nn = normalizeNodeName(raw);
+    // 图片页：扩展名锁死（框里只显示 stem；打了 .jpg 也剥掉再补真实扩展名）——改名不能把一张图改成 .txt
+    const nn = nodeKind(cur) === "image" ? (() => { const ext = nodeExt(cur); const stem = raw.trim().replace(/\s+/g, " ").replace(new RegExp(`\\.${ext}$`, "i"), ""); const n = `${stem}.${ext}`.normalize("NFC"); return stem && isValidNodeName(n) ? n : null; })() : normalizeNodeName(raw);
     if (!nn) { d.setStatus(t("edge.badName"), { error: true }); return false; }
     if (nn === cur) { syncTitle(); return true; }
     if (nameKey(nn) !== nameKey(cur) && session!.exists(nn)) { d.setStatus(t("edge.nameTaken"), { error: true }); return false; }
@@ -100,7 +109,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   function focusTitle(): void { try { d.titleEl.focus(); d.titleEl.select(); } catch { /* ignore */ } }
 
   // ── 落盘节律 ──
-  function commitTextarea(): void { if (canEdit() && session!.current()) session!.setCurrentText(d.editorEl.value); }   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
+  function commitTextarea(): void { if (canEdit() && session!.current() && currentKind() !== "image") session!.setCurrentText(d.editorEl.value); }   // 图片页的 textarea 是空壳，绝不提交   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
   /** 切节点 / 落盘前：章节名框 + 正文都先落进内存图。 */
   function commitEditor(): void { commitTitle(); commitTextarea(); }
   async function persist(push: boolean): Promise<void> {
@@ -174,10 +183,24 @@ export function createProjectMode(d: ProjectModeDeps) {
   d.editorEl.addEventListener("input", () => { if (!canEdit()) return; scheduleLocalSave(); d.setState(stateText(), { unsynced: d.isSignedIn() && home?.kind === "store" }); });
 
   // ── 打开 / 关闭 ──
+  let imageUrl: string | null = null;
+  const MIME: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
+  function hideImage(): void { if (imageUrl) { URL.revokeObjectURL(imageUrl); imageUrl = null; } d.imageEl.removeAttribute("src"); d.imageBox.hidden = true; d.imageBox.classList.remove("natural"); delete document.body.dataset.pageKind; }
+  function showImage(name: string, bytes: Uint8Array): void {
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    imageUrl = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: MIME[nodeExt(name)] ?? "application/octet-stream" }));
+    d.imageEl.src = imageUrl; d.imageBox.hidden = false; d.imageBox.classList.remove("natural");
+    d.imageMeta.textContent = d.imageMetaText({ name, w: 0, h: 0, bytes: bytes.length });
+    d.imageEl.onload = () => { d.imageMeta.textContent = d.imageMetaText({ name, w: d.imageEl.naturalWidth, h: d.imageEl.naturalHeight, bytes: bytes.length }); };
+    document.body.dataset.pageKind = "image";
+  }
+  d.imageEl.addEventListener("click", () => { d.imageBox.classList.toggle("natural"); });   // 点击切 fit / 1:1（双指以后再说）
   function loadCurrentIntoEditor(): void {
     const s = session!;
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
-    d.editorEl.value = s.currentText();
+    const cur = s.current();
+    if (cur && nodeKind(cur) === "image") { d.editorEl.value = ""; showImage(cur, s.currentBytes() ?? new Uint8Array(0)); }
+    else { hideImage(); d.editorEl.value = s.currentText(); }
     applyReadOnly();
     syncTitle();
     try { d.editorEl.selectionStart = d.editorEl.selectionEnd = 0; } catch { /* ignore */ }
@@ -209,6 +232,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     home = { kind: "store", name: projectName }; session = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     encrypted = true; locked = true; back = []; pushPending = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
+    hideImage();
     d.editorEl.value = ""; d.editorEl.readOnly = true; d.editorEl.classList.add("locked");
     d.titleEl.value = ""; d.titleEl.readOnly = true; d.titleEl.classList.add("locked");
     d.setState(""); d.onChanged();
@@ -306,6 +330,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
     home = null; session = null; back = []; pushPending = false; encrypted = false; locked = false;
+    hideImage();
     d.editorEl.readOnly = false; d.editorEl.classList.remove("locked");
     d.titleEl.value = ""; d.titleEl.readOnly = false; d.titleEl.classList.remove("locked");
   }
@@ -352,13 +377,13 @@ export function createProjectMode(d: ProjectModeDeps) {
     return true;
   }
   /** 「+」新节点：调用方问好名字再来（撞已有名 = 连过去并跳，ADR-0009 §6）；边加在当前节点末尾，跳过去。 */
-  function newNode(rawName: string): boolean {
+  function newNode(rawName: string, text = ""): boolean {
     if (!canEdit()) return false;
     const nn = normalizeNodeName(rawName);
     if (!nn) { d.setStatus(t("edge.badName"), { error: true }); return false; }
     commitEditor();
     const from = session!.current();
-    try { session!.spawn(nn, ""); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; }
+    try { session!.spawn(nn, text); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; }
     if (from && from !== session!.current()) pushBack(from);
     scheduleLocalSave();
     loadCurrentIntoEditor(); d.onChanged();
@@ -367,6 +392,29 @@ export function createProjectMode(d: ProjectModeDeps) {
   const guardEdit = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { if (!canEdit()) { if (active() && !locked && userReadOnly()) d.setStatus(t("edge.lockedHint"), { error: true }); return false; } try { fn(...a); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; } scheduleLocalSave(); d.onChanged(); return true; };
   const addLink = guardEdit((to: string) => { const nn = normalizeNodeName(to); if (!nn) throw new Error(t("edge.badName")); session!.addLink(nn); });
   const removeLink = guardEdit((to: string) => { session!.removeLink(to); });
+  /** 断入边（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能」）：纯 unlink from → 当前页。 */
+  const cutIncoming = guardEdit((from: string) => { if (!session!.cutIncoming(from)) throw new Error("no such incoming link"); });
+  const backlinksOfCurrent = (): string[] => { const c = session?.current(); return c ? session!.backlinksOf(c) : []; };
+  // ── 图片页（2.1，ADR-0012/0013）──
+  /** 减肥后的图片 → 新页（撞名 hex4）+ 当前页末尾一条边；全部加完跳到最后一张（同加页手感）。返回最终名列表。 */
+  let lastAdded: string[] = [];
+  const addImagePages = guardEdit((items: { name: string; bytes: Uint8Array }[]) => {
+    commitEditor(); const from = session!.current(); lastAdded = items.map((it) => session!.addBytesPage(it.name, it.bytes));
+    const last = lastAdded[lastAdded.length - 1]; if (last) { session!.jump(last); if (from && from !== last) pushBack(from); loadCurrentIntoEditor(); }
+  });
+  const pageBytes = (): Uint8Array | null => session?.currentBytes() ?? null;
+  /** 替换图片：保名保边只换字节；字节类型变了（png → jpg）扩展名跟着变（撞名 hex4），名字不能撒谎。 */
+  const replaceImage = guardEdit((bytes: Uint8Array, ext: string) => {
+    const c = session!.current(); if (!c) throw new Error("no current page");
+    session!.replaceBytes(c, bytes);
+    if (nodeExt(c) !== ext && !(ext === "jpg" && nodeExt(c) === "jpeg")) {
+      let nn = `${stemOf(c)}.${ext}`; if (session!.exists(nn)) nn = `${stemOf(c)}-${hex4()}.${ext}`;
+      session!.rename(c, nn); renameInBack(c, nn);
+    }
+    loadCurrentIntoEditor();
+  });
+  const setThumbnail = guardEdit((png: Uint8Array | null) => { session!.setThumbnail(png); });
+  const thumbnail = (): Uint8Array | null => session?.thumbnail() ?? null;
   const moveLink = guardEdit((to: string, dir: -1 | 1) => { const links = session!.sidebar().map((n) => n.name); const i = links.indexOf(to); const j = i + dir; if (i < 0 || j < 0 || j >= links.length) return; [links[i], links[j]] = [links[j]!, links[i]!]; session!.setLinksOrder(links); });
   /** 丢引用（删除模型）：断边；成孤儿则改名 `_废-…`（回退栈跟着改名）。返回孤儿新名（toast 用）。 */
   let lastDropped: string | null = null;
@@ -379,7 +427,8 @@ export function createProjectMode(d: ProjectModeDeps) {
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit,
     jump, goBack, canGoBack: () => back.length > 0, spawnFromSelection, newNode, addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
-    current: () => session?.current() ?? null,
+    current: () => session?.current() ?? null, currentKind,
+    cutIncoming, backlinksOfCurrent, addImagePages, lastAdded: () => lastAdded, pageBytes, replaceImage, setThumbnail, thumbnail,
   };
 }
 export type ProjectMode = ReturnType<typeof createProjectMode>;

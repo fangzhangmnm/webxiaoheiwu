@@ -7,6 +7,9 @@ import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 const wpRequire = createRequire(new URL("../../20260524 WeebPaint/package.json", import.meta.url));
 const { chromium } = wpRequire("playwright");
+const { default: UPNG } = await import("../vendor/upng/upng.esm.js");
+/** 测试图：w×h 噪点 RGBA（噪点让 PNG 压不动 → 大图走 JPEG 重编码那条路；小图走只剥 metadata）。seed 决定内容，同 seed 同字节。 */
+function makePng(w, h, seed) { const px = new Uint8Array(w * h * 4); let x = seed >>> 0; for (let i = 0; i < px.length; i += 4) { x = (x * 1664525 + 1013904223) >>> 0; px[i] = x & 255; px[i + 1] = (x >>> 8) & 255; px[i + 2] = (x >>> 16) & 255; px[i + 3] = 255; } return Buffer.from(UPNG.encode([px.buffer], w, h, 0)); }
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".wasm": "application/wasm", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 const srv = http.createServer(async (req, res) => {
@@ -212,6 +215,52 @@ for (const [w, h] of sizes) {
   await page.fill("#sheetInput", "锁卡测试书"); await page.click("#sheetConfirm"); await wait(1500);
   probe(tag, "new book after a locked draft: lock card gone, book mode on", await page.evaluate(() => document.getElementById("lockCard").hidden && document.body.dataset.project === "1"));
   await shot("20-book-after-locked-draft");
+  // ── 2.1 图片页整链（ADR-0012/0013）：进门两张（小图剥 metadata 保 png / 大图缩到 2048 转 jpg）→ 图片页视图 → 设为封面 → 替换（封面跟着换）→ 断入边 → 拖 txt / 粘贴位图 → 书库 2:3 三列 + 封面缩略图
+  await page.setInputFiles("#imageFileInput", [{ name: "夏音.png", mimeType: "image/png", buffer: makePng(300, 200, 7) }, { name: "地图.png", mimeType: "image/png", buffer: makePng(2200, 1500, 9) }]);
+  await page.waitForFunction(() => document.body.dataset.pageKind === "image", null, { timeout: 60000 }); await wait(500);
+  const names = await page.evaluate(() => window.__xhw.project.nodeNames());
+  probe(tag, "two images imported: small keeps .png, big becomes .jpg (2048 cap + JPEG q85)", names.includes("夏音.png") && names.includes("地图.jpg"), names.join("|"));
+  probe(tag, "image page view: textarea hidden, <img> shown, page name box = stem without ext", await page.evaluate(() => { const ed = document.getElementById("editor"), img = document.getElementById("pageImageImg"); return getComputedStyle(ed).display === "none" && !document.getElementById("pageImage").hidden && img.naturalWidth === 2048 && document.getElementById("nodeTitle").value === "地图"; }), await page.evaluate(() => `${document.getElementById("pageImageImg").naturalWidth} ${document.getElementById("nodeTitle").value}`));
+  probe(tag, "image page: word count footer + mic hidden", await page.evaluate(() => getComputedStyle(document.getElementById("wordCount")).display === "none" && document.getElementById("micButton").hidden));
+  probe(tag, "toast reports compression (已压缩 A → B)", /已压缩/.test(await page.textContent("#toast")), await page.textContent("#toast"));
+  await ensureSidebar(true); await shot("21-image-page");
+  await page.click("#edgeBack"); await wait(300);   // 回到 作品：它的出边列表里才有两张图
+  probe(tag, "sidebar rows for image pages carry the image icon", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row")].filter((r) => r.querySelector(".edge-kind")).length === 2), await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row .edge-name")].map((e) => e.textContent).join("|")));
+  await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row .edge-main")].find((b) => /地图\.jpg/.test(b.textContent)); if (!r) throw new Error("地图 row missing"); r.click(); }); await page.waitForFunction(() => window.__xhw.project.current() === "地图.jpg", null, { timeout: 5000 }); await wait(300);
+  // 设为封面
+  if (w < 900) await ensureSidebar(false);   // 窄屏侧栏是浮层，盖着纸面上的钮
+  await page.click("#pageImageCover"); await page.waitForFunction(() => !!window.__xhw.project.thumbnail(), null, { timeout: 30000 }); await wait(300);
+  const thumb1 = await page.evaluate(() => Array.from(window.__xhw.project.thumbnail()));
+  probe(tag, "set as cover → Thumbnails/thumbnail.png bytes present, PNG, ≤ 70 KB", thumb1.length > 0 && thumb1[1] === 0x50 && thumb1.length <= 70 * 1024, String(thumb1.length));
+  // 替换图片（封面跟着换）：sheet → 确认 → file input
+  if (w < 900) await ensureSidebar(false);
+  await page.click("#pageImageReplace"); await wait(300); await page.click("#sheetConfirm"); await wait(200);
+  await page.setInputFiles("#imageReplaceInput", [{ name: "地图2.png", mimeType: "image/png", buffer: makePng(2100, 1400, 11) }]);
+  await page.waitForFunction(() => /已替换/.test(document.getElementById("toast").textContent), null, { timeout: 60000 }); await wait(300);
+  const thumb2 = await page.evaluate(() => Array.from(window.__xhw.project.thumbnail()));
+  probe(tag, "replace image on the cover page → cover regenerated (bytes differ), name kept", thumb2.length > 0 && thumb2.join() !== thumb1.join() && (await page.evaluate(() => window.__xhw.project.current())) === "地图.jpg", await page.textContent("#toast"));
+  // 断入边：图片页的「谁指向这里」列出 作品 → 断开
+  await ensureSidebar(true);
+  probe(tag, "incoming section lists the page that links here", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row.header")].some((h) => /指向这里/.test(h.textContent))));
+  await page.evaluate(() => { const rows = [...document.querySelectorAll("#edgeList .edge-row")]; const hi = rows.findIndex((r) => r.classList.contains("header") && /指向这里/.test(r.textContent)); rows[hi + 1].querySelector(".edge-more").click(); }); await wait(250);
+  await page.evaluate(() => { const it = [...document.querySelectorAll(".popup-menu-item")].find((b) => /断开/.test(b.textContent)); if (!it) throw new Error("cut item missing"); it.click(); }); await wait(300);
+  probe(tag, "cut incoming link → no backlinks left, page not renamed", await page.evaluate(() => window.__xhw.project.session().backlinksOf("地图.jpg").length === 0 && window.__xhw.project.nodeNames().includes("地图.jpg")));
+  // 拖 txt → 新页；粘贴位图 → 日期码名图片页
+  await page.evaluate(() => { const dt = new DataTransfer(); dt.items.add(new File(["拖进来的正文"], "拖进来的.txt", { type: "text/plain" })); document.querySelector(".page").dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true })); });
+  await page.waitForFunction(() => window.__xhw.project.nodeNames().includes("拖进来的.txt"), null, { timeout: 10000 });
+  probe(tag, "drop .txt onto the paper → new page with the file's text", (await page.evaluate(() => window.__xhw.project.session().bytesOf("拖进来的.txt") && new TextDecoder().decode(window.__xhw.project.session().bytesOf("拖进来的.txt")))) === "拖进来的正文");
+  await page.evaluate(async () => { const c = new OffscreenCanvas(40, 30); const cx = c.getContext("2d"); cx.fillStyle = "#c33"; cx.fillRect(0, 0, 40, 30); const blob = await c.convertToBlob({ type: "image/png" }); const dt = new DataTransfer(); dt.items.add(new File([blob], "image.png", { type: "image/png" })); document.getElementById("editor").dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); });
+  await page.waitForFunction(() => window.__xhw.project.nodeNames().some((n) => /^\d{8}-[0-9a-f]{4}\.png$/.test(n)), null, { timeout: 15000 });
+  probe(tag, "paste a bitmap → image page named by date code", true);
+  await shot("22-after-drop-paste");
+  // 书库：2:3 竖版、窄屏三列、封面缩略图露面
+  await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(2500);
+  probe(tag, "library grid is tall (2:3) and narrow screens get 3 columns", await page.evaluate(() => { const g = document.querySelector("#galleryMount .gallery-grid"); const cols = getComputedStyle(g).gridTemplateColumns.split(" ").length; return g.classList.contains("tall") && (innerWidth >= 500 || cols === 3); }), await page.evaluate(() => getComputedStyle(document.querySelector("#galleryMount .gallery-grid")).gridTemplateColumns));
+  await page.waitForFunction(() => [...document.querySelectorAll("#galleryMount .gallery-tile")].some((t) => /锁卡测试书/.test(t.textContent) && t.querySelector("img.gallery-tile-thumb")?.src), null, { timeout: 15000 }).catch(() => {});
+  probe(tag, "library tile of the book shows the cover thumbnail", await page.evaluate(() => [...document.querySelectorAll("#galleryMount .gallery-tile")].some((t) => /锁卡测试书/.test(t.textContent) && !!t.querySelector("img.gallery-tile-thumb")?.src)));
+  probe(tag, "active tile tag says 打开中 (not 编辑中)", await page.evaluate(() => { const tag = document.querySelector("#galleryMount .gallery-tile.active .gallery-tile-active-tag"); return !!tag && tag.textContent.trim() === "打开中"; }));
+  await shot("23-library-covers");
+  await page.click("#galleryBack"); await wait(300);
   await ctx.close();
 }
 await browser.close(); srv.close();

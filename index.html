@@ -183,6 +183,16 @@
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
         <div id="wordCount" class="page-foot" aria-live="off" hidden></div>
+        <div id="pageImage" class="page-image" hidden>
+          <img id="pageImageImg" alt="" />
+          <div class="page-image-bar">
+            <span id="pageImageMeta" class="page-image-meta"></span>
+            <button type="button" class="auth-action" id="pageImageCover" data-i18n="img.setCover">设为封面</button>
+            <button type="button" class="auth-action" id="pageImageReplace" data-i18n="img.replace">替换图片…</button>
+          </div>
+        </div>
+        <input type="file" id="imageFileInput" accept="image/*" multiple hidden />
+        <input type="file" id="imageReplaceInput" accept="image/*" hidden />
         <button id="micButton" class="mic-button" type="button" hidden aria-label="语音输入" data-i18n-aria="ui.mic" data-state="idle">
           <svg class="mic-icon ico" aria-hidden="true"><use href="#microphone"/></svg>
           <span class="mic-pulse" aria-hidden="true"></span>
@@ -231,6 +241,7 @@
         <input id="sheetInput2" class="crypto-input hidden" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="再次输入以确认" data-i18n-ph="ui.sheetInput2Ph" />
         <p id="sheetError" class="crypto-error hidden"></p>
         <div id="sheetChoices" class="sheet-choices hidden"></div>
+        <label id="sheetCheck" class="sheet-check hidden"><input type="checkbox" id="sheetCheckInput" /><span id="sheetCheckLabel"></span></label>
         <div class="crypto-actions">
           <button id="sheetCancel" class="crypto-button" type="button">取消</button>
           <button id="sheetConfirm" class="crypto-button primary" type="button">确定</button>
@@ -443,6 +454,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-2f8f11f72ea4.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-81871df02d7b.mjs"></script>
   </body>
 </html>

@@ -4,12 +4,15 @@ import { APP_VERSION } from "./version.ts";
 import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
-import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy, showBusy, hideBusy } from "./sheets.ts";
+import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openChoiceSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc } from "./docs.ts";
-import { docKind, formatDate, statsForText } from "./doc-model.ts";
+import { docKind, formatDate, statsForText, decodeTextBytes, hex4 } from "./doc-model.ts";
+import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
+import { importPageName } from "./image/policy.ts";
+import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD } from "@internal/gallery";
 import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
@@ -172,8 +175,10 @@ let voiceAbortHook: (() => void) | null = null;
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
 const project = createProjectMode({
   editorEl, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
+  imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
+  imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderMicVisibility(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
@@ -189,11 +194,106 @@ const edgeSidebar = createEdgeSidebar({
 /** 加一页（顶栏「+」与侧栏列表末尾「+」同一个流程）：问名字，**不提示不预填**（user 2026-09-10「不用自动第 xx 章命名。不同的人会用节，幕，所以不要替用户做决定」「只有一个 default 就是默认节点」）→ 新页加在当前页末尾并跳过去。 */
 async function addPageFlow(): Promise<boolean> {
   if (!project.canEdit()) return false;
-  const v = await openInputSheet(t("edge.newNodeTitle"), { message: t("edge.newNodeHint"), placeholder: t("edge.namePh"), okLabel: t("common.ok") });
+  const v = await openInputSheet(t("edge.newNodeTitle"), { message: t("edge.newNodeHint"), placeholder: t("edge.namePh"), okLabel: t("common.ok"), secondary: { label: t("edge.fromImage") } });   // 「从图片…」= 同一个 sheet 的副按钮（user 2026-09-10 同意）
+  if (v === INPUT_SECONDARY) { void pickImagesFlow(); return false; }
   if (v == null || !v.trim()) return false;
   const ok = project.newNode(v);
   if (ok) { edgeSidebar.render(); editorEl.focus(); }
   return ok;
+}
+// ── 图片页（2.1，ADR-0012/0013）：单一漏斗 importImageFiles（文件选择 / 多选 / 拖放 / 粘贴 / 替换都走 slimImage）──
+const imageFileInput = $<HTMLInputElement>("imageFileInput"), imageReplaceInput = $<HTMLInputElement>("imageReplaceInput");
+let pendingHd = false;   // 「保留高清」勾（sheet 里选，跟着这一次选择）
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
+/** 「从图片…」：一个 sheet（说明 + 保留高清勾）→ 系统文件选择器（多选）。 */
+async function pickImagesFlow(replace = false): Promise<void> {
+  if (!project.active()) { setStatus(t("img.dropTxtMode"), { error: true }); return; }
+  if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
+  const r = await openConfirmSheetEx(t(replace ? "img.replace" : "img.pickTitle"), t("img.pickHint"), { okLabel: t("img.pick"), checkbox: { label: t("img.hd"), checked: pendingHd } });
+  if (!r.ok) return;
+  pendingHd = r.checked;
+  const input = replace ? imageReplaceInput : imageFileInput; input.value = ""; input.click();
+}
+imageFileInput.addEventListener("change", () => { const files = [...(imageFileInput.files ?? [])]; imageFileInput.value = ""; if (files.length) void importImageFiles(files, { hd: pendingHd }); });
+imageReplaceInput.addEventListener("change", () => { const f = imageReplaceInput.files?.[0]; imageReplaceInput.value = ""; if (f) void replaceImageFlow(f, { hd: pendingHd }); });
+async function importImageFiles(files: File[], opts: { hd: boolean; unnamed?: boolean }): Promise<void> {   // unnamed：粘贴的位图浏览器一律叫 image.png，不算有名 → 日期码
+  if (!project.active()) { setStatus(t("img.dropTxtMode"), { error: true }); return; }
+  if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
+  const date = formatDate(Date.now());
+  const results: { name: string; r: SlimResult }[] = []; const bad: string[] = [];
+  await withBusy(t("img.making"), async () => {
+    for (const f of files) {
+      try { const r = await slimImage(f, { hd: opts.hd }); results.push({ r, name: importPageName(opts.unnamed ? null : (f.name || null), r.ext, `${date}-${hex4()}`) }); }
+      catch (e) { if (!(e instanceof NotAnImageError)) reportError(e, "warning"); bad.push(f.name || "?"); }
+    }
+  });
+  const keep: typeof results = [];
+  for (const it of results) {   // 胖动图二次确认（user「不设线只提示体重二次确认，2MB 就胖」）——sheet 必须在 busy 外
+    if (it.r.fatGif && !(await openConfirmSheet(t("img.fatGifTitle"), t("img.fatGifMsg", { name: it.name, size: humanSize(it.r.bytes.length) }), { okLabel: t("img.fatGifOk") }))) continue;
+    keep.push(it);
+  }
+  if (keep.length && project.addImagePages(keep.map((k) => ({ name: k.name, bytes: k.r.bytes })))) {
+    const from = keep.reduce((a, k) => a + k.r.from, 0), to = keep.reduce((a, k) => a + k.r.to, 0);
+    setStatus(keep.some((k) => k.r.reencoded) ? t("img.addedCompressed", { n: keep.length, from: humanSize(from), to: humanSize(to) }) : t("img.added", { n: keep.length }));   // 只状态行不弹框（抄 WeebPaint 参考图）
+    edgeSidebar.render();
+  }
+  if (bad.length) setStatus(t("img.notImage", { name: bad.join(", ") }), { error: true });
+}
+/** 设为封面：当前图片页 → Thumbnails/thumbnail.png（ADR-0012：封面就是这个 entry，没有 cover 字段；腰封文本若已有则保留）。 */
+async function setCoverFlow(): Promise<void> {
+  const bytes = project.pageBytes(); if (!bytes || project.currentKind() !== "image") return;
+  if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
+  try {
+    const old = project.thumbnail(); const blurb = old ? (readPngText(old)[PNG_BLURB_KEYWORD] ?? null) : null;
+    const png = await withBusy(t("img.making"), () => makeCoverPng(bytes, blurb));
+    if (project.setThumbnail(png)) { setStatus(t("img.coverSet")); galleryHost.invalidateThumb(project.name() ?? ""); }
+  } catch (e) { reportError(e, "warning"); setStatus(t("img.failed", { e: errText(e) }), { error: true }); }
+}
+/** 替换图片：保名保边（字节类型变了扩展名跟着变）；它若正是封面（重算 thumb 比对字节，零字段）→ 封面跟着换。 */
+async function replaceImageFlow(file: File, opts: { hd: boolean }): Promise<void> {
+  if (project.currentKind() !== "image") return;
+  if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
+  try {
+    const r = await withBusy(t("img.making"), () => slimImage(file, { hd: opts.hd }));
+    if (r.fatGif && !(await openConfirmSheet(t("img.fatGifTitle"), t("img.fatGifMsg", { name: file.name, size: humanSize(r.bytes.length) }), { okLabel: t("img.fatGifOk") }))) return;
+    const oldBytes = project.pageBytes(), thumb = project.thumbnail();
+    let wasCover = false, blurb: string | null = null;
+    if (oldBytes && thumb) { blurb = readPngText(thumb)[PNG_BLURB_KEYWORD] ?? null; wasCover = bytesEqual(await makeCoverPng(oldBytes, null), withPngText(thumb, PNG_BLURB_KEYWORD, null)); }
+    if (!project.replaceImage(r.bytes, r.ext)) return;
+    if (wasCover) { project.setThumbnail(await makeCoverPng(r.bytes, blurb)); galleryHost.invalidateThumb(project.name() ?? ""); }
+    setStatus(wasCover ? t("img.replacedCover") : t("img.replaced"));
+  } catch (e) { if (e instanceof NotAnImageError) setStatus(t("img.notImage", { name: file.name }), { error: true }); else { reportError(e, "warning"); setStatus(t("img.failed", { e: errText(e) }), { error: true }); } }
+}
+$("pageImageCover").addEventListener("click", () => { void setCoverFlow(); });
+$("pageImageReplace").addEventListener("click", () => { void pickImagesFlow(true); });
+/** 拖放 / 粘贴同一漏斗（user 2026-09-10 Q8 同意）：书模式 txt = 新页、图 = 图片页；txt 模式 txt = 新稿、图 = 提示先变成书；粘贴位图无名 → 日期码。 */
+async function importDroppedFiles(files: File[]): Promise<void> {
+  const isTxt = (f: File) => /\.txt$/i.test(f.name) || f.type === "text/plain";
+  const txts = files.filter(isTxt), imgs = files.filter((f) => !isTxt(f));
+  if (project.active()) {
+    for (const f of txts) {
+      const text = decodeTextBytes(new Uint8Array(await f.arrayBuffer())).text;
+      const name = normalizeNodeName(f.name.replace(/\.txt$/i, "")) ?? `${formatDate(Date.now())}-${hex4()}.txt`;
+      if (project.newNode(name, text)) setStatus(t("img.txtAdded", { name: parseDocName(name).stem }));
+    }
+    if (imgs.length) await importImageFiles(imgs, { hd: false });
+    return;
+  }
+  if (imgs.length) setStatus(t("img.dropTxtMode"), { error: true });
+  const f = txts[0]; if (!f) return;
+  const text = decodeTextBytes(new Uint8Array(await f.arrayBuffer())).text;
+  await editor.newDoc({ dir: editor.currentDir() });
+  const stem = f.name.replace(/\.txt$/i, "").trim();
+  editor.state.pendingTitle = stem || null;
+  editorEl.value = text; editorEl.dispatchEvent(new Event("input", { bubbles: true }));
+  setStatus(t("img.dropDraft", { name: stem || f.name }));
+}
+{
+  const paperEl = document.querySelector<HTMLElement>(".page")!;
+  paperEl.addEventListener("dragover", (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+  paperEl.addEventListener("drop", (e) => { const files = [...(e.dataTransfer?.files ?? [])]; if (!files.length) return; e.preventDefault(); void importDroppedFiles(files); });
+  editorEl.addEventListener("paste", (e) => { const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/")); if (!files.length) return; e.preventDefault(); void importImageFiles(files, { hd: false, unnamed: true }); });
 }
 /** 把当前 txt 草稿变成书（user 2026-09-10「加一个把 draft lift 成书的机制（保留 draft?）」）：正文 → 新书第一页（页名 = 稿名），书名默认 = 稿名；
  *  原稿**保留**（非破坏；不要了自己送回收站）；原稿是加密的 → 新书立即加密（明文只在本地 IDB 停留一步，同「新建即加密」）。 */
@@ -641,7 +741,7 @@ voiceAbortHook = () => { if (localSession && (localSession.state === "recording"
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
   const st = editor.state;
-  const absent = !activeVoiceBackend() || (project.active() ? project.locked() : (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted));   // 锁着/不可用：锁卡盖着纸面，话筒收起
+  const absent = !activeVoiceBackend() || (project.active() ? (project.locked() || project.currentKind() === "image") : (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted));   // 锁着/不可用：锁卡盖着纸面，话筒收起；图片页没有正文可口述
   const blocked = project.active() ? !project.canEdit() : st.readOnly;   // 只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
   micButton.hidden = absent;
   micButton.classList.toggle("disabled", blocked);

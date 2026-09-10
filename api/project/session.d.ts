@@ -39,7 +39,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     setCurrentText: (text: string) => boolean;
     jump: (target: string) => string;
     spawn: (newName: string, selectedText: string) => string;
-    addLink: (to: string, at?: "top" | "bottom" | undefined) => boolean;
+    addLink: (to: string, at?: "bottom" | "top" | undefined) => boolean;
     removeLink: (to: string) => boolean;
     setLinksOrder: (links: string[]) => void;
     rename: (from: string, to: string) => void;
@@ -48,6 +48,13 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     purge: (target: string) => boolean;
     orphan: (target: string) => boolean;
     setReadOnly: (v: boolean) => void;
+    cutIncoming: (from: string) => boolean;
+    addBytesPage: (pageName: string, bytes: Uint8Array<ArrayBufferLike>) => string;
+    replaceBytes: (target: string, bytes: Uint8Array<ArrayBufferLike>) => void;
+    currentBytes: () => Uint8Array | null;
+    bytesOf: (target: string) => Uint8Array | null;
+    setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => void;
+    thumbnail: () => Uint8Array | null;
     sidebar: () => {
         name: string;
         stub: boolean;
