@@ -55,5 +55,11 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     backlinksOf: (target: string) => string[];
     find: (q: string, limit?: number) => string[];
     exists: (target: string) => boolean;
+    canMutate: () => boolean;
 };
 export type ProjectSession = ReturnType<typeof createProjectSession>;
+/** 作品上了修改锁（graph.json readOnly）。UI 捕获后提示「先解除只读」。 */
+export declare class LockedBookError extends Error {
+    name: string;
+    constructor();
+}

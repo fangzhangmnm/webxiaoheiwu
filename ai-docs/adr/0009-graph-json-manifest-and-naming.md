@@ -49,3 +49,12 @@
 ## 修订 2026-09-10 深夜 2（edited by Claude Fable 5.1）
 - schema：顶层键 `nodes` → **`pages`**，新增可选顶层 `readOnly: true`（修改锁跟着作品）。见 ADR-0008 同日修订的完整清单。
 - 默认名：**只有新建书的第一页有默认名**（按语言「第一章 / Chapter 1」）；加页 / 分裂一律用户自己打，不提示章号（user「不同的人会用节，幕，所以不要替用户做决定」「只有一个 default 就是默认节点」）。
+- 默认名再收：**第一页默认名 =「作品」及各语言对应词**（同书的默认名），不再是「第一章」（user「默认节点命名是《作品》and their language counterpart 吗」）。app 里没有任何自动起名代码了。
+- **修改锁在工件层**：`session.canMutate()` / `assertMutable()` 一道守卫覆盖全部改动动词（正文、占位生文件、spawn、连/断/排序、改名、删、丢引用、彻底删），UI 只读它画灰；无头 / 无地同一份 session（user「不要 ad hoc add hooks…workpiece 级别，无头，无地」）。
+
+## 产品理念（不是机制；user 2026-09-10 口述，Claude Fable 5.1 落档）
+> user：「although the user have full authority to design their graph based data structure, i think it is a clever idea to treat chapters as a linked list just like blockchain, instead of have a master table of contents node links to each chapters」「没有机制上面的东西。只是产品设计理念和 vision」
+
+- **章节 = 链**（每一页指向下一页），而不是**一个目录页指向所有章**。书的脊柱就是这条链；目录是从第一页顺着出边走出来的派生物，不是一个特殊节点。
+- 用户对自己的图有完全的设计权：链和目录页在数据上没有区别（目录页只是一个出边很多的页），app **不强制、不检查**。这条只是推荐的心智模型与默认手感：「+ 加页」从当前页末尾长出一条边——在最新一章上按 + 自然长成链，在目录页上按 + 自然长成目录。
+- AI 对此的看法（同日）：同意作为默认心智模型；代价是「总览」要顺链走（或检索），插入/重排是改两三条边；分叉（一页指向两个「下一页」）在链模型下天然是草稿的分支，目录模型表达不了。将来若要「一眼看脊柱」，只该是从第一页顺出边走的派生视图，不是新节点类型。

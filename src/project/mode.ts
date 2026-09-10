@@ -56,7 +56,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   const popBack = (): string | undefined => { const v = back.pop(); syncBack(); return v; };
   const renameInBack = (from: string, to: string) => { let hit = false; back = back.map((n) => (n === from ? (hit = true, to) : n)); if (hit) syncBack(); };
   const active = () => !!session && !!home;
-  const canEdit = () => active() && !session!.readOnly && !locked && !userReadOnly();
+  const canEdit = () => active() && !locked && session!.canMutate();   // 改动能不能做 = session 说了算（锁在工件层）；locked = 加密未解锁
   const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
   const displayName = (): string | null => (home ? (home.kind === "store" ? parseDocName(home.name).stem : home.home.fileName.replace(/\.webxiaoheiwu\.zip$/i, "")) : null);
   const name = (): string | null => (home?.kind === "store" ? home.name : null);
@@ -364,7 +364,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     loadCurrentIntoEditor(); d.onChanged();
     return true;
   }
-  const guardEdit = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { if (!canEdit()) return false; try { fn(...a); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; } scheduleLocalSave(); d.onChanged(); return true; };
+  const guardEdit = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { if (!canEdit()) { if (active() && !locked && userReadOnly()) d.setStatus(t("edge.lockedHint"), { error: true }); return false; } try { fn(...a); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; } scheduleLocalSave(); d.onChanged(); return true; };
   const addLink = guardEdit((to: string) => { const nn = normalizeNodeName(to); if (!nn) throw new Error(t("edge.badName")); session!.addLink(nn); });
   const removeLink = guardEdit((to: string) => { session!.removeLink(to); });
   const moveLink = guardEdit((to: string, dir: -1 | 1) => { const links = session!.sidebar().map((n) => n.name); const i = links.indexOf(to); const j = i + dir; if (i < 0 || j < 0 || j >= links.length) return; [links[i], links[j]] = [links[j]!, links[i]!]; session!.setLinksOrder(links); });

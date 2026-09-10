@@ -76,3 +76,18 @@ describe("project/session · 新建 / 跳转不标脏 / 正文改了才脏 / 整
     eq(ra.kind, "unavailable"); eq(p2.name, "b.webxiaoheiwu.zip"); eq(p2.current(), "b.txt");
   });
 });
+
+describe("project/session · 修改锁在工件层：锁住 = 所有改动动词一律拒绝（user 2026-09-10「不要 ad hoc add hooks」）", () => {
+  it("setReadOnly(true) 后：正文/跳占位/spawn/连边/断边/排序/改名/删/丢引用/彻底删 全部不动；解锁本身仍可；解锁后恢复", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("p.webxiaoheiwu.zip", "作品.txt"); ps.setCurrentText("A"); ps.addLink("b.txt"); ps.jump("b.txt"); ps.setCurrentText("B"); ps.jump("作品.txt"); await ps.flush(false);
+    ps.setReadOnly(true); assert(ps.dirty, "上锁 = 正经改动"); await ps.flush(false); assert(!ps.canMutate());
+    const before = JSON.stringify([[...ps.project.contents.keys()].sort(), [...ps.project.nodes].map(([k, v]) => [k, v.links])]);
+    eq(ps.setCurrentText("A2"), false);
+    const verbs = [() => ps.jump("新占位.txt"), () => ps.spawn("x.txt", "t"), () => ps.addLink("c.txt"), () => ps.removeLink("b.txt"), () => ps.setLinksOrder([]), () => ps.rename("b.txt", "bb.txt"), () => ps.remove("b.txt"), () => ps.drop("b.txt", "_废-"), () => ps.purge("b.txt")];
+    for (const v of verbs) { let threw = false; try { v(); } catch (e) { threw = e?.name === "LockedBookError"; } assert(threw, "locked verb must throw LockedBookError: " + v.toString()); }
+    eq(JSON.stringify([[...ps.project.contents.keys()].sort(), [...ps.project.nodes].map(([k, v]) => [k, v.links])]), before, "图纹丝不动"); assert(!ps.dirty);
+    eq(ps.jump("b.txt"), "b.txt", "跳到已有页不算改动，锁着也能导航");
+    ps.setReadOnly(false); assert(ps.canMutate()); eq(ps.setCurrentText("B2"), true);
+  });
+});

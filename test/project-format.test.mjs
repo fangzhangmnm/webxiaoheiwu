@@ -14,7 +14,7 @@ describe("project/format · 目录清单（ADR-0008 §3）与往返", () => {
     p.editorState.last = "夏音-第三次见面.txt";
     const blob = await packProject(p);
     const entries = await zipUnpack(blob);
-    eq(Object.keys(entries).sort().join("|"), ".webxiaoheiwu/editor-state.json|pages/夏音-第三次见面.txt|pages/夏音.txt|graph.json");
+    eq(Object.keys(entries).sort().join("|"), ".webxiaoheiwu/editor-state.json|graph.json|pages/夏音-第三次见面.txt|pages/夏音.txt");
     const g = JSON.parse(td.decode(entries["graph.json"]));
     eq(g.format, "webxiaoheiwu"); eq(g.version, PROJECT_FORMAT_VERSION); assert(typeof g.wroteWith === "string");
     eq(g.pages["夏音-第三次见面.txt"].links.join("|"), "夏音.txt|_废-第一版开场.txt", "占位符照写、顺序照写");

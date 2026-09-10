@@ -77,6 +77,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         backlinksOf: (target: string) => string[];
         find: (q: string, limit?: number) => string[];
         exists: (target: string) => boolean;
+        canMutate: () => boolean;
     } | null;
     encrypted: () => boolean;
     locked: () => boolean;

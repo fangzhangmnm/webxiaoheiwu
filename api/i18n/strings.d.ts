@@ -1596,6 +1596,10 @@ export declare const S: {
         readonly zh: "还有页指向它，先移出（丢引用）";
         readonly en: "Still referenced — remove the references first";
     };
+    readonly "edge.lockedHint": {
+        readonly zh: "这本书是只读的，先点顶栏的笔解除";
+        readonly en: "This book is read-only — tap the pen in the top bar to unlock";
+    };
     readonly "edge.download": {
         readonly zh: "下载一份";
         readonly en: "Download a copy";
@@ -1623,10 +1627,6 @@ export declare const S: {
     readonly "edge.title.aria": {
         readonly zh: "页名（改了就是改名）";
         readonly en: "Page name (edit to rename)";
-    };
-    readonly "chapter.name": {
-        readonly zh: "第{n}章";
-        readonly en: "Chapter {n}";
     };
     readonly "sidebar.library": {
         readonly zh: "书库";

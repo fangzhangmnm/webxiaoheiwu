@@ -23,6 +23,10 @@ export function createProjectSession(d: ProjectSessionDeps) {
 
   const requireCurrent = (): string => { const c = project.editorState.last; if (!c) throw new Error("project session: no current node"); return c; };
   const touch = () => { dirty = true; };
+  /** 能不能改：太新（格式）或作品自己上了修改锁 → 一律不能。**所有**改动动词都经这一道（user 2026-09-10「锁的话就是各种删除、修改、拓扑操作都要加，所以不要 ad hoc add hooks…workpiece 级别」）；
+   *  UI 只是读它画灰，不再各处自己判。无头 / 无地同一份 session，天然同守。 */
+  const canMutate = (): boolean => !readOnly && !project.readOnly;
+  const assertMutable = (): void => { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly) throw new LockedBookError(); };
 
   async function open(projectName: string): Promise<OpenResult> {
     const g = ++gen;
@@ -53,7 +57,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const current = (): string | null => project.editorState.last;
   const currentText = (): string => { const c = current(); return c ? (readNodeText(project, c) ?? "") : ""; };
   function setCurrentText(text: string): boolean {
-    if (readOnly) return false;
+    if (!canMutate()) return false;
     const c = requireCurrent();
     const changed = setNodeText(project, c, text, now);
     if (changed) touch();
@@ -63,14 +67,14 @@ export function createProjectSession(d: ProjectSessionDeps) {
   function jump(target: string): string {
     const existing = resolveName(project, target);
     if (existing) { project.editorState.last = existing; return existing; }
-    if (readOnly) throw new Error("read-only project (format too new)");
+    assertMutable();   // 占位符要生文件 = 改动
     const r = createNode(project, target, "", now); touch();
     project.editorState.last = r.name;
     return r.name;
   }
   /** spawn（主动作）：选中文字 → 新节点，边自动从当前节点指向它（末尾），光标跳过去。撞名 → 链接已有节点并跳（正文不覆盖）。 */
   function spawn(newName: string, selectedText: string): string {
-    if (readOnly) throw new Error("read-only project (format too new)");
+    assertMutable();
     const from = requireCurrent();
     const r = createNode(project, newName, selectedText, now);
     link(project, from, r.name, { at: "bottom", now });
@@ -80,14 +84,14 @@ export function createProjectSession(d: ProjectSessionDeps) {
   }
   /** 改身份（工程文件在 store 里改了名）：只换 name，不动内存图、不标脏。 */
   function adoptName(newName: string): void { if (name) name = newName; }
-  const guard = <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A): R => { if (readOnly) throw new Error("read-only project (format too new)"); const r = fn(...a); touch(); return r; };
+  const guard = <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A): R => { assertMutable(); const r = fn(...a); touch(); return r; };
   const addLink = guard((to: string, at: "top" | "bottom" = "bottom") => link(project, requireCurrent(), to, { at, now }));
   const removeLink = guard((to: string) => unlink(project, requireCurrent(), to, now));
   const setLinksOrder = guard((links: string[]) => { const m = project.nodes.get(requireCurrent()); if (m) m.links = links.slice(); });
   const rename = guard((from: string, to: string) => renameNode(project, from, to, now));
   const remove = guard((target: string) => deleteNode(project, target));
-  /** 修改锁（跟着作品进 graph.json）：切换 = 正经改动（标脏；调用方随即落盘/推云）。 */
-  const setReadOnly = guard((v: boolean) => { project.readOnly = v; });
+  /** 修改锁（跟着作品进 graph.json）：切换 = 正经改动（标脏；调用方随即落盘/推云）。唯一不受锁挡的改动（解锁本身）；格式太新仍不许。 */
+  function setReadOnly(v: boolean): void { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly === v) return; project.readOnly = v; touch(); }
   const drop = guard((to: string, orphanPrefix: string) => dropRef(project, requireCurrent(), to, orphanPrefix, now));
   const purge = guard((target: string) => purgeOrphan(project, target));
   const orphan = (target: string) => isOrphan(project, target);
@@ -118,7 +122,9 @@ export function createProjectSession(d: ProjectSessionDeps) {
     open, create, close, flush, toBlob, adoptName, setBack,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, drop, purge, orphan, setReadOnly,
-    sidebar, backlinksOf, find, exists,
+    sidebar, backlinksOf, find, exists, canMutate,
   };
 }
 export type ProjectSession = ReturnType<typeof createProjectSession>;
+/** 作品上了修改锁（graph.json readOnly）。UI 捕获后提示「先解除只读」。 */
+export class LockedBookError extends Error { override name = "LockedBookError"; constructor() { super("book is read-only (edit lock)"); } }

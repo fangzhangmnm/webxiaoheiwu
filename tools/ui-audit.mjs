@@ -57,7 +57,7 @@ for (const [w, h] of sizes) {
   await page.click("#sheetConfirm"); await wait(1200);
   await shot("06-project-editor");
   probe(tag, "project created: top bar shows project name only", (await page.textContent("#docNameButton")).trim() === "作品", await page.textContent("#docNameButton"));
-  probe(tag, "first node = 第一章 in title field (no .txt)", (await page.inputValue("#nodeTitle")) === "第一章", await page.inputValue("#nodeTitle"));
+  probe(tag, "first page = 作品 in title field (no .txt)", (await page.inputValue("#nodeTitle")) === "作品", await page.inputValue("#nodeTitle"));
   probe(tag, "top-bar state not an error", !(await page.$eval("#saveStatus", (e) => e.classList.contains("error"))) && !/没有缓存/.test(await page.textContent("#saveStatus")), await page.textContent("#saveStatus"));
   probe(tag, "no warning banner", await page.evaluate(() => { const b = document.getElementById("errBanner"); return !b || b.classList.contains("hidden"); }));
   probe(tag, "sidebar keeps the state it had when 书库 was opened from it (no auto-close)", await sidebarShown());
@@ -85,10 +85,10 @@ for (const [w, h] of sizes) {
   probe(tag, "title Enter → renamed + focus body", await page.evaluate(() => document.activeElement?.id === "editor" && window.__xhw.project.current() === "序章.txt"), await page.evaluate(() => window.__xhw.project.current()));
   await clickEditor(); await page.keyboard.type("序章正文。"); await wait(300);
   await shot("08-after-plus-rename");
-  // 回退 → 第一章：列表应有「序章」（无 .txt）
+  // 回退 → 作品：列表应有「序章」（无 .txt）
   await page.keyboard.press("Alt+ArrowLeft"); await wait(300);
   await ensureSidebar(true);
-  probe(tag, "back to 第一章; list shows 序章 without .txt", JSON.stringify(await rows()) === JSON.stringify(["序章"]), JSON.stringify(await rows()));
+  probe(tag, "back to 作品; list shows 序章 without .txt", JSON.stringify(await rows()) === JSON.stringify(["序章"]), JSON.stringify(await rows()));
   probe(tag, "row shows modified time as small text", await page.evaluate(() => /\d+\/\d+ \d\d:\d\d/.test(document.querySelector("#edgeList .edge-row .edge-sub")?.textContent ?? "")));
   // Ctrl+Enter 分裂已去掉（user 2026-09-10「先不要做去奇怪的静默行为」）：无入口 → 顶栏「+」加第二页「她推开门。」
   if (w < 900) await ensureSidebar(false);
@@ -107,7 +107,7 @@ for (const [w, h] of sizes) {
   probe(tag, "no spawn/link/backlinks buttons in sidebar", await page.evaluate(() => !document.getElementById("edgeSpawn") && !document.getElementById("edgeLink") && !document.getElementById("edgeBacklinks") && document.getElementById("edgeFoot").hidden));
   // 检索：一个字就搜（孤儿也能扫）
   await page.fill("#edgeSearch", "章"); await wait(300); await shot("10-sidebar-search");
-  probe(tag, "search with 1 char works", (await rows()).length >= 2, JSON.stringify(await rows()));
+  probe(tag, "search with 1 char works", (await rows()).length >= 1 && (await rows()).includes("序章"), JSON.stringify(await rows()));
   await page.fill("#edgeSearch", ""); await wait(200);
   await page.click(".edge-row .edge-more"); await wait(300); await shot("12-sidebar-rowmenu");
   probe(tag, "row menu = 上移/下移/移出 (no rename, no hard delete)", await page.evaluate(() => { const items = [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()); return items.some((x) => /移出/.test(x)) && !items.some((x) => /改名|彻底/.test(x)); }), JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => b.textContent.trim()))));
@@ -123,9 +123,9 @@ for (const [w, h] of sizes) {
     await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(200); }
   // 章节名撞名：改成已有名 → 提示、不改
   await ensureSidebar(false); await page.click("#nodeTitle"); await page.fill("#nodeTitle", "序章"); await wait(700);
-  probe(tag, "title collision → refused + toast", await page.evaluate(() => window.__xhw.project.current() === "第一章.txt" && /同名/.test(document.getElementById("toast").textContent)), await page.evaluate(() => window.__xhw.project.current()));
+  probe(tag, "title collision → refused + toast", await page.evaluate(() => window.__xhw.project.current() === "作品.txt" && /同名/.test(document.getElementById("toast").textContent)), await page.evaluate(() => window.__xhw.project.current()));
   await page.keyboard.press("Escape"); await wait(100);
-  probe(tag, "title Escape → reverted", (await page.inputValue("#nodeTitle")) === "第一章");
+  probe(tag, "title Escape → reverted", (await page.inputValue("#nodeTitle")) === "作品");
   // 顶栏改名工程 → 不重开，正文/边栏不动，顶栏即时换名
   await page.click("#docNameButton"); await wait(300); await page.fill("#sheetInput", "秋音"); const tRename = performance.now(); await page.click("#sheetConfirm");
   let renamedIn = -1; for (let i = 0; i < 50; i++) { await wait(100); if ((await page.textContent("#docNameButton")).trim() === "秋音") { renamedIn = Math.round(performance.now() - tRename); break; } }
@@ -139,10 +139,9 @@ for (const [w, h] of sizes) {
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
   probe(tag, "read-only lock persisted inside the book (survives reload)", await page.evaluate(() => window.__xhw.project.readOnly() && document.getElementById("editor").readOnly));
   await page.click("#lockToggle"); await wait(600);
-  probe(tag, "txt has no lock toggle", await page.evaluate(async () => { await window.__xhw.editor.newDoc(); return document.getElementById("lockToggle").hidden; }));
-  await page.evaluate(async () => { const n = window.__xhw.editor.lastOpenName(); }); await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
-  await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.setSidebar(false); }); await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.openAny(it.name); }); await wait(800);
-  probe(tag, "project rename keeps node + edges", await page.evaluate(() => window.__xhw.project.current() === "第一章.txt") && (await rows()).length === 2, JSON.stringify(await rows()));
+  probe(tag, "txt has no lock toggle", await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return false; await window.__xhw.openAny(it.name); return !window.__xhw.project.active() && document.getElementById("lockToggle").hidden; }));
+  await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.openAny(it.name); }); await wait(800);
+  probe(tag, "project rename keeps node + edges", await page.evaluate(() => window.__xhw.project.current() === "作品.txt") && (await rows()).length === 2, JSON.stringify(await rows()));
   if (w >= 900) { await ensureSidebar(false);
     const centered = await page.evaluate(() => { const r = document.querySelector(".page").getBoundingClientRect(); return getComputedStyle(document.getElementById("edgeSidebar")).display === "none" && Math.abs(r.left - (innerWidth - r.width) / 2) < 2; });
     probe(tag, "wide: sidebar closed → page centered", centered); await shot("13-wide-sidebar-collapsed");
@@ -157,7 +156,7 @@ for (const [w, h] of sizes) {
   probe(tag, "reload → book reopened at 序章 (last saved position), title shown", await page.evaluate(() => document.body.dataset.project === "1" && document.getElementById("nodeTitle").value === "序章"), await page.inputValue("#nodeTitle"));
   probe(tag, "reload → no error state / banner", await page.evaluate(() => { const b = document.getElementById("errBanner"); return (!b || b.classList.contains("hidden")) && !document.getElementById("saveStatus").classList.contains("error"); }), await page.textContent("#saveStatus"));
   probe(tag, "reload → sidebar closed", !(await sidebarShown()));
-  probe(tag, "reload → back stack persisted with the book (Alt+← → 第一章)", await page.evaluate(() => window.__xhw.project.canGoBack() && window.__xhw.project.goBack() && window.__xhw.project.current() === "第一章.txt"), await page.evaluate(() => window.__xhw.project.current()));
+  probe(tag, "reload → back stack persisted with the book (Alt+← → 作品)", await page.evaluate(() => window.__xhw.project.canGoBack() && window.__xhw.project.goBack() && window.__xhw.project.current() === "作品.txt"), await page.evaluate(() => window.__xhw.project.current()));
   // last-open 真的生效：开一篇旧 txt 再刷新，回来的是它而不是最新的（2026-09-10 实锤：以前 JSON.parse 裸字符串永远 null）
   { const oldTxt = await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return null; await window.__xhw.editor.open(it.name); return it.name; });
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);

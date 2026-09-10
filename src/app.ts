@@ -14,7 +14,6 @@ import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
 import { packProject, emptyProject } from "./project/format.ts";
-import { nextChapterName } from "./project/naming.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
@@ -221,7 +220,7 @@ async function newProjectFlow(): Promise<void> {
   const raw = await openInputSheet(t("project.newTitle"), { message: t("project.newHint"), defaultValue: t("project.defaultName"), placeholder: t("project.defaultName"), okLabel: t("common.ok") });
   if (raw == null) return;
   const date = formatDate(Date.now());
-  const firstNode = nextChapterName([]);
+  const firstNode = `${t("project.defaultName")}.txt`;   // 唯一的默认页名 =《作品》及各语言对应词（user 2026-09-10）
   try {
     const empty = await packProject(emptyProject());
     const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder());
