@@ -28,8 +28,9 @@ graph.json 换 v2：顶层 `tree`（嵌套数组，一页至多一个父亲，�
 ## 4. 夹具 = 迁移轮四本书（`tmp/migration/`，不进 git）
 `20240718 花璃同人`（30 页，readOnly）/ `20260120 Scifi`（8 页，readOnly）/ `20250127 樱川中学科学部`（15 页）/ `20250216 樱川 AI参考`（41 页，readOnly；3 幕 × 10–12 话，测目录、prev/next、导出）。各自 `.manifest.md` 有树形和时间戳；`build_books.py` 可重生成；`verify.mjs` 改到 v2 后作为回归。**v2 落地前不要上传这四本**（老 app 打不开 v2；新 app 拒开 v1）。
 
-## 5. 与图片 session 的接口
-它的 2.1.0 工作树改动（`src/image/`、format/graph/session、vendor fflate/jpeg-js/upng、gallery 0.2.0）先落，本 handoff 在其上做减法：删 `edges` 读写与 `EdgeAttrs`、`version` 1 → 2、`Thumbnails/thumbnail.png` 与图片页规则不动。已用 SendMessage 通知它（2026-09-10）。
+## 5. 与图片 session 的接口（2026-09-10 深夜 3 更新，edited by Claude Fable 5.1）
+2.1.0（隔壁「wxhw v2 image thumbnail specs」session）落地时 graph.json 仍是 **version 1**、`pages[名] = { links, created, modified }`——它已自行撤掉 `edges` / `dim` / `EdgeAttrs`（format / graph / session + 测试），**本 handoff 不再需要做这项减法**；v1 → v2、`tree`、占位符废止全归本线。
+它会落地并且你要原样保留、接进邻域 UI 的：图片页（`pages/*.jpg|png|webp|gif`，STORE）、`Thumbnails/thumbnail.png` 最后 entry（+ iTXt Description 腰封）、减肥漏斗、撞名 hex4、session 新动词 `addBytesPage` / `replaceBytes` / `setThumbnail` / `cutIncoming`（断入边 = 纯 unlink 不改名，links 语义不变，与 v2 兼容；user「显示入度的时候需要加一个删除入度边的功能」）、侧栏的图片行图标与「谁指向这里」入边段（= ADR-0009 反链查询）。邻域 UI 的块序建议：`..` / 兄弟 / 孩子 / links / 谁指向这里。ADR-0012/0013 由它落档，编号不动。**先等它提交 2.1.0 再开本线**，三个文件（format / graph / session）它正改着。
 
 ## 6. 不要做的（user 已拍板或已否）
 全树视图 / 孤儿面板 / 计数；节点类型或 folder 类型；compile 勾选框；自动归档（从正文 link/分裂出去的页不进树）；自动起名；`_废-` 之外任何自动改名；第二本户口本 shelf；拖拽（先菜单）。
