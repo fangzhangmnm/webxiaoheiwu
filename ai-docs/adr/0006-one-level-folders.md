@@ -1,4 +1,5 @@
 # ADR-0006 多文件夹：身份 = `[夹/]YYYYMMDD 标题.txt`，只一层，根 = 默认夹
+> ⚠ superseded 2026-09-09 by ADR-0011（文件夹永远嵌套；2.0 起本 ADR 作废）。edited by Claude Fable 5.1
 > created 20260903 · by Claude Fable 5.1 · status: accepted（user 2026-09-03「我说了毕业对齐，就是需要支持多文件夹」→ 形状提案 → 「多文件夹同意，现在就要」）。修订 ADR-0001 的「appfolder 根平铺」。
 
 ## 决定
