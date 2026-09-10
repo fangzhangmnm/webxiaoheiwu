@@ -6,7 +6,7 @@
 import type { SyncState, FolderSnapshot, SaveResult, FreshResult, DelResult, TrashItem, RawFile, WatchFolderErrorPhase } from "@internal/store";
 import { requireStore, isCached, isDirty, setActiveFileName } from "./app-store.ts";
 import { isUnlocked } from "./crypto-state.ts";
-import { isDocName, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, isOpaqueStem, type TextEncodingName } from "./doc-model.ts";
+import { isDocName, docKind, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, isOpaqueStem, type TextEncodingName } from "./doc-model.ts";
 
 export interface DocListItem {
   name: string;          // 身份（全路径，含 .txt）
@@ -25,6 +25,22 @@ export interface DocListItem {
 export interface DocListFrame { folder: string; items: DocListItem[]; folders: string[]; complete: boolean; stale: boolean }
 
 const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => requireStore().file(name, { isZip: false, mode });
+// 2.0 工程（ADR-0008）：zip 容器走 isZip:true（store 的 ZipFile；加密透明，at-rest 追加 .zip）。字节对 store 不透明。
+const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().file(name, { isZip: true, mode });
+export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
+export async function saveProjectBlob(name: string, blob: Blob, opts: { push: boolean }): Promise<SaveResult> { return await zipFile(name).save(blob, { tryPush: opts.push }); }
+/** 新建工程文件：撞名自动追加 " 1"…；返回最终身份（全路径）。 */
+export async function createProjectDoc(title: string, blob: Blob, date = formatDate(Date.now()), dir = ""): Promise<string> {
+  const base = makeDocName(date, title, dir, undefined, "project");
+  const files = requireStore().files;
+  for (let n = 0; n < 200; n++) {
+    const cand = collisionCandidate(base, n);
+    if (await files.nameOccupied(cand)) continue;
+    await zipFile(cand, "new").save(blob, { tryPush: false });
+    return cand;
+  }
+  throw new Error("too many name collisions creating a project");
+}
 
 // ── 列表（唯一列举面 = watchFolder 当前夹；只认 *.txt 直属项 + immediate 子夹）──
 const _encCache = new Map<string, { key: string; value: boolean }>();   // name → 本地字节是否容器（按 lastModified+size 失效）
@@ -83,6 +99,7 @@ export type ReadDocResult =
   | { kind: "unavailable" };    // 本地无且云端不可达
 
 export async function readDoc(name: string): Promise<ReadDocResult> {
+  if (docKind(name) === "project") throw new Error("readDoc: project files open via project/session, not as text");   // 2.0：工程走 ProjectSession（UI 接线未落前先挡住误开）
   const f = file(name);
   const encrypted = await f.isEncrypted().catch(() => false);
   if (encrypted && !isUnlocked()) return { kind: "locked" };
