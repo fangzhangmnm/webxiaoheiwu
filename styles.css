@@ -1516,7 +1516,7 @@ body.ruled-lines .body {
 .doc-badge { margin-left: 0; }
 .doc-lead { width: 13px; flex: none; }
 .toast {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6;
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 9;   /* 图库屏（8）之上：图库里的状态提示也得看见 */
   max-width: min(86%, 560px); padding: 6px 12px; border-radius: 999px;
   background: color-mix(in srgb, var(--ink) 86%, transparent); color: var(--bg);
   font-family: var(--font-ui); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1572,7 +1572,8 @@ button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -
   font-family: var(--font-ui); font-size: 13px; z-index: 5; box-sizing: border-box;
 }
 .edge-sidebar[hidden] { display: none; }
-body[data-project] .page { margin-left: calc(264px + max(0px, (100vw - var(--box-max)) / 2 - 264px)); }
+body[data-project][data-edges="1"] .page { margin-left: calc(264px + max(0px, (100vw - var(--box-max)) / 2 - 264px)); }
+body[data-edges="0"] .edge-sidebar { display: none; }   /* 开关 = body[data-edges]（宽屏默认 1、窄屏默认 0；顶栏钮切换；user 2026-09-10「侧边栏 toggle 也不行」） */
 .edge-head { display: flex; align-items: center; gap: 6px; }
 .edge-titles { min-width: 0; flex: 1; }
 .edge-node { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1596,12 +1597,11 @@ body[data-project] .page { margin-left: calc(264px + max(0px, (100vw - var(--box
 @media (max-width: 900px) {
   body[data-project] .page { margin-left: auto; }
   .edge-sidebar { width: min(82vw, 320px); box-shadow: var(--shadow); }
-  .edge-sidebar.collapsed { display: none; }
 }
 
 
 /* ═══ 2.0 图库屏（@internal/gallery card view，独立一屏替代抽屉列表；网格/tile 皮在 vendor/internal-css/gallery.css）═══ */
-.gallery-full { --z-menu: 400; --z-popover: 420; --z-modal: 500; --z-toast: 540; --z-notice: 560; position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg-0); color: var(--ink); font-family: var(--font-ui); }
+.gallery-full { --z-menu: 400; --z-popover: 420; --z-modal: 500; --z-toast: 540; --z-notice: 560; position: fixed; inset: 0; z-index: 8;   /* 顶栏 5 / toast 9 之间；抽屉 10-11、弹出菜单 25、闲置 30、busy 35、sheet 40 都要压过它（2026-09-10 user：「图库和编辑器的遮挡顺序错误」） */ display: flex; flex-direction: column; background: var(--bg-0); color: var(--ink); font-family: var(--font-ui); }
 .gallery-full.hidden { display: none; }
 .gallery-chrome { display: flex; align-items: center; gap: 8px; padding: max(env(safe-area-inset-top, 0px), 8px) 14px 8px; border-bottom: 1px solid var(--line); }
 .gallery-chrome-title { font-weight: 600; }

@@ -445,7 +445,7 @@ export function createEditor(d: EditorDeps) {
   }
 
   // ── DOM 接线 ──
-  const blockIfGuarded = (e: Event) => { if (!canEdit()) e.preventDefault(); };
+  const blockIfGuarded = (e: Event) => { if (parked) return; if (!canEdit()) e.preventDefault(); };   // 2.0：parked = 工程模式接管 textarea，守卫归它（否则原生退格/粘贴被这里拦死，user 2026-09-10「退格键不识别」）
   for (const evt of ["beforeinput", "paste", "cut", "drop"]) d.editor.addEventListener(evt, blockIfGuarded);
   d.editor.addEventListener("input", () => {
     if (!canEdit()) return;

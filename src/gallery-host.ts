@@ -4,7 +4,7 @@
 import { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } from "../vendor/vue/vue.esm-browser.prod.js";
 import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type VerbStore, type DataFaceStore, type Gallery } from "@internal/gallery";
 import { requireStore, auth } from "./app-store.ts";
-import { docKind } from "./doc-model.ts";
+import { docKind, parseDocName } from "./doc-model.ts";
 import { isDocEncrypted } from "./docs.ts";
 import { isUnlocked, onLockChange, currentPassword, setCurrentPassword, hasVerifier, resetVerifier } from "./crypto-state.ts";
 import { openConfirmSheet, openInputSheet, openChoiceSheet, withBusy } from "./sheets.ts";
@@ -31,6 +31,8 @@ export interface GalleryHostDeps {
   onClosed?: () => void;
 }
 const KV_FOLDER = "gallery-folder";
+/** 身份 = 全名（两档扩展名都进身份）；显示 = stem（ADR-0007：文件名是管理句柄，图库卡片显示去扩展名的那截）。 */
+const NAMING = { bare: (s: string) => s, full: (b: string) => b, display: (n: string) => parseDocName(n).stem };
 
 export function initGalleryHost(d: GalleryHostDeps) {
   const vue = { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } as unknown as VueRuntime;
@@ -73,9 +75,9 @@ export function initGalleryHost(d: GalleryHostDeps) {
       busy: (label, fn) => withBusy(label, fn),
     },
     ui: { iconHtml: (name, opts) => iconHtml(name, opts) },
-    naming: { bare: (s) => s, full: (b) => b },
+    naming: NAMING,
     isZipDoc: (n) => isProjectName(n),
-    policy: { isDoc: (p) => docKind(p) != null, isImage: () => false, naming: { bare: (s) => s, full: (b) => b } },
+    policy: { isDoc: (p) => docKind(p) != null, isImage: () => false, naming: NAMING },
     encryption,
     folderMemory: { get: () => deviceKvGet(KV_FOLDER) ?? "", set: (p) => deviceKvSet(KV_FOLDER, p || null) },
     isGalleryVisible: () => document.body.dataset.mode === "gallery",

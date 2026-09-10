@@ -33,11 +33,21 @@
 - **spawn**：选中正文按 **Ctrl+Enter**（或边栏「分裂选中」）→ 问名字（默认 = 选中首行前 12 字 + .txt）→ 那段字从源稿移走（走 `replaceRange` 保 undo）进新节点，当前节点顶部长出一条边，光标跳过去。**Alt+←** 回退。
 - **新建工程**：抽屉「+」菜单「新建工程…」（名字空 = 日期码；首节点 = `yyyymmdd-hex4.txt`）。
 - **无地骑士**：「打开本机工程…」：有 FSA（Chromium / Quest）写回原文件；没有（iPad Safari）读走文件选择器、保存 = 下载一份。本机工程不自动写，Ctrl+S / 保存钮显式触发。
-- **图库 card view 没换**：抽屉照旧列 txt 与工程两档（`.webxiaoheiwu.zip` 显示为 stem）。`@internal/gallery` 已装未接（第四问的「Gallery+Editor / Editor Only」两模式：Editor Only 这半先落，Gallery 那半下一轮）。
+- ~~图库 card view 没换~~ → **v2.0.1 换了**：☰ = `@internal/gallery` card view 独立一屏（`src/gallery-host.ts`，`#galleryFull`），抽屉只剩设置；工程卡片显示 stem（`NameBoundary.display`，gallery 0.1.1）。**v2.0.2** 工程整包加密 UI（顶栏锁钮 / 锁态 / 解锁 sheet）。edited by Claude Fable 5.1 2026-09-10
 - 顶栏工程模式 = 「工程名 · 节点名」，加密 / 只读钮隐藏（工程整包加密走 store 透明层，UI 后补）。
 - 图标：边栏开关暂用 `folder-open` 顶位，真图标需求已登记图标库 TODO。
 
+### v2.0.3 自查轮（2026-09-10 深夜，user 真机六条打回 → 无头 chromium 复现 + 修）
+user 原话：「图库和编辑器的遮挡顺序错误」「大小也不对」「card非常大而且排版乱」「各种ui错蛮多的，你先自查一轮」「退格键不识别，然后别的文本框输入法没接」「侧边栏toggle也不行」。逐条：
+- **遮挡**：包 CSS 里 `.gallery-full{z-index:var(--z-overlay)}` 在 WXHW 无此变量 → 落到顶栏之下。修 = 该块从包 CSS 删掉（宿主定层），WXHW z 表：top-bar 5 / gallery 8 / toast 9 / drawer 10 / popup 25 / idle 30 / busy 35 / sheet 40。
+- **卡片巨大、排版乱**：包 CSS 缺 `.gallery-grid` 规则（WeebPaint 那份留在宿主没随包走）+ WXHW 无通用 `.hidden` → 卡片菜单常开、面包屑常显。修 = gallery **0.1.1**（`.gallery-grid` 进包、`.gallery-tile-menu-popup` 实底、`.hidden` 规则包内限定作用域）。
+- **退格**：txt 编辑器 `blockIfGuarded` 在 park 期仍拦 keydown。修 = parked 直接放行（`editor.ts`）。
+- **输入法没接别的框**：`setupImeOn` 只挂 `#editor`。修 = sheet 两个输入框 + 边栏检索 / 连边框都挂（密码框不挂）。
+- **边栏 toggle**：宽屏只改 `hidden` 没改布局。修 = `body[data-edges]` 一个开关（宽屏默认 1、窄屏默认 0、`matchMedia` 跟随），CSS 两条规则吃它。
+- **工具**：`node tools/ui-audit.mjs [1280x800 400x800]` = 无头走完整流程（txt → 图库 → 新建工程 → spawn → 边栏 → 卡片菜单 → 回收站 → 设置叠图库），截图到 `tmp/ui/`，并打印三条探针（工程退格 / 边栏框 IME / 宽屏 toggle 收起后纸面居中）+ 图库中心元素 / 顶栏被盖。改 UI 后跑一遍再交。
+
 ### 真机清单（Quest / iPad）
+0. ☰ → 图库一屏盖住编辑器与顶栏；卡片一排多张、不是一张占满；「⋯」菜单点开才出现、实底；工程卡片名字无 `.webxiaoheiwu.zip` 尾巴。工程里退格能删字；边栏检索框能打拼音出候选；顶栏边栏钮宽屏收起后纸面回中。
 1. 抽屉「+」→「新建工程…」→ 顶栏显示「名 · yyyymmdd-xxxx.txt」，左侧边栏出现（iPad 竖屏需点顶栏边栏钮）。
 2. 打几行字 → 状态栏「未同步」→ 15s 内推云 → 徽章 synced；OneDrive 里出现 `名.webxiaoheiwu.zip`，7-Zip 打开 = `graph.json + contents/ + .webxiaoheiwu/`。
 3. 选中一段字 Ctrl+Enter（Quest 实体键盘）→ 名字框 → 新节点；边栏第一条是它；Alt+← 回来，源稿里那段字没了。

@@ -289,7 +289,11 @@ function renderTopbar(): void {
 }
 const keyBanner = $("keyBanner");
 const edgeToggle = $<HTMLButtonElement>("edgeToggle");
-edgeToggle.addEventListener("click", () => { $("edgeSidebar").classList.toggle("collapsed"); });
+const EDGES_MQ = matchMedia("(min-width: 901px)");
+const setEdges = (on: boolean) => { document.body.dataset.edges = on ? "1" : "0"; edgeToggle.setAttribute("aria-pressed", on ? "true" : "false"); };
+setEdges(EDGES_MQ.matches);                       // 宽屏默认开、窄屏默认收
+EDGES_MQ.addEventListener("change", (e) => setEdges(e.matches));
+edgeToggle.addEventListener("click", () => setEdges(document.body.dataset.edges !== "1"));
 docNameButton.addEventListener("click", () => { void renameCurrentDoc(); });
 /** 顶栏改名 sheet：文件名只是管理句柄，OneDrive 上可见（加密稿也一样）——文案里说清，别把标题写进来。空 = 不改。 */
 async function renameCurrentDoc(): Promise<void> {
@@ -432,6 +436,7 @@ function commitText(target: HTMLTextAreaElement | HTMLInputElement, consumedBuff
 }
 let lastRealKeydownAt = 0;   // 软键盘路由判据：80ms 内见过真 keydown（key 可辨）= 实体键盘路径已处理，beforeinput 不再重复路由
 async function imeKeydown(el: HTMLTextAreaElement | HTMLInputElement, event: KeyboardEvent): Promise<void> {
+  if (isMaskedInput(el)) return;   // 密码框（-webkit-text-security 打码）不走内置输入法：密码是 ASCII，拼音组字会把它吃掉
   if (event.key !== "Unidentified" && event.key !== "Process") lastRealKeydownAt = Date.now();
   if (event.key === "Shift") {
     if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && ime.enabled) shiftCleanPress = true;
@@ -449,7 +454,9 @@ async function imeKeydown(el: HTMLTextAreaElement | HTMLInputElement, event: Key
   renderImeState();
 }
 /** 合成按键喂 IME（软键盘 beforeinput / 语音模式退格钮）：IME 拦了返回 true（提交由这里落字），放行返回 false。 */
+const isMaskedInput = (el: HTMLElement) => el instanceof HTMLInputElement && !!el.style.getPropertyValue("-webkit-text-security");
 function routeSyntheticKey(el: HTMLTextAreaElement | HTMLInputElement, key: string): boolean {
+  if (isMaskedInput(el)) return false;
   const fake = new KeyboardEvent("keydown", { key, cancelable: true });
   const pending = ime.onKeydown(fake);
   if (!fake.defaultPrevented) return false;
@@ -510,6 +517,8 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
   });
 }
 setupImeOn(editorEl);
+// 2.0（user 2026-09-10「别的文本框输入法没接」）：文件名/节点名 sheet、边栏检索与连边输入框也走内置输入法（Quest 没系统 IME）；密码态由 isMaskedInput 挡。
+for (const id of ["sheetInput", "sheetInput2", "edgeSearch", "edgeAddInput"]) { const el = document.getElementById(id); if (el) setupImeOn(el as HTMLInputElement); }
 
 // RIME 用户词库 ↔ collection（事件驱动节流；idle/unload 无条件 flush）
 let lastDictPushAt = 0, dictPushInFlight = false;
