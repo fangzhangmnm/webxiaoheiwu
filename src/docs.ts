@@ -27,6 +27,8 @@ export interface DocListFrame { folder: string; items: DocListItem[]; folders: s
 const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => requireStore().file(name, { isZip: false, mode });
 // 2.0 工程（ADR-0008）：zip 容器走 isZip:true（store 的 ZipFile；加密透明，at-rest 追加 .zip）。字节对 store 不透明。
 const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().file(name, { isZip: true, mode });
+/** 按身份分派句柄（2.0 两档：txt = RawFile、工程 = ZipFile）。身份动词（改名/移动/回收站/判加密）一律走这里，别裸用 file()。 */
+const anyFile = (name: string) => (docKind(name) === "project" ? zipFile(name) : file(name));
 export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
 export function pullProjectIfClean(name: string): Promise<FreshResult> { return zipFile(name).pullIfClean(); }
 /** 本地字节是不是加密容器（两档：txt 走 RawFile、工程走 ZipFile）。 */
@@ -72,7 +74,7 @@ export function watchDocs(folder: string, cb: (frame: DocListFrame) => void, opt
     if (!pending.length) return;
     void Promise.all(pending.map(async (it) => {
       try {
-        const v = await file(it.name).isEncrypted();
+        const v = await anyFile(it.name).isEncrypted();
         _encCache.set(it.name, { key: `${it.lastModified ?? 0}:${it.size ?? 0}`, value: v });
         it.encrypted = v;
       } catch { /* leave unknown */ }
@@ -157,7 +159,7 @@ export async function moveDoc(name: string, toDir: string): Promise<RenameResult
 }
 async function tryMoveWithCollision(name: string, target: string): Promise<RenameResult | null> {
   if (target === name) return { name };
-  const f = file(name);
+  const f = anyFile(name);
   for (let n = 0; n < 50; n++) {
     const cand = collisionCandidate(target, n);
     if (cand === name) return { name };
@@ -168,7 +170,7 @@ async function tryMoveWithCollision(name: string, target: string): Promise<Renam
   return null;
 }
 
-export function trashDoc(name: string): Promise<DelResult> { return file(name).delete(); }
+export function trashDoc(name: string): Promise<DelResult> { return anyFile(name).delete(); }
 
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
 export function pullDocIfClean(name: string, opts?: { onReplaceStart?: () => void; probe?: Promise<unknown> }): Promise<FreshResult> {
@@ -178,7 +180,6 @@ export function pullDocIfClean(name: string, opts?: { onReplaceStart?: () => voi
 export function setActiveDoc(name: string | null): void { setActiveFileName(name); }
 
 // ── 加密切换（密码在 crypto-state 内存里；库负责先本地后云 If-Match、错密码前置出局）──
-const anyFile = (name: string) => (docKind(name) === "project" ? zipFile(name) : file(name));   // 2.0：加密动词两档分派
 export async function encryptDoc(name: string): Promise<{ status: string }> { const r = await anyFile(name).encrypt(); invalidateEncryptedFlag(name); return r; }
 export async function decryptDoc(name: string): Promise<{ status: string }> { const r = await anyFile(name).decrypt(); invalidateEncryptedFlag(name); return r; }
 /** 换钥匙（store 0.12.0 rekey）：密文→密文，旧钥经 crypto-state seam（这篇自己的 ?? 当前）、新钥显式传入，**明文不上云**。

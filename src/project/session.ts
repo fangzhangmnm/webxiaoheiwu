@@ -68,18 +68,20 @@ export function createProjectSession(d: ProjectSessionDeps) {
     project.editorState.last = r.name;
     return r.name;
   }
-  /** spawn（主动作）：选中文字 → 新节点，边自动从当前节点指向它（顶部），光标跳过去。撞名 → 链接已有节点并跳。 */
+  /** spawn（主动作）：选中文字 → 新节点，边自动从当前节点指向它（末尾），光标跳过去。撞名 → 链接已有节点并跳（正文不覆盖）。 */
   function spawn(newName: string, selectedText: string): string {
     if (readOnly) throw new Error("read-only project (format too new)");
     const from = requireCurrent();
     const r = createNode(project, newName, selectedText, now);
-    link(project, from, r.name, { now });
+    link(project, from, r.name, { at: "bottom", now });
     touch();
     project.editorState.last = r.name;
     return r.name;
   }
+  /** 改身份（工程文件在 store 里改了名）：只换 name，不动内存图、不标脏。 */
+  function adoptName(newName: string): void { if (name) name = newName; }
   const guard = <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A): R => { if (readOnly) throw new Error("read-only project (format too new)"); const r = fn(...a); touch(); return r; };
-  const addLink = guard((to: string, at: "top" | "bottom" = "top") => link(project, requireCurrent(), to, { at, now }));
+  const addLink = guard((to: string, at: "top" | "bottom" = "bottom") => link(project, requireCurrent(), to, { at, now }));
   const removeLink = guard((to: string) => unlink(project, requireCurrent(), to, now));
   const setLinksOrder = guard((links: string[]) => { const m = project.nodes.get(requireCurrent()); if (m) m.links = links.slice(); });
   const rename = guard((from: string, to: string) => renameNode(project, from, to, now));
@@ -88,12 +90,13 @@ export function createProjectSession(d: ProjectSessionDeps) {
   // ── 查询（零态度：无全图、无计数） ──
   const sidebar = () => (current() ? neighbors(project, current()!) : []);
   const backlinksOf = (target: string) => backlinks(project, target);
-  const find = (q: string, limit = 50) => search(project, q, { limit });
+  const find = (q: string, limit = 50) => search(project, q, { limit, minChars: 1 });
   const exists = (target: string) => !isStub(project, target);
 
   // ── 落盘 ──
-  async function flush(push: boolean): Promise<{ wrote: boolean; pushed?: boolean }> {
-    if (!name || !dirty || readOnly) return { wrote: false };
+  /** opts.force：不脏也写（推云节律用——本地 200ms 落盘已清 dirty，15s 后推云还得把同一份字节以 tryPush 再交给库，否则永远推不出去）。 */
+  async function flush(push: boolean, opts: { force?: boolean } = {}): Promise<{ wrote: boolean; pushed?: boolean }> {
+    if (!name || readOnly || (!dirty && !opts.force)) return { wrote: false };
     const g = gen, n = name;
     const blob = await packProject(project);
     if (g !== gen) return { wrote: false };
@@ -105,7 +108,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const toBlob = () => packProject(project);
 
   return {
-    open, create, close, flush, toBlob,
+    open, create, close, flush, toBlob, adoptName,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove,
     sidebar, backlinksOf, find, exists,

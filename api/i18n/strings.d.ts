@@ -33,8 +33,8 @@ export declare const S: {
         readonly en: "WebXiaoHeiWu";
     };
     readonly "ui.menu": {
-        readonly zh: "文件菜单";
-        readonly en: "File menu";
+        readonly zh: "菜单";
+        readonly en: "Menu";
     };
     readonly "top.docName": {
         readonly zh: "文件名（管理用，OneDrive 上可见）· 点击改名";
@@ -1088,10 +1088,6 @@ export declare const S: {
         readonly zh: "已切换到「{name}」";
         readonly en: "Switched to {name}";
     };
-    readonly "ime.systemIntrusion": {
-        readonly zh: "系统输入法出了汉字（已保留）——想用内置输入法请把系统输入法切到英文";
-        readonly en: "The system IME produced text (kept) — switch it to English to use the built-in IME";
-    };
     readonly "ui.sec.ime": {
         readonly zh: "输入法";
         readonly en: "Input method";
@@ -1433,8 +1429,12 @@ export declare const S: {
         readonly en: "New project";
     };
     readonly "project.newHint": {
-        readonly zh: "一个工程 = 一个 zip：里面是一堆 txt 和它们之间的边。文件名只是管理用（OneDrive 上可见）。空 = 日期码。";
-        readonly en: "A project is one zip: a pile of txt files and the edges between them. The file name is just a handle (visible on OneDrive). Empty = date code.";
+        readonly zh: "一个工程 = 一个 zip：里面是一堆 txt 和它们之间的边。文件名只是管理用（OneDrive 上可见），撞名自动加序号。";
+        readonly en: "A project is one zip: a pile of txt files and the edges between them. The file name is just a handle (visible on OneDrive); a clash gets a number.";
+    };
+    readonly "project.defaultName": {
+        readonly zh: "作品";
+        readonly en: "Work";
     };
     readonly "project.created": {
         readonly zh: "已新建工程 {name}";
@@ -1488,10 +1488,6 @@ export declare const S: {
         readonly zh: "节点边栏";
         readonly en: "Edge sidebar";
     };
-    readonly "edge.toggle": {
-        readonly zh: "显示 / 隐藏边栏";
-        readonly en: "Show / hide edges";
-    };
     readonly "edge.back": {
         readonly zh: "回到上一个节点";
         readonly en: "Back to previous node";
@@ -1501,8 +1497,8 @@ export declare const S: {
         readonly en: "Search";
     };
     readonly "edge.searchPh": {
-        readonly zh: "检索（至少两个字）";
-        readonly en: "Search (2+ characters)";
+        readonly zh: "检索";
+        readonly en: "Search";
     };
     readonly "edge.results": {
         readonly zh: "检索「{q}」";
@@ -1513,16 +1509,24 @@ export declare const S: {
         readonly en: "Nothing";
     };
     readonly "edge.empty": {
-        readonly zh: "这个节点还没有边。选中一段字按 Ctrl+Enter 分裂成新节点，或在下面打一个名字。";
-        readonly en: "No edges yet. Select text and press Ctrl+Enter to split it into a new node, or type a name below.";
+        readonly zh: "这个节点还没有边。按下面的「+」新建节点，或选中一段字按 Ctrl+Enter 分裂出去。";
+        readonly en: "No edges yet. Press “+” below to add a node, or select text and press Ctrl+Enter to split it off.";
     };
-    readonly "edge.addLinkPh": {
-        readonly zh: "打一个名字 = 连一条边";
-        readonly en: "Type a name = add an edge";
+    readonly "edge.newNode": {
+        readonly zh: "新节点";
+        readonly en: "New node";
     };
-    readonly "edge.addLink": {
-        readonly zh: "连";
-        readonly en: "Link";
+    readonly "edge.linkExisting": {
+        readonly zh: "连接已有…";
+        readonly en: "Link existing…";
+    };
+    readonly "edge.linkTitle": {
+        readonly zh: "连一条边";
+        readonly en: "Add an edge";
+    };
+    readonly "edge.linkHint": {
+        readonly zh: "打已有节点的名字 = 从这里连过去；新名字 = 占位符（点它才生文件）。";
+        readonly en: "An existing node’s name = link to it from here; a new name = placeholder (click it to create the file).";
     };
     readonly "edge.spawn": {
         readonly zh: "分裂选中";
@@ -1536,13 +1540,9 @@ export declare const S: {
         readonly zh: "先在正文里选中一段字";
         readonly en: "Select some text first";
     };
-    readonly "edge.spawnTitle": {
-        readonly zh: "新节点叫什么";
-        readonly en: "Name the new node";
-    };
     readonly "edge.namePh": {
-        readonly zh: "名字.txt";
-        readonly en: "name.txt";
+        readonly zh: "名字";
+        readonly en: "name";
     };
     readonly "edge.badName": {
         readonly zh: "名字不合法（不能有 / 之类的路径字符，不能以点开头）";
@@ -1576,13 +1576,25 @@ export declare const S: {
         readonly zh: "下移";
         readonly en: "Move down";
     };
-    readonly "edge.rename": {
-        readonly zh: "改名…";
-        readonly en: "Rename…";
+    readonly "edge.nameTaken": {
+        readonly zh: "已有同名节点";
+        readonly en: "A node with that name already exists";
     };
-    readonly "edge.renameTitle": {
-        readonly zh: "节点改名";
-        readonly en: "Rename node";
+    readonly "edge.title.ph": {
+        readonly zh: "章节名";
+        readonly en: "Chapter name";
+    };
+    readonly "edge.title.aria": {
+        readonly zh: "节点名（改了就是改名）";
+        readonly en: "Node name (edit to rename)";
+    };
+    readonly "chapter.name": {
+        readonly zh: "第{n}章";
+        readonly en: "Chapter {n}";
+    };
+    readonly "sidebar.library": {
+        readonly zh: "书库";
+        readonly en: "Library";
     };
     readonly "edge.unlink": {
         readonly zh: "断开这条边";
@@ -1605,12 +1617,12 @@ export declare const S: {
         readonly en: "{name} (no text yet; click to create)";
     };
     readonly "gal.aria": {
-        readonly zh: "图库";
-        readonly en: "Gallery";
+        readonly zh: "书库";
+        readonly en: "Library";
     };
     readonly "gal.title": {
-        readonly zh: "图库";
-        readonly en: "Gallery";
+        readonly zh: "书库";
+        readonly en: "Library";
     };
     readonly "gal.back": {
         readonly zh: "回到编辑器";
@@ -1663,5 +1675,25 @@ export declare const S: {
     readonly "galx.emptyTrash": {
         readonly zh: "回收站是空的";
         readonly en: "Trash is empty";
+    };
+    readonly "galx.firstFrameFailed": {
+        readonly zh: "书库读取失败（详见诊断日志）";
+        readonly en: "Library failed to load (see diagnostics)";
+    };
+    readonly "galx.firstFrameTimeout": {
+        readonly zh: "书库读取超时：本地存储没有响应";
+        readonly en: "Library timed out: local storage did not respond";
+    };
+    readonly "galx.openActive": {
+        readonly zh: "这篇正开着——先回到书库再{verb}";
+        readonly en: "This one is open — go back to the library first, then {verb}";
+    };
+    readonly "galx.folderNeedSignin": {
+        readonly zh: "书库离线（未登录或权限失效），无法新建文件夹";
+        readonly en: "Library is offline (not signed in or access expired); cannot create a folder";
+    };
+    readonly "galx.quotaCritical": {
+        readonly zh: "本地存储 {pct}% 已满——立即去书库卸载不常用的稿";
+        readonly en: "Local storage is {pct}% full — unload rarely used documents from the library now";
     };
 };

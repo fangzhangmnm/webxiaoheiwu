@@ -9,11 +9,12 @@ import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections,
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc } from "./docs.ts";
-import { docKind, formatDate, hex4 } from "./doc-model.ts";
+import { docKind, formatDate } from "./doc-model.ts";
 import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
 import { packProject } from "./project/format.ts";
+import { nextChapterName } from "./project/naming.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
@@ -155,15 +156,17 @@ const editor = createEditor({
 let voiceAbortHook: (() => void) | null = null;
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
 const project = createProjectMode({
-  editorEl, setStatus, setState,
+  editorEl, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
   onChanged: () => { renderTopbar(); renderSaveButton(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
-  askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
 });
 const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
+  onLibrary: () => { if (NARROW_MQ.matches) setSidebar(false); void galleryHost.open(); },
+  onSettings: () => { if (NARROW_MQ.matches) setSidebar(false); drawer.open("settings"); },
+  afterNavigate: () => { if (NARROW_MQ.matches) setSidebar(false); },   // 窄屏浮层：跳完就收，露出纸面
   onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
 });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
@@ -173,6 +176,8 @@ const noteExternalEditAny = () => (project.active() ? project.noteExternalEdit()
 const flushLocalAny = () => (project.active() ? project.flushLocal() : editor.flushLocal());
 const pushNowAny = () => (project.active() ? project.pushNow() : editor.pushNow());
 const refreshIfCleanAny = () => (project.active() ? Promise.resolve() : editor.refreshIfClean());
+const stateAny = () => (project.active() ? project.stateText() : editor.statusForDoc());   // 顶栏粘性稿态也是「谁活着问谁」（以前 boot 末尾拿 parked 的 txt 编辑器状态 → 工程一开就显「本地没有缓存」）
+const isDirtyAny = () => (project.active() ? (project.session()?.dirty ?? false) : editor.isDirty());
 async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
 /** 打开任一身份：工程 → 工程模式（txt 编辑器 park）；txt → txt 编辑器（工程模式关）。 */
 async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
@@ -186,13 +191,14 @@ async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Pro
   return editor.open(name, opts);
 }
 async function newProjectFlow(): Promise<void> {
-  const raw = await openInputSheet(t("project.newTitle"), { message: t("project.newHint"), placeholder: t("fn.ph"), okLabel: t("common.ok") });
+  // 默认名「作品」（user 2026-09-10「default 还是叫“作品”吧」；撞名由 createProjectDoc 加序号）；首节点「第一章」按语言生成
+  const raw = await openInputSheet(t("project.newTitle"), { message: t("project.newHint"), defaultValue: t("project.defaultName"), placeholder: t("project.defaultName"), okLabel: t("common.ok") });
   if (raw == null) return;
   const date = formatDate(Date.now());
-  const firstNode = `${date}-${hex4()}.txt`;
+  const firstNode = nextChapterName([]);
   try {
     const empty = await packProject({ nodes: new Map(), contents: new Map(), editorState: { last: null }, readVersion: 1 });
-    const name = await createProjectDoc(raw, empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder());
+    const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder());
     if (!editor.isParked()) await editor.park();
     await project.createInStore(name, firstNode);
     document.body.dataset.project = "1";
@@ -212,7 +218,7 @@ async function openLocalProjectFlow(): Promise<void> {
 // ── 2.0 图库屏（@internal/gallery）：☰ 打开独立一屏；抽屉只剩设置。──
 const galleryHost = initGalleryHost({
   mountEl: $("galleryMount"), fullEl: $("galleryFull"),
-  activeName: () => activeName(), isDirty: () => (project.active() ? (project.session()?.dirty ?? false) : editor.isDirty()),
+  activeName: () => activeName(), isDirty: () => isDirtyAny(),
   openAny, renameActive: () => renameCurrentDoc(), pushNow: () => pushNowAny(), flushLocal: () => flushLocalAny(),
   ensureUnlocked, setStatus, currentDir: () => (project.active() ? parseDocName(project.name() ?? "").dir : editor.currentDir()),
   onOpened: () => { $("galleryTrashBar").classList.add("hidden"); },
@@ -255,19 +261,18 @@ const lockToggle = $<HTMLButtonElement>("lockToggle");
 const docNameButton = $<HTMLButtonElement>("docNameButton");   // 文件名 = 管理句柄不是标题（ADR-0007）：住顶栏，点了改名
 const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`; };
 function renderTopbar(): void {
-  if (project.active()) {   // 工程模式：顶栏 = 工程名 · 节点名 + 边栏开关；加密/只读钮属于 txt 稿
-    docNameButton.hidden = false; docNameButton.textContent = `${project.displayName() ?? ""}${project.current() ? " · " + project.current() : ""}`; docNameButton.classList.remove("pending");
+  if (project.active()) {   // 工程模式：顶栏 = 工程名（节点名住纸面顶部的章节名框）；加密/只读钮属于 txt 稿
+    docNameButton.hidden = false; docNameButton.textContent = project.displayName() ?? ""; docNameButton.classList.remove("pending");
     docNameButton.title = t("top.docName"); docNameButton.setAttribute("aria-label", t("top.docName"));
     cryptoToggle.hidden = project.home()?.kind !== "store";   // 本机工程不走 store 加密
     useIcon(cryptoToggle, project.encrypted() ? "lock" : "unlock");
     cryptoToggle.setAttribute("data-encrypted", project.encrypted() ? "true" : "false");
     cryptoToggle.title = project.encrypted() ? (project.locked() ? t("top.unlockDoc") : t("top.decryptDoc")) : t("top.encryptDoc");
     cryptoToggle.setAttribute("aria-label", cryptoToggle.title);
-    lockToggle.hidden = true; keyBanner.hidden = true; edgeToggle.hidden = false;
+    lockToggle.hidden = true; keyBanner.hidden = true;
     renderMicVisibility();
     return;
   }
-  edgeToggle.hidden = true;
   const st = editor.state;
   const hasDoc = !!st.name || !!st.pendingDate;
   const dn = editor.displayName();
@@ -288,12 +293,17 @@ function renderTopbar(): void {
   renderMicVisibility();
 }
 const keyBanner = $("keyBanner");
-const edgeToggle = $<HTMLButtonElement>("edgeToggle");
-const EDGES_MQ = matchMedia("(min-width: 901px)");
-const setEdges = (on: boolean) => { document.body.dataset.edges = on ? "1" : "0"; edgeToggle.setAttribute("aria-pressed", on ? "true" : "false"); };
-setEdges(EDGES_MQ.matches);                       // 宽屏默认开、窄屏默认收
-EDGES_MQ.addEventListener("change", (e) => setEdges(e.matches));
-edgeToggle.addEventListener("click", () => setEdges(document.body.dataset.edges !== "1"));
+// ── 侧栏开关（☰ 唯一入口；user 2026-09-10「侧栏不应默认开」）：body[data-edges]，默认关；宽屏停靠、窄屏浮层（CSS 分派）──
+const NARROW_MQ = matchMedia("(max-width: 900px)");
+const menuButton = $<HTMLButtonElement>("menuButton");
+const sidebarOpen = () => document.body.dataset.edges === "1";
+function setSidebar(on: boolean): void {
+  document.body.dataset.edges = on ? "1" : "0";
+  menuButton.setAttribute("aria-expanded", on ? "true" : "false");
+  if (on) edgeSidebar.render();
+}
+setSidebar(false);
+$("edgeBackdrop").addEventListener("click", () => setSidebar(false));
 docNameButton.addEventListener("click", () => { void renameCurrentDoc(); });
 /** 顶栏改名 sheet：文件名只是管理句柄，OneDrive 上可见（加密稿也一样）——文案里说清，别把标题写进来。空 = 不改。 */
 async function renameCurrentDoc(): Promise<void> {
@@ -323,7 +333,8 @@ async function renameProjectFile(): Promise<void> {
       const rr = await renameDoc(name, v);
       if (!rr) { setStatus(t("st.renameFailed"), { error: true }); continue; }
       if (rr.oldKept) setStatus(t("st.renameOldKept"), { error: true }); else if (rr.cloudDeferred) setStatus(t("st.renameCloudDeferred"), { unsynced: true }); else setStatus(t("st.renamed", { name: parseDocName(rr.name).stem }));
-      await project.openStore(rr.name);
+      project.adoptName(rr.name);   // 只换身份：不整包重开（重开走 store open()，慢或失败就等于「改名后得刷新」）
+      rememberLastActive();
       return;
     } catch (e) { reportError(e); setStatus(t("st.renameFailed"), { error: true }); }
   }
@@ -492,7 +503,7 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     if (!ime.enabled || isProgrammaticEdit()) return;
     const data = (event as CompositionEvent).data ?? "";
     if (!data) return;
-    if (!/^[a-zA-Z0-9;]+$/.test(data)) { setStatus(t("ime.systemIntrusion"), { error: true }); return; }
+    if (!/^[a-zA-Z0-9;]+$/.test(data)) return;   // 系统输入法出了汉字：照收、不提示（user 2026-09-10「使用系统输入法时不要弹窗 nudge，支持系统输入法就行」）
     const end = el.selectionEnd ?? el.value.length, start = Math.max(0, end - data.length);
     if (el.value.slice(start, end) !== data) return;
     replaceRange(el, start, end, "");
@@ -518,7 +529,7 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
 }
 setupImeOn(editorEl);
 // 2.0（user 2026-09-10「别的文本框输入法没接」）：文件名/节点名 sheet、边栏检索与连边输入框也走内置输入法（Quest 没系统 IME）；密码态由 isMaskedInput 挡。
-for (const id of ["sheetInput", "sheetInput2", "edgeSearch", "edgeAddInput"]) { const el = document.getElementById(id); if (el) setupImeOn(el as HTMLInputElement); }
+for (const id of ["nodeTitle", "sheetInput", "sheetInput2", "edgeSearch"]) { const el = document.getElementById(id); if (el) setupImeOn(el as HTMLInputElement); }
 
 // RIME 用户词库 ↔ collection（事件驱动节流；idle/unload 无条件 flush）
 let lastDictPushAt = 0, dictPushInFlight = false;
@@ -547,7 +558,7 @@ const voiceBackspaceButton = $<HTMLButtonElement>("voiceBackspaceButton");
 let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
 const voiceModel = (): ModelKey => modelKeyFrom(prefs.getItem<string>("voiceProvider"));   // 旧值 webspeech/groq/openai → 默认 SenseVoice
 const voiceSource = (): string => (deviceKvGet("voiceModelSource") || MODEL_SOURCE_DEFAULT).replace(/\/+$/, "");
-const onVoiceInsert = () => { editor.noteExternalEdit(); idle.poke(); if (!voiceMode) { voiceMode = true; renderMicVisibility(); } };
+const onVoiceInsert = () => { noteExternalEditAny(); idle.poke(); if (!voiceMode) { voiceMode = true; renderMicVisibility(); } };
 const voiceErrorText = (error: unknown): string => {
   const raw = error instanceof Error ? error.message : String(error);
   if (raw === "pack-missing") return t("voice.pack.missing");
@@ -576,8 +587,8 @@ voiceAbortHook = () => { if (localSession && (localSession.state === "recording"
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
   const st = editor.state;
-  const absent = !activeVoiceBackend() || (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted);   // 锁着/不可用：锁卡盖着纸面，话筒收起
-  const blocked = st.readOnly;   // 只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
+  const absent = !activeVoiceBackend() || (project.active() ? project.locked() : (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted));   // 锁着/不可用：锁卡盖着纸面，话筒收起
+  const blocked = project.active() ? !project.canEdit() : st.readOnly;   // 只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
   micButton.hidden = absent;
   micButton.classList.toggle("disabled", blocked);
   micButton.title = blocked ? t("voice.blockedReadOnly") : t("voice.mic");
@@ -585,7 +596,7 @@ function renderMicVisibility(): void {
 }
 /** 语音模式退格：删光标前一个字（整个 emoji 算一个）/ 选区；组字中则喂 IME。按住连删。 */
 function deleteBeforeCaret(): void {
-  if (!editor.canEdit()) return;
+  if (!canEditNow()) return;
   if (ime.isComposing()) { routeSyntheticKey(editorEl, "Backspace"); return; }
   const s = editorEl.selectionStart, e = editorEl.selectionEnd;
   if (s == null || e == null) return;
@@ -593,7 +604,7 @@ function deleteBeforeCaret(): void {
   else if (s > 0) { const n = /[\uDC00-\uDFFF]$/.test(editorEl.value.slice(0, s)) ? 2 : 1; replaceRange(editorEl, s - n, s, ""); }
   else return;
   localSession?.notifyExternalInput();
-  editor.noteExternalEdit();
+  noteExternalEditAny();
 }
 let bsRepeat: ReturnType<typeof setTimeout> | null = null;
 const stopBsRepeat = () => { if (bsRepeat) { clearTimeout(bsRepeat); bsRepeat = null; } };
@@ -606,7 +617,7 @@ voiceBackspaceButton.addEventListener("pointerdown", (e) => {
 for (const ev of ["pointerup", "pointercancel", "pointerleave"]) voiceBackspaceButton.addEventListener(ev, stopBsRepeat);
 micButton.addEventListener("click", () => {
   void (async () => {
-    if (!editor.canEdit()) { setStatus(micButton.title, { error: true }); return; }
+    if (!canEditNow()) { setStatus(micButton.title, { error: true }); return; }
     const backend = activeVoiceBackend(); if (!backend) return;
     const m = MODELS[voiceModel()];
     let ready = asr.isKnownReady(m.slug);
@@ -627,7 +638,7 @@ function pttAbort(): void { if (pttTimer) { clearTimeout(pttTimer); pttTimer = n
 document.addEventListener("keydown", (event) => {
   if (pttBackend && !isPttKey(event)) { pttAbort(); return; }
   if (!isPttKey(event) || event.repeat || event.shiftKey || event.altKey || event.metaKey) return;
-  if (document.activeElement !== editorEl || !editor.canEdit()) return;
+  if (document.activeElement !== editorEl || !canEditNow()) return;
   if (pttBackend) return;
   const backend = activeVoiceBackend();
   if (!backend || backend.state !== "idle") return;
@@ -891,7 +902,7 @@ initDiagLogUi({ status: (text) => setStatus(text) });   // 2026-09-09 黑匣子�
 function renderSettings(): void { renderAuthRow(); renderImeSection(); renderPasswordSection(); renderVoiceConfig(); }
 
 // ── 抽屉按钮 ──
-$("menuButton").addEventListener("click", () => { if (galleryHost.isOpen()) galleryHost.close(); else if (drawer.currentView() !== "closed") drawer.close(); else void galleryHost.open(); });   // 2.0：☰ = 图库屏（抽屉只剩设置）
+menuButton.addEventListener("click", () => { if (galleryHost.isOpen()) galleryHost.close(); else if (drawer.currentView() !== "closed") drawer.close(); else setSidebar(!sidebarOpen()); });   // 2.0：☰ = 侧栏（书库/设置入口 + 工程内导航）
 $("drawerCloseButton").addEventListener("click", () => drawer.close());
 $("drawerBackButton").addEventListener("click", () => drawer.open("active"));
 $("drawerBackdrop").addEventListener("click", () => drawer.close());
@@ -925,6 +936,7 @@ $("reloadButton").addEventListener("click", () => { void (async () => { await ed
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
+  if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); editorEl.focus(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
   if (project.active() && (event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void project.spawnFromSelection().then((ok) => { if (ok) edgeSidebar.render(); }); return; }
   if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }
@@ -939,7 +951,7 @@ async function resumeSync(): Promise<void> {
   await refreshIfCleanAny();
   await reconcileCollections();
   drawer.subscribe();   // 2026-09-09 审计 #8：refresh 只重画缓存帧，回线/复查要重拉
-  setState(editor.statusForDoc());
+  setState(stateAny());
 }
 const idle = initIdleGate({
   overlay: $("idleOverlay"),
@@ -953,7 +965,7 @@ function modalOpen(): boolean { return !!document.querySelector('[role="dialog"]
 function recoverEditorFocus(): boolean {
   const a = document.activeElement;
   if (a && a !== document.body && a !== document.documentElement) return a === editorEl;
-  if (modalOpen() || !editor.canEdit()) return false;
+  if (modalOpen() || !canEditNow()) return false;
   editorEl.focus();
   return document.activeElement === editorEl;
 }
@@ -978,7 +990,7 @@ window.addEventListener("online", () => {
   else void auth.retrySilentSignIn().then((ok) => diagNote("auth", `retrySilentSignIn on online → ${String(ok)}`)).catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回线也试一次静默补登（store 0.12.1 有 60s 闩，不会风暴）
 });
 window.addEventListener("offline", () => { renderCloudButton(); renderSaveButton(); });
-setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void editor.refreshIfClean(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);
+setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void refreshIfCleanAny(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);
 
 // ── standalone 标记：贴边件地板（styles.css --top-floor / --bottom-floor）按它切换；display-mode 媒体查询 + iOS 的 navigator.standalone 双保险 ──
 {
@@ -998,7 +1010,7 @@ const shell = initPwaShell({
   onForeground: () => {
     if (idle.isShown()) return;
     if (!auth.isSignedIn() && navigator.onLine !== false) void auth.retrySilentSignIn().catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回前台也试一次静默补登（store 闩住不风暴）
-    void editor.refreshIfClean(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh());
+    void refreshIfCleanAny(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh());
   },
   onBeforeReload: async () => { const how = await authBootSettled(); diagNote("sw", `reload requested (auth boot ${how})`); await editor.flushLocal(); await flushCollections(); },
 });
@@ -1038,7 +1050,7 @@ async function boot(): Promise<void> {
   if (new URLSearchParams(location.search).has("reset")) { setStatus(t("settings.forceUpdated", { v: APP_VERSION })); try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ } }   // 强制更新回执
   renderLockCard(); renderMicVisibility();
   renderTopbar();
-  setState(editor.statusForDoc());
+  setState(stateAny());
   editorEl.focus();
 }
 // 2026-09-09（审计 #3，「各种不刷新」头号嫌疑）：以前整函数一次性守卫——凭证过期后再次静默登录时什么都不做：不对齐 collections、
@@ -1056,11 +1068,12 @@ function afterSignIn(): Promise<void> {
       void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
       if (!bootLastActiveHandled) {
         bootLastActiveHandled = true;
-        // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切
+        // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切。
+        // 两种身份都走 openAny（2026-09-10 黑匣子：远端指针是工程名时曾塞给 txt 编辑器 → readDoc 护栏抛 → 每次开工程一条 warning 横幅）
         const remote = appState.getItem<{ name?: string }>("lastActive");
-        if (remote?.name && remote.name !== editor.state.name && !editor.isDirty() && !editor.state.pendingDate) {
+        if (remote?.name && remote.name !== activeName() && !isDirtyAny() && !editor.state.pendingDate) {
           const known = drawer.findByName(remote.name);
-          if (known && !known.encrypted) await editor.open(remote.name);
+          if (known && !known.encrypted) await openAny(remote.name);
         }
       }
       await refreshIfCleanAny();
@@ -1079,4 +1092,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

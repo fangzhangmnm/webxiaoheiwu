@@ -31,6 +31,11 @@ export interface GalleryHostDeps {
   onClosed?: () => void;
 }
 const KV_FOLDER = "gallery-folder";
+const GALLERY_TEXT_OVERRIDES: Record<string, Parameters<typeof t>[0]> = {
+  "gal.empty.none": "galx.emptyNone", "gal.empty.folder": "galx.emptyFolder", "gal.empty.trash": "galx.emptyTrash",
+  "gal.firstFrameFailed": "galx.firstFrameFailed", "gal.firstFrameTimeout": "galx.firstFrameTimeout", "gal.st.openActive": "galx.openActive",
+  "gs.folderNeedSignin": "galx.folderNeedSignin", "gs.quotaCritical": "galx.quotaCritical",
+};
 /** 身份 = 全名（两档扩展名都进身份）；显示 = stem（ADR-0007：文件名是管理句柄，图库卡片显示去扩展名的那截）。 */
 const NAMING = { bare: (s: string) => s, full: (b: string) => b, display: (n: string) => parseDocName(n).stem };
 
@@ -83,8 +88,8 @@ export function initGalleryHost(d: GalleryHostDeps) {
     isGalleryVisible: () => document.body.dataset.mode === "gallery",
     reportError: (e, level) => reportError(e, level ?? "error"),
     reloadApp: () => location.reload(),
-    // 包内 zh/en 默认是 WeebPaint 口吻（「作品」「画一笔」）；这几条空态文案换成写作口吻，其余沿用默认。
-    text: { lang: lang(), t: (key, params) => (key === "gal.empty.none" ? t("galx.emptyNone") : key === "gal.empty.folder" ? t("galx.emptyFolder", params) : key === "gal.empty.trash" ? t("galx.emptyTrash") : undefined) },
+    // 包内 zh/en 默认是 WeebPaint 口吻（「图库」「作品」「画一笔」）；空态与几条会露面的文案换成书库/写作口吻（user 2026-09-10「gallery 叫书库」），其余沿用默认。
+    text: { lang: lang(), t: (key, params) => { const k = GALLERY_TEXT_OVERRIDES[key]; return k ? t(k, params) : undefined; } },
   };
   let gallery: Gallery | null = null;
   function ensureMounted(): Gallery { if (!gallery) gallery = createGallery(d.mountEl, deps); return gallery; }

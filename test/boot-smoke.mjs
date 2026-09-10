@@ -48,10 +48,14 @@ try {
     return [...document.querySelectorAll("use")].map((u) => (u.getAttribute("href") || "").slice(1)).filter((id) => !ids.has(id));
   });
   check("所有 <use> 都有 symbol", missingUse.length === 0, missingUse.join(","));
-  // 2.0：☰ = 图库屏（@internal/gallery card view，独立一屏）；抽屉只剩设置。
+  // 2.0.4：☰ = 侧栏（默认关；顶部 书库/设置 入口）→ 书库 = 独立一屏（@internal/gallery card view）；抽屉只剩设置。
+  check("侧栏默认关", await page.evaluate(() => document.body.dataset.edges !== "1" && getComputedStyle(document.getElementById("edgeSidebar")).display === "none"));
   await page.click("#menuButton");
+  await page.waitForTimeout(300);
+  check("☰ → 侧栏打开（书库/设置入口可见）", await page.evaluate(() => document.body.dataset.edges === "1" && getComputedStyle(document.getElementById("edgeSidebar")).display !== "none" && !!document.getElementById("edgeLibrary")));
+  await page.click("#edgeLibrary");
   await page.waitForTimeout(600);
-  check("图库屏打开", await page.evaluate(() => !document.getElementById("galleryFull").classList.contains("hidden")));
+  check("侧栏「书库」→ 书库屏打开", await page.evaluate(() => !document.getElementById("galleryFull").classList.contains("hidden")));
   const emptyText = await page.evaluate(() => document.querySelector("#galleryMount .gallery-empty")?.textContent?.trim() ?? "");
   check("图库空态文案（写作口吻，非包默认的「作品」）", !!emptyText && !emptyText.includes("作品"), emptyText);
   await page.click("#gallerySettingsBtn");
@@ -62,16 +66,18 @@ try {
   await page.waitForTimeout(200);
   await page.click("#galleryBack");
   await page.waitForTimeout(200);
-  check("图库屏关闭回编辑器", await page.evaluate(() => document.getElementById("galleryFull").classList.contains("hidden")));
+  check("书库屏关闭回编辑器", await page.evaluate(() => document.getElementById("galleryFull").classList.contains("hidden")));
+  await page.click("#menuButton");   // 收起侧栏（宽屏停靠会让纸面让位；下面的流程按纸面居中写）
+  await page.waitForTimeout(200);
   // 新稿：打字 → 本地物化（无云）→ 抽屉里出现一条
   await page.click("#editor");
   await page.keyboard.type("hello smoke");
   await page.waitForTimeout(900);
-  await page.click("#menuButton");
+  await page.click("#menuButton"); await page.waitForTimeout(200); await page.click("#edgeLibrary");
   await page.waitForTimeout(900);
   const rows = await page.evaluate(() => document.querySelectorAll("#galleryMount .gallery-tile:not(.folder)").length);
-  check("打字后本地物化：图库出现 1 篇", rows === 1, `rows=${rows}`);
-  await page.click("#galleryBack");
+  check("打字后本地物化：书库出现 1 篇", rows === 1, `rows=${rows}`);
+  await page.click("#galleryBack"); await page.click("#menuButton"); await page.waitForTimeout(200);
   // 通用 sheet：多选 → 点第一项 → resolve
   const picked = await page.evaluate(async () => {
     const p = window.__xhw.choice("t", "m", [{ label: "A", value: 1 }, { label: "B", value: 2 }]);

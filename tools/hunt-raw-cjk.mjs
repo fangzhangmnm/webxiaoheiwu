@@ -15,6 +15,7 @@ const SKIP_FILES = new Set([
   "src/i18n/index.ts",     // LANG_NAME endonym 表（各语言自称，不翻译）
   "src/ime.ts",            // 自然码 starter-map 词典数据（不是 UI 文案）
   "src/zh-punct.ts",       // 全角标点映射表（数据）
+  "src/project/naming.ts", // 汉字数字表 零一二…千（数据，不是 UI 文案；「第 N 章」模板本身在 SSoT chapter.name）
   "src/asr/packs.generated.ts",  // 模型仓 manifest 原样内嵌（name/notes 是数据，不是 UI 文案；生成物）
 ]);
 

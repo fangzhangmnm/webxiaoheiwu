@@ -38,11 +38,11 @@ export function setLinks(p: Project, name: string, links: string[], now: NowFn =
   m.links = links.map((l) => l.normalize("NFC")).filter((l) => l.length > 0);
   m.modified = now();
 }
-/** 加一条出边（默认顶部 = 最新最热，ADR-0009 journal 拍板）；已有则不重复。 */
+/** 加一条出边（默认末尾：user 2026-09-10「节点应该加在末尾」，取代 09-09 journal 的「顶部最新最热」；ADR-0009 修订）；已有则不重复。 */
 export function link(p: Project, from: string, to: string, opts: { at?: "top" | "bottom"; now?: NowFn } = {}): boolean {
   const m = meta(p, from); const t = to.normalize("NFC");
   if (m.links.some((l) => nameKey(l) === nameKey(t))) return false;
-  if (opts.at === "bottom") m.links.push(t); else m.links.unshift(t);
+  if (opts.at === "top") m.links.unshift(t); else m.links.push(t);
   m.modified = (opts.now ?? DEFAULT_NOW)();
   return true;
 }
@@ -80,9 +80,9 @@ export function deleteNode(p: Project, name: string): boolean {
   if (p.editorState.last === n) p.editorState.last = null;
   return true;
 }
-/** 检索（ADR-0009：至少两个字符、结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。 */
+/** 检索（结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。最少字数默认 1（user 2026-09-10「检索不限字数，这样可以搜全量孤儿」，取代 ADR-0009 的「至少两个字」）。 */
 export function search(p: Project, q: string, opts: { minChars?: number; limit?: number } = {}): string[] {
-  const min = opts.minChars ?? 2; const needle = q.normalize("NFC").toLowerCase();
+  const min = opts.minChars ?? 1; const needle = q.normalize("NFC").toLowerCase();
   if (needle.length < min) return [];
   const hits: { name: string; modified: number }[] = [];
   for (const n of p.contents.keys()) {

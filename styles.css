@@ -1499,6 +1499,12 @@ body {
 .top-spacer { flex: 1 1 0; min-width: 0; }
 .page { --editor-font: calc(clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max)) * var(--font-scale, 1)); }   /* 规范管行宽，档位乘字号（设置「字号」） */
 .body { font-size: var(--editor-font); }
+/* 章节名框（v0.2.15 的 #titleInput 捞回来当节点名；user 2026-09-10）：只在工程模式显示；正文字号 ×1.25、居中、无边框 */
+.node-title { display: none; flex: none; width: 100%; box-sizing: border-box; border: 0; background: transparent; outline: none; text-align: center; line-height: 1.4; font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink); padding: 0 0 calc(var(--editor-font) * 0.5); margin: 0 0 calc(var(--editor-font) * 0.5); caret-color: var(--accent); }
+body[data-project] .node-title { display: block; }
+.node-title::placeholder { color: var(--ink-muted); font-weight: 400; opacity: 0.7; }
+.node-title.locked { color: var(--ink-muted); }
+.node-title::selection { background: rgba(160, 88, 38, 0.22); }
 #saveStatus:empty + .sep { display: none; }
 #imeStatus:empty { display: none; }
 .status:has(#imeStatus:empty) .sep { display: none; }   /* 系统输入法时右侧没字，分隔点别悬空 */
@@ -1563,40 +1569,45 @@ button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -
 /* ── iOS 软键盘：纸面整体缩到键盘上方（visualViewport → --kb-offset），光标/候选/话筒都在可见区（user 2026-09-04「屏幕没跟上，被键盘遮挡，候选也看不到」）── */
 .page { height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px - var(--kb-offset, 0px)); }
 
-/* ═══ 2.0 工程模式：边栏 = 当前节点的出边列表（ADR-0008；journal 2026-09-09「左边栏变成这个 node 的 edge」）。
-   宽屏常驻在页左；窄屏（<900px）为浮层，顶栏 #edgeToggle 开合。零全图、零计数。 ═══ */
+/* ═══ 2.0 侧栏（☰ 唯一入口；user 2026-09-10「只有一个三条杠」「侧栏不应默认开」「侧栏不平衡，放在右边试试看」）：顶部 书库/设置 两入口 + 工程内导航（当前节点的出边，ADR-0008）。
+   开关 = body[data-edges]（默认 0）。宽屏开着时停靠页右、纸面往左让位；窄屏（≤900px）为右侧浮层 + 遮罩。零全图、零计数。 ═══ */
 .edge-sidebar {
-  position: fixed; top: 52px; bottom: 12px; left: 12px; width: 240px;
-  display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  position: fixed; top: 52px; bottom: 12px; right: 12px; width: 240px;
+  display: none; flex-direction: column; gap: 8px; padding: 10px;
   border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg-1); color: var(--ink);
   font-family: var(--font-ui); font-size: 13px; z-index: 5; box-sizing: border-box;
 }
-.edge-sidebar[hidden] { display: none; }
-body[data-project][data-edges="1"] .page { margin-left: calc(264px + max(0px, (100vw - var(--box-max)) / 2 - 264px)); }
-body[data-edges="0"] .edge-sidebar { display: none; }   /* 开关 = body[data-edges]（宽屏默认 1、窄屏默认 0；顶栏钮切换；user 2026-09-10「侧边栏 toggle 也不行」） */
+body[data-edges="1"] .edge-sidebar { display: flex; }
+body[data-edges="1"] .page { margin-right: calc(264px + max(0px, (100vw - var(--box-max)) / 2 - 264px)); }   /* 够宽时纸面仍居中；不够时往左让 264px */
+.edge-backdrop { display: none; position: fixed; inset: 0; z-index: 4; background: rgba(58, 40, 24, 0.22); }   /* 顶栏（5）之下：☰ 仍可点 */
+.edge-entries { display: flex; gap: 6px; }
+.edge-entry { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; cursor: pointer; }
+.edge-entry:hover, .edge-entry:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--bg-0)); }
+.edge-entry .ico { width: 16px; height: 16px; flex: none; }
+.edge-pane { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
+.edge-pane[hidden] { display: none; }
 .edge-head { display: flex; align-items: center; gap: 6px; }
 .edge-titles { min-width: 0; flex: 1; }
 .edge-node { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .edge-project { color: var(--ink-soft); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.edge-search, .edge-add-input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; }
+.edge-search { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; }
 .edge-list { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .edge-row { display: flex; align-items: center; gap: 4px; }
 .edge-row.header { color: var(--ink-soft); font-size: 11px; text-transform: none; padding: 6px 4px 2px; }
 .edge-row.empty { color: var(--ink-soft); padding: 8px 4px; line-height: 1.5; }
-.edge-main { flex: 1; min-width: 0; text-align: left; background: transparent; border: none; border-radius: 6px; padding: 7px 8px; color: var(--ink); font: inherit; cursor: pointer; display: flex; flex-direction: column; }
+.edge-main { flex: 1; min-width: 0; text-align: left; background: transparent; border: none; border-radius: 6px; padding: 7px 8px; color: var(--ink); font: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; }
 .edge-main:hover, .edge-main:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .edge-row.current .edge-main { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .edge-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .edge-row.stub .edge-name { opacity: .7; border-bottom: 1px dashed currentColor; }   /* 占位符：只是还没有文件的名字 */
-.edge-sub { color: var(--ink-soft); font-size: 11px; }
+.edge-row.add .edge-main { color: var(--ink-soft); border: 1px dashed var(--line); justify-content: center; margin-top: 4px; }   /* 列表末尾的「+」 */
+.edge-row.add .edge-main .ico { width: 14px; height: 14px; }
 .edge-more { flex: none; }
-.edge-foot { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
-.edge-add { display: flex; gap: 4px; }
-.edge-actions { display: flex; flex-wrap: wrap; gap: 4px; }
-.edge-actions .auth-action .ico { width: 14px; height: 14px; margin-right: 4px; }
+.edge-foot { display: flex; flex-wrap: wrap; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
 @media (max-width: 900px) {
-  body[data-project] .page { margin-left: auto; }
+  body[data-edges="1"] .page { margin-right: auto; }
   .edge-sidebar { width: min(82vw, 320px); box-shadow: var(--shadow); }
+  body[data-edges="1"] .edge-backdrop { display: block; }
 }
 
 

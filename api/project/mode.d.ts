@@ -10,6 +10,8 @@ export type ProjectHome = {
 };
 export interface ProjectModeDeps {
     editorEl: HTMLTextAreaElement;
+    /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。 */
+    titleEl: HTMLInputElement;
     setStatus: (text: string, opts?: {
         error?: boolean;
         unsynced?: boolean;
@@ -22,8 +24,6 @@ export interface ProjectModeDeps {
     /** 身份/节点/脏态变了 → 顶栏 + 边栏重画。 */
     onChanged: () => void;
     onBeforeLoad?: () => void;
-    /** spawn 的名字对话框（app 注入 in-app sheet）。返回 null = 取消。 */
-    askName: (title: string, def: string, hint: string) => Promise<string | null>;
     /** 加密：解锁循环（手势里才调）；锁态查询；锁态变化订阅（crypto-state）。 */
     isUnlocked: () => boolean;
     ensureUnlocked: () => Promise<boolean>;
@@ -41,11 +41,14 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         open: (projectName: string) => Promise<OpenResult>;
         create: (projectName: string, firstNode: string) => void;
         close: () => void;
-        flush: (push: boolean) => Promise<{
+        flush: (push: boolean, opts?: {
+            force?: boolean;
+        }) => Promise<{
             wrote: boolean;
             pushed?: boolean;
         }>;
         toBlob: () => Promise<Blob>;
+        adoptName: (newName: string) => void;
         readonly name: string | null;
         readonly dirty: boolean;
         readonly readOnly: boolean;
@@ -77,6 +80,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     }) => Promise<boolean>;
     openLocal: (lh: LocalHome) => Promise<boolean>;
     createInStore: (projectName: string, firstNode: string) => Promise<void>;
+    adoptName: (newName: string) => void;
     close: () => Promise<void>;
     flushLocal: () => Promise<void>;
     pushNow: () => Promise<void>;
@@ -85,15 +89,17 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     goBack: () => boolean;
     canGoBack: () => boolean;
     spawnFromSelection: () => Promise<boolean>;
+    newNode: () => boolean;
     addLink: (to: string) => boolean;
     removeLink: (to: string) => boolean;
     moveLink: (to: string, dir: 1 | -1) => boolean;
-    renameNode: (from: string, to: string) => boolean;
     deleteNode: (target: string) => boolean;
+    commitTitle: () => boolean;
+    focusTitle: () => void;
     current: () => string | null;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;
-/** spawn 默认名：选中文字首行前 12 个字（去路径字符）+ .txt。 */
+/** spawn 默认名：选中文字首行前 12 个字（去路径字符）。空 → ""（调用方退到章节名）。 */
 export declare function defaultNodeName(sel: string): string;
 /** 用户输入 → 合法节点名（没扩展名补 .txt；非法 → null）。 */
 export declare function normalizeNodeName(raw: string): string | null;

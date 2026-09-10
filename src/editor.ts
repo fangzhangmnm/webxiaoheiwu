@@ -9,7 +9,7 @@
 //   · 加密稿：locked 时编辑区空白 + 禁输入；解锁循环在 busy 外；错密码不碰文件（库 seal 保证）。
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "./config.ts";
-import { formatDate, parseDocName, splitDocPath, sanitizeTitle } from "./doc-model.ts";
+import { formatDate, parseDocName, splitDocPath, sanitizeTitle, docKind } from "./doc-model.ts";
 import { readDoc, saveDoc, createDoc, renameDoc, renameDocToOpaque, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, rekeyDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword, currentPassword } from "./crypto-state.ts";
 import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
@@ -249,6 +249,7 @@ export function createEditor(d: EditorDeps) {
 
   /** promptUnlock：只有用户手势（抽屉点开 / 锁图标）才弹密码框——「加密永不自动弹框」（冷启动续写、锁定后 reload、重置后 reload 都不弹）。 */
   async function open(name: string, opts: { keepCaret?: boolean; promptUnlock?: boolean } = {}): Promise<boolean> {
+    if (docKind(name) === "project") { reportError(new Error("[editor] open() got a project name; route through app openAny"), "log"); return false; }   // 护栏在改状态之前：以前先把 st.name 换掉再让 readDoc 抛
     d.onBeforeLoad?.();
     await flushLocal();
     encryptPending = false; pushFailures = 0;

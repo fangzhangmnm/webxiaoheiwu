@@ -1,6 +1,7 @@
 # 2.0 UI 接线 handoff：数据层已备好，剩下的是 UX 决定
 > 作者：Claude Fable 5.1（claude-fable-5-1）· created 20260910 · as-of dev 0.2.21 + 2.0 数据层（commit 见 git log 2026-09-10）· 69 测绿 · 真机零
 > **2026-09-10 晚更新（edited by Claude Fable 5.1）**：user「2 最好你先做吧」→ §2 的六条已按委托落了一版最小 UI（§4），dev = **v2.0.0-2026-09-10**，真机零。
+> **2026-09-10 深夜 2（edited by Claude Fable 5.1）**：user 真机第二轮打回（黑匣子 + 一串 UX 拍板）→ **v2.0.4**（§4 末「v2.0.4 打回轮」）。
 > 格式 = ADR-0008–0011；计划 = 家族根 `ai-docs/20260909-wxhw-2.0-long-haul-plan.md`；user 2026-09-09：「UX 不用你管。主要还是创作心理学」→ 本文只摊接口，不做 UI 决定。
 
 ## 1. 已落的（可直接消费）
@@ -55,3 +56,14 @@ user 原话：「图库和编辑器的遮挡顺序错误」「大小也不对」
 5. 关掉重开 app → 落回上次所在节点（editor-state.last）。
 6. 换设备打开同一工程 → 落到上次**保存**时的节点。
 7. 「打开本机工程…」Quest 上选一个下载好的 zip → 改字 → Ctrl+S → 文件被写回（FSA）；iPad 上 = 下载一份。
+
+### v2.0.4 打回轮（2026-09-10 深夜 2，user 真机 + 黑匣子 `D:\Downloads\黑匣子.txt`；edited by Claude Fable 5.1）
+user 原话（按时序）：「工程改名之后得刷新页面」「一开始创建节点也看不到出边，刷新之后才好」「editor sidebar 只有一个三条杠，打开之后是工程内导航，上面是回书库和设置的入口，gallery 叫书库」「使用系统输入法时不要弹窗 nudge，支持系统输入法就行」「为什么打开工程会弹窗抱怨一句」「侧栏不应默认开」「新建节点用 list 最下面的一个加号按钮」「默认节点就叫第一章」「吃书：还是不显示扩展名吧」「节点应该加在末尾」「节点名就用之前很可惜被弃置的章节名的 ui」「当前节点的改名也用这个章节名的机制」「初始节点叫第一章？根据当前语言自动生成」「检索不限字数，这样可以搜全量孤儿」「改名后刷新可看到已改名的文件」「default 还是叫“作品”吧」「侧栏不平衡，放在右边试试看？」
+- **黑匣子破案**：每次开工程 2s 后 `W readDoc: project files open via project/session, not as text` = `afterSignIn` 的冷启动「远端 lastActive」把工程名塞给 **txt 编辑器** `editor.open` → readDoc 护栏抛 → warning 横幅（就是「打开工程弹窗抱怨一句」）。同根：boot 末尾 `setState(editor.statusForDoc())` 拿 parked 的 txt 编辑器状态 → 工程一开顶栏显「本地没有缓存，云端也连不上」；`onForeground` / 60s 轮询也直接问 txt 编辑器。修 = 全走 `openAny / stateAny / refreshIfCleanAny`（谁活着问谁）；`editor.open` 对工程名在改状态前就拒绝。**远端 lastActive 是 txt 而本机开着工程时，旧码会把 txt 正文灌进工程的 textarea**（下次落盘写进节点 = 串稿）——同一修法堵住。
+- **改名工程要刷新**：无头复现不到「失败」，但抓到 `renameProjectFile` 改完名**整包重开**（`project.openStore(新名)` → store `open()`）偶发 >1.2s；登录态下 open() 还会碰云。修 = `project.adoptName(新名)` 只换身份（session.adoptName + KV + 顶栏），不重开、不重载正文、回退栈不丢。书库卡片由 store `tryMove` 的 notifyFolderOf 帧自己更新（无头验证 ok）。
+- **建节点看不到出边**：无头（未登录）复现不到；spawn 后当前节点 = 新节点，它的出边本来就空——用户看的是「父节点指向它的边」。这轮 UI 改了语义后（`+` 建节点 → 跳过去改名；回退看到父列表）等真机再判。
+- **工程推云有洞（顺手抓的）**：本地 200ms 落盘 `session.flush(false)` 清了 dirty，15s 后 `flush(true)` 见不脏直接不写 → **工程永远推不上云**、顶栏永远「未同步」。修 = `flush(push, {force})`，推云时 pushPending 就再交一次字节（同内容同字节）。测 `project-session.test.mjs`。
+- **UI 重做（app 层，greenfield）**：☰ 唯一入口 → 侧栏（`body[data-edges]` 默认 0；宽屏停靠**右侧**、窄屏右侧浮层 + 遮罩）；侧栏顶 = 「书库」「设置」；工程内导航 = 当前节点出边（显示去 `.txt`；占位符虚线）+ 列表末尾「+ 新节点」（第 N 章直接生、边加末尾、跳过去、章节名框全选）；脚 = 分裂选中 / 连接已有… / 谁指向这里 / 下载一份(本机)。**章节名框** `#nodeTitle`（纸面顶部，v0.2.15 `.title` 样式捞回）= 当前节点名，改了即改名（500ms 防抖 / Enter / 失焦；撞名 toast 且不吞；Esc 回显）。顶栏只剩工程名。spawn 不再弹框（名字 = 选中首行前 12 字，撞名退到第 N 章）。行菜单去掉「改名…」。新建工程默认名「作品」。图库 → 书库（含包内几条会露面的文案 override）。系统输入法出汉字不再 toast。
+- **家规对账**：ADR-0009 加「修订 2026-09-10」节（显示名 / 末尾 / 检索 1 字 / 第 N 章 / 章节名框）。裸中文 lint 豁免 `src/project/naming.ts`（汉字数字表 = 数据）。
+- **验证**：73 测绿；`node tools/ui-audit.mjs` 两尺寸 **35 探针全绿**（含：默认关 / ☰ 开 / 书库 / 作品默认名 / 第一章 / 顶栏不报错 / 无横幅 / 退格 / IME 挂检索框 / + → 第二章全选 / Enter 改名「序章」/ 回退列表无 .txt / spawn 不弹框 + 边在末尾 / 连接已有→占位符末尾 / 一字检索 / 行菜单无改名 / 撞名拒绝 / Esc 回显 / 顶栏改名不重开（845–1411ms，store tryMove 延迟）/ 宽屏右停靠不压纸面 / 刷新回第一章无红条 / 书库卡片 stem）；boot smoke 全过。真机零。
+- **无头复现脚本**（tmp/，不进 git）：`tmp/repro-2026-09-10.mjs`（刷新 → spawn → 连边 → 改名 → 再刷新）、`tmp/repro-rename-gallery.mjs`、`tmp/repro-rename2.mjs`。

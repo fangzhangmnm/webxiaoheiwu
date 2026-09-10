@@ -28,25 +28,33 @@ describe("project/session · 新建 / 跳转不标脏 / 正文改了才脏 / 整
     eq(ps.jump("祭祀线.txt"), "祭祀线.txt"); assert(ps.dirty, "占位符跳上去生文件");
     eq(ps.currentText(), "");
   });
-  it("spawn：新节点带选中文字、边从当前节点指向它在顶部、光标跳过去；撞名 = 链接已有", async () => {
+  it("spawn：新节点带选中文字、边从当前节点指向它在末尾、光标跳过去；撞名 = 链接已有", async () => {
     const s = fakeStore(); const ps = createProjectSession(s.deps);
     ps.create("p.webxiaoheiwu.zip", "场景.txt"); ps.setCurrentText("她推开门。他在窗边。");
     eq(ps.spawn("夏音.txt", "她推开门。"), "夏音.txt"); eq(ps.current(), "夏音.txt"); eq(ps.currentText(), "她推开门。");
     ps.jump("场景.txt"); ps.spawn("路人.txt", "他在窗边。"); ps.jump("场景.txt");
-    eq(ps.sidebar().map((n) => n.name).join("|"), "路人.txt|夏音.txt", "最新在顶");
+    eq(ps.sidebar().map((n) => n.name).join("|"), "夏音.txt|路人.txt", "最新在末尾");
     ps.spawn("夏音.TXT", "again"); eq(ps.current(), "夏音.txt"); eq(ps.currentText(), "她推开门。", "撞名不覆盖正文");
   });
   it("addLink / removeLink / rename 重写引用 / remove 留占位符 / find / backlinksOf", async () => {
     const s = fakeStore(); const ps = createProjectSession(s.deps);
     ps.create("p.webxiaoheiwu.zip", "大纲.txt"); ps.addLink("第一章.txt"); ps.addLink("第二章.txt");
-    eq(ps.sidebar().map((n) => `${n.name}:${n.stub}`).join("|"), "第二章.txt:true|第一章.txt:true");
+    eq(ps.sidebar().map((n) => `${n.name}:${n.stub}`).join("|"), "第一章.txt:true|第二章.txt:true");
     ps.jump("第一章.txt"); ps.setCurrentText("山田妖精"); ps.jump("大纲.txt");
     ps.rename("第一章.txt", "第一章-初稿.txt");
-    eq(ps.sidebar().map((n) => n.name).join("|"), "第二章.txt|第一章-初稿.txt");
+    eq(ps.sidebar().map((n) => n.name).join("|"), "第一章-初稿.txt|第二章.txt");
     eq(ps.backlinksOf("第一章-初稿.txt").join(), "大纲.txt");
     eq(ps.find("妖精").join(), "第一章-初稿.txt");
     assert(ps.removeLink("第二章.txt")); eq(ps.sidebar().length, 1);
     ps.remove("第一章-初稿.txt"); eq(ps.sidebar()[0].stub, true);
+  });
+  it("flush(push, {force}) 不脏也写（推云节律：本地落盘清了 dirty 之后 15s 推云还得交字节）；adoptName 只换身份", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("p.webxiaoheiwu.zip", "a.txt"); ps.setCurrentText("A"); await ps.flush(false); assert(!ps.dirty);
+    eq((await ps.flush(true)).wrote, false, "不脏默认不写");
+    const r = await ps.flush(true, { force: true }); eq(r.wrote, true); eq(r.pushed, true); eq(s.writes.at(-1).push, true);
+    ps.adoptName("q.webxiaoheiwu.zip"); eq(ps.name, "q.webxiaoheiwu.zip"); assert(!ps.dirty, "改身份不标脏");
+    ps.setCurrentText("A2"); await ps.flush(false); eq(s.writes.at(-1).n, "q.webxiaoheiwu.zip", "之后写新名");
   });
   it("too-new → 只读：不许改、flush 不写", async () => {
     const s = fakeStore();

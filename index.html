@@ -135,13 +135,10 @@
 
     <main class="surface" aria-label="网页版小黑屋" data-i18n-aria="ui.appTitle">
       <header class="top-bar">
-        <button class="menu-button" id="menuButton" type="button" aria-label="文件菜单" data-i18n-aria="ui.menu" data-i18n-title="ui.menu">
+        <button class="menu-button" id="menuButton" type="button" aria-label="菜单" aria-expanded="false" data-i18n-aria="ui.menu" data-i18n-title="ui.menu">
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
         <button class="doc-name" id="docNameButton" type="button" hidden aria-label="文件名" data-i18n-aria="top.docName" data-i18n-title="top.docName"></button>
-        <button class="menu-button" id="edgeToggle" type="button" hidden aria-label="节点边栏" data-i18n-aria="edge.toggle" data-i18n-title="edge.toggle">
-          <svg class="ico" aria-hidden="true"><use href="#folder-open"/></svg>
-        </button>
         <span class="top-spacer" aria-hidden="true"></span>
         <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
         <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护" data-i18n-aria="top.readOnlyOn"></button>
@@ -159,10 +156,10 @@
         <span data-i18n="ui.key.otherPw">这篇用的不是当前密码（保存仍用它自己的密码）</span>
         <button class="auth-action" id="rekeyButton" type="button" data-i18n="ui.key.rekey">换成当前密码</button>
       </div>
-      <div id="galleryFull" class="gallery-full hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-label="图库" data-i18n-aria="gal.aria">
+      <div id="galleryFull" class="gallery-full hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-label="书库" data-i18n-aria="gal.aria">
         <div class="gallery-chrome">
           <button class="menu-button" id="galleryBack" type="button" aria-label="回到编辑器" data-i18n-aria="gal.back" data-i18n-title="gal.back"><svg class="ico" aria-hidden="true"><use href="#back"/></svg></button>
-          <div class="gallery-chrome-title" data-i18n="gal.title">图库</div>
+          <div class="gallery-chrome-title" data-i18n="gal.title">书库</div>
           <span class="top-spacer" aria-hidden="true"></span>
           <button class="auth-action" id="galleryNewBtn" type="button" aria-haspopup="menu"><svg class="ico" aria-hidden="true"><use href="#new"/></svg><span data-i18n="gal.new">新建</span></button>
           <button class="menu-button" id="galleryTrashBtn" type="button" aria-label="回收站" data-i18n-aria="gal.trash" data-i18n-title="gal.trash"><svg class="ico" aria-hidden="true"><use href="#trash-can"/></svg></button>
@@ -174,8 +171,10 @@
         </div>
         <div class="gallery-mount" id="galleryMount"></div>
       </div>
-      <aside id="edgeSidebar" class="edge-sidebar" hidden aria-label="节点边栏" data-i18n-aria="edge.aria"></aside>
+      <div id="edgeBackdrop" class="edge-backdrop" aria-hidden="true"></div>
+      <aside id="edgeSidebar" class="edge-sidebar" aria-label="侧栏" data-i18n-aria="edge.aria"></aside>
       <article class="page">
+        <input id="nodeTitle" type="text" class="node-title" placeholder="章节名" data-i18n-ph="edge.title.ph" data-i18n-aria="edge.title.aria" aria-label="节点名" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
         <button id="micButton" class="mic-button" type="button" hidden aria-label="语音输入" data-i18n-aria="ui.mic" data-state="idle">
@@ -433,6 +432,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-ccf28bd99434.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-0c9e03f3466b.mjs"></script>
   </body>
 </html>

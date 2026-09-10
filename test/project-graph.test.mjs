@@ -10,11 +10,12 @@ describe("project/graph · 撞名=链接、占位符、反链=查询", () => {
     const r = createNode(p, "夏音.TXT", "y", now); eq(r.created, false); eq(r.name, "夏音.txt");
     eq(p.contents.size, 1); assert(isStub(p, "祭祀线.txt")); eq(resolveName(p, "夏音.TXT"), "夏音.txt");
   });
-  it("link 默认顶部（最新最热）、不重复；unlink；neighbors 带 stub 旗；backlinks 是查询", () => {
+  it("link 默认末尾（user 2026-09-10「节点应该加在末尾」）、不重复；unlink；neighbors 带 stub 旗；backlinks 是查询", () => {
     const p = emptyProject(); const now = tick();
     createNode(p, "a.txt", "", now); createNode(p, "b.txt", "", now);
     link(p, "a.txt", "b.txt", { now }); link(p, "a.txt", "c.txt", { now }); eq(link(p, "a.txt", "B.txt", { now }), false);
-    eq(neighbors(p, "a.txt").map((n) => `${n.name}:${n.stub}`).join("|"), "c.txt:true|b.txt:false");
+    eq(neighbors(p, "a.txt").map((n) => `${n.name}:${n.stub}`).join("|"), "b.txt:false|c.txt:true");
+    link(p, "a.txt", "z.txt", { at: "top", now }); eq(neighbors(p, "a.txt")[0].name, "z.txt", "显式 top 仍可");  unlink(p, "a.txt", "z.txt", now);
     eq(backlinks(p, "b.txt").join(), "a.txt"); eq(backlinks(p, "a.txt").length, 0);
     assert(unlink(p, "a.txt", "c.txt", now)); eq(neighbors(p, "a.txt").length, 1);
   });
@@ -34,11 +35,13 @@ describe("project/graph · 撞名=链接、占位符、反链=查询", () => {
     createNode(p, "a.txt", "", now); createNode(p, "b.txt", "", now); link(p, "a.txt", "b.txt", { now });
     assert(deleteNode(p, "b.txt")); eq(neighbors(p, "a.txt")[0].stub, true);
   });
-  it("setNodeText 只在内容变了才 touch modified；search 至少两字符、名字或正文命中、按 modified 降序", () => {
+  it("setNodeText 只在内容变了才 touch modified；search 一个字就搜（user 2026-09-10「检索不限字数」）、名字或正文命中、按 modified 降序", () => {
     const p = emptyProject(); const now = tick();
     createNode(p, "老.txt", "山田妖精", now); createNode(p, "新.txt", "厕纸轻小说", now);
     eq(setNodeText(p, "老.txt", "山田妖精", now), false);
-    eq(search(p, "妖").length, 0, "一个字不搜");
+    eq(search(p, "妖").join(), "老.txt", "一个字就搜");
+    eq(search(p, "").length, 0, "空串不搜");
+    eq(search(p, "妖", { minChars: 2 }).length, 0, "显式 minChars 仍可");
     eq(search(p, "妖精").join(), "老.txt");
     setNodeText(p, "老.txt", "山田妖精 厕纸", now);
     eq(search(p, "厕纸").join("|"), "老.txt|新.txt", "刚改过的排前面");

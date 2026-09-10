@@ -21,11 +21,14 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     open: (projectName: string) => Promise<OpenResult>;
     create: (projectName: string, firstNode: string) => void;
     close: () => void;
-    flush: (push: boolean) => Promise<{
+    flush: (push: boolean, opts?: {
+        force?: boolean;
+    }) => Promise<{
         wrote: boolean;
         pushed?: boolean;
     }>;
     toBlob: () => Promise<Blob>;
+    adoptName: (newName: string) => void;
     readonly name: string | null;
     readonly dirty: boolean;
     readonly readOnly: boolean;

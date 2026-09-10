@@ -12,7 +12,7 @@ export declare function createNode(p: Project, name: string, text?: string, now?
 /** 写正文（内容变了才 touch modified）。 */
 export declare function setNodeText(p: Project, name: string, text: string, now?: NowFn): boolean;
 export declare function setLinks(p: Project, name: string, links: string[], now?: NowFn): void;
-/** 加一条出边（默认顶部 = 最新最热，ADR-0009 journal 拍板）；已有则不重复。 */
+/** 加一条出边（默认末尾：user 2026-09-10「节点应该加在末尾」，取代 09-09 journal 的「顶部最新最热」；ADR-0009 修订）；已有则不重复。 */
 export declare function link(p: Project, from: string, to: string, opts?: {
     at?: "top" | "bottom";
     now?: NowFn;
@@ -24,7 +24,7 @@ export declare function backlinks(p: Project, name: string): string[];
 export declare function renameNode(p: Project, from: string, to: string, now?: NowFn): void;
 /** 删除节点（正文没了；别人指向它的边留着 = 变占位符，符合「打已有名字 = 链接」的逆）。 */
 export declare function deleteNode(p: Project, name: string): boolean;
-/** 检索（ADR-0009：至少两个字符、结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。 */
+/** 检索（结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。最少字数默认 1（user 2026-09-10「检索不限字数，这样可以搜全量孤儿」，取代 ADR-0009 的「至少两个字」）。 */
 export declare function search(p: Project, q: string, opts?: {
     minChars?: number;
     limit?: number;
