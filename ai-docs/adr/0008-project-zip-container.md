@@ -11,3 +11,6 @@
 - `contents/` → `pages/`，graph.json `nodes` → `pages`；**不读旧格式**：读到 `contents/` 或 `nodes` 键 → `legacy` 拒开（不能读成空书再整包覆盖）。version 仍 1（dev 语义本来就不稳定）。
 - `readOnly`（修改锁）**跟着作品**进 graph.json 顶层（user「zip 锁跟着作品」）；切换 = 正经改动，标脏、立即落盘/推云。txt 没有修改锁（本机 `readonly-names` 名单删除）。
 - 名词：用户面「书 / 页」；内存 Map 与代码标识符（nodes/contents）不动。
+
+## 修订 2026-09-10 深夜 3（edited by Claude Fable 5.1）
+graph.json 换 **v2**（`version: 2`，顶层加 `tree` 嵌套数组，`pages[名]` 只剩 `links / created / modified`），见 **ADR-0014**；zip entry 清单不变（`graph.json` / `pages/` / `.webxiaoheiwu/editor-state.json`，加 2.1.0 的 `Thumbnails/thumbnail.png` 见 ADR-0012）。v1 与 2.1.0 过渡格式一律拒开、不留分支代码（库里只有迁移轮四本书）。
