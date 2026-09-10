@@ -352,6 +352,7 @@ export const S = {
   "auth.readyTitle":     { zh: "已保存到本机，去登录？", en: "Saved on this device — sign in now?" },
   "auth.readyMsg":       { zh: "接下来会跳到 Microsoft 登录页，登录后自动回来。", en: "Next you'll go to the Microsoft sign-in page and come back automatically." },
   "auth.go":             { zh: "去登录", en: "Sign in" },
+  "auth.later":          { zh: "暂不", en: "Not now" },
   "auth.flushFailed":    { zh: "本机落盘失败，未跳转登录（看诊断日志）", en: "Local save failed — not redirecting (see diagnostics)" },
   "auth.expired":        { zh: "云端登录已过期，点云图标重新登录", en: "Cloud sign-in expired — tap the cloud icon to sign in again" },
 

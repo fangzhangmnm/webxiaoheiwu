@@ -36,6 +36,7 @@ for (const [w, h] of sizes) {
   await shot("01-editor-txt");
   probe(tag, "sidebar closed by default", !(await sidebarShown()));
   probe(tag, "no edgeToggle in top bar", await page.evaluate(() => !document.getElementById("edgeToggle")));
+  probe(tag, "☰ is the rightmost top-bar control", await page.evaluate(() => { const m = document.getElementById("menuButton").getBoundingClientRect(); return [...document.querySelectorAll(".top-bar > *")].every((e) => e.id === "menuButton" || e.hidden || e.getBoundingClientRect().right <= m.left + 1); }));
   // ☰ → 侧栏（txt 稿：只有书库/设置两个入口）
   await page.click("#menuButton"); await wait(300); await shot("02-sidebar-txt");
   probe(tag, "☰ opens sidebar", await sidebarShown());
@@ -132,6 +133,7 @@ for (const [w, h] of sizes) {
   await page.click("#galleryTrashBtn"); await wait(800); await shot("17-trash-view");
   await page.click("#galleryTrashBack"); await wait(500);
   await page.click("#gallerySettingsBtn"); await wait(500); await shot("18-settings-over-library");
+  probe(tag, "settings drawer slides in from the RIGHT", await page.evaluate(() => { const r = document.getElementById("drawer").getBoundingClientRect(); return Math.abs(r.right - innerWidth) < 2 && r.left > 0; }));
   await page.click("#drawerCloseButton"); await wait(300);
   await page.click("#galleryBack"); await wait(400); await shot("19-back-to-editor");
   await ctx.close();

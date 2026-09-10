@@ -253,13 +253,19 @@ try {
     const w = (ms) => new Promise((r) => setTimeout(r, ms)); const x = window.__xhw; const btn = document.getElementById("saveButton");
     await x.editor.newDoc(); const ed = document.getElementById("editor"); ed.focus(); ed.value = "smart save"; ed.dispatchEvent(new Event("input")); await w(50);
     const kindDirty = x.editor.syncKind(), shown = !btn.hidden, icon = btn.querySelector("use")?.getAttribute("href");
-    await x.smartSave(); await w(300);
+    // v2.0.5：未登录 + 在线 → 本地落盘后弹「去登录 / 暂不」（WeebPaint smartSaveAndPush 同款）；点「暂不」→ 本 session 不再弹
+    const p1 = x.smartSave();
+    let choices = null; for (let i = 0; i < 40 && !choices; i++) { await w(50); const c = document.getElementById("sheetChoices"); if (c && !c.classList.contains("hidden") && c.querySelectorAll("button").length >= 2) choices = [...c.querySelectorAll("button")].map((b) => b.textContent.trim()); }
+    const promptShown = !!choices; if (choices) document.querySelectorAll("#sheetChoices button")[1].click();
+    await p1; await w(300);
     const toast = document.getElementById("toast").textContent, kindAfter = x.editor.syncKind();
+    ed.value = "smart save 2"; ed.dispatchEvent(new Event("input")); await w(50);
+    const p2 = x.smartSave(); await w(400); const promptAgain = !document.getElementById("sheet").classList.contains("hidden"); await p2;
     const pg = document.querySelector(".page"); const h0 = pg.getBoundingClientRect().height;
     document.documentElement.style.setProperty("--kb-offset", "300px"); const h1 = pg.getBoundingClientRect().height; document.documentElement.style.setProperty("--kb-offset", "0px");
-    return { kindDirty, shown, icon, toast, kindAfter, shrink: Math.round(h0 - h1) };
+    return { kindDirty, shown, icon, toast, kindAfter, promptShown, choices, promptAgain, shrink: Math.round(h0 - h1) };
   });
-  check("smart save 钮：未登录=本机图标可见、点击落盘并 toast；--kb-offset 300 → 纸面缩 300", smart.kindDirty === "local" && smart.shown && smart.icon === "#database" && /已存本机|Saved on/.test(smart.toast) && smart.kindAfter === "local" && smart.shrink === 300, JSON.stringify(smart));
+  check("smart save 钮：未登录=本机图标可见、点击落盘 + 弹「去登录/暂不」、暂不后 toast 已存本机且本 session 不再弹；--kb-offset 300 → 纸面缩 300", smart.kindDirty === "local" && smart.shown && smart.icon === "#database" && smart.promptShown && smart.choices?.length === 2 && /已存本机|Saved on/.test(smart.toast) && smart.kindAfter === "local" && smart.promptAgain === false && smart.shrink === 300, JSON.stringify(smart));
   const fs = await page.evaluate(async () => {
     const ed = document.getElementById("editor"); const sel = document.getElementById("fontScaleSelect");
     const f0 = parseFloat(getComputedStyle(ed).fontSize); sel.value = "1.3"; sel.dispatchEvent(new Event("change")); const f1 = parseFloat(getComputedStyle(ed).fontSize);

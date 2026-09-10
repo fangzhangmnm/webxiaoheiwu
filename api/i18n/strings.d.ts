@@ -1300,6 +1300,10 @@ export declare const S: {
         readonly zh: "去登录";
         readonly en: "Sign in";
     };
+    readonly "auth.later": {
+        readonly zh: "暂不";
+        readonly en: "Not now";
+    };
     readonly "auth.flushFailed": {
         readonly zh: "本机落盘失败，未跳转登录（看诊断日志）";
         readonly en: "Local save failed — not redirecting (see diagnostics)";

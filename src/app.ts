@@ -71,13 +71,22 @@ function renderSaveButton(): void {
   for (const c of ["s-clean", "s-unsynced", "s-local", "s-offline", "s-pending"]) saveButton.classList.toggle(c, c === spec.cls);
   saveButton.title = t(spec.title); saveButton.setAttribute("aria-label", saveButton.title);
 }
-/** Ctrl+S 与顶栏保存钮同一入口：脏 → 立即上传/落本地；干净且已登录 → 复查云端（同 WeebPaint「新鲜时点=刷新」）。 */
+/** Ctrl+S 与顶栏保存钮同一入口：脏 → 立即上传/落本地；干净且已登录 → 复查云端（同 WeebPaint「新鲜时点=刷新」）；
+ *  已配置未登录（不含本机工程）→ 本地落盘照做 + 弹「去登录 / 暂不」（WeebPaint smartSaveAndPush 同款；user 2026-09-10「smart save 会 trigger onedrive login 吧？weebpaint 应该是这样的」）。 */
+let _cloudSignInPromptDeclined = false;   // 同一 session 点过「暂不」→ 之后只状态行提示，不再弹（抄 WeebPaint 防烦旗；点背板/Esc 不记）
 async function smartSave(): Promise<void> {
   const before = syncKindAny();
   if (before === "none" || before === "locked" || before === "unavailable") return;
   saveButton.classList.add("flash"); setTimeout(() => saveButton.classList.remove("flash"), 500);
   void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
   if (before === "clean") { await refreshIfCleanAny(); if (syncKindAny() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return; }
+  if (before === "local" && !auth.isSignedIn() && !(project.active() && project.home()?.kind === "local")) {
+    await pushNowAny();   // 未登录 = 只落本机
+    if (_cloudSignInPromptDeclined || navigator.onLine === false) { setStatus(t("save.local")); renderSaveButton(); return; }   // 离线时登录无意义 → 不弹
+    const went = await onSignIn({ later: true });
+    if (went === false) { _cloudSignInPromptDeclined = true; setStatus(t("save.local")); }
+    renderSaveButton(); return;
+  }
   await pushNowAny();
   const after = syncKindAny();
   setStatus(after === "clean" ? t("save.synced") : after === "local" ? t("save.local") : after === "offline" ? t("save.offline") : after === "unsynced" ? t("save.stillPending") : "");
@@ -736,27 +745,32 @@ cloudButton.addEventListener("click", () => {
 });
 /** 登录（#60-C 两步手势，2026-09-09 对账 WeebPaint redirectAfterFlush）：先落盘（活稿 + collections），落盘失败不跳（响亮）；再弹「去登录」，
  *  onPick 在按钮 click 同步栈里起跳 redirect 登录起跳（手势纪律）。为什么：redirect 离场后 pagehide 里的写在 WebKit 上永远 commit 不了、只会把锁冻在旧页里。 */
-async function onSignIn(): Promise<void> {
-  try { await editor.flushLocal(); await flushCollections(); }
-  catch (e) { reportError(new Error("[sign-in] flush before redirect failed — not navigating: " + String(e)), "error"); setStatus(t("auth.flushFailed"), { error: true }); return; }
-  await openChoiceSheet<"go">(t("auth.readyTitle"), t("auth.readyMsg"), [{
-    label: t("auth.go"), value: "go", primary: true,
-    onPick: () => {
-      setStatus(t("auth.redirecting"));
-      void requestStoragePersistence();   // 手势里：persist 申请 + 账号选择器（user 2026-08-23 建议）
-      auth.signIn({ prompt: "select_account" }).catch((e) => { reportError(e); setStatus(t("auth.signInFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); });
+/** 返回：true = 点了「去登录」（已起跳）；false = 点了「暂不」；null = 背板/Esc 取消或落盘失败没弹。 */
+async function onSignIn(opts: { later?: boolean } = {}): Promise<boolean | null> {
+  try { await flushLocalAny(); await flushCollections(); }
+  catch (e) { reportError(new Error("[sign-in] flush before redirect failed — not navigating: " + String(e)), "error"); setStatus(t("auth.flushFailed"), { error: true }); return null; }
+  const v = await openChoiceSheet<"go" | "later">(t("auth.readyTitle"), t("auth.readyMsg"), [
+    {
+      label: t("auth.go"), value: "go", primary: true,
+      onPick: () => {
+        setStatus(t("auth.redirecting"));
+        void requestStoragePersistence();   // 手势里：persist 申请 + 账号选择器（user 2026-08-23 建议）
+        auth.signIn({ prompt: "select_account" }).catch((e) => { reportError(e); setStatus(t("auth.signInFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); });
+      },
     },
-  }]);
+    ...(opts.later ? [{ label: t("auth.later"), value: "later" as const }] : []),
+  ]);
+  return v === "go" ? true : v === "later" ? false : null;
 }
 async function onSignOut(): Promise<void> {
   if (!(await openConfirmSheet(t("auth.signOutTitle"), t("auth.signOutMsg")))) return;
-  await editor.flushLocal();
+  await flushLocalAny();
   try { await flushCollections(); cryptoLock(); await auth.signOut(); setStatus(t("auth.signedOut")); }
   catch (e) { reportError(e); }
   renderAuthRow(); renderTopbar();
 }
 async function lockCryptoNow(): Promise<void> {
-  await editor.flushLocal();    // 先把最后几秒的字加密落盘，再丢密码
+  await flushLocalAny();    // 先把最后几秒的字加密落盘，再丢密码（工程的锁态由 mode.onLockChange 接手）
   cryptoLock();
   if (editor.state.name && editor.state.encrypted) await editor.reload(editor.state.name);
   renderAuthRow(); renderTopbar(); drawer.refresh();
@@ -816,7 +830,7 @@ voicePackDelete.addEventListener("click", () => {
 const langSelect = $<HTMLSelectElement>("langSelect");
 for (const l of LANGS) { const o = document.createElement("option"); o.value = l; o.textContent = LANG_NAME[l]; langSelect.appendChild(o); }
 langSelect.value = lang();
-langSelect.addEventListener("change", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setLang(langSelect.value as Lang); })(); });
+langSelect.addEventListener("change", () => { void (async () => { await flushLocalAny(); await flushCollections(); setLang(langSelect.value as Lang); })(); });
 
 $("forceUpdateButton").addEventListener("click", () => {
   void (async () => { if (await openConfirmSheet(t("settings.forceUpdateTitle"), t("settings.forceUpdateMsg"))) { await withBusy(t("settings.forceUpdating"), () => shell.forceReset()); } })();   // flush 在 shell.onBeforeReload 里（带超时），遮罩留到导航发生
@@ -830,7 +844,7 @@ async function changePasswordFlow(): Promise<void> {
   if (next === old) { setStatus(t("cp.same")); return; }
   const mode = await openChoiceSheet<"migrate" | "keep">(t("cp.migrateTitle"), t("cp.migrateMsg"), [{ label: t("cp.migrate"), value: "migrate" }, { label: t("cp.keep"), value: "keep" }]);
   if (mode == null) return;
-  await editor.flushLocal();
+  await flushLocalAny();
   const openName = editor.state.name;
   let moved = 0, kept = 0;
   await withBusy(t("busy.migrating"), async () => {
@@ -894,8 +908,8 @@ function renderPasswordSection(): void {
 
 const factoryReset = () => runFactoryReset({
   setStatus,
-  unsyncedCount: async () => { await editor.flushLocal(); return (await dirtyDocCount()) + (editor.isDirty() ? 1 : 0); },   // 全库 dirty 标量（不只当前夹）
-  beforeWipe: async () => { await editor.flushLocal(); await flushCollections(); editor.clear(); ime.dispose(); },
+  unsyncedCount: async () => { await flushLocalAny(); return (await dirtyDocCount()) + (isDirtyAny() ? 1 : 0); },   // 全库 dirty 标量（不只当前夹）
+  beforeWipe: async () => { await flushLocalAny(); await flushCollections(); await leaveProject(); editor.clear(); ime.dispose(); },
 });
 $("factoryResetButton").addEventListener("click", () => { void factoryReset(); });
 initDiagLogUi({ status: (text) => setStatus(text) });   // 2026-09-09 黑匣子：看/复制/分享或下载 .txt/清空（数据源 diag-log）
@@ -932,7 +946,7 @@ $("galleryNewBtn").addEventListener("click", (e) => { e.stopPropagation(); openN
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
 $("settingsButton").addEventListener("click", () => drawer.open("settings"));   // 设置入口在抽屉头云图标旁（user 2026-09-04「扳手还是收到 gallery 里面吧…看看 weebpaint 的布局」）
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
-$("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
+$("reloadButton").addEventListener("click", () => { void (async () => { await flushLocalAny(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
@@ -955,7 +969,7 @@ async function resumeSync(): Promise<void> {
 }
 const idle = initIdleGate({
   overlay: $("idleOverlay"),
-  onIdle: () => { if (auth.isSignedIn()) { void editor.pushNow(); void pushUserDict(); rememberLastActive(); } else void editor.flushLocal(); },
+  onIdle: () => { if (auth.isSignedIn()) { void pushNowAny(); void pushUserDict(); rememberLastActive(); } else void flushLocalAny(); },
   onResume: resumeSync,
   focusEditor: () => editorEl.focus(),
 });
@@ -1012,7 +1026,7 @@ const shell = initPwaShell({
     if (!auth.isSignedIn() && navigator.onLine !== false) void auth.retrySilentSignIn().catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回前台也试一次静默补登（store 闩住不风暴）
     void refreshIfCleanAny(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh());
   },
-  onBeforeReload: async () => { const how = await authBootSettled(); diagNote("sw", `reload requested (auth boot ${how})`); await editor.flushLocal(); await flushCollections(); },
+  onBeforeReload: async () => { const how = await authBootSettled(); diagNote("sw", `reload requested (auth boot ${how})`); await flushLocalAny(); await flushCollections(); },
 });
 $("updateReloadButton").addEventListener("click", () => { void shell.reload(); });
 $("updateDismissButton").addEventListener("click", () => updateToast.classList.add("hidden"));

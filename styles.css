@@ -557,14 +557,14 @@ body {
 
 .backdrop.hidden { display: none; }
 
-.drawer {
+.drawer {   /* 右侧滑出（user 2026-09-10「那么设置和三条杠也应该在右边」：与右侧栏同边） */
   position: fixed;
   top: 0;
-  left: 0;
+  right: 0;
   height: 100dvh;
   width: min(320px, 86vw);
   background: var(--bg-1);
-  border-right: 1px solid var(--line);
+  border-left: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   z-index: 11;
@@ -572,7 +572,7 @@ body {
 }
 
 .drawer.hidden {
-  transform: translateX(-102%);
+  transform: translateX(102%);
   pointer-events: none;
 }
 
@@ -1550,7 +1550,7 @@ body.ruled-lines .body {
 :root[data-standalone] { --top-floor: max(env(safe-area-inset-top, 0px), 20px); --bottom-floor: max(env(safe-area-inset-bottom, 0px), 14px); --sa-left: env(safe-area-inset-left, 0px); --sa-right: env(safe-area-inset-right, 0px); }
 .top-bar { top: var(--top-floor); }
 .page { margin: calc(var(--top-floor) + 36px) auto calc(var(--bottom-floor) - 2px); height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px); }   /* 4/14 时与原 40px/12px/52px 完全相同 */
-.drawer { box-sizing: border-box; padding-top: calc(var(--top-floor) - 4px); padding-bottom: calc(var(--bottom-floor) - 14px); padding-left: var(--sa-left); }
+.drawer { box-sizing: border-box; padding-top: calc(var(--top-floor) - 4px); padding-bottom: calc(var(--bottom-floor) - 14px); padding-right: var(--sa-right); }
 .update-toast { bottom: calc(var(--bottom-floor) - 2px); right: calc(12px + var(--sa-right)); }
 
 /* ── 双击放大 / 长按菜单（移植 WeebPaint 20260530 iPad 双击误触四层防御的兜底层；user 2026-09-04「触屏会不小心双击放大」）──
