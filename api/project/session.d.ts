@@ -47,6 +47,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     drop: (to: string, orphanPrefix: string) => string | null;
     purge: (target: string) => boolean;
     orphan: (target: string) => boolean;
+    setReadOnly: (v: boolean) => void;
     sidebar: () => {
         name: string;
         stub: boolean;

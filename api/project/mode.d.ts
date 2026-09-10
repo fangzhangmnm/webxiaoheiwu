@@ -69,6 +69,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         drop: (to: string, orphanPrefix: string) => string | null;
         purge: (target: string) => boolean;
         orphan: (target: string) => boolean;
+        setReadOnly: (v: boolean) => void;
         sidebar: () => {
             name: string;
             stub: boolean;

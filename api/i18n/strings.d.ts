@@ -1489,8 +1489,12 @@ export declare const S: {
         readonly en: "The book file is damaged (bad zip or graph.json)";
     };
     readonly "project.notProject": {
-        readonly zh: "这个 zip 不是小黑屋的书（没有 graph.json 也没有 contents/）";
-        readonly en: "This zip is not a WebXiaoHeiWu book (no graph.json, no contents/)";
+        readonly zh: "这个 zip 不是小黑屋的书（没有 graph.json 也没有 pages/）";
+        readonly en: "This zip is not a WebXiaoHeiWu book (no graph.json, no pages/)";
+    };
+    readonly "project.legacy": {
+        readonly zh: "这本书是 2026-09-10 前的旧格式（contents/），本版不读、也不会覆盖它；解压后把 contents/ 改名 pages/ 再压回去就能开";
+        readonly en: "This book is in the pre-2026-09-10 format (contents/); this version won't read or overwrite it — unzip, rename contents/ to pages/, zip again";
     };
     readonly "project.unavailable": {
         readonly zh: "本地没有这本书，云端也拿不到";
@@ -1525,8 +1529,8 @@ export declare const S: {
         readonly en: "Nothing";
     };
     readonly "edge.empty": {
-        readonly zh: "这一页还没有边。按「+」加一页，或选中一段字按 Ctrl+Enter 分裂出去。";
-        readonly en: "No edges yet. Press “+” to add a page, or select text and press Ctrl+Enter to split it off.";
+        readonly zh: "这一页还没有边。按「+」加一页。";
+        readonly en: "No edges yet. Press “+” to add a page.";
     };
     readonly "edge.newNode": {
         readonly zh: "加一页";

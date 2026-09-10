@@ -42,7 +42,6 @@ export declare function createEditor(d: EditorDeps): {
     flushLocal: () => Promise<void>;
     pushNow: () => Promise<void>;
     refreshIfClean: () => Promise<void>;
-    toggleReadOnly: () => void;
     toggleEncryption: (confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
     rekeyToCurrent: (busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
     noteExternalEdit: () => void;

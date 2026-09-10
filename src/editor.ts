@@ -12,7 +12,7 @@ import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "./c
 import { formatDate, parseDocName, splitDocPath, sanitizeTitle, docKind } from "./doc-model.ts";
 import { readDoc, saveDoc, createDoc, renameDoc, renameDocToOpaque, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, rekeyDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword, currentPassword } from "./crypto-state.ts";
-import { deviceKvGet, deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
+import { deviceKvGet, deviceKvGetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { t } from "./i18n/index.ts";
 
@@ -33,7 +33,6 @@ export interface EditorDeps {
   onBeforeLoad?: () => void;
 }
 
-const KV_READONLY = "readonly-names";
 const KV_LAST_OPEN = "last-open";
 
 export interface EditorState {
@@ -58,8 +57,6 @@ export function createEditor(d: EditorDeps) {
   let refreshInFlight = false;
 
   const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const readOnlyNames = (): string[] => deviceKvGetJson<string[]>(KV_READONLY, []);
-  const isReadOnlyName = (n: string | null) => !!n && readOnlyNames().includes(n);
 
   function moveCaretToStart(): void {
     try { d.editor.selectionStart = 0; d.editor.selectionEnd = 0; } catch { /* some inputs reject */ }
@@ -199,8 +196,6 @@ export function createEditor(d: EditorDeps) {
   /** 身份换了之后的记账：只读名单 / 每篇密码表 / 当前稿指针 / 本机 last-open 跟着走。 */
   function adoptName(from: string, to: string): void {
     if (from === to) return;
-    const roNames = readOnlyNames();
-    if (roNames.includes(from)) deviceKvSetJson(KV_READONLY, roNames.map((n) => (n === from ? to : n)));
     renameFilePassword(from, to);
     st.name = to; setActiveDoc(to); deviceKvSet(KV_LAST_OPEN, to);
   }
@@ -257,7 +252,7 @@ export function createEditor(d: EditorDeps) {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false;
     const caret = opts.keepCaret ? d.editor.selectionStart : 0;
-    st.name = name; st.pendingDate = null; st.pendingTitle = null; st.readOnly = isReadOnlyName(name); st.unavailable = false; st.locked = false; st.encrypted = false;
+    st.name = name; st.pendingDate = null; st.pendingTitle = null; st.readOnly = false; st.unavailable = false; st.locked = false; st.encrypted = false;
     setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
     d.setStatus(t("st.loading"));
     let r = await readDoc(name);
@@ -359,14 +354,8 @@ export function createEditor(d: EditorDeps) {
   }
 
   // ── 只读保护（per-device）──
-  function toggleReadOnly(): void {
-    if (!st.name) return;
-    const names = readOnlyNames();
-    const next = !names.includes(st.name);
-    deviceKvSetJson(KV_READONLY, next ? [...names, st.name] : names.filter((n) => n !== st.name));
-    st.readOnly = next;
-    applyGuards(); d.onDocChanged();
-  }
+  // txt 的 per-device 修改锁 2026-09-10 删除（user「不做额外 list，txt 不支持锁」；修改锁只属于书，跟着作品进 zip）。st.readOnly 字段保留恒 false。
+
 
   // ── 加密切换 ──
   async function toggleEncryption(confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
@@ -474,7 +463,7 @@ export function createEditor(d: EditorDeps) {
     state: st,
     open, newDoc, clear, reload,
     flushLocal, pushNow, refreshIfClean,
-    toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir, renameTo, displayName,
+    toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir, renameTo, displayName,
     canEdit, statusForDoc, syncKind,
     isDirty: () => !parked && (!!localTimer || pushPending || d.editor.value !== savedText),
     isUnlockedDoc: () => st.encrypted && isUnlocked(),

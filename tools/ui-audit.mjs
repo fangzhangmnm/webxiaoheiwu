@@ -76,7 +76,7 @@ for (const [w, h] of sizes) {
     await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(100); }
   await ensureSidebar(true);
   await page.click("#edgeAdd"); await wait(400);
-  probe(tag, "+ → asks for a name (placeholder = next chapter 第二章, not prefilled)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && document.getElementById("sheetInput").placeholder === "第二章" && document.getElementById("sheetInput").value === ""));
+  probe(tag, "+ → asks for a name (no chapter suggestion, not prefilled)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && !/章/.test(document.getElementById("sheetInput").placeholder) && document.getElementById("sheetInput").value === ""));
   await page.fill("#sheetInput", "第二章"); await page.click("#sheetConfirm"); await wait(400);
   probe(tag, "+ → new node 第二章 opened, title shows it", await page.evaluate(() => document.getElementById("nodeTitle").value === "第二章" && window.__xhw.project.current() === "第二章.txt"));
   probe(tag, "sidebar stays open after + (no auto-close)", await sidebarShown());
@@ -135,6 +135,13 @@ for (const [w, h] of sizes) {
   probe(tag, "project read-only: textarea+title readOnly, + refuses", await page.evaluate(() => document.getElementById("editor").readOnly && document.getElementById("nodeTitle").readOnly && window.__xhw.project.readOnly() && window.__xhw.project.newNode("x") === false));
   await page.click("#lockToggle"); await wait(300);
   probe(tag, "project read-only off again", await page.evaluate(() => !document.getElementById("editor").readOnly && !window.__xhw.project.readOnly()));
+  await page.click("#lockToggle"); await wait(600);   // 锁上 → 刷新后仍锁（跟着作品进 zip）
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+  probe(tag, "read-only lock persisted inside the book (survives reload)", await page.evaluate(() => window.__xhw.project.readOnly() && document.getElementById("editor").readOnly));
+  await page.click("#lockToggle"); await wait(600);
+  probe(tag, "txt has no lock toggle", await page.evaluate(async () => { await window.__xhw.editor.newDoc(); return document.getElementById("lockToggle").hidden; }));
+  await page.evaluate(async () => { const n = window.__xhw.editor.lastOpenName(); }); await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+  await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.setSidebar(false); }); await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.openAny(it.name); }); await wait(800);
   probe(tag, "project rename keeps node + edges", await page.evaluate(() => window.__xhw.project.current() === "第一章.txt") && (await rows()).length === 2, JSON.stringify(await rows()));
   if (w >= 900) { await ensureSidebar(false);
     const centered = await page.evaluate(() => { const r = document.querySelector(".page").getBoundingClientRect(); return getComputedStyle(document.getElementById("edgeSidebar")).display === "none" && Math.abs(r.left - (innerWidth - r.width) / 2) < 2; });

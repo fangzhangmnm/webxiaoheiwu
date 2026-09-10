@@ -8,7 +8,7 @@ import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
-import { deviceKvSet, deviceKvGetJson, deviceKvSetJson } from "../device-kv.ts";
+import { deviceKvSet } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
 import { reportError } from "../error-badge.ts";
 import { parseDocName } from "../doc-model.ts";
@@ -36,7 +36,6 @@ export interface ProjectModeDeps {
   onLockChange: (cb: (unlocked: boolean) => void) => void;
 }
 const KV_LAST_OPEN = "last-open";
-const KV_READONLY = "readonly-names";   // 与 txt 编辑器同一张 per-device 只读名单（0.x 的锁写；user 2026-09-10「0.x 的锁写功能我们不小心丢了」）
 const TITLE_DEBOUNCE_MS = 500;
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -50,15 +49,14 @@ export function createProjectMode(d: ProjectModeDeps) {
   let persistInFlight: Promise<void> | null = null;
   let titleTimer: ReturnType<typeof setTimeout> | null = null;
   let encrypted = false, locked = false;   // 工程整包加密（store 透明层）：locked = 加密且未解锁 → 空白只读，锁图标 = 手势才弹密码
-  let userReadOnly = false;                // per-device 只读保护（顶栏笔图标）
-  const readOnlyNames = (): string[] => deviceKvGetJson<string[]>(KV_READONLY, []);
+  const userReadOnly = (): boolean => session?.project.readOnly ?? false;   // 修改锁跟着作品（graph.json readOnly；user 2026-09-10「zip 锁跟着作品」——成品不想被误改，不是本机名单）
 
   const syncBack = () => { session?.setBack(back); };
   const pushBack = (n: string) => { back.push(n); if (back.length > 50) back.shift(); syncBack(); };
   const popBack = (): string | undefined => { const v = back.pop(); syncBack(); return v; };
   const renameInBack = (from: string, to: string) => { let hit = false; back = back.map((n) => (n === from ? (hit = true, to) : n)); if (hit) syncBack(); };
   const active = () => !!session && !!home;
-  const canEdit = () => active() && !session!.readOnly && !locked && !userReadOnly;
+  const canEdit = () => active() && !session!.readOnly && !locked && !userReadOnly();
   const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
   const displayName = (): string | null => (home ? (home.kind === "store" ? parseDocName(home.name).stem : home.home.fileName.replace(/\.webxiaoheiwu\.zip$/i, "")) : null);
   const name = (): string | null => (home?.kind === "store" ? home.name : null);
@@ -186,22 +184,24 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.editorEl.scrollTop = 0;
   }
   function applyReadOnly(): void {
-    const ro = (session?.readOnly ?? false) || userReadOnly;
+    const ro = (session?.readOnly ?? false) || userReadOnly();
     d.editorEl.readOnly = ro; d.editorEl.classList.toggle("locked", ro);
     d.titleEl.readOnly = ro; d.titleEl.classList.toggle("locked", ro);
   }
-  /** 顶栏笔图标：切 per-device 只读（先落盘再切；锁态/本机工程不切）。 */
+  /** 顶栏笔图标：切修改锁（进 graph.json，跟着作品走）。先落盘再切；切完立即写回/推云（锁着时 pushNow 的 canEdit 门会挡，所以直接 persist）。 */
   async function toggleReadOnly(): Promise<void> {
-    const n = name(); if (!n || locked) return;
+    if (!session || locked || session.readOnly) return;
     await flushLocal();
-    userReadOnly = !userReadOnly;
-    const names = readOnlyNames();
-    deviceKvSetJson(KV_READONLY, userReadOnly ? [...new Set([...names, n])] : names.filter((x) => x !== n));
+    try { session.setReadOnly(!userReadOnly()); } catch (e) { d.setStatus(errMsg(e), { error: true }); return; }
     applyReadOnly(); d.setState(stateText()); d.onChanged();
+    try { await persist(home!.kind === "store" && d.isSignedIn() && !isOffline()); }
+    catch (e) { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); }
+    d.setState(stateText(), { unsynced: pushPending && d.isSignedIn() }); d.onChanged();
   }
   function reportOpen(r: OpenResult): boolean {
     if (r.kind === "ok") { if (r.warnings.length) reportError(new Error("[project] open warnings: " + r.warnings.join("; ")), "log"); return true; }
     if (r.kind === "too-new") { d.setStatus(t("project.tooNew", { v: r.version }), { error: true }); return true; }
+    if (r.kind === "legacy") { d.setStatus(t("project.legacy"), { error: true }); return false; }
     d.setStatus(t(r.kind === "corrupt" ? "project.corrupt" : r.kind === "not-project" ? "project.notProject" : "project.unavailable"), { error: true });
     return false;
   }
@@ -232,7 +232,6 @@ export function createProjectMode(d: ProjectModeDeps) {
     const r = await s.open(projectName);
     if (g !== gen) return false;
     home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
-    userReadOnly = readOnlyNames().includes(projectName);
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
     const ok = reportOpen(r);
@@ -243,7 +242,6 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 工程文件在 store 里改了名（顶栏改名）：只换身份，不重开、不重载正文、回退栈不丢。 */
   function adoptName(newName: string): void {
     if (!session || home?.kind !== "store") return;
-    const old = home.name; const names = readOnlyNames(); if (names.includes(old)) deviceKvSetJson(KV_READONLY, names.map((x) => (x === old ? newName : x)));
     home = { kind: "store", name: newName }; session.adoptName(newName);
     setActiveDoc(newName); deviceKvSet(KV_LAST_OPEN, newName);
     d.onChanged();
@@ -283,7 +281,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     const s = createProjectSession({ read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
     if (g !== gen) return false;
-    home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; pushPending = false; encrypted = false; locked = false; userReadOnly = false;
+    home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -295,7 +293,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++;
     const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
-    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false; encrypted = false; locked = false; userReadOnly = false;
+    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     await s.flush(false);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -307,7 +305,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
-    home = null; session = null; back = []; pushPending = false; encrypted = false; locked = false; userReadOnly = false;
+    home = null; session = null; back = []; pushPending = false; encrypted = false; locked = false;
     d.editorEl.readOnly = false; d.editorEl.classList.remove("locked");
     d.titleEl.value = ""; d.titleEl.readOnly = false; d.titleEl.classList.remove("locked");
   }
@@ -378,7 +376,7 @@ export function createProjectMode(d: ProjectModeDeps) {
 
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
-    encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly, toggleReadOnly,
+    encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit,
     jump, goBack, canGoBack: () => back.length > 0, spawnFromSelection, newNode, addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null,

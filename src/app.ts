@@ -14,7 +14,7 @@ import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
 import { packProject, emptyProject } from "./project/format.ts";
-import { nextChapterName, nodeDisplayName } from "./project/naming.ts";
+import { nextChapterName } from "./project/naming.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
@@ -184,10 +184,10 @@ const edgeSidebar = createEdgeSidebar({
   onAddPage: () => addPageFlow(),
   onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
 });
-/** 加一页（顶栏「+」与侧栏列表末尾「+」同一个流程）：问名字（placeholder 提示下一个章号，不预填；user 2026-09-10「不应该自动生成名字，而是让你输入」）→ 新页加在当前页末尾并跳过去。 */
+/** 加一页（顶栏「+」与侧栏列表末尾「+」同一个流程）：问名字，**不提示不预填**（user 2026-09-10「不用自动第 xx 章命名。不同的人会用节，幕，所以不要替用户做决定」「只有一个 default 就是默认节点」）→ 新页加在当前页末尾并跳过去。 */
 async function addPageFlow(): Promise<boolean> {
   if (!project.canEdit()) return false;
-  const v = await openInputSheet(t("edge.newNodeTitle"), { message: t("edge.newNodeHint"), placeholder: nodeDisplayName(nextChapterName(project.nodeNames())), okLabel: t("common.ok") });
+  const v = await openInputSheet(t("edge.newNodeTitle"), { message: t("edge.newNodeHint"), placeholder: t("edge.namePh"), okLabel: t("common.ok") });
   if (v == null || !v.trim()) return false;
   const ok = project.newNode(v);
   if (ok) { edgeSidebar.render(); editorEl.focus(); }
@@ -316,10 +316,7 @@ function renderTopbar(): void {
   cryptoToggle.setAttribute("data-encrypted", st.encrypted ? "true" : "false");
   cryptoToggle.title = st.encrypted ? (st.locked ? t("top.unlockDoc") : t("top.decryptDoc")) : t("top.encryptDoc");
   cryptoToggle.setAttribute("aria-label", cryptoToggle.title);
-  lockToggle.hidden = !st.name || st.locked;
-  useIcon(lockToggle, st.readOnly ? "edit-disabled" : "edit-enabled");
-  lockToggle.title = st.readOnly ? t("top.readOnlyOff") : t("top.readOnlyOn");
-  lockToggle.setAttribute("aria-label", lockToggle.title);
+  lockToggle.hidden = true;   // txt 没有修改锁（2026-09-10 user：锁跟着作品进 zip，txt 不支持）
   keyBanner.hidden = !(st.name && st.encrypted && !st.locked && fileUsesOtherPassword(st.name));
   renderMicVisibility();
 }
@@ -397,7 +394,7 @@ cryptoToggle.addEventListener("click", () => {
     withBusy,
   );
 });
-lockToggle.addEventListener("click", () => { if (project.active()) void project.toggleReadOnly(); else editor.toggleReadOnly(); });
+lockToggle.addEventListener("click", () => { if (project.active()) void project.toggleReadOnly(); });
 
 // ── 跨设备 lastActive 指针（Separated 模式：只在冷启动尊重远端，不在 session 中途切）──
 let booted = false;
@@ -1128,4 +1125,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

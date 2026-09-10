@@ -86,6 +86,8 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const setLinksOrder = guard((links: string[]) => { const m = project.nodes.get(requireCurrent()); if (m) m.links = links.slice(); });
   const rename = guard((from: string, to: string) => renameNode(project, from, to, now));
   const remove = guard((target: string) => deleteNode(project, target));
+  /** 修改锁（跟着作品进 graph.json）：切换 = 正经改动（标脏；调用方随即落盘/推云）。 */
+  const setReadOnly = guard((v: boolean) => { project.readOnly = v; });
   const drop = guard((to: string, orphanPrefix: string) => dropRef(project, requireCurrent(), to, orphanPrefix, now));
   const purge = guard((target: string) => purgeOrphan(project, target));
   const orphan = (target: string) => isOrphan(project, target);
@@ -115,7 +117,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   return {
     open, create, close, flush, toBlob, adoptName, setBack,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
-    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, drop, purge, orphan,
+    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, drop, purge, orphan, setReadOnly,
     sidebar, backlinksOf, find, exists,
   };
 }
