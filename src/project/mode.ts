@@ -3,7 +3,7 @@
 //   占位符跳上去才生文件；无地 = LocalHome（FSA 写回或下载）。
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
-import { readProjectBlob, saveProjectBlob, setActiveDoc } from "../docs.ts";
+import { readProjectBlob, saveProjectBlob, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
 import type { LocalHome } from "./local-home.ts";
 import { deviceKvSet } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
@@ -24,6 +24,10 @@ export interface ProjectModeDeps {
   onBeforeLoad?: () => void;
   /** spawn 的名字对话框（app 注入 in-app sheet）。返回 null = 取消。 */
   askName: (title: string, def: string, hint: string) => Promise<string | null>;
+  /** 加密：解锁循环（手势里才调）；锁态查询；锁态变化订阅（crypto-state）。 */
+  isUnlocked: () => boolean;
+  ensureUnlocked: () => Promise<boolean>;
+  onLockChange: (cb: (unlocked: boolean) => void) => void;
 }
 const KV_LAST_OPEN = "last-open";
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -36,14 +40,16 @@ export function createProjectMode(d: ProjectModeDeps) {
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
   let firstDirtyAt = 0, pushPending = false, pushFailures = 0, gen = 0;
   let persistInFlight: Promise<void> | null = null;
+  let encrypted = false, locked = false;   // 工程整包加密（store 透明层）：locked = 加密且未解锁 → 空白只读，锁图标 = 手势才弹密码
 
   const active = () => !!session && !!home;
-  const canEdit = () => active() && !session!.readOnly;
+  const canEdit = () => active() && !session!.readOnly && !locked;
   const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
   const displayName = (): string | null => (home ? (home.kind === "store" ? parseDocName(home.name).stem : home.home.fileName.replace(/\.webxiaoheiwu\.zip$/i, "")) : null);
   const name = (): string | null => (home?.kind === "store" ? home.name : null);
   function syncKind(): SyncKind {
     if (!active()) return "none";
+    if (locked) return "locked";
     if (session!.readOnly) return "unavailable";
     if (home!.kind === "local") return "local";
     if (!d.isSignedIn()) return "local";
@@ -134,26 +140,74 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.setStatus(t(r.kind === "corrupt" ? "project.corrupt" : r.kind === "not-project" ? "project.notProject" : "project.unavailable"), { error: true });
     return false;
   }
-  async function openStore(projectName: string): Promise<boolean> {
+  function enterLocked(projectName: string): void {
+    home = { kind: "store", name: projectName }; session = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
+    encrypted = true; locked = true; back = []; pushPending = false;
+    setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
+    d.editorEl.value = ""; d.editorEl.readOnly = true; d.editorEl.classList.add("locked");
+    d.setState(""); d.onChanged();
+  }
+  /** promptUnlock：只有用户手势（图库点开 / 锁图标）才弹密码框——「加密永不自动弹框」。 */
+  async function openStore(projectName: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
     d.onBeforeLoad?.(); await flushLocal();
     const g = ++gen;
+    encrypted = false; locked = false;
+    try { encrypted = await isDocEncrypted(projectName); } catch { encrypted = false; }
+    if (g !== gen) return false;
+    if (encrypted && !d.isUnlocked()) {
+      enterLocked(projectName);
+      if (!opts.promptUnlock) return true;
+      const ok = await d.ensureUnlocked();
+      if (g !== gen) return false;
+      if (!ok) return true;
+    }
     const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     d.setStatus(t("st.loading"));
     const r = await s.open(projectName);
     if (g !== gen) return false;
-    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;
+    home = { kind: "store", name: projectName }; session = s; locked = false; back = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
+    if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
     const ok = reportOpen(r);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
     return ok;
   }
+  /** 锁图标 / 锁卡手势：重开并弹密码。 */
+  async function unlock(): Promise<boolean> { const n = name(); if (!n || !locked) return false; return openStore(n, { promptUnlock: true }); }
+  /** 顶栏加密开关（镜像 txt 编辑器 toggleEncryption）：明文 → 封 + 藏标题改日期码；加密 → 确认 → 解封。 */
+  async function toggleEncryption(confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
+    const n = name(); if (!n || home?.kind !== "store") return;
+    if (locked) { await unlock(); return; }
+    await flushLocal();
+    if (!encrypted) {
+      if (!(await d.ensureUnlocked())) return;
+      let sealed = false;
+      try { await busy(t("busy.encrypting"), () => encryptDoc(n)); sealed = true; encrypted = true; }
+      catch (e) { reportError(e); d.setStatus(t("st.encryptFailed", { e: errMsg(e) }), { error: true }); }
+      if (sealed) {
+        let renamed: { name: string; oldKept?: boolean } | null = null;
+        try { renamed = await renameDocToOpaque(n); } catch (e) { reportError(e, "warning"); }
+        if (!renamed) d.setStatus(t("st.encryptedNameKept", { name: parseDocName(n).stem }), { error: true });
+        else if (renamed.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });
+        else d.setStatus(t("st.encryptedRenamed", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }), name: parseDocName(renamed.name).stem }));
+        if (renamed && renamed.name !== n) await openStore(renamed.name);   // 身份换了：按新名重开（字节同一份）
+      }
+      d.onChanged();
+      return;
+    }
+    if (!(await confirmDecrypt())) return;
+    try { const r = await busy(t("busy.decrypting"), () => decryptDoc(n)); encrypted = false; d.setStatus(t("st.decrypted", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }), status: r.status })); }
+    catch (e) { reportError(e); d.setStatus(t("st.decryptFailed", { e: errMsg(e) }), { error: true }); }
+    d.onChanged();
+  }
+  d.onLockChange((unlocked) => { if (!unlocked && active() && encrypted && home?.kind === "store") { const n = name()!; void flushLocal().then(() => { if (name() === n) enterLocked(n); }); } });
   async function openLocal(lh: LocalHome): Promise<boolean> {
     d.onBeforeLoad?.(); await flushLocal();
     const g = ++gen;
     const s = createProjectSession({ read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
     if (g !== gen) return false;
-    home = { kind: "local", home: lh }; session = s; back = []; pushPending = false;
+    home = { kind: "local", home: lh }; session = s; back = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -165,7 +219,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++;
     const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
-    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false;
+    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     await s.flush(false);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -176,7 +230,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     await flushLocal();
     gen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    home = null; session = null; back = []; pushPending = false;
+    home = null; session = null; back = []; pushPending = false; encrypted = false; locked = false;
     d.editorEl.readOnly = false; d.editorEl.classList.remove("locked");
   }
 
@@ -226,6 +280,7 @@ export function createProjectMode(d: ProjectModeDeps) {
 
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
+    encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption,
     openStore, openLocal, createInStore, close, flushLocal, pushNow, noteExternalEdit,
     jump, goBack, canGoBack: () => back.length > 0, spawnFromSelection, addLink, removeLink, moveLink, renameNode, deleteNode,
     current: () => session?.current() ?? null,

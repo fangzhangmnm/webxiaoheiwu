@@ -24,6 +24,10 @@ export interface ProjectModeDeps {
     onBeforeLoad?: () => void;
     /** spawn 的名字对话框（app 注入 in-app sheet）。返回 null = 取消。 */
     askName: (title: string, def: string, hint: string) => Promise<string | null>;
+    /** 加密：解锁循环（手势里才调）；锁态查询；锁态变化订阅（crypto-state）。 */
+    isUnlocked: () => boolean;
+    ensureUnlocked: () => Promise<boolean>;
+    onLockChange: (cb: (unlocked: boolean) => void) => void;
 }
 export declare function createProjectMode(d: ProjectModeDeps): {
     active: () => boolean;
@@ -64,7 +68,13 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         find: (q: string, limit?: number) => string[];
         exists: (target: string) => boolean;
     } | null;
-    openStore: (projectName: string) => Promise<boolean>;
+    encrypted: () => boolean;
+    locked: () => boolean;
+    unlock: () => Promise<boolean>;
+    toggleEncryption: (confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
+    openStore: (projectName: string, opts?: {
+        promptUnlock?: boolean;
+    }) => Promise<boolean>;
     openLocal: (lh: LocalHome) => Promise<boolean>;
     createInStore: (projectName: string, firstNode: string) => Promise<void>;
     close: () => Promise<void>;

@@ -147,7 +147,7 @@ export async function renameDoc(name: string, newTitle: string): Promise<RenameR
 export async function renameDocToOpaque(name: string): Promise<RenameResult | null> {
   const p = parseDocName(name);
   if (isOpaqueStem(p.stem)) return { name };
-  return tryMoveWithCollision(name, makeDocName(p.date ?? formatDate(Date.now()), "", p.dir));
+  return tryMoveWithCollision(name, makeDocName(p.date ?? formatDate(Date.now()), "", p.dir, undefined, docKind(name) ?? "txt"));
 }
 /** 移到别的夹（身份变 = tryMove，同名撞则追加后缀）。toDir "" = 根。 */
 export async function moveDoc(name: string, toDir: string): Promise<RenameResult | null> {
@@ -178,12 +178,13 @@ export function pullDocIfClean(name: string, opts?: { onReplaceStart?: () => voi
 export function setActiveDoc(name: string | null): void { setActiveFileName(name); }
 
 // ── 加密切换（密码在 crypto-state 内存里；库负责先本地后云 If-Match、错密码前置出局）──
-export async function encryptDoc(name: string): Promise<{ status: string }> { const r = await file(name).encrypt(); invalidateEncryptedFlag(name); return r; }
-export async function decryptDoc(name: string): Promise<{ status: string }> { const r = await file(name).decrypt(); invalidateEncryptedFlag(name); return r; }
+const anyFile = (name: string) => (docKind(name) === "project" ? zipFile(name) : file(name));   // 2.0：加密动词两档分派
+export async function encryptDoc(name: string): Promise<{ status: string }> { const r = await anyFile(name).encrypt(); invalidateEncryptedFlag(name); return r; }
+export async function decryptDoc(name: string): Promise<{ status: string }> { const r = await anyFile(name).decrypt(); invalidateEncryptedFlag(name); return r; }
 /** 换钥匙（store 0.12.0 rekey）：密文→密文，旧钥经 crypto-state seam（这篇自己的 ?? 当前）、新钥显式传入，**明文不上云**。
  *  换密码迁移 / 横幅「换成当前密码」只准走这个——以前 decryptDoc→encryptDoc 的中间态把明文 push 上 OneDrive（版本历史永久留明文；2026-09-09 加密合规审计 ①②）。 */
-export async function rekeyDoc(name: string, newPassword: string): Promise<{ status: string }> { const r = await file(name).rekey({ newPassword }); invalidateEncryptedFlag(name); return r; }
-export function verifyDocPassword(name: string, pw: string): Promise<boolean> { return file(name).verifyPassword(pw); }
+export async function rekeyDoc(name: string, newPassword: string): Promise<{ status: string }> { const r = await anyFile(name).rekey({ newPassword }); invalidateEncryptedFlag(name); return r; }
+export function verifyDocPassword(name: string, pw: string): Promise<boolean> { return anyFile(name).verifyPassword(pw); }
 
 // ── 回收站（两端聚合；只元数据）──
 export interface TrashDocItem { name: string; stem: string; ts: string | null; side: TrashItem["side"]; encrypted: boolean; conflictLive: boolean; localKey: string | null; cloudRef: string | null }

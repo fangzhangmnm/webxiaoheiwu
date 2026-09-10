@@ -6,7 +6,7 @@ import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/
 import { initErrorBadge, reportError} from "./error-badge.ts";
 import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy, showBusy, hideBusy } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
-import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
+import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc } from "./docs.ts";
 import { docKind, formatDate, hex4 } from "./doc-model.ts";
@@ -160,6 +160,7 @@ const project = createProjectMode({
   onChanged: () => { renderTopbar(); renderSaveButton(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
+  isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
 });
 const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
@@ -177,7 +178,7 @@ async function leaveProject(): Promise<void> { if (!project.active()) return; aw
 async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
   if (docKind(name) === "project") {
     if (!editor.isParked()) await editor.park();
-    const ok = await project.openStore(name);
+    const ok = await project.openStore(name, { promptUnlock: opts.promptUnlock });
     document.body.dataset.project = "1";
     return ok;
   }
@@ -257,7 +258,12 @@ function renderTopbar(): void {
   if (project.active()) {   // 工程模式：顶栏 = 工程名 · 节点名 + 边栏开关；加密/只读钮属于 txt 稿
     docNameButton.hidden = false; docNameButton.textContent = `${project.displayName() ?? ""}${project.current() ? " · " + project.current() : ""}`; docNameButton.classList.remove("pending");
     docNameButton.title = t("top.docName"); docNameButton.setAttribute("aria-label", t("top.docName"));
-    cryptoToggle.hidden = true; lockToggle.hidden = true; keyBanner.hidden = true; edgeToggle.hidden = false;
+    cryptoToggle.hidden = project.home()?.kind !== "store";   // 本机工程不走 store 加密
+    useIcon(cryptoToggle, project.encrypted() ? "lock" : "unlock");
+    cryptoToggle.setAttribute("data-encrypted", project.encrypted() ? "true" : "false");
+    cryptoToggle.title = project.encrypted() ? (project.locked() ? t("top.unlockDoc") : t("top.decryptDoc")) : t("top.encryptDoc");
+    cryptoToggle.setAttribute("aria-label", cryptoToggle.title);
+    lockToggle.hidden = true; keyBanner.hidden = true; edgeToggle.hidden = false;
     renderMicVisibility();
     return;
   }
@@ -339,6 +345,7 @@ async function renameOtherDoc(name: string): Promise<void> {
 }
 $("rekeyButton").addEventListener("click", () => { void editor.rekeyToCurrent(withBusy); });
 cryptoToggle.addEventListener("click", () => {
+  if (project.active()) { void project.toggleEncryption(() => openConfirmSheet(t("enc.decryptTitle"), t("enc.decryptWarning"), { danger: true, okLabel: t("enc.decryptAction"), warning: true }), withBusy); return; }
   void editor.toggleEncryption(
     () => openConfirmSheet(t("enc.decryptTitle"), t("enc.decryptWarning"), { danger: true, okLabel: t("enc.decryptAction"), warning: true }),
     withBusy,
@@ -351,6 +358,11 @@ let booted = false;
 // ── 锁卡（0.2 护栏，user 2026-09-04「0.2 还是先做个护栏吧，不然坑人」）：锁着 / 不可用的稿不再假装是编辑器——纸面盖卡说明 + 三个出口；根治 = 0.3 懒空白稿 ──
 const lockCard = $("lockCard"), lockCardText = $("lockCardText"), lockCardUnlock = $<HTMLButtonElement>("lockCardUnlock"), lockCardRetry = $<HTMLButtonElement>("lockCardRetry");
 function renderLockCard(): void {
+  if (project.active()) {   // 工程锁态：同一张锁卡，解锁 = 手势重开
+    lockCard.hidden = !project.locked();
+    if (project.locked()) { lockCardText.textContent = t("lock.locked", { name: project.displayName() ?? "" }); lockCardUnlock.hidden = false; lockCardRetry.hidden = true; }
+    return;
+  }
   const st = editor.state;
   const kind = st.locked && st.name ? (fileUsesOtherPassword(st.name) ? "other" : "locked") : st.unavailable && booted && st.name ? "unavailable" : null;
   lockCard.hidden = !kind;
@@ -358,7 +370,7 @@ function renderLockCard(): void {
   lockCardText.textContent = t(kind === "other" ? "lock.otherPw" : kind === "locked" ? "lock.locked" : "lock.unavailable", { name: parseDocName(st.name!).title });
   lockCardUnlock.hidden = kind === "unavailable"; lockCardRetry.hidden = kind !== "unavailable";
 }
-const reopenWithPrompt = () => { const n = editor.state.name; if (n) void editor.open(n, { promptUnlock: true }); };
+const reopenWithPrompt = () => { if (project.active()) { void project.unlock(); return; } const n = editor.state.name; if (n) void editor.open(n, { promptUnlock: true }); };
 lockCardUnlock.addEventListener("click", reopenWithPrompt);
 lockCardRetry.addEventListener("click", reopenWithPrompt);
 $("lockCardNew").addEventListener("click", () => { void editor.newDoc({ dir: editor.currentDir() }); });
