@@ -146,6 +146,8 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     flushLocal: () => Promise<void>;
     pushNow: () => Promise<void>;
     noteExternalEdit: () => void;
+    pendingLocalSave: () => boolean;
+    lastPersistMs: () => number;
     jump: (target: string) => void;
     goBack: () => boolean;
     canGoBack: () => boolean;

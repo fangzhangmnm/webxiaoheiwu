@@ -9,6 +9,9 @@ export declare const DOC_EXT = ".txt";
 export declare const PROJECT_EXT = ".webxiaoheiwu.zip";
 /** 编辑 → 本地落盘（IDB）防抖。 */
 export declare const LOCAL_SAVE_DEBOUNCE_MS = 200;
+/** 书（zip）专用（ADR-0015 b；txt 稿不受影响）：本地防抖随上次落盘耗时放缓——debounce = clamp(200, 耗时 × 系数, 封顶)。 */
+export declare const BOOK_LOCAL_SAVE_DEBOUNCE_MAX_MS = 3000;
+export declare const BOOK_LOCAL_SAVE_COST_FACTOR = 5;
 /** 每次击键重置的推云防抖（「用户停手了」）。 */
 export declare const PUSH_DEBOUNCE_MS = 15000;
 /** 首次变脏起最多等这么久必推（「一直打字不停」）。 */

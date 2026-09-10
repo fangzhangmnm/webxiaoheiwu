@@ -32,15 +32,46 @@ export interface ZipPackOpts {
   /** entry 时间戳；工程 zip 钉 1980-01-01 UTC 让同内容同字节（抄 WeebPaint ora）。不给 = now。 */
   lastModDate?: Date;
 }
-export async function zipPack(entries: { path: string; data: Uint8Array | string }[], opts: ZipPackOpts = {}): Promise<Blob> {
+/** 一个 entry 的**已压缩**字节 + 写 local header 所需的三个数（ADR-0015 增量重打：未改的 entry 用 passThrough 原样塞回，不再 deflate）。 */
+export interface RawEntry { data: Uint8Array; method: number; size: number; crc: number }
+export interface ZipEntryIn { path: string; data: Uint8Array | string; /** 给了就 passThrough：忽略 data 与 level，原样写 raw（同内容同字节：raw 就是上次的确定性输出）。 */ raw?: RawEntry }
+export async function zipPack(entries: ZipEntryIn[], opts: ZipPackOpts = {}): Promise<Blob> {
   const z = await Z();
   const writer = new z.ZipWriter(new z.BlobWriter("application/zip"));
-  for (const { path, data } of entries) {
-    const o: Record<string, unknown> = { level: opts.levelFor ? opts.levelFor(path) : 0 };
+  for (const { path, data, raw } of entries) {
+    const o: Record<string, unknown> = raw ? { passThrough: true, compressionMethod: raw.method, uncompressedSize: raw.size, signature: raw.crc } : { level: opts.levelFor ? opts.levelFor(path) : 0 };
     if (opts.lastModDate) o.lastModDate = opts.lastModDate;
-    await writer.add(path, toZipReader(z, data), o);
+    await writer.add(path, raw ? new z.Uint8ArrayReader(raw.data) : toZipReader(z, data), o);
   }
   return await writer.close();
+}
+/** 只读已压缩字节（不 inflate；给 packProject 收割刚 deflate 过的 entry 用）。paths 不给 = 全部。 */
+export async function zipReadRaw(blob: Blob, paths?: Iterable<string>): Promise<Record<string, RawEntry>> {
+  const z = await Z();
+  const want = paths ? new Set(paths) : null;
+  const reader = new z.ZipReader(new z.BlobReader(blob));
+  try {
+    const out: Record<string, RawEntry> = {};
+    for (const e of await reader.getEntries()) {
+      if (e.directory || (want && !want.has(e.filename))) continue;
+      out[e.filename] = { data: await e.getData(new z.Uint8ArrayWriter(), { passThrough: true }), method: e.compressionMethod, size: e.uncompressedSize, crc: e.signature };
+    }
+    return out;
+  } finally { await reader.close(); }
+}
+/** 解包 + 每个 entry 的已压缩字节（unpackProject 用它把 raw 留进 rawCache）。 */
+export async function zipUnpackRaw(blob: Blob): Promise<Record<string, { data: Uint8Array; raw: RawEntry }>> {
+  const z = await Z();
+  const reader = new z.ZipReader(new z.BlobReader(blob));
+  try {
+    const out: Record<string, { data: Uint8Array; raw: RawEntry }> = {};
+    for (const e of await reader.getEntries()) {
+      if (e.directory) continue;
+      const raw: RawEntry = { data: await e.getData(new z.Uint8ArrayWriter(), { passThrough: true }), method: e.compressionMethod, size: e.uncompressedSize, crc: e.signature };
+      out[e.filename] = { data: await e.getData(new z.Uint8ArrayWriter()), raw };
+    }
+    return out;
+  } finally { await reader.close(); }
 }
 
 /** 只读一个 entry 的字节（按名；找不到 → null）。给 makePeek 抽封面用：不解整本书。 */

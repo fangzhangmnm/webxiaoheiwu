@@ -4,7 +4,7 @@ import { ensureZipLoaded } from "./zip-node.mjs";
 ensureZipLoaded();
 const { packProject, unpackProject, emptyProject, nameKey, isValidNodeName, nodeExt, nodeKind, PROJECT_FORMAT_VERSION, THUMBNAIL_ENTRY } = await import("../src/project/format.ts");
 const { createNode, link, insertChild, insertSibling } = await import("../src/project/graph.ts");
-const { zipUnpack, zipPack } = await import("../src/zip.ts");
+const { zipUnpack, zipPack, zipReadRaw } = await import("../src/zip.ts");
 const td = new TextDecoder();
 const zipOf = (entries) => zipPack(entries);
 const graphOf = (extra) => JSON.stringify({ format: "webxiaoheiwu", version: 2, wroteWith: "t", tree: [], pages: {}, ...extra });
@@ -163,5 +163,41 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     p.tree = ["作品.txt"]; insertChild(p, "作品.txt", "夏音.jpg"); insertSibling(p, "作品.txt", "设定.txt", () => 2);
     const r = await unpackProject(await packProject(p)); eq(Array.from(r.project.contents.get("夏音.jpg")).join(), "255,216,255,1,2,3");
     eq(JSON.stringify(r.project.tree), JSON.stringify([{ name: "作品.txt", children: ["夏音.jpg"] }, "设定.txt"]));
+  });
+});
+
+describe("project/format · 增量重打（ADR-0015 a）：未改的 entry passThrough 原样塞回，只有改过的页重压；同内容同字节不动", () => {
+  const bytesOf = async (b) => new Uint8Array(await b.arrayBuffer());
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  it("第一次全压；第二次全部 passThrough 且字节逐位相同；改一页 → 只重压那一页 + graph.json + editor-state，其余 entry 已压缩字节逐位相同", async () => {
+    const p = emptyProject(); const now = (() => { let t = 0; return () => ++t; })();
+    for (let i = 0; i < 6; i++) createNode(p, `第${i}页.txt`, "中文正文".repeat(300 + i), now);
+    p.thumbnail = new Uint8Array(500).map((_, i) => (i * 7) & 255); p.tree = [...p.contents.keys()]; p.editorState.last = "第0页.txt";
+    const s1 = { passThrough: 0, encoded: 0 }; const b1 = await packProject(p, { stats: s1 });
+    eq(s1.passThrough, 0); eq(s1.encoded, 6 + 1 + 2, "首次：6 页 + 封面 + graph.json + editor-state 全压");
+    const s2 = { passThrough: 0, encoded: 0 }; const b2 = await packProject(p, { stats: s2 });
+    eq(s2.passThrough, 7, "第二次：6 页 + 封面全部 passThrough"); eq(s2.encoded, 2);
+    assert(same(await bytesOf(b1), await bytesOf(b2)), "passThrough 的包与首次全压的包字节逐位相同（同内容同字节）");
+    const raw1 = await zipReadRaw(b1);
+    const { setNodeText } = await import("../src/project/graph.ts");
+    setNodeText(p, "第3页.txt", "改过了".repeat(100), now);
+    const s3 = { passThrough: 0, encoded: 0 }; const b3 = await packProject(p, { stats: s3 });
+    eq(s3.passThrough, 6, "改一页：其余 5 页 + 封面 passThrough"); eq(s3.encoded, 3, "只重压 第3页 + graph.json + editor-state");
+    const raw3 = await zipReadRaw(b3);
+    for (const k of Object.keys(raw1)) if (k !== "pages/第3页.txt" && k !== "graph.json" && k !== ".webxiaoheiwu/editor-state.json") assert(same(raw1[k].data, raw3[k].data) && raw1[k].crc === raw3[k].crc, `entry unchanged byte-for-byte: ${k}`);
+    assert(!same(raw1["pages/第3页.txt"].data, raw3["pages/第3页.txt"].data), "改过的页字节变了");
+    const s4 = { passThrough: 0, encoded: 0 }; await packProject(p, { stats: s4 }); eq(s4.passThrough, 7, "收割：刚压过的 第3页 下次也 passThrough");
+    const r = await unpackProject(b3); eq(r.kind, "ok"); eq(new TextDecoder().decode(r.project.contents.get("第3页.txt")), "改过了".repeat(100));
+  });
+  it("unpack 留住已压缩字节：解包 → 打包（全 passThrough）= 与 zip.js 全压同内容的包字节逐位相同；改名 / 搬树不重压（对象身份不变）", async () => {
+    const p = emptyProject(); const now = (() => { let t = 0; return () => ++t; })();
+    createNode(p, "a.txt", "甲".repeat(1000), now); createNode(p, "b.txt", "乙".repeat(1000), now); p.tree = ["a.txt", "b.txt"]; p.editorState.last = "a.txt";
+    const A = await packProject(p);
+    const r = await unpackProject(A); eq(r.kind, "ok");
+    const st = { passThrough: 0, encoded: 0 }; const B = await packProject(r.project, { stats: st });
+    eq(st.passThrough, 2); assert(same(await bytesOf(A), await bytesOf(B)), "解包再打包 = 首次全压的字节");
+    const { renameNode, indent } = await import("../src/project/graph.ts");
+    renameNode(r.project, "b.txt", "c.txt", now); indent(r.project, "c.txt");
+    const st2 = { passThrough: 0, encoded: 0 }; await packProject(r.project, { stats: st2 }); eq(st2.passThrough, 2, "改名 + 降级：两页都没重压"); eq(st2.encoded, 2);
   });
 });

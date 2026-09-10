@@ -1,3 +1,4 @@
+import { type RawEntry } from "../zip.ts";
 export declare const PROJECT_FORMAT = "webxiaoheiwu";
 export declare const PROJECT_FORMAT_VERSION = 2;
 export declare const GRAPH_ENTRY = "graph.json";
@@ -45,6 +46,13 @@ export interface Project {
     readOnly: boolean;
     /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
     thumbnail: Uint8Array | null;
+    /** 增量重打（ADR-0015）：字节对象 → 它上次进 zip 时的已压缩 entry。键是**对象身份**：页一改（writeNodeText 换新 Uint8Array）自然失效，改名 / 搬树不换对象照样命中；不用记脏页集合。 */
+    rawCache: WeakMap<Uint8Array, RawEntry>;
+}
+/** packProject 的统计（测试 / 诊断）：passThrough = 原样塞回的 entry 数；encoded = 这次真 deflate / store 的 entry 数。 */
+export interface PackStats {
+    passThrough: number;
+    encoded: number;
 }
 export type UnpackResult = {
     kind: "ok";
@@ -73,8 +81,12 @@ export declare const treeNodeName: (n: TreeNode) => string;
 export declare const treeNodeChildren: (n: TreeNode) => TreeNode[];
 /** 规范形：`{ name, children: [] }` 折成字符串；递归。 */
 export declare function normalizeTree(nodes: TreeNode[]): TreeNode[];
-/** 打包（整包重写；ADR-0008 §4）。严格写：pages 只写有文件的页、links 只留有文件的目标、tree 只留有文件的名字（写出绝不产生悬空，ADR-0014 §3）。 */
-export declare function packProject(p: Project): Promise<Blob>;
+/** 打包（整包重写；ADR-0008 §4）。严格写：pages 只写有文件的页、links 只留有文件的目标、tree 只留有文件的名字（写出绝不产生悬空，ADR-0014 §3）。
+ *  增量重打（ADR-0015 a）：字节对象在 rawCache 里的页 / 封面 → passThrough 原样塞回（字节 = 上次的确定性输出，同内容同字节不变量不动）；只有新 / 改过的对象才 deflate，打完收割进 rawCache。
+ *  graph.json / editor-state 小且每次都变（时间戳 / 位置），永远重压。 */
+export declare function packProject(p: Project, opts?: {
+    stats?: PackStats;
+}): Promise<Blob>;
 /** 解包。宽容读、严格写：pages/ 里的文件没进 graph.json 也是页（一包 txt 的 zip 也是合法的书，全是散页）；graph.json 里指向不存在文件的条目 / 悬空 link / 悬空 tree 名字丢弃 + warning；tree 重名 → corrupt。 */
 export declare function unpackProject(blob: Blob): Promise<UnpackResult>;
 /** 文本页的解码（txt 走 doc-model 的编码链；写回永远 UTF-8）。 */

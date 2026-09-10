@@ -5,7 +5,8 @@
 // 2026-09-10 晚 user 打回后：节点名 = 纸面顶部的章节名框（v0.2.15 被 ADR-0007 撤掉的 #titleInput 捞回来当节点名用——
 //   「节点名就用之前很可惜被弃置的章节名的 ui」「当前节点的改名也用这个章节名的机制」）；新节点 = 「第 N 章」直接生、不弹框（「新建节点用 list 最下面的一个加号按钮」
 //   「默认节点就叫第一章」）；新边加末尾（「节点应该加在末尾」）；显示不带扩展名（「吃书：还是不显示扩展名吧」）。
-import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
+import { PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
+import { bookLocalDebounceMs } from "./cadence.ts";
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
@@ -54,6 +55,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
   let firstDirtyAt = 0, pushPending = false, pushFailures = 0, gen = 0;
   let persistInFlight: Promise<void> | null = null;
+  let lastPersistMs = 0;   // 上次整包落盘（打包 + 写）耗时 → 本地防抖随体重放缓（ADR-0015 b）
   let titleTimer: ReturnType<typeof setTimeout> | null = null;
   let encrypted = false, locked = false;   // 工程整包加密（store 透明层）：locked = 加密且未解锁 → 空白只读，锁图标 = 手势才弹密码
   const userReadOnly = (): boolean => session?.project.readOnly ?? false;   // 修改锁跟着作品（graph.json readOnly；user 2026-09-10「zip 锁跟着作品」——成品不想被误改，不是本机名单）
@@ -126,22 +128,29 @@ export function createProjectMode(d: ProjectModeDeps) {
         if (r.wrote) d.setStatus(home!.home.canWriteBack ? t("project.saved") : t("project.downloaded"));
         return;
       }
+      const t0 = performance.now();
       const r = await session!.flush(push, { force: push && pushPending });   // 推云：本地落盘已清 dirty，同一份字节还得以 tryPush 交给库（否则永远推不出去）
+      if (r.wrote && !push) lastPersistMs = performance.now() - t0;   // 只量本地落盘（推云那次含网络，不算体重）
       if (g !== gen) return;
       if (r.wrote) { if (push) { if (r.pushed) { pushPending = false; pushFailures = 0; } else pushPending = true; } else pushPending = true; }
     })();
     persistInFlight = run;
     try { await run; } finally { if (persistInFlight === run) persistInFlight = null; }
   }
+  /** 本地落盘（不等防抖）：切页 / 防抖到点 共用。落完照旧排推云（推云节律不变——切页只是把本地那一步提前，不额外推云；ADR-0015 d）。 */
+  function saveLocalNow(): void {
+    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
+    if (home?.kind === "local") return;   // 无地：不自动写回/下载，用户 Ctrl+S / 保存钮显式触发（下载不能每 200ms 一次）
+    void persist(false).then(() => { d.setState(stateText(), { unsynced: pushPending && d.isSignedIn() }); if (d.isSignedIn()) schedulePush(); })
+      .catch((e) => { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); });
+  }
+  /** 防抖随体重放缓（ADR-0015 b）：200 ms 起，按上次落盘耗时 ×5 插值，封顶 3 s；增量重打（a）之后大多数书仍停在 200 ms。 */
   function scheduleLocalSave(): void {
     if (localTimer) clearTimeout(localTimer);
-    localTimer = setTimeout(() => {
-      localTimer = null;
-      if (home?.kind === "local") return;   // 无地：不自动写回/下载，用户 Ctrl+S / 保存钮显式触发（下载不能每 200ms 一次）
-      void persist(false).then(() => { d.setState(stateText(), { unsynced: pushPending && d.isSignedIn() }); if (d.isSignedIn()) schedulePush(); })
-        .catch((e) => { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); });
-    }, LOCAL_SAVE_DEBOUNCE_MS);
+    localTimer = setTimeout(() => { localTimer = null; saveLocalNow(); }, bookLocalDebounceMs(lastPersistMs));
   }
+  /** 切页即落盘（ADR-0015 d；图片 session 报告转述 user「换页 = 触发本地落盘不触发推云」）：有挂着的防抖或已脏 → 立刻本地落盘，不碰推云节律。 */
+  function flushOnPageChange(): void { if (home?.kind !== "store") return; if (localTimer || session?.dirty) saveLocalNow(); }
   function schedulePush(extraDelayMs = 0): void {
     if (!d.isSignedIn() || home?.kind !== "store") return;
     const now = Date.now(); if (firstDirtyAt === 0) firstDirtyAt = now;
@@ -345,6 +354,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     try { to = session!.jump(target); } catch (e) { d.setStatus(errMsg(e), { error: true }); return; }
     if (from && from !== to) pushBack(from);
     loadCurrentIntoEditor(); d.onChanged();
+    flushOnPageChange();
   }
   /** 上一页 / 下一页 = 全树前序 DFS（ADR-0014 §6）：树首 / 树尾 / 散页 → 没有（钮灰）。 */
   const neighborhood = () => session?.neighborhood() ?? null;
@@ -356,7 +366,9 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (!prev) return false;
     commitEditor();
     try { session!.jump(prev); } catch { return false; }
-    loadCurrentIntoEditor(); d.onChanged(); return true;
+    loadCurrentIntoEditor(); d.onChanged();
+    flushOnPageChange();
+    return true;
   }
   /** spawn：选中文字 → 问名字（默认 = 选中首行前 12 字）→ 新节点带那段字、源稿里那段字移走（走 replaceRange 保 undo）、边从当前指向它（末尾）、光标跳过去。
    *  撞已有名 → 拒绝（并进别人的节点会把选中的字弄丢），改名在章节名框。user 2026-09-10「新建节点的时候不应该自动生成名字，而是让你输入吧」→ 分裂也问。 */
@@ -468,7 +480,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
-    openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit,
+    openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
     jump, goBack, canGoBack: () => back.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, exportBranchText,
     addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,

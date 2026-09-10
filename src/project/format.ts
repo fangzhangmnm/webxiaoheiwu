@@ -13,7 +13,7 @@
 //   ├─ .webxiaoheiwu/
 //   │   └─ editor-state.json      { last, back }：上次所在页 + 回退栈（≤50，旧在前）。随保存写，导航不标脏（ADR-0010）
 //   └─ Thumbnails/thumbnail.png   封面（2.1，ADR-0012；ORA 同款路径）：**永远最后一个 entry**、STORE、≤256²、≤70 KB，可带 iTXt Description = 腰封。
-import { zipPack, zipUnpack, levelForPath } from "../zip.ts";
+import { zipPack, zipUnpackRaw, zipReadRaw, levelForPath, type RawEntry, type ZipEntryIn } from "../zip.ts";
 import { encodeText, decodeTextBytes } from "../doc-model.ts";
 import { APP_VERSION } from "../version.ts";
 
@@ -48,7 +48,11 @@ export interface Project {
   readOnly: boolean;
   /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
   thumbnail: Uint8Array | null;
+  /** 增量重打（ADR-0015）：字节对象 → 它上次进 zip 时的已压缩 entry。键是**对象身份**：页一改（writeNodeText 换新 Uint8Array）自然失效，改名 / 搬树不换对象照样命中；不用记脏页集合。 */
+  rawCache: WeakMap<Uint8Array, RawEntry>;
 }
+/** packProject 的统计（测试 / 诊断）：passThrough = 原样塞回的 entry 数；encoded = 这次真 deflate / store 的 entry 数。 */
+export interface PackStats { passThrough: number; encoded: number }
 export type UnpackResult =
   | { kind: "ok"; project: Project; warnings: string[] }
   | { kind: "not-project"; reason: string }          // 不是本版的书：没 graph.json 也没 pages/，或 graph.json version < 2（v1 链表格式，零 legacy 分支）
@@ -66,7 +70,7 @@ export const nodeExt = (name: string): string => { const i = name.lastIndexOf(".
 /** 页的种类（只看扩展名）：txt 正文 / image 图片页 / other（合法但不打开）。 */
 export const nodeKind = (name: string): NodeKind => { const e = nodeExt(name); return e === "txt" ? "txt" : IMAGE_EXTS.includes(e) ? "image" : "other"; };
 
-export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null }; }
+export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null, rawCache: new WeakMap() }; }
 
 // ── 树的形状工具（纯函数，graph.ts 的树操作也用）──
 export const treeNodeName = (n: TreeNode): string => (typeof n === "string" ? n : n.name);
@@ -86,8 +90,10 @@ function pruneTree(nodes: TreeNode[], has: (name: string) => boolean, dropped?: 
   return out;
 }
 
-/** 打包（整包重写；ADR-0008 §4）。严格写：pages 只写有文件的页、links 只留有文件的目标、tree 只留有文件的名字（写出绝不产生悬空，ADR-0014 §3）。 */
-export async function packProject(p: Project): Promise<Blob> {
+/** 打包（整包重写；ADR-0008 §4）。严格写：pages 只写有文件的页、links 只留有文件的目标、tree 只留有文件的名字（写出绝不产生悬空，ADR-0014 §3）。
+ *  增量重打（ADR-0015 a）：字节对象在 rawCache 里的页 / 封面 → passThrough 原样塞回（字节 = 上次的确定性输出，同内容同字节不变量不动）；只有新 / 改过的对象才 deflate，打完收割进 rawCache。
+ *  graph.json / editor-state 小且每次都变（时间戳 / 位置），永远重压。 */
+export async function packProject(p: Project, opts: { stats?: PackStats } = {}): Promise<Blob> {
   const has = (n: string) => p.contents.has(n);
   const nodes: Record<string, NodeMeta> = {};
   for (const name of [...p.contents.keys()].sort()) {
@@ -95,11 +101,24 @@ export async function packProject(p: Project): Promise<Blob> {
     nodes[name] = { links: m.links.filter(has), created: m.created, modified: m.modified };
   }
   const graph: ProjectGraphJson = { format: PROJECT_FORMAT, version: PROJECT_FORMAT_VERSION, wroteWith: APP_VERSION, ...(p.readOnly ? { readOnly: true } : {}), tree: normalizeTree(pruneTree(p.tree, has)), pages: nodes };
-  const entries: { path: string; data: Uint8Array | string }[] = [{ path: GRAPH_ENTRY, data: JSON.stringify(graph, null, 1) }];
-  for (const name of [...p.contents.keys()].sort()) entries.push({ path: CONTENTS_DIR + name, data: p.contents.get(name)! });
+  const stats: PackStats = opts.stats ?? { passThrough: 0, encoded: 0 };
+  const fresh: { path: string; bytes: Uint8Array }[] = [];   // 这次真压的字节对象：打完收割 raw 进缓存
+  const bytesEntry = (path: string, bytes: Uint8Array): ZipEntryIn => {
+    const raw = p.rawCache.get(bytes);
+    if (raw) { stats.passThrough++; return { path, data: bytes, raw }; }
+    stats.encoded++; fresh.push({ path, bytes }); return { path, data: bytes };
+  };
+  const entries: ZipEntryIn[] = [{ path: GRAPH_ENTRY, data: JSON.stringify(graph, null, 1) }];
+  for (const name of [...p.contents.keys()].sort()) entries.push(bytesEntry(CONTENTS_DIR + name, p.contents.get(name)!));
   entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX) }) });
-  if (p.thumbnail && p.thumbnail.length) entries.push({ path: THUMBNAIL_ENTRY, data: p.thumbnail });   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
-  return zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
+  if (p.thumbnail && p.thumbnail.length) entries.push(bytesEntry(THUMBNAIL_ENTRY, p.thumbnail));   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
+  stats.encoded += 2;   // graph.json + editor-state
+  const blob = await zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
+  if (fresh.length) {   // 收割：刚 deflate 过的 entry 的已压缩字节留下来，下次没改就 passThrough
+    const raws = await zipReadRaw(blob, fresh.map((f) => f.path));
+    for (const f of fresh) { const r = raws[f.path]; if (r) p.rawCache.set(f.bytes, r); }
+  }
+  return blob;
 }
 
 /** graph.json 的 tree 字段 → 内存树：形状不对 → 抛（调用方翻成 corrupt）；名字 NFC；重名（大小写/NFC 不敏感）→ 抛。 */
@@ -122,8 +141,9 @@ function parseTree(raw: unknown, seen: Set<string>, path = "tree"): TreeNode[] {
 
 /** 解包。宽容读、严格写：pages/ 里的文件没进 graph.json 也是页（一包 txt 的 zip 也是合法的书，全是散页）；graph.json 里指向不存在文件的条目 / 悬空 link / 悬空 tree 名字丢弃 + warning；tree 重名 → corrupt。 */
 export async function unpackProject(blob: Blob): Promise<UnpackResult> {
-  let entries: Record<string, Uint8Array>;
-  try { entries = await zipUnpack(blob); } catch (e) { return { kind: "corrupt", reason: "not a zip: " + String(e) }; }
+  let unpacked: Record<string, { data: Uint8Array; raw: RawEntry }>;
+  try { unpacked = await zipUnpackRaw(blob); } catch (e) { return { kind: "corrupt", reason: "not a zip: " + String(e) }; }
+  const entries: Record<string, Uint8Array> = {}; for (const [k, v] of Object.entries(unpacked)) entries[k] = v.data;
   const names = Object.keys(entries);
   const hasGraph = GRAPH_ENTRY in entries;
   const contentNames = names.filter((n) => n.startsWith(CONTENTS_DIR)).map((n) => n.slice(CONTENTS_DIR.length));
@@ -152,6 +172,7 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
     if (seen.has(k)) return { kind: "corrupt", reason: `name collision (case/NFC-insensitive): ${seen.get(k)} vs ${name}` };
     seen.set(k, name);
     p.contents.set(name, entries[CONTENTS_DIR + raw]!);
+    p.rawCache.set(entries[CONTENTS_DIR + raw]!, unpacked[CONTENTS_DIR + raw]!.raw);   // 原样留住已压缩字节：下次没改就 passThrough（ADR-0015）
   }
   const resolve = (n: string): string | null => seen.get(nameKey(n)) ?? null;
   const metaByKey = new Map<string, NodeMeta>(Object.entries(graph?.pages ?? {}).map(([k, v]) => [nameKey(k), v]));
@@ -187,7 +208,7 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
     }
     catch { warnings.push("editor-state.json unreadable; ignored"); }
   }
-  if (THUMBNAIL_ENTRY in entries && entries[THUMBNAIL_ENTRY]!.length) p.thumbnail = entries[THUMBNAIL_ENTRY]!;
+  if (THUMBNAIL_ENTRY in entries && entries[THUMBNAIL_ENTRY]!.length) { p.thumbnail = entries[THUMBNAIL_ENTRY]!; p.rawCache.set(p.thumbnail, unpacked[THUMBNAIL_ENTRY]!.raw); }
   return { kind: "ok", project: p, warnings };
 }
 

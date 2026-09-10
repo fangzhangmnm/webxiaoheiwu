@@ -96,3 +96,10 @@ user 原话（按时序）：「工程改名之后得刷新页面」「一开始
 - **i18n**：删 `edge.stub` / `edge.newNode*` / `project.legacy`；加 `edge.parentTitle / root / siblings / children / links / addSibling / addChild / add*Hint / outdent / indent / detach / archiveAfter / archiveUnder / exportBranch / moveNoop / detached / archived / alreadyInTree / noSuchPage / export* / prev / next / pageNav / loose / noLinks`。
 - **验证**：`npm test` 104 绿（format：v2 往返 / 拒 v1 / 重名 corrupt / 悬空丢 + warning / 写出绝不悬空；graph：六个移动的边界 / detach 后 links 不变 / rename 重写 tree / DFS 首尾无环 / insert* / export；session：readOnly 下 22 个改动动词全 LockedBookError）；build / lint / smoke 全绿；`node tools/ui-audit.mjs` 两尺寸 **202（1280×800 102 + 400×800 100） 探针全绿**（新增：`..` 顶层不可点 / 无第三层 / + 兄弟 / 顶栏 + 菜单 → 子节 / `..` 可点 / 降级·上移·升级·到头 no-op / 页脚 prev·next 首尾不绕回 + Alt+↑ / addLink 到没有的页被拒 / 移出树不改名 → 孤儿菜单 / 链接行归档回来 / 只读下树菜单全灰 / 狗粮书：3 层树侧栏仍两层、next 走完 41 页不绕回、跨幕顺序、唯一散页无 prev/next、导出正文 = 整本且散页不在、`..` 两级回溯到书根）；四本夹具 `node tmp/migration/verify.mjs` 全 ok 零 warning、两次打包字节相等（与 Python 产物字节不同是 deflate 实现不同，内容逐字节相等）。**真机零**（DOGFOOD.md 1–8 有无头对应探针；9/10 真机）。
 - **没做 / 待 user**：版本号——v2 格式吃书，代码先走 patch v2.1.1（家规：bump minor 前先问要不要把之前的 push prod；AI 不提 major）；拖拽（菜单先行）；全树视图 / 孤儿面板 / 计数 / 节点类型 / compile 勾 / 自动归档 / shelf / edges / dim 一律未做（user 已拍板不做）；四本夹具**未上传 OneDrive**（v2 落地前老 app 打不开，现在可以传了——归 user）；下一批 = 落盘 / 推云节律（图片 session 报告转述的 user 拍板，另开 commit + ADR-0015）。
+
+### v2.1.2 书的落盘 / 推云节律（2026-09-10 深夜，树 session 顺手；SSoT = ADR-0015，**出处 = 图片 session 报告转述的 user 拍板**，非本 session 亲耳）
+- **a 增量重打**：`Project.rawCache`（WeakMap 字节对象 → 已压缩 entry）+ zip.js `passThrough`（`zipPack` 的 `raw` / `zipUnpackRaw` / `zipReadRaw`）；改一页只重压那一页 + graph.json + editor-state，其余 entry 逐位相同；解包→打包 = 全压字节（同内容同字节不动）；改名 / 搬树零重压。`packProject(p, { stats })` 给测试数。
+- **d 切页即落盘**：`mode.jump / goBack` → `flushOnPageChange()`：有挂着的防抖或脏 → 取消防抖立刻 `persist(false)`；推云节律不动（落完照旧排 15 s / 30 s）。`project.pendingLocalSave()` 给探针。
+- **b 防抖随体重**：`src/project/cadence.ts` `bookLocalDebounceMs(lastPersistMs)` = clamp(200, 耗时 × 5, 3000)；只量本地落盘；只对书。
+- **c 不做**（store 库改动，escalate 归 user 立项）。
+- **验证**：107 测绿；build / smoke 绿；ui-audit 两尺寸 204（1280×800 103 + 400×800 101） 探针全绿（+1「切页即落盘」）；四本夹具 verify 全 ok。真机零。

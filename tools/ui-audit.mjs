@@ -150,7 +150,13 @@ for (const [w, h] of sizes) {
   // 上一页 / 下一页 = 全树前序 DFS（作品 → 她推开门。 → 序章）；首尾不绕回
   { let n = await navState(); probe(tag, "page nav: at tree head prev is grey, next is live", !n.hidden && n.prev && !n.next, JSON.stringify(n));
     if (w < 900) await ensureSidebar(false);
-    await page.click("#pageNext"); await wait(250); probe(tag, "next → 她推开门。 (child before the next sibling)", (await cur()) === "她推开门。.txt", await cur());
+    // 切页即落盘（ADR-0015 d）：打一个字 → 200ms 防抖还挂着就换页 → 防抖被取消、立刻本地落盘（dirty 很快清零），推云节律不动
+    await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type("切页前的字。");
+    const pendingBefore = await page.evaluate(() => window.__xhw.project.pendingLocalSave());
+    await page.click("#pageNext"); const pendingAfter = await page.evaluate(() => window.__xhw.project.pendingLocalSave());
+    const cleared = await page.waitForFunction(() => !window.__xhw.project.session().dirty, null, { timeout: 3000 }).then(() => true).catch(() => false);
+    probe(tag, "page change with a pending local save → debounce cancelled, saved locally right away (dirty cleared)", pendingBefore && !pendingAfter && cleared, `pending ${pendingBefore}→${pendingAfter} cleared=${cleared}`);
+    await wait(250); probe(tag, "next → 她推开门。 (child before the next sibling)", (await cur()) === "她推开门。.txt", await cur());
     await page.click("#pageNext"); await wait(250); n = await navState(); probe(tag, "next → 序章 = tree tail: next grey, no wrap", (await cur()) === "序章.txt" && n.next && !n.prev, `${await cur()} ${JSON.stringify(n)}`);
     await page.keyboard.press("Alt+ArrowUp"); await wait(250); probe(tag, "Alt+↑ → previous page 她推开门。", (await cur()) === "她推开门。.txt", await cur());
     await ensureSidebar(true); await page.click("#edgeParent"); await wait(250); }

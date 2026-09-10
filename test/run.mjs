@@ -11,6 +11,7 @@ import "./project-format.test.mjs";
 import "./project-graph.test.mjs";
 import "./project-session.test.mjs";
 import "./project-naming.test.mjs";
+import "./project-cadence.test.mjs";   // 2026-09-10 ADR-0015 书的落盘节律
 import "./z-index.test.mjs";
 import "./image.test.mjs";
 import { run } from "./runner.mjs";
