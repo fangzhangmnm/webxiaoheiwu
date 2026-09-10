@@ -412,7 +412,7 @@ export const S = {
   "edge.searchPh":          { zh: "检索", en: "Search" },
   "edge.results":           { zh: "检索「{q}」", en: "Results for “{q}”" },
   "edge.noResults":         { zh: "没有", en: "Nothing" },
-  "edge.empty":             { zh: "这一页还没有边。按「+」加一页，或选中一段字按 Ctrl+Enter 分裂出去。", en: "No edges yet. Press “+” to add a page, or select text and press Ctrl+Enter to split it off." },
+  "edge.empty":             { zh: "这一页还没有边。按「+」加一页。", en: "No edges yet. Press “+” to add a page." },
   "edge.newNode":           { zh: "加一页", en: "Add a page" },
   "edge.newNodeTitle":      { zh: "这一页叫什么", en: "Name the page" },
   "edge.newNodeHint":       { zh: "打已有页的名字 = 从这里连过去。", en: "An existing page’s name = link to it from here." },

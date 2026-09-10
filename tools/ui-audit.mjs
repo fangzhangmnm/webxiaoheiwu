@@ -90,17 +90,17 @@ for (const [w, h] of sizes) {
   await ensureSidebar(true);
   probe(tag, "back to 第一章; list shows 序章 without .txt", JSON.stringify(await rows()) === JSON.stringify(["序章"]), JSON.stringify(await rows()));
   probe(tag, "row shows modified time as small text", await page.evaluate(() => /\d+\/\d+ \d\d:\d\d/.test(document.querySelector("#edgeList .edge-row .edge-sub")?.textContent ?? "")));
-  // spawn（Ctrl+Enter）：不弹框，名字 = 选中首行；边加末尾
+  // Ctrl+Enter 分裂已去掉（user 2026-09-10「先不要做去奇怪的静默行为」）：无入口 → 顶栏「+」加第二页「她推开门。」
   if (w < 900) await ensureSidebar(false);
   await page.evaluate(() => { const el = document.getElementById("editor"); el.focus(); el.setSelectionRange(0, 5); });
-  await page.keyboard.press("Control+Enter"); await wait(400);
-  probe(tag, "spawn asks for a name (default = selection head)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && document.getElementById("sheetInput").value === "她推开门。"));
-  await page.click("#sheetConfirm"); await wait(400);
-  probe(tag, "spawn → title = 她推开门。", (await page.inputValue("#nodeTitle")) === "她推开门。", await page.inputValue("#nodeTitle"));
-  await shot("09-after-spawn");
+  await page.keyboard.press("Control+Enter"); await wait(300);
+  probe(tag, "Ctrl+Enter does nothing (no sheet, text intact)", await page.evaluate(() => document.getElementById("sheet").classList.contains("hidden") && document.getElementById("editor").value.startsWith("她推开门。")));
+  await page.click("#addPageButton"); await wait(300); await page.fill("#sheetInput", "她推开门。"); await page.click("#sheetConfirm"); await wait(400);
+  probe(tag, "top-bar + → page 她推开门。 opened", (await page.inputValue("#nodeTitle")) === "她推开门。", await page.inputValue("#nodeTitle"));
+  await shot("09-after-topbar-add");
   await page.keyboard.press("Escape"); await page.keyboard.press("Alt+ArrowLeft"); await wait(300);
   await ensureSidebar(true);
-  probe(tag, "spawned edge appended at END", JSON.stringify(await rows()) === JSON.stringify(["序章", "她推开门。"]), JSON.stringify(await rows()));
+  probe(tag, "added page appended at END", JSON.stringify(await rows()) === JSON.stringify(["序章", "她推开门。"]), JSON.stringify(await rows()));
   // 连边动词还在 mode（钮已按 user 2026-09-10 去掉）：占位符加末尾（虚线）
   await page.evaluate(() => window.__xhw.project.addLink("祭祀线")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(200);
   probe(tag, "addLink (no button) → stub appended at end", await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row.stub .edge-name")]; return r.length === 1 && r[0].textContent === "祭祀线"; }) && (await rows()).at(-1) === "祭祀线", JSON.stringify(await rows()));

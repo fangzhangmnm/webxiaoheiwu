@@ -974,7 +974,6 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); editorEl.focus(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
-  if (project.active() && (event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void project.spawnFromSelection().then((ok) => { if (ok) edgeSidebar.render(); }); return; }
   if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }
 });
 
