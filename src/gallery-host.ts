@@ -31,6 +31,8 @@ export interface GalleryHostDeps {
   onClosed?: () => void;
 }
 const KV_FOLDER = "gallery-folder";
+/** 上次离开时在哪个场景（WeebPaint 行为：从书库出 → 回来在书库；从编辑器出 → 回来在编辑器；user 2026-09-10「书库里面 refresh 时还是会进写作」）。 */
+const KV_SCENE = "last-scene";
 const GALLERY_TEXT_OVERRIDES: Record<string, Parameters<typeof t>[0]> = {
   "gal.empty.none": "galx.emptyNone", "gal.empty.folder": "galx.emptyFolder", "gal.empty.trash": "galx.emptyTrash",
   "gal.firstFrameFailed": "galx.firstFrameFailed", "gal.firstFrameTimeout": "galx.firstFrameTimeout", "gal.st.openActive": "galx.openActive",
@@ -101,16 +103,20 @@ export function initGalleryHost(d: GalleryHostDeps) {
     const dir = d.currentDir();
     if (dir !== g.handle.getFolder()) g.handle.setFolder(dir);
     g.handle.setView("files");
+    deviceKvSet(KV_SCENE, "gallery");
     d.onOpened?.();
   }
   function close(): void {
     d.fullEl.classList.add("hidden"); d.fullEl.setAttribute("aria-hidden", "true");
     delete document.body.dataset.mode;
+    deviceKvSet(KV_SCENE, null);
     d.onClosed?.();
   }
   const isOpen = () => !d.fullEl.classList.contains("hidden");
   return {
     open, close, isOpen,
+    /** boot 用：上次是在书库里离开的（刷新 / 关标签 / SW 更新重载）。 */
+    wasInGallery: () => deviceKvGet(KV_SCENE) === "gallery",
     refresh: () => gallery?.handle.refresh(),
     setView: (v: "files" | "trash") => ensureMounted().handle.setView(v),
     getView: () => gallery?.handle.getView() ?? "files",

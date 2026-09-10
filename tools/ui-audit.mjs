@@ -185,7 +185,13 @@ for (const [w, h] of sizes) {
   await page.click("#gallerySettingsBtn"); await wait(500); await shot("18-settings-over-library");
   probe(tag, "settings drawer slides in from the RIGHT", await page.evaluate(() => { const r = document.getElementById("drawer").getBoundingClientRect(); return Math.abs(r.right - innerWidth) < 2 && r.left > 0; }));
   await page.click("#drawerCloseButton"); await wait(300);
+  // 场景恢复：在书库里刷新 → 回来还在书库；从书库退回编辑器再刷新 → 回来在编辑器（user 2026-09-10「书库里面 refresh 时还是会进写作」）
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1800);
+  probe(tag, "reload while in the library → comes back in the library", await page.evaluate(() => document.body.dataset.mode === "gallery" && !document.getElementById("galleryFull").classList.contains("hidden")));
+  await shot("18b-library-after-reload");
   await page.click("#galleryBack"); await wait(400); await shot("19-back-to-editor");
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1800);
+  probe(tag, "reload after leaving the library → comes back in the editor", await page.evaluate(() => document.body.dataset.mode !== "gallery" && document.getElementById("galleryFull").classList.contains("hidden")));
   await ctx.close();
 }
 await browser.close(); srv.close();

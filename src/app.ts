@@ -1112,7 +1112,8 @@ async function boot(): Promise<void> {
   renderLockCard(); renderMicVisibility();
   renderTopbar();
   setState(stateAny());
-  editorEl.focus();
+  // 场景恢复（对齐 WeebPaint：从书库出、回来就在书库）：稿照常恢复在底下，书库叠上去；不在书库才把焦点给纸面。
+  if (galleryHost.wasInGallery()) await galleryHost.open(); else editorEl.focus();
 }
 // 2026-09-09（审计 #3，「各种不刷新」头号嫌疑）：以前整函数一次性守卫——凭证过期后再次静默登录时什么都不做：不对齐 collections、
 //   不排空离线队列、不快进当前稿、列表不重拉。现在每次登录都跑同步四件；只有「冷启动切到远端 lastActive」保持一次性（会切当前稿，

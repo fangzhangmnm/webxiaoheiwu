@@ -17,7 +17,7 @@
 | 文件 | 持久层 | 用途 |
 |---|---|---|
 | `@internal/store`（vendor-pkgs tgz） | IDB `webxiaoheiwu.*` + localStorage 前缀键 + sessionStorage | 库本体（稿件/回收站/备份/collections/同步态）——app 只经 `src/app-store.ts` |
-| `src/device-kv.ts` | localStorage（GUID 前缀） | device 层标量唯一器官：imeEnabled / voiceEnabled / voiceModelSource / lang / lastOpen / **diag-log**（黑匣子环 500 条，2026-09-09；经 deviceKvSetJson，diag-log.ts 自己不碰 localStorage） |
+| `src/device-kv.ts` | localStorage（GUID 前缀） | device 层标量唯一器官：imeEnabled / voiceEnabled / voiceModelSource / lang / lastOpen / gallery-folder / **last-scene**（书库里离开 → 回来在书库，2026-09-10）/ **diag-log**（黑匣子环 500 条，2026-09-09；经 deviceKvSetJson，diag-log.ts 自己不碰 localStorage） |
 | `service-worker.js` | Cache `xiaoheiwu-<hash>` | app 壳预缓存 + 运行时缓存 |
 | `src/pwa-shell.ts` | Cache（读键/删） | forceReset 清壳缓存，跳过 `pwa-models` |
 | `src/asr/worker.ts` | Cache `pwa-models`（家族共享名） | 语音模型包；可再生派生缓存（批） |
