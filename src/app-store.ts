@@ -34,7 +34,11 @@ const store: Store = createStore({
   encryption: appEncryption,
   reconcilePolicy: "app-driven",
   crypt: { ext: "txt", getPassword, makePeek: async () => null },   // peek 空也加密（verifyPassword 靠它便宜验密码）
-  validateAdopt: async (plain) => looksLikeTextDoc(new Uint8Array(await plain.arrayBuffer())),
+  // 2.0 两档：txt 走编码链验真；工程 zip 只看魔数 PK\x03\x04（内容在 project/format.ts 解包时再验）。挡的是 captive-portal HTML / 截断字节。
+  validateAdopt: async (plain) => { const b = new Uint8Array(await plain.arrayBuffer()); return (b.length >= 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04) || looksLikeTextDoc(b); },
+  // store 0.13.0（ADR-0008 §7 前置）：云端名 → 身份。默认只去尾一个 .zip 会把明文工程 `X.webxiaoheiwu.zip` 当加密容器；
+  //   本 app 规则 = 去掉 .zip 后剩下的仍是本 app 合法身份（.txt / .webxiaoheiwu.zip）才算加密件。
+  toName: (cloudName) => (cloudName.endsWith(".zip") && /(\.txt|\.webxiaoheiwu\.zip)$/i.test(cloudName.slice(0, -4))) ? cloudName.slice(0, -4) : cloudName,
   autoCacheOpenedFile: true,
   offlineUploadReplay: "auto",
   signedIn: () => od.auth.isSignedIn(),

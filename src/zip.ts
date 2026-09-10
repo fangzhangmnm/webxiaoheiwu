@@ -10,7 +10,8 @@ async function Z(): Promise<ZipLib> {
   const g = globalThis as unknown as { zip?: ZipLib };
   if (!g.zip) await loadClassicScript(VENDOR_JS, () => !!(globalThis as unknown as { zip?: ZipLib }).zip);
   if (!g.zip) throw new Error("zip.js failed to load (window.zip missing)");
-  try { g.zip.configure({ useWebWorkers: false }); } catch { /* idempotent */ }
+  // useCompressionStream:false = 走 zip.js 自带的 JS deflate（各浏览器同字节）；工程 zip 的确定性靠它 + 钉时间戳（ADR-0008）。
+  try { g.zip.configure({ useWebWorkers: false, useCompressionStream: false }); } catch { /* idempotent */ }
   return g.zip;
 }
 
@@ -22,10 +23,23 @@ function toZipReader(z: ZipLib, data: Blob | Uint8Array | ArrayBuffer | string) 
   throw new TypeError("zip: unsupported data type");
 }
 
-export async function zipPack(entries: { path: string; data: Uint8Array | string }[]): Promise<Blob> {
+/** 已知压过的媒体走 STORE，其余 DEFLATE（ADR-0008 §6）。 */
+const STORE_ONLY_RE = /\.(jpe?g|png|webp|gif|mp4|ora|zip|7z)$/i;
+export const levelForPath = (path: string): number => (STORE_ONLY_RE.test(path) ? 0 : 6);
+export interface ZipPackOpts {
+  /** 每个 entry 的压缩档；不给 = 全 STORE（加密外壳的旧行为）。工程 zip 传 levelForPath。 */
+  levelFor?: (path: string) => number;
+  /** entry 时间戳；工程 zip 钉 1980-01-01 UTC 让同内容同字节（抄 WeebPaint ora）。不给 = now。 */
+  lastModDate?: Date;
+}
+export async function zipPack(entries: { path: string; data: Uint8Array | string }[], opts: ZipPackOpts = {}): Promise<Blob> {
   const z = await Z();
   const writer = new z.ZipWriter(new z.BlobWriter("application/zip"));
-  for (const { path, data } of entries) await writer.add(path, toZipReader(z, data), { level: 0 });
+  for (const { path, data } of entries) {
+    const o: Record<string, unknown> = { level: opts.levelFor ? opts.levelFor(path) : 0 };
+    if (opts.lastModDate) o.lastModDate = opts.lastModDate;
+    await writer.add(path, toZipReader(z, data), o);
+  }
   return await writer.close();
 }
 

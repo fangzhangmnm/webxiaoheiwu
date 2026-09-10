@@ -10,6 +10,8 @@ export const MSAL_URL = "./vendor/msal/msal-browser.min.js";
 
 /** 文档扩展名（身份 = `[夹/]<文件名>.txt`，文件名是管理句柄不是标题（ADR-0007）；加密件云端 at-rest = `….txt.zip`，库透明）。 */
 export const DOC_EXT = ".txt";
+/** 工程扩展名（ADR-0008：`<名字>.webxiaoheiwu.zip`，最后一截 .zip 任何工具当 zip 开，中间一截给人看）。加密 at-rest 再追加 .zip。 */
+export const PROJECT_EXT = ".webxiaoheiwu.zip";
 
 // ── 节律（docs/20260524-sync-design.md，user 多轮回退后的终形，别再动）──
 /** 编辑 → 本地落盘（IDB）防抖。 */

@@ -7,6 +7,8 @@ import "./sw-strategy.test.mjs";
 import "./crypto-state.test.mjs";
 import "./asr.test.mjs";
 import "./storage-whitelist.test.mjs";
+import "./project-format.test.mjs";
+import "./project-graph.test.mjs";
 import { run } from "./runner.mjs";
 console.log("\n  WebXiaoHeiWu —— app 域测试（store 契约在 internal-store/test/）\n");
 await run();

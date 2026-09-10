@@ -8,7 +8,7 @@
 //   · 排序 = zh-CN 自然序降序（与 WeebPaint 图库同：新日期名在上，稳定不随存盘时间跳）。
 //   · 多文件夹（ADR-0006）：身份 = `[夹/]<名>.txt`，夹只一层；根 = 默认夹。
 
-import { DOC_EXT } from "./config.ts";
+import { DOC_EXT, PROJECT_EXT } from "./config.ts";
 
 export interface ParsedDocName {
   /** 所在夹（"" = 根）。 */
@@ -24,6 +24,11 @@ export interface ParsedDocName {
 }
 
 const EXT_RE = /\.txt$/i;
+const PROJECT_EXT_RE = /\.webxiaoheiwu\.zip$/i;
+/** 身份两档（2.0）：单篇 txt 稿 / zip 工程（ADR-0008 §8 并存）。 */
+export type DocKind = "txt" | "project";
+export function docKind(name: string): DocKind | null { return PROJECT_EXT_RE.test(name) ? "project" : EXT_RE.test(name) ? "txt" : null; }
+const ANY_EXT_RE = /(\.webxiaoheiwu\.zip|\.txt)$/i;
 
 export function splitDocPath(path: string): { dir: string; base: string } {
   const i = path.lastIndexOf("/");
@@ -33,14 +38,14 @@ export function joinDocPath(dir: string, base: string): string { return dir ? `$
 
 /** 稿 = 任一夹下的 *.txt（隐藏项由库滤掉；这里再挡一次空段/点头段）。 */
 export function isDocName(name: string): boolean {
-  if (!EXT_RE.test(name)) return false;
+  if (!ANY_EXT_RE.test(name)) return false;
   const segs = name.split("/");
   return segs.every((seg) => seg.length > 0 && !seg.startsWith("."));
 }
 
 export function parseDocName(name: string): ParsedDocName {
   const { dir, base } = splitDocPath(name ?? "");
-  const stem = base.replace(EXT_RE, "");
+  const stem = base.replace(ANY_EXT_RE, "");
   const m = stem.match(/^(\d{8})(?:\D|$)/);
   return { dir, base, date: m ? m[1]! : null, title: stem, stem };
 }
@@ -69,9 +74,9 @@ export function hex4(): string {
   return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 /** 有名保名，无名日期：名 → `<名>.txt`；空 → `yyyymmdd-hex4.txt`（日期码）。dir 非空则带夹前缀（不含碰撞后缀）。 */
-export function makeDocName(date: string, title: string, dir = "", suffix = hex4()): string {
-  const t = sanitizeTitle(title);
-  return joinDocPath(dir, t ? `${t}${DOC_EXT}` : `${date}-${suffix}${DOC_EXT}`);
+export function makeDocName(date: string, title: string, dir = "", suffix = hex4(), kind: DocKind = "txt"): string {
+  const t = sanitizeTitle(title); const ext = kind === "project" ? PROJECT_EXT : DOC_EXT;
+  return joinDocPath(dir, t ? `${t}${ext}` : `${date}-${suffix}${ext}`);
 }
 /** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
 export function isOpaqueStem(stem: string): boolean { return /^\d{8}-[0-9a-f]{4}( \d+)?$/i.test(stem); }
@@ -84,7 +89,8 @@ export function sanitizeFolderName(s: string): string {
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 " n"。 */
 export function collisionCandidate(name: string, n: number): string {
   if (n === 0) return name;
-  return `${name.replace(EXT_RE, "")} ${n}${DOC_EXT}`;
+  const ext = PROJECT_EXT_RE.test(name) ? PROJECT_EXT : DOC_EXT;
+  return `${name.replace(ANY_EXT_RE, "")} ${n}${ext}`;
 }
 
 const NAME_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
