@@ -48,26 +48,30 @@ try {
     return [...document.querySelectorAll("use")].map((u) => (u.getAttribute("href") || "").slice(1)).filter((id) => !ids.has(id));
   });
   check("所有 <use> 都有 symbol", missingUse.length === 0, missingUse.join(","));
+  // 2.0：☰ = 图库屏（@internal/gallery card view，独立一屏）；抽屉只剩设置。
   await page.click("#menuButton");
+  await page.waitForTimeout(600);
+  check("图库屏打开", await page.evaluate(() => !document.getElementById("galleryFull").classList.contains("hidden")));
+  const emptyText = await page.evaluate(() => document.querySelector("#galleryMount .gallery-empty")?.textContent?.trim() ?? "");
+  check("图库空态文案（写作口吻，非包默认的「作品」）", !!emptyText && !emptyText.includes("作品"), emptyText);
+  await page.click("#gallerySettingsBtn");
   await page.waitForTimeout(300);
-  check("抽屉打开", await page.evaluate(() => !document.getElementById("drawer").classList.contains("hidden")));
-  const emptyText = await page.textContent("#docListEmpty");
-  check("列表空态文案", !!emptyText, emptyText);
-  await page.click("#settingsButton");   // 设置入口在抽屉头云图标旁（WeebPaint 布局）
-  await page.waitForTimeout(300);
-  check("抽屉头设置钮 → 设置视图显示 + 登录钮", await page.evaluate(() => !document.getElementById("settingsView").hidden && !!document.querySelector("#authRow button")));
+  check("图库设置钮 → 抽屉设置视图显示 + 登录钮", await page.evaluate(() => !document.getElementById("settingsView").hidden && !!document.querySelector("#authRow button")));
   check("版本显示在设置页", (await page.textContent("#settingsBuild")).includes(version));
   await page.click("#drawerCloseButton");
   await page.waitForTimeout(200);
+  await page.click("#galleryBack");
+  await page.waitForTimeout(200);
+  check("图库屏关闭回编辑器", await page.evaluate(() => document.getElementById("galleryFull").classList.contains("hidden")));
   // 新稿：打字 → 本地物化（无云）→ 抽屉里出现一条
   await page.click("#editor");
   await page.keyboard.type("hello smoke");
   await page.waitForTimeout(900);
   await page.click("#menuButton");
-  await page.waitForTimeout(600);
-  const rows = await page.evaluate(() => document.querySelectorAll("#docList .doc-row").length);
-  check("打字后本地物化：列表出现 1 篇", rows === 1, `rows=${rows}`);
-  await page.click("#drawerCloseButton");
+  await page.waitForTimeout(900);
+  const rows = await page.evaluate(() => document.querySelectorAll("#galleryMount .gallery-tile:not(.folder)").length);
+  check("打字后本地物化：图库出现 1 篇", rows === 1, `rows=${rows}`);
+  await page.click("#galleryBack");
   // 通用 sheet：多选 → 点第一项 → resolve
   const picked = await page.evaluate(async () => {
     const p = window.__xhw.choice("t", "m", [{ label: "A", value: 1 }, { label: "B", value: 2 }]);

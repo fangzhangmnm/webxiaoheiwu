@@ -13,6 +13,7 @@ const STATIC_PRECACHE = [
   "./icon-192.png",
   "./icon-512.png",
   "./styles.css",
+  "./vendor/internal-css/gallery.css",
   "./vendor/msal/msal-browser.min.js",
   "./vendor/my-rime/worker.js",
   "./vendor/my-rime/dist/rime.js",

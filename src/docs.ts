@@ -29,6 +29,8 @@ const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => r
 const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().file(name, { isZip: true, mode });
 export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
 export function pullProjectIfClean(name: string): Promise<FreshResult> { return zipFile(name).pullIfClean(); }
+/** 本地字节是不是加密容器（两档：txt 走 RawFile、工程走 ZipFile）。 */
+export function isDocEncrypted(name: string): Promise<boolean> { return (docKind(name) === "project" ? zipFile(name) : file(name)).isEncrypted(); }
 export async function saveProjectBlob(name: string, blob: Blob, opts: { push: boolean }): Promise<SaveResult> { return await zipFile(name).save(blob, { tryPush: opts.push }); }
 /** 新建工程文件：撞名自动追加 " 1"…；返回最终身份（全路径）。 */
 export async function createProjectDoc(title: string, blob: Blob, date = formatDate(Date.now()), dir = ""): Promise<string> {

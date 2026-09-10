@@ -23,6 +23,8 @@ export interface DocListFrame {
 }
 export declare function readProjectBlob(name: string): Promise<Blob | null>;
 export declare function pullProjectIfClean(name: string): Promise<FreshResult>;
+/** 本地字节是不是加密容器（两档：txt 走 RawFile、工程走 ZipFile）。 */
+export declare function isDocEncrypted(name: string): Promise<boolean>;
 export declare function saveProjectBlob(name: string, blob: Blob, opts: {
     push: boolean;
 }): Promise<SaveResult>;

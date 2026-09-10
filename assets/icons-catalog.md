@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-27 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+35 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -12,15 +12,13 @@
 <svg width="24" height="24"><use href="#move-to-file"/></svg>
 ```
 
-> ⚠ 库里还没有这些图标，当前用 `icon-missing` 占位：`microphone`
-> 等它们进 `icons.svg` 后重跑本脚本即可换成真图标。
-
 
 ## edit
 
 | name | 说明 |
 |------|------|
 | `move-to-file` | 文件+绕行箭头(移到文件) |
+| `copy` | 两个文件叠放 |
 
 ## file
 
@@ -32,6 +30,10 @@
 | `restore-trash` | 同上但盖只掀 -16° |
 | `folder` | 文件夹:左边 tab + 矩形主体 |
 | `folder-open` | 打开的文件夹:背板止于盖顶 T 接,不再互相压线 |
+| `image` | 从图片新建:相框+山+太阳 |
+| `file` | 文档:单张纸+折角(copy/paste/clear-canvas 共用母题) |
+| `rename` | 重命名:文字光标+铅笔 |
+| `gallery` | 图库入口:图片堆叠(沿用 image 的太阳+山母题) |
 
 ## hierarchy
 
@@ -42,6 +44,7 @@
 | `edit-disabled` | 不可编辑:同 pencil 加删除线, 方向与笔身垂直(笔身是 ↗, 所以线走 ↘) |
 | `edit-enabled` | 可编辑:Bootstrap Icons 的 pencil(MIT) |
 | `create-folder` | 加号做成右下角徽标 |
+| `move-to-folder` | 移入文件夹(定 2 号):小 folder + 弧箭头, 箭头头部在 folder 内 · 尾巴在外 |
 
 ## common
 
@@ -62,6 +65,9 @@
 | `cloud-conflict` | 云+感叹号(2.4 描边整体收在云内不破轮廓, 点半径=描边半宽; 与 cloud-pending 问号云成对但云为实线); WeebPaint gallery 同步徽章 conflict, 12px 用量 (甲方 20260825 拍板候选 5 号=大号收内) |
 | `cloud-unavailable` | — |
 | `cloud-pending` | 待判定:虚线云 + 云内问号(加粗 2.4, 遮罩描边留白与云脱开;问号下点的半径=描边半宽) |
+| `download` | 下载 |
+| `upload` | 上传 |
+| `unload-local-cache` | 卸载本地副本:database(=本地) + 斜删除线(mask 留 gap)【非垃圾桶, 云端仍保留】 |
 
 ## ui
 
@@ -71,9 +77,3 @@
 | `wrench` | 扳手:斜置组合扳手轮廓(feather:wrench 衍生), 20260724 候选 1 号入库 |
 | `more` | 溢出菜单:横向三点(原 ⋯ 字符跨平台字形不一) |
 | `database` | — |
-
-## missing
-
-| name | 说明 |
-|------|------|
-| `microphone` ⚠占位 | 缺图标占位 — microphone 尚未进 icons.svg |

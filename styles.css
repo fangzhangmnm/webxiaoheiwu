@@ -1598,3 +1598,15 @@ body[data-project] .page { margin-left: calc(264px + max(0px, (100vw - var(--box
   .edge-sidebar { width: min(82vw, 320px); box-shadow: var(--shadow); }
   .edge-sidebar.collapsed { display: none; }
 }
+
+
+/* ═══ 2.0 图库屏（@internal/gallery card view，独立一屏替代抽屉列表；网格/tile 皮在 vendor/internal-css/gallery.css）═══ */
+.gallery-full { --z-menu: 400; --z-popover: 420; --z-modal: 500; --z-toast: 540; --z-notice: 560; position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg-0); color: var(--ink); font-family: var(--font-ui); }
+.gallery-full.hidden { display: none; }
+.gallery-chrome { display: flex; align-items: center; gap: 8px; padding: max(env(safe-area-inset-top, 0px), 8px) 14px 8px; border-bottom: 1px solid var(--line); }
+.gallery-chrome-title { font-weight: 600; }
+.gallery-chrome .auth-action .ico, .gallery-trashbar .auth-action .ico { width: 14px; height: 14px; margin-right: 4px; }
+.gallery-trashbar { display: flex; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.gallery-trashbar.hidden { display: none; }
+.gallery-mount { flex: 1 1 auto; overflow: auto; padding: 12px 14px 24px; }
+.gallery-mount .sheet-action { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); font: inherit; cursor: pointer; }

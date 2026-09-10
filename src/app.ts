@@ -14,6 +14,7 @@ import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
 import { packProject } from "./project/format.ts";
+import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import type { SyncKind } from "./editor.ts";
@@ -190,11 +191,11 @@ async function newProjectFlow(): Promise<void> {
   const firstNode = `${date}-${hex4()}.txt`;
   try {
     const empty = await packProject({ nodes: new Map(), contents: new Map(), editorState: { last: null }, readVersion: 1 });
-    const name = await createProjectDoc(raw, empty, date, drawer.currentFolder());
+    const name = await createProjectDoc(raw, empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder());
     if (!editor.isParked()) await editor.park();
     await project.createInStore(name, firstNode);
     document.body.dataset.project = "1";
-    drawer.close();
+    if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
     setStatus(t("project.created", { name: parseDocName(name).stem }));
   } catch (e) { reportError(e); setStatus(t("project.createFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
@@ -204,9 +205,27 @@ async function openLocalProjectFlow(): Promise<void> {
   if (!editor.isParked()) await editor.park();
   const ok = await project.openLocal(lh);
   document.body.dataset.project = "1";
-  drawer.close();
+  if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
   if (ok) setStatus(lh.canWriteBack ? t("project.localWriteBack") : t("project.localDownloadOnly"));
 }
+// ── 2.0 图库屏（@internal/gallery）：☰ 打开独立一屏；抽屉只剩设置。──
+const galleryHost = initGalleryHost({
+  mountEl: $("galleryMount"), fullEl: $("galleryFull"),
+  activeName: () => activeName(), isDirty: () => (project.active() ? (project.session()?.dirty ?? false) : editor.isDirty()),
+  openAny, renameActive: () => renameCurrentDoc(), pushNow: () => pushNowAny(), flushLocal: () => flushLocalAny(),
+  ensureUnlocked, setStatus, currentDir: () => (project.active() ? parseDocName(project.name() ?? "").dir : editor.currentDir()),
+  onOpened: () => { $("galleryTrashBar").classList.add("hidden"); },
+  onClosed: () => { editorEl.focus(); },
+});
+$("galleryBack").addEventListener("click", () => galleryHost.close());
+$("gallerySettingsBtn").addEventListener("click", () => drawer.open("settings"));
+$("galleryTrashBtn").addEventListener("click", () => { galleryHost.setView("trash"); $("galleryTrashBar").classList.remove("hidden"); });
+$("galleryTrashBack").addEventListener("click", () => { galleryHost.setView("files"); $("galleryTrashBar").classList.add("hidden"); });
+$("galleryEmptyTrash").addEventListener("click", () => {
+  void openChoiceSheet<"local" | "cloud" | "both">(t("gal.emptyTrash"), t("gal.emptyTrashWhich"), [
+    { label: t("gal.emptyTrashLocal"), value: "local" }, { label: t("gal.emptyTrashCloud"), value: "cloud" }, { label: t("gal.emptyTrashBoth"), value: "both" },
+  ]).then((v) => { if (v) galleryHost.emptyTrash(v); });
+});
 const drawer = createDrawer({
   drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
   docList: $("docList"), docListEmpty: $("docListEmpty"), docActions: $("drawerActions"), trashActions: $("trashActions"), settingsView: $("settingsView"),
@@ -851,38 +870,40 @@ initDiagLogUi({ status: (text) => setStatus(text) });   // 2026-09-09 黑匣子�
 function renderSettings(): void { renderAuthRow(); renderImeSection(); renderPasswordSection(); renderVoiceConfig(); }
 
 // ── 抽屉按钮 ──
-$("menuButton").addEventListener("click", () => { if (drawer.currentView() === "closed") drawer.open("active"); else drawer.close(); });
+$("menuButton").addEventListener("click", () => { if (galleryHost.isOpen()) galleryHost.close(); else if (drawer.currentView() !== "closed") drawer.close(); else void galleryHost.open(); });   // 2.0：☰ = 图库屏（抽屉只剩设置）
 $("drawerCloseButton").addEventListener("click", () => drawer.close());
 $("drawerBackButton").addEventListener("click", () => drawer.open("active"));
 $("drawerBackdrop").addEventListener("click", () => drawer.close());
 // 「新建…」= 弹出菜单（WeebPaint 图库 ＋ 同形；user 2026-09-04「新建文件夹收到新建里面…新建菜单里面可以加新建加密文件」）
 const newDocButton = $("newDocButton");
-newDocButton.addEventListener("click", (e) => {
-  e.stopPropagation();
+function openNewMenu(anchor: HTMLElement, currentFolder: () => string, afterNew: () => void): void {
   togglePopupMenu({
-    anchor: newDocButton, align: "left",
+    anchor, align: "left",
     items: () => [
       { id: "doc", label: t("ui.newDoc"), icon: "new" },
       { id: "enc", label: t("ui.newEncDoc"), icon: "lock" },
       { id: "project", label: t("project.new"), icon: "new", separatorBefore: true },
       { id: "local", label: t("project.openLocal"), icon: "folder-open" },
-      { id: "folder", label: t("ui.newFolder"), icon: "create-folder", separatorBefore: true, hidden: !!drawer.currentFolder() },   // 只一层：夹里不再建夹（ADR-0006）
+      { id: "folder", label: t("ui.newFolder"), icon: "create-folder", separatorBefore: true, hidden: !!currentFolder() },   // 只一层：夹里不再建夹（ADR-0006）
     ],
     onPick: (id) => {
       if (id === "folder") { void drawer.newFolder(); return; }
       if (id === "project") { void newProjectFlow(); return; }
       if (id === "local") { void openLocalProjectFlow(); return; }
-      if (project.active()) { void leaveProject().then(() => editor.newDoc({ dir: drawer.currentFolder(), encrypted: id === "enc" })).then(() => drawer.close()); return; }
-      void editor.newDoc({ dir: drawer.currentFolder(), encrypted: id === "enc" }).then(() => drawer.close());
+      if (project.active()) { void leaveProject().then(() => editor.newDoc({ dir: currentFolder(), encrypted: id === "enc" })).then(afterNew); return; }
+      void editor.newDoc({ dir: currentFolder(), encrypted: id === "enc" }).then(afterNew);
     },
   });
-});
+}
+newDocButton.addEventListener("click", (e) => { e.stopPropagation(); openNewMenu(newDocButton, () => drawer.currentFolder(), () => drawer.close()); });
+$("galleryNewBtn").addEventListener("click", (e) => { e.stopPropagation(); openNewMenu($("galleryNewBtn"), () => galleryHost.currentFolder(), () => galleryHost.close()); });
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
 $("settingsButton").addEventListener("click", () => drawer.open("settings"));   // 设置入口在抽屉头云图标旁（user 2026-09-04「扳手还是收到 gallery 里面吧…看看 weebpaint 的布局」）
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
 $("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
+  if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
   if (project.active() && (event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void project.spawnFromSelection().then((ok) => { if (ok) edgeSidebar.render(); }); return; }
   if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }

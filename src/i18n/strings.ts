@@ -433,4 +433,21 @@ export const S = {
   "edge.deleteMsg":         { zh: "正文会没掉（工程 zip 整包重写，没有回收站）；别的节点指向它的边留着，变成占位符。", en: "Its text will be gone (the project zip is rewritten; no trash inside a project). Edges pointing to it stay as placeholders." },
   "edge.stub":              { zh: "{name}（还没有正文，点它就生出来）", en: "{name} (no text yet; click to create)" },
 
+  // ── 2.0 图库屏（chrome 文案；网格内文案是包的 zh/en 默认）──
+  "gal.aria":               { zh: "图库", en: "Gallery" },
+  "gal.title":              { zh: "图库", en: "Gallery" },
+  "gal.back":               { zh: "回到编辑器", en: "Back to editor" },
+  "gal.new":                { zh: "新建", en: "New" },
+  "gal.trash":              { zh: "回收站", en: "Trash" },
+  "gal.settings":           { zh: "设置", en: "Settings" },
+  "gal.trashBack":          { zh: "回到文件", en: "Back to files" },
+  "gal.emptyTrash":         { zh: "清空回收站", en: "Empty trash" },
+  "gal.emptyTrashWhich":    { zh: "清空哪一端", en: "Empty which side" },
+  "gal.emptyTrashLocal":    { zh: "只清本机", en: "Local only" },
+  "gal.emptyTrashCloud":    { zh: "只清云端", en: "Cloud only" },
+  "gal.emptyTrashBoth":     { zh: "两端都清", en: "Both" },
+  "galx.emptyNone":         { zh: "还没有稿。点「新建」开始写，或打开本机工程。", en: "No documents yet. Tap New to start writing, or open a local project." },
+  "galx.emptyFolder":       { zh: "「{f}」是空的", en: "“{f}” is empty" },
+  "galx.emptyTrash":        { zh: "回收站是空的", en: "Trash is empty" },
+
 } as const satisfies Record<string, Entry>;

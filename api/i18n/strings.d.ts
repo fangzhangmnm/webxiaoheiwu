@@ -1604,4 +1604,64 @@ export declare const S: {
         readonly zh: "{name}（还没有正文，点它就生出来）";
         readonly en: "{name} (no text yet; click to create)";
     };
+    readonly "gal.aria": {
+        readonly zh: "图库";
+        readonly en: "Gallery";
+    };
+    readonly "gal.title": {
+        readonly zh: "图库";
+        readonly en: "Gallery";
+    };
+    readonly "gal.back": {
+        readonly zh: "回到编辑器";
+        readonly en: "Back to editor";
+    };
+    readonly "gal.new": {
+        readonly zh: "新建";
+        readonly en: "New";
+    };
+    readonly "gal.trash": {
+        readonly zh: "回收站";
+        readonly en: "Trash";
+    };
+    readonly "gal.settings": {
+        readonly zh: "设置";
+        readonly en: "Settings";
+    };
+    readonly "gal.trashBack": {
+        readonly zh: "回到文件";
+        readonly en: "Back to files";
+    };
+    readonly "gal.emptyTrash": {
+        readonly zh: "清空回收站";
+        readonly en: "Empty trash";
+    };
+    readonly "gal.emptyTrashWhich": {
+        readonly zh: "清空哪一端";
+        readonly en: "Empty which side";
+    };
+    readonly "gal.emptyTrashLocal": {
+        readonly zh: "只清本机";
+        readonly en: "Local only";
+    };
+    readonly "gal.emptyTrashCloud": {
+        readonly zh: "只清云端";
+        readonly en: "Cloud only";
+    };
+    readonly "gal.emptyTrashBoth": {
+        readonly zh: "两端都清";
+        readonly en: "Both";
+    };
+    readonly "galx.emptyNone": {
+        readonly zh: "还没有稿。点「新建」开始写，或打开本机工程。";
+        readonly en: "No documents yet. Tap New to start writing, or open a local project.";
+    };
+    readonly "galx.emptyFolder": {
+        readonly zh: "「{f}」是空的";
+        readonly en: "“{f}” is empty";
+    };
+    readonly "galx.emptyTrash": {
+        readonly zh: "回收站是空的";
+        readonly en: "Trash is empty";
+    };
 };

@@ -1,0 +1,115 @@
+// 图库屏（@internal/gallery 的 WXHW 消费面）：card view 独立一屏，替代抽屉的文件列表（user 2026-09-09「gallery 应该和 weebpaint 一样是一个独立的、不依赖于 editor 的东西」）。
+// created 2026-09-10 by Claude Fable 5.1。包出屏幕 + 动词 + 数据面；本文件只出：Vue 注入、DocHost（编辑器端口）、policy（两档扩展名、身份=全名、无缩略图）、
+//   加密适配（crypto-state）、chrome 按钮（返回 / 新建 / 回收站 / 设置）。文案 = 包内 zh/en 默认（按 lang 切）。
+import { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } from "../vendor/vue/vue.esm-browser.prod.js";
+import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type VerbStore, type DataFaceStore, type Gallery } from "@internal/gallery";
+import { requireStore, auth } from "./app-store.ts";
+import { docKind } from "./doc-model.ts";
+import { isDocEncrypted } from "./docs.ts";
+import { isUnlocked, onLockChange, currentPassword, setCurrentPassword, hasVerifier, resetVerifier } from "./crypto-state.ts";
+import { openConfirmSheet, openInputSheet, openChoiceSheet, withBusy } from "./sheets.ts";
+import { iconHtml } from "./ui/icon.ts";
+import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
+import { reportError } from "./error-badge.ts";
+import { lang, t } from "./i18n/index.ts";
+
+export interface GalleryHostDeps {
+  mountEl: HTMLElement;
+  fullEl: HTMLElement;              // #galleryFull（独立一屏容器）
+  activeName: () => string | null;
+  isDirty: () => boolean;
+  /** 打开任一身份（txt / 工程）。返回 true = 编辑器已切过去。 */
+  openAny: (name: string, opts?: { promptUnlock?: boolean }) => Promise<boolean>;
+  renameActive: () => Promise<void>;
+  pushNow: () => Promise<void>;
+  flushLocal: () => Promise<void>;
+  ensureUnlocked: () => Promise<boolean>;
+  setStatus: (text: string, opts?: { error?: boolean }) => void;
+  /** 「上次在哪个夹」跟着编辑器走（打开图库时跳到当前稿的夹）。 */
+  currentDir: () => string;
+  onOpened?: () => void;
+  onClosed?: () => void;
+}
+const KV_FOLDER = "gallery-folder";
+
+export function initGalleryHost(d: GalleryHostDeps) {
+  const vue = { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } as unknown as VueRuntime;
+  const isProjectName = (n: string) => docKind(n) === "project";
+  const storeFace = (): (VerbStore & DataFaceStore) | null => {
+    let s: ReturnType<typeof requireStore>;
+    try { s = requireStore(); } catch { return null; }
+    return s as unknown as VerbStore & DataFaceStore;   // 结构兼容（file/files 子集）；包对 store 的要求 = 提案 §2 StoreFace
+  };
+  const doc: GalleryDocHost = {
+    open: async (item: GItem) => { const ok = await d.openAny(item.name, { promptUnlock: true }); if (ok) close(); },
+    renameActive: async () => { await d.renameActive(); return d.activeName(); },
+    setName: () => { /* 活动稿被图库移动：openAny(新名) 由 verbs 的 move 之后 reload 触发不了——这里重开 */ },
+    push: async () => { await d.pushNow(); },
+    unload: async (item: GItem) => { try { await (requireStore().file(item.name, { isZip: isProjectName(item.name), mode: "existing" }) as unknown as { offload(): Promise<unknown> }).offload(); } catch (e) { reportError(e, "warning"); } },
+    exit: async () => { await d.flushLocal(); },
+    dropCheckpoint: () => {},
+  };
+  const encryption: GalleryEncryption = {
+    isUnlocked, onLockChange: (cb) => { onLockChange(cb); },
+    isEncryptedPeekBlob: () => false,
+    localPeekThumb: async () => null, decryptCloudPeekThumb: async () => null,
+    isEncrypted: (name) => isDocEncrypted(name),
+    ensureUnlocked: () => d.ensureUnlocked(),
+    ensureNewPassword: async () => ((await d.ensureUnlocked()) ? currentPassword() : null),
+    isFreshPasswordSetup: () => !hasVerifier(),
+    rollbackFreshPassword: () => { try { resetVerifier(); } catch (e) { reportError(e, "log"); } },
+    setPassword: (pw) => { if (pw !== currentPassword()) void setCurrentPassword(pw); },
+  };
+  const deps: CreateGalleryDeps = {
+    vue,
+    store: storeFace,
+    doc,
+    host: {
+      signedIn: () => auth.isSignedIn(), online: () => (typeof navigator === "undefined" || navigator.onLine !== false), activeName: () => d.activeName(),
+      confirm: (title, msg) => openConfirmSheet(title, msg),
+      input: (title, def, opts) => openInputSheet(title, { defaultValue: def, placeholder: opts?.placeholder, okLabel: t("common.ok") }),
+      chooseFolder: (title, msg, options) => openChoiceSheet<string>(title, msg, options.map((o) => ({ label: o.label, value: o.value }))),
+      status: (msg, isError) => d.setStatus(msg, { error: !!isError }),
+      busy: (label, fn) => withBusy(label, fn),
+    },
+    ui: { iconHtml: (name, opts) => iconHtml(name, opts) },
+    naming: { bare: (s) => s, full: (b) => b },
+    isZipDoc: (n) => isProjectName(n),
+    policy: { isDoc: (p) => docKind(p) != null, isImage: () => false, naming: { bare: (s) => s, full: (b) => b } },
+    encryption,
+    folderMemory: { get: () => deviceKvGet(KV_FOLDER) ?? "", set: (p) => deviceKvSet(KV_FOLDER, p || null) },
+    isGalleryVisible: () => document.body.dataset.mode === "gallery",
+    reportError: (e, level) => reportError(e, level ?? "error"),
+    reloadApp: () => location.reload(),
+    // 包内 zh/en 默认是 WeebPaint 口吻（「作品」「画一笔」）；这几条空态文案换成写作口吻，其余沿用默认。
+    text: { lang: lang(), t: (key, params) => (key === "gal.empty.none" ? t("galx.emptyNone") : key === "gal.empty.folder" ? t("galx.emptyFolder", params) : key === "gal.empty.trash" ? t("galx.emptyTrash") : undefined) },
+  };
+  let gallery: Gallery | null = null;
+  function ensureMounted(): Gallery { if (!gallery) gallery = createGallery(d.mountEl, deps); return gallery; }
+  async function open(): Promise<void> {
+    await d.flushLocal();
+    const g = ensureMounted();
+    document.body.dataset.mode = "gallery";
+    d.fullEl.classList.remove("hidden"); d.fullEl.setAttribute("aria-hidden", "false");
+    const dir = d.currentDir();
+    if (dir !== g.handle.getFolder()) g.handle.setFolder(dir);
+    g.handle.setView("files");
+    d.onOpened?.();
+  }
+  function close(): void {
+    d.fullEl.classList.add("hidden"); d.fullEl.setAttribute("aria-hidden", "true");
+    delete document.body.dataset.mode;
+    d.onClosed?.();
+  }
+  const isOpen = () => !d.fullEl.classList.contains("hidden");
+  return {
+    open, close, isOpen,
+    refresh: () => gallery?.handle.refresh(),
+    setView: (v: "files" | "trash") => ensureMounted().handle.setView(v),
+    getView: () => gallery?.handle.getView() ?? "files",
+    emptyTrash: (scope: "local" | "cloud" | "both") => ensureMounted().handle.emptyTrash(scope),
+    currentFolder: () => gallery?.handle.getFolder() ?? (deviceKvGet(KV_FOLDER) ?? ""),
+    invalidateEncrypted: (name: string) => gallery?.handle.invalidateEncrypted(name),
+  };
+}
+export type GalleryHost = ReturnType<typeof initGalleryHost>;
