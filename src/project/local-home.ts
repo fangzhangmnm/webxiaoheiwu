@@ -17,11 +17,19 @@ export function triggerDownload(blob: Blob, filename: string): void {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
+/** 写回被浏览器拒绝（readwrite 权限没拿到：句柄来自 open picker 默认只读，第一次写要在用户手势里授权；无手势的写（idle 推）拿不到就是这个）。 */
+export class LocalWriteDeniedError extends Error { override name = "LocalWriteDeniedError"; constructor() { super("local project write-back denied by the browser (no readwrite permission / no user gesture)"); } }
+type PermHandle = FileSystemFileHandle & { queryPermission?: (o: { mode: "read" | "readwrite" }) => Promise<PermissionState>; requestPermission?: (o: { mode: "read" | "readwrite" }) => Promise<PermissionState> };
+async function ensureWritable(handle: FileSystemFileHandle): Promise<boolean> {
+  const h = handle as PermHandle;
+  try { if (!h.queryPermission || (await h.queryPermission({ mode: "readwrite" })) === "granted") return true; } catch { /* fall through */ }
+  try { return !h.requestPermission || (await h.requestPermission({ mode: "readwrite" })) === "granted"; } catch { return false; }   // 无用户手势 → SecurityError
+}
 function homeFromHandle(handle: FileSystemFileHandle): LocalHome {
   return {
     fileName: handle.name, canWriteBack: true,
     read: async () => { try { return await handle.getFile(); } catch { return null; } },
-    write: async (blob) => { const w = await handle.createWritable(); await w.write(blob); await w.close(); return "written"; },
+    write: async (blob) => { if (!(await ensureWritable(handle))) throw new LocalWriteDeniedError(); const w = await handle.createWritable(); await w.write(blob); await w.close(); return "written"; },
   };
 }
 function homeFromFile(file: File): LocalHome {

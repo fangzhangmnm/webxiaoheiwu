@@ -115,9 +115,14 @@ const editorEl = $<HTMLTextAreaElement>("editor");
 // 触屏键盘（per-device）：none = 不弹（Quest/桌面实体键盘）；ascii = inputmode="email" → 弹系统键盘、字母仍进内置 IME
 //   （user 2026-09-03「不改用系统输入法只是出软键盘行吗」）。⚠ iOS 实测（user 2026-09-04）：inputmode 只改布局不改语言，
 //   弹出的仍是用户当前的中文键盘——iOS 上唯一能强制英文键盘的是密码框（secure text entry），那是「输入代理」一整刀，待拍板。软键盘不一定发 keydown（Android 发 229/Unidentified）→ beforeinput 路由见 setupImeOn。
-const softKeyboardPref = (): "none" | "ascii" => (deviceKvGet("softKeyboard") === "ascii" ? "ascii" : "none");
+type SoftKeyboard = "none" | "ascii" | "system";
+const COARSE_POINTER = matchMedia("(hover: none) and (pointer: coarse)").matches;
+// 默认：Quest / 桌面 = 不弹（inputmode=none）；iOS / 安卓等触屏 = 弹系统键盘（不设 inputmode；user 2026-09-10「ios 不弹输入法键盘」+「支持系统输入法就行」）
+const softKeyboardDefault = (): SoftKeyboard => (IS_QUEST_BROWSER ? "none" : COARSE_POINTER ? "system" : "none");
+const softKeyboardPref = (): SoftKeyboard => { const v = deviceKvGet("softKeyboard"); return v === "ascii" || v === "system" || v === "none" ? v : softKeyboardDefault(); };
 function applyInputMode(builtinIme: boolean): void {
-  const mode = builtinIme ? (softKeyboardPref() === "ascii" ? "email" : "none") : null;
+  const pref = softKeyboardPref();
+  const mode = builtinIme ? (pref === "ascii" ? "email" : pref === "none" ? "none" : null) : null;
   if (mode) editorEl.setAttribute("inputmode", mode); else editorEl.removeAttribute("inputmode");
 }
 if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset，纸面整体缩到键盘上方（styles .page height）；iOS 若把视口顶上去，拉回 0 让固定顶栏别被推出屏
@@ -885,7 +890,7 @@ quoteStyleSelect.addEventListener("change", () => { const v = quoteStyleSelect.v
 prefs.onChange("quoteStyle", () => { applyQuoteStyle(quoteStylePref()); if (drawer.currentView() === "settings") renderImeSection(); });
 imeScriptSelect.addEventListener("change", () => { const v = imeScriptSelect.value === "simp"; prefs.setItem("imeSimplified", v); void ime.setSimplified(v); });
 prefs.onChange("imeSimplified", () => { void ime.setSimplified(imeSimplifiedPref()); if (drawer.currentView() === "settings") renderImeSection(); });
-softKeyboardSelect.addEventListener("change", () => { deviceKvSet("softKeyboard", softKeyboardSelect.value === "ascii" ? "ascii" : null); applyInputMode(ime.enabled); });
+softKeyboardSelect.addEventListener("change", () => { const v = softKeyboardSelect.value; deviceKvSet("softKeyboard", v === "ascii" || v === "system" || v === "none" ? (v === softKeyboardDefault() ? null : v) : null); applyInputMode(ime.enabled); });
 imeSchemaSelect.addEventListener("change", () => {
   const v = imeSchemaSelect.value; if (!isImeSchema(v)) return;
   prefs.setItem("imeSchema", v);
@@ -1052,13 +1057,14 @@ async function boot(): Promise<void> {
   });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
   void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning")).finally(() => _authBootResolve());
 
-  // 续写：本机上次打开的稿 → 否则最新一篇 → 否则新稿
+  // 续写：本机上次打开的稿 → 打不开（改名/进回收站/本地无缓存且云端不可达）或没有 → 最新一篇 → 否则新稿
   const last = editor.lastOpenName();
-  if (last) await openAny(last);
-  else {
+  let opened = false;
+  if (last) opened = await openAny(last);
+  if (!opened) {
     await Promise.race([drawer.firstFrame(), new Promise((r) => setTimeout(r, 3000))]);   // 等列表首帧（最多 3s），不再死等 1.5s 后开空新稿
-    const first = drawer.items()[0]?.name ?? null;
-    if (first) await openAny(first); else await editor.newDoc();
+    const first = drawer.items().find((it) => it.name !== last)?.name ?? null;   // 别停在「找不到」那一屏（user 2026-09-10「刷新之后说文件找不到」）
+    if (first) await openAny(first); else if (!last) await editor.newDoc();
   }
   booted = true;
   if (new URLSearchParams(location.search).has("reset")) { setStatus(t("settings.forceUpdated", { v: APP_VERSION })); try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ } }   // 强制更新回执

@@ -1,5 +1,5 @@
 import { type OpenResult } from "./session.ts";
-import type { LocalHome } from "./local-home.ts";
+import { type LocalHome } from "./local-home.ts";
 import type { SyncKind } from "../editor.ts";
 export type ProjectHome = {
     kind: "store";

@@ -31,8 +31,9 @@ for (const [w, h] of sizes) {
   const rows = () => page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row:not(.add):not(.header):not(.empty) .edge-name")].map((e) => e.textContent));
   const ensureSidebar = async (open) => { if ((await sidebarShown()) !== open) { await page.click("#menuButton"); await wait(300); } };
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
+  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 15000 });   // boot 开出新稿后才能打字（之前在 __xhw 一出现就打，字被「不可用」守卫吞掉 → 整轮没有 txt 稿）
   await page.click("#editor"); await page.keyboard.type("第一篇：她推开门。他在窗边。窗外是雨。"); await wait(700);
+  probe(tag, "txt doc materialized after typing", !!(await page.evaluate(() => window.__xhw.editor.state.name)));
   await shot("01-editor-txt");
   probe(tag, "sidebar closed by default", !(await sidebarShown()));
   probe(tag, "no edgeToggle in top bar", await page.evaluate(() => !document.getElementById("edgeToggle")));
@@ -116,14 +117,19 @@ for (const [w, h] of sizes) {
   if (w >= 900) { await ensureSidebar(false);
     const centered = await page.evaluate(() => { const r = document.querySelector(".page").getBoundingClientRect(); return getComputedStyle(document.getElementById("edgeSidebar")).display === "none" && Math.abs(r.left - (innerWidth - r.width) / 2) < 2; });
     probe(tag, "wide: sidebar closed → page centered", centered); await shot("13-wide-sidebar-collapsed");
+    const before = await page.evaluate(() => JSON.stringify(document.querySelector(".page").getBoundingClientRect()));
     await ensureSidebar(true);
-    const docked = await page.evaluate(() => { const p = document.querySelector(".page").getBoundingClientRect(), s = document.getElementById("edgeSidebar").getBoundingClientRect(); return s.right <= innerWidth && s.left >= p.right && p.left >= 0; });
-    probe(tag, "wide: sidebar docked on the RIGHT, page not overlapped", docked); await shot("13b-wide-sidebar-right"); await ensureSidebar(false); }
+    const overlay = await page.evaluate((b) => { const p = document.querySelector(".page").getBoundingClientRect(), s = document.getElementById("edgeSidebar").getBoundingClientRect(); return JSON.stringify(p) === b && s.right <= innerWidth && s.left > innerWidth / 2; }, before);
+    probe(tag, "wide: sidebar is an overlay on the RIGHT, page does not move", overlay); await shot("13b-wide-sidebar-right"); await ensureSidebar(false); }
   // 刷新：boot 走 openAny(last) → 工程回来、章节名回来、无红条
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
   probe(tag, "reload → project reopened at 第一章, title shown", await page.evaluate(() => document.body.dataset.project === "1" && document.getElementById("nodeTitle").value === "第一章"), await page.inputValue("#nodeTitle"));
   probe(tag, "reload → no error state / banner", await page.evaluate(() => { const b = document.getElementById("errBanner"); return (!b || b.classList.contains("hidden")) && !document.getElementById("saveStatus").classList.contains("error"); }), await page.textContent("#saveStatus"));
   probe(tag, "reload → sidebar closed", !(await sidebarShown()));
+  // last-open 真的生效：开一篇旧 txt 再刷新，回来的是它而不是最新的（2026-09-10 实锤：以前 JSON.parse 裸字符串永远 null）
+  { const oldTxt = await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return null; await window.__xhw.editor.open(it.name); return it.name; });
+    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+    probe(tag, "reload → reopens the last-open txt, not the newest item", !!oldTxt && (await page.evaluate(() => window.__xhw.editor.state.name)) === oldTxt, `${oldTxt} vs ${await page.evaluate(() => window.__xhw.editor.state.name)}`); }
   await shot("14-after-reload");
   // 书库：工程卡片名无扩展名；卡片菜单；回收站；设置叠书库
   await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(1200); await shot("15-library-with-project");

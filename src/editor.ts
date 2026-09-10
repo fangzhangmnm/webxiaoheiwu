@@ -12,7 +12,7 @@ import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "./c
 import { formatDate, parseDocName, splitDocPath, sanitizeTitle, docKind } from "./doc-model.ts";
 import { readDoc, saveDoc, createDoc, renameDoc, renameDocToOpaque, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, rekeyDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword, currentPassword } from "./crypto-state.ts";
-import { deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
+import { deviceKvGet, deviceKvGetJson, deviceKvSetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { t } from "./i18n/index.ts";
 
@@ -478,7 +478,7 @@ export function createEditor(d: EditorDeps) {
     canEdit, statusForDoc, syncKind,
     isDirty: () => !parked && (!!localTimer || pushPending || d.editor.value !== savedText),
     isUnlockedDoc: () => st.encrypted && isUnlocked(),
-    lastOpenName: () => (deviceKvGetJson<string | null>(KV_LAST_OPEN, null) ?? null),
+    lastOpenName: () => deviceKvGet(KV_LAST_OPEN),   // 裸字符串（写的就是裸的）。2026-09-10 前这里走 JSON.parse → 永远 null → 每次刷新都开「最新一篇」而不是上次那篇（user「刷新之后说文件找不到」的根：排序变了就跳到没缓存的稿）
     /** 工程模式接管前：flush 后静默；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。 */
     park: async () => { await flushLocal(); parked = true; st.name = null; st.pendingDate = null; st.pendingTitle = null; },
     resume: () => { parked = false; applyGuards(); },

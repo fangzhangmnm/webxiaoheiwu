@@ -337,8 +337,9 @@
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.ime.softKeyboard">触屏键盘（无实体键盘时）</span>
             <select id="softKeyboardSelect" class="voice-config-select">
-              <option value="none" data-i18n="ui.ime.softKeyboard.none">不弹（默认；Quest / 桌面）</option>
-              <option value="ascii" data-i18n="ui.ime.softKeyboard.ascii">弹系统键盘（字母进内置输入法；iOS 弹的仍是你当前的键盘——请在键盘上切到英文）</option>
+              <option value="system" data-i18n="ui.ime.softKeyboard.system">弹系统键盘（iOS / 安卓默认；系统输入法打出的字照收）</option>
+              <option value="none" data-i18n="ui.ime.softKeyboard.none">不弹（Quest / 桌面默认；只用内置输入法）</option>
+              <option value="ascii" data-i18n="ui.ime.softKeyboard.ascii">弹英文布局键盘（字母进内置输入法；iOS 上可能仍是你当前的键盘）</option>
             </select>
           </label>
           <label class="voice-config-toggle">
@@ -432,6 +433,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-f19a9c3eb824.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-5e470f9909d0.mjs"></script>
   </body>
 </html>

@@ -7,7 +7,7 @@
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
-import type { LocalHome } from "./local-home.ts";
+import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
 import { deviceKvSet } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
 import { reportError } from "../error-badge.ts";
@@ -135,7 +135,12 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0;
     if (!canEdit()) return;
-    if (home!.kind === "local") { if (localTimer) { clearTimeout(localTimer); localTimer = null; } await persist(false); d.onChanged(); return; }
+    if (home!.kind === "local") {
+      if (localTimer) { clearTimeout(localTimer); localTimer = null; }
+      try { await persist(false); }
+      catch (e) { if (e instanceof LocalWriteDeniedError) { reportError(e, "log"); d.setStatus(t("project.writeBackDenied"), { error: true }); } else { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); } }
+      d.onChanged(); return;
+    }
     if (!d.isSignedIn() || isOffline()) { if (localTimer) { clearTimeout(localTimer); localTimer = null; } try { await persist(false); } catch (e) { reportError(e, "log"); } pushPending = true; d.setState(stateText(), { unsynced: d.isSignedIn() }); return; }
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     const g = gen;

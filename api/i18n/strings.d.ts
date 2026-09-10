@@ -1128,13 +1128,17 @@ export declare const S: {
         readonly zh: "触屏键盘（无实体键盘时）";
         readonly en: "Touch keyboard (when there is no physical keyboard)";
     };
+    readonly "ui.ime.softKeyboard.system": {
+        readonly zh: "弹系统键盘（iOS / 安卓默认；系统输入法打出的字照收）";
+        readonly en: "Show the system keyboard (default on iOS / Android; text from the system IME is kept)";
+    };
     readonly "ui.ime.softKeyboard.none": {
-        readonly zh: "不弹（默认；Quest / 桌面）";
-        readonly en: "None (default; Quest / desktop)";
+        readonly zh: "不弹（Quest / 桌面默认；只用内置输入法）";
+        readonly en: "None (default on Quest / desktop; built-in IME only)";
     };
     readonly "ui.ime.softKeyboard.ascii": {
-        readonly zh: "弹系统键盘（字母进内置输入法；iOS 弹的仍是你当前的键盘——请在键盘上切到英文）";
-        readonly en: "Show the system keyboard (letters go to the built-in IME; on iOS it is still your current keyboard — switch it to English)";
+        readonly zh: "弹英文布局键盘（字母进内置输入法；iOS 上可能仍是你当前的键盘）";
+        readonly en: "Show a Latin-layout keyboard (letters go to the built-in IME; on iOS it may still be your current keyboard)";
     };
     readonly "ui.ime.useSystem": {
         readonly zh: "改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）";
@@ -1463,6 +1467,10 @@ export declare const S: {
     readonly "project.localRenameHint": {
         readonly zh: "本机工程的文件名在磁盘上自己改";
         readonly en: "Rename a local project on disk yourself";
+    };
+    readonly "project.writeBackDenied": {
+        readonly zh: "浏览器没让写回文件——点一下保存钮，在弹出的授权里选「允许」";
+        readonly en: "The browser did not allow writing the file back — tap Save and choose Allow in the prompt";
     };
     readonly "project.saved": {
         readonly zh: "已写回";

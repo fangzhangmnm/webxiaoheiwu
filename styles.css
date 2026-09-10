@@ -1570,15 +1570,14 @@ button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -
 .page { height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px - var(--kb-offset, 0px)); }
 
 /* ═══ 2.0 侧栏（☰ 唯一入口；user 2026-09-10「只有一个三条杠」「侧栏不应默认开」「侧栏不平衡，放在右边试试看」）：顶部 书库/设置 两入口 + 工程内导航（当前节点的出边，ADR-0008）。
-   开关 = body[data-edges]（默认 0）。宽屏开着时停靠页右、纸面往左让位；窄屏（≤900px）为右侧浮层 + 遮罩。零全图、零计数。 ═══ */
+   开关 = body[data-edges]（默认 0）。永远是纸面之上的一层浮层、不推纸面（user 2026-09-10「windows 上面弹侧栏的时候写作区不应该位移，而是侧栏在上面一个图层里」）；窄屏（≤900px）加遮罩。零全图、零计数。 ═══ */
 .edge-sidebar {
   position: fixed; top: 52px; bottom: 12px; right: 12px; width: 240px;
   display: none; flex-direction: column; gap: 8px; padding: 10px;
   border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg-1); color: var(--ink);
-  font-family: var(--font-ui); font-size: 13px; z-index: 5; box-sizing: border-box;
+  font-family: var(--font-ui); font-size: 13px; z-index: 5; box-sizing: border-box; box-shadow: var(--shadow);
 }
 body[data-edges="1"] .edge-sidebar { display: flex; }
-body[data-edges="1"] .page { margin-right: calc(264px + max(0px, (100vw - var(--box-max)) / 2 - 264px)); }   /* 够宽时纸面仍居中；不够时往左让 264px */
 .edge-backdrop { display: none; position: fixed; inset: 0; z-index: 4; background: rgba(58, 40, 24, 0.22); }   /* 顶栏（5）之下：☰ 仍可点 */
 .edge-entries { display: flex; gap: 6px; }
 .edge-entry { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; cursor: pointer; }
@@ -1605,8 +1604,7 @@ body[data-edges="1"] .page { margin-right: calc(264px + max(0px, (100vw - var(--
 .edge-more { flex: none; }
 .edge-foot { display: flex; flex-wrap: wrap; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
 @media (max-width: 900px) {
-  body[data-edges="1"] .page { margin-right: auto; }
-  .edge-sidebar { width: min(82vw, 320px); box-shadow: var(--shadow); }
+  .edge-sidebar { width: min(82vw, 320px); }
   body[data-edges="1"] .edge-backdrop { display: block; }
 }
 
