@@ -113,6 +113,8 @@ export const S = {
   "ui.reading.fontScale.xl": { zh: "特大", en: "Extra large" },
   "ui.reading.fontScale.xxl": { zh: "超大", en: "Huge" },
   "ui.reading.ruled":    { zh: "写字线", en: "Ruled lines" },
+  "ui.reading.wordCount": { zh: "字数统计", en: "Word count" },
+  "foot.wordCount":      { zh: "{cjk} 字 {en} 词", en: "{cjk} chars · {en} words" },
   "ui.reading.hint":     { zh: "短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。", en: "Short-line mode narrows the page and opens up line spacing for web-novel dialogue rhythm." },
   "ui.sec.voice":        { zh: "语音输入", en: "Voice input" },
   "ui.voice.localHint":  { zh: "识别在本机运行，声音不出设备；加密稿也能用。第一次用会先下载语音包（一次，离线可用）。按住左 Ctrl 说话，或点右下角话筒。", en: "Recognition runs on this device; audio never leaves it, so it works on encrypted drafts too. The first use downloads a voice pack once (works offline after). Hold Left Ctrl to talk, or tap the mic." },

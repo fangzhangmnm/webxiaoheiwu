@@ -35,6 +35,9 @@ for (const [w, h] of sizes) {
   await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 15000 });   // boot 开出新稿后才能打字（之前在 __xhw 一出现就打，字被「不可用」守卫吞掉 → 整轮没有 txt 稿）
   await page.click("#editor"); await page.keyboard.type("第一篇：她推开门。他在窗边。窗外是雨。"); await wait(700);
   probe(tag, "txt doc materialized after typing", !!(await page.evaluate(() => window.__xhw.editor.state.name)));
+  // 页脚字数统计（user 2026-09-10）：打字后显示「N 字 M 词」；设置 toggle 关 → 隐藏；再开 → 回来
+  probe(tag, "word count footer shows N 字 M 词 after typing", await page.evaluate(() => { const e = document.getElementById("wordCount"); return !e.hidden && /^\d+ 字 \d+ 词$/.test(e.textContent ?? ""); }), await page.evaluate(() => document.getElementById("wordCount").textContent));
+  probe(tag, "word count toggle off hides the footer, on brings it back", await page.evaluate(() => { const tg = document.getElementById("wordCountToggle"), e = document.getElementById("wordCount"); tg.click(); const off = e.hidden; tg.click(); return off && !e.hidden; }));
   await shot("01-editor-txt");
   probe(tag, "sidebar closed by default", !(await sidebarShown()));
   probe(tag, "no edgeToggle in top bar", await page.evaluate(() => !document.getElementById("edgeToggle")));

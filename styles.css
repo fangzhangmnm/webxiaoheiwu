@@ -1520,6 +1520,8 @@ body {
 .node-title { display: none; flex: none; width: 100%; box-sizing: border-box; border: 0; background: transparent; outline: none; text-align: center; line-height: 1.4; font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink); padding: 0 0 calc(var(--editor-font) * 0.5); margin: 0 0 calc(var(--editor-font) * 0.5); caret-color: var(--accent); }
 body[data-project] .node-title { display: block; }
 .node-title::placeholder { color: var(--ink-muted); font-weight: 400; opacity: 0.7; }
+.page-foot { flex: none; text-align: right; font-size: 12px; line-height: 1.4; color: var(--ink-muted); padding-top: 6px; font-variant-numeric: tabular-nums; user-select: none; }   /* 页脚字数统计（user 2026-09-10「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」） */
+.page-foot[hidden] { display: none; }
 .node-title.locked { color: var(--ink-muted); }
 .node-title::selection { background: rgba(160, 88, 38, 0.22); }
 #saveStatus:empty + .sep { display: none; }

@@ -182,6 +182,7 @@
         <input id="nodeTitle" type="text" class="node-title" placeholder="页名" data-i18n-ph="edge.title.ph" data-i18n-aria="edge.title.aria" aria-label="页名" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
+        <div id="wordCount" class="page-foot" aria-live="off" hidden></div>
         <button id="micButton" class="mic-button" type="button" hidden aria-label="语音输入" data-i18n-aria="ui.mic" data-state="idle">
           <svg class="mic-icon ico" aria-hidden="true"><use href="#microphone"/></svg>
           <span class="mic-pulse" aria-hidden="true"></span>
@@ -306,6 +307,10 @@
           <label class="voice-config-toggle">
             <input type="checkbox" id="ruledLinesToggle" checked />
             <span data-i18n="ui.reading.ruled">写字线</span>
+          </label>
+          <label class="voice-config-toggle">
+            <input type="checkbox" id="wordCountToggle" checked />
+            <span data-i18n="ui.reading.wordCount">字数统计</span>
           </label>
         </section>
 
@@ -438,6 +443,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-26a4f5ff1506.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-2f8f11f72ea4.mjs"></script>
   </body>
 </html>

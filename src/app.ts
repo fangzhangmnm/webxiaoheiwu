@@ -9,7 +9,7 @@ import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections,
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc } from "./docs.ts";
-import { docKind, formatDate } from "./doc-model.ts";
+import { docKind, formatDate, statsForText } from "./doc-model.ts";
 import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
@@ -164,7 +164,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); drawer.refresh(); rememberLastActive(); },
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); drawer.refresh(); rememberLastActive(); },
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
 });
@@ -173,7 +173,7 @@ let voiceAbortHook: (() => void) | null = null;
 const project = createProjectMode({
   editorEl, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
@@ -734,6 +734,16 @@ const ruledLinesPref = (): boolean => prefs.getItem<boolean>("ruledLines") !== f
 function applyRuledLines(on: boolean): void { document.body.classList.toggle("ruled-lines", on); ruledLinesToggle.checked = on; }
 ruledLinesToggle.addEventListener("change", () => { prefs.setItem("ruledLines", ruledLinesToggle.checked); applyRuledLines(ruledLinesToggle.checked); });
 prefs.onChange("ruledLines", () => applyRuledLines(ruledLinesPref()));
+// 页脚字数统计（user 2026-09-10「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」）：CJK 按字、拉丁按词（doc-model.statsForText）；偏好跟云（prefs），默认开。
+const wordCountToggle = $<HTMLInputElement>("wordCountToggle"), wordCountEl = $("wordCount");
+const wordCountPref = (): boolean => prefs.getItem<boolean>("wordCount") !== false;
+let wordCountTimer: ReturnType<typeof setTimeout> | null = null;
+function renderWordCount(): void { if (wordCountEl.hidden) return; const s = statsForText(editorEl.value); wordCountEl.textContent = t("foot.wordCount", { cjk: s.cjk, en: s.en }); }
+function scheduleWordCount(): void { if (wordCountEl.hidden) return; if (wordCountTimer) clearTimeout(wordCountTimer); wordCountTimer = setTimeout(() => { wordCountTimer = null; renderWordCount(); }, 300); }
+function applyWordCount(on: boolean): void { wordCountEl.hidden = !on; wordCountToggle.checked = on; renderWordCount(); }
+wordCountToggle.addEventListener("change", () => { prefs.setItem("wordCount", wordCountToggle.checked); applyWordCount(wordCountToggle.checked); });
+prefs.onChange("wordCount", () => applyWordCount(wordCountPref()));
+editorEl.addEventListener("input", scheduleWordCount);
 
 // ── 设置视图 ──
 const authRow = $("authRow");
@@ -1081,6 +1091,7 @@ async function boot(): Promise<void> {
   await initCollections();
   applyReadingMode(prefs.getItem<string>("readingMode"));
   applyRuledLines(ruledLinesPref());
+  applyWordCount(wordCountPref());
   applyFontScale(fontScalePref());
   applyQuoteStyle(quoteStylePref());
   if (deviceKvGet("imeEnabled") !== "0") { ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (deviceKvGet("imeEnabled") !== "0") ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）

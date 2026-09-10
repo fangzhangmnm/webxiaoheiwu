@@ -77,5 +77,6 @@ user 原话（按时序）：「工程改名之后得刷新页面」「一开始
 - **v2.0.13**：书库窄屏两列（gallery 0.1.3 网格列下限 min(150px, 一半减半 gap) + 宿主 `.gallery-mount` 去掉横向 14px 双层 padding；user「iphone se2 上一行只有一个 card」）。
 - **v2.0.14**：场景恢复对齐 WeebPaint（user「书库里面 refresh 时还是会进写作」）：device-kv `last-scene`，书库 open 写 / close 清，boot 末尾看到是书库就叠开书库（稿照常恢复在底下）。探针 +2。
 - **v2.0.15**：锁卡串场修（user「一开始是 xxx 是加密稿，然后我开新书之后 editor 还是 xxx 是加密稿」）：书模式 `onChanged` 没重画锁卡，上一篇锁定加密稿的卡一直盖着 → 补 `renderLockCard()`；探针 +3（设密码 / 锁定出卡 / 新建书卡消失）。
+- **v2.0.16**：页脚字数统计「N 字 M 词」（user「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」）：`.page-foot` 在纸面正文下、`statsForText`、300ms 防抖、prefs `wordCount` 跟云默认开、设置「阅读」节 toggle；探针 +2。
 - **待 user**：域名（见本轮报告分析）；「保存会错」需要新黑匣子；`book` 图标过目。
 - **无头复现脚本**（tmp/，不进 git）：`tmp/repro-2026-09-10.mjs`（刷新 → spawn → 连边 → 改名 → 再刷新）、`tmp/repro-rename-gallery.mjs`、`tmp/repro-rename2.mjs`。
