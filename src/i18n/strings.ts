@@ -404,6 +404,7 @@ export const S = {
   "project.tooNew":         { zh: "这本书是更新版本的小黑屋写的（格式 v{v}），本版只读不覆盖", en: "This book was written by a newer WebXiaoHeiWu (format v{v}); read-only here, never overwritten" },
   "project.corrupt":        { zh: "这本书的文件坏了，打不开（zip 或 graph.json 不对）", en: "The book file is damaged (bad zip or graph.json)" },
   "project.notProject":     { zh: "这个 zip 不是小黑屋的书（没有 graph.json 也没有 pages/）", en: "This zip is not a WebXiaoHeiWu book (no graph.json, no pages/)" },
+  "st.lastOpenFailed":      { zh: "上次打开的「{name}」现在打不开，先给你一张新稿；它还在书库里", en: "“{name}” from last time can’t be opened right now — here’s a new draft; it is still in the library" },
   "project.legacy":         { zh: "这本书是 2026-09-10 前的旧格式（contents/），本版不读、也不会覆盖它；解压后把 contents/ 改名 pages/ 再压回去就能开", en: "This book is in the pre-2026-09-10 format (contents/); this version won't read or overwrite it — unzip, rename contents/ to pages/, zip again" },
   "project.unavailable":    { zh: "本地没有这本书，云端也拿不到", en: "Book not available locally, and the cloud is unreachable" },
   "edge.aria":              { zh: "侧栏", en: "Sidebar" },

@@ -209,6 +209,7 @@ async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Pro
   if (docKind(name) === "project") {
     if (!editor.isParked()) await editor.park();
     const ok = await project.openStore(name, { promptUnlock: opts.promptUnlock });
+    if (!ok) { await leaveProject(); await editor.newDoc(); return false; }   // 打不开（本地无、坏、旧格式）→ 退出书模式、开一张新稿（park 过的 txt 编辑器没有身份，不能就那么留着）
     document.body.dataset.project = "1";
     return ok;
   }
@@ -1069,14 +1070,16 @@ async function boot(): Promise<void> {
   });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
   void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning")).finally(() => _authBootResolve());
 
-  // 续写：本机上次打开的稿 → 打不开（改名/进回收站/本地无缓存且云端不可达）或没有 → 最新一篇 → 否则新稿
+  // 续写：本机上次打开的稿 → 打不开（改名/进回收站/本地无缓存且云端不可达）→ **新稿**（user 2026-09-10「上次的书打不开、找不到的时候，应该是进 new document 而不是顺序打开下一本」）；
+  //   本机没有上次记录（新设备）→ 最新一篇 → 否则新稿。
   const last = editor.lastOpenName();
-  let opened = false;
-  if (last) opened = await openAny(last);
-  if (!opened) {
+  if (last) {
+    const opened = await openAny(last);   // 失败时 openAny 已退到新稿
+    if (!opened) { if (!editor.state.pendingDate) await editor.newDoc(); setStatus(t("st.lastOpenFailed", { name: parseDocName(last).stem }), { error: true }); }
+  } else {
     await Promise.race([drawer.firstFrame(), new Promise((r) => setTimeout(r, 3000))]);   // 等列表首帧（最多 3s），不再死等 1.5s 后开空新稿
-    const first = drawer.items().find((it) => it.name !== last)?.name ?? null;   // 别停在「找不到」那一屏（user 2026-09-10「刷新之后说文件找不到」）
-    if (first) await openAny(first); else if (!last) await editor.newDoc();
+    const first = drawer.items()[0]?.name ?? null;
+    if (first) await openAny(first); else await editor.newDoc();
   }
   booted = true;
   if (new URLSearchParams(location.search).has("reset")) { setStatus(t("settings.forceUpdated", { v: APP_VERSION })); try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ } }   // 强制更新回执

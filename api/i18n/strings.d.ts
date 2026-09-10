@@ -1492,6 +1492,10 @@ export declare const S: {
         readonly zh: "这个 zip 不是小黑屋的书（没有 graph.json 也没有 pages/）";
         readonly en: "This zip is not a WebXiaoHeiWu book (no graph.json, no pages/)";
     };
+    readonly "st.lastOpenFailed": {
+        readonly zh: "上次打开的「{name}」现在打不开，先给你一张新稿；它还在书库里";
+        readonly en: "“{name}” from last time can’t be opened right now — here’s a new draft; it is still in the library";
+    };
     readonly "project.legacy": {
         readonly zh: "这本书是 2026-09-10 前的旧格式（contents/），本版不读、也不会覆盖它；解压后把 contents/ 改名 pages/ 再压回去就能开";
         readonly en: "This book is in the pre-2026-09-10 format (contents/); this version won't read or overwrite it — unzip, rename contents/ to pages/, zip again";

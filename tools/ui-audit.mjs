@@ -156,6 +156,11 @@ for (const [w, h] of sizes) {
   probe(tag, "reload → book reopened at 序章 (last saved position), title shown", await page.evaluate(() => document.body.dataset.project === "1" && document.getElementById("nodeTitle").value === "序章"), await page.inputValue("#nodeTitle"));
   probe(tag, "reload → no error state / banner", await page.evaluate(() => { const b = document.getElementById("errBanner"); return (!b || b.classList.contains("hidden")) && !document.getElementById("saveStatus").classList.contains("error"); }), await page.textContent("#saveStatus"));
   probe(tag, "reload → sidebar closed", !(await sidebarShown()));
+  // 上次那本打不开 → 新稿（不是顺位下一本）
+  await page.evaluate(() => { const k = Object.keys(localStorage).find((x) => /:last-open$/.test(x)); if (k) localStorage.setItem(k, "不存在的书.webxiaoheiwu.zip"); });
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+  probe(tag, "last-open unopenable → fresh new draft (not the next book)", await page.evaluate(() => !window.__xhw.project.active() && !window.__xhw.editor.state.name && !!window.__xhw.editor.state.pendingDate && document.getElementById("editor").value === ""), await page.evaluate(() => `project=${window.__xhw.project.active()} name=${window.__xhw.editor.state.name}`));
+  await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.openAny(it.name); }); await wait(800);
   probe(tag, "reload → back stack persisted with the book (Alt+← → 作品)", await page.evaluate(() => window.__xhw.project.canGoBack() && window.__xhw.project.goBack() && window.__xhw.project.current() === "作品.txt"), await page.evaluate(() => window.__xhw.project.current()));
   // last-open 真的生效：开一篇旧 txt 再刷新，回来的是它而不是最新的（2026-09-10 实锤：以前 JSON.parse 裸字符串永远 null）
   { const oldTxt = await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return null; await window.__xhw.editor.open(it.name); return it.name; });

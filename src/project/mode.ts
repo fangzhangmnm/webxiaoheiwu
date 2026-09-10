@@ -100,7 +100,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   function focusTitle(): void { try { d.titleEl.focus(); d.titleEl.select(); } catch { /* ignore */ } }
 
   // ── 落盘节律 ──
-  function commitTextarea(): void { if (canEdit()) session!.setCurrentText(d.editorEl.value); }
+  function commitTextarea(): void { if (canEdit() && session!.current()) session!.setCurrentText(d.editorEl.value); }   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
   /** 切节点 / 落盘前：章节名框 + 正文都先落进内存图。 */
   function commitEditor(): void { commitTitle(); commitTextarea(); }
   async function persist(push: boolean): Promise<void> {
@@ -219,18 +219,18 @@ export function createProjectMode(d: ProjectModeDeps) {
     const g = ++gen;
     encrypted = false; locked = false;
     try { encrypted = await isDocEncrypted(projectName); } catch { encrypted = false; }
-    if (g !== gen) return false;
+    if (g !== gen) return true;   // 被更新的 open 抢先：不是失败，调用方别退回新稿
     if (encrypted && !d.isUnlocked()) {
       enterLocked(projectName);
       if (!opts.promptUnlock) return true;
       const ok = await d.ensureUnlocked();
-      if (g !== gen) return false;
+      if (g !== gen) return true;
       if (!ok) return true;
     }
     const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     d.setStatus(t("st.loading"));
     const r = await s.open(projectName);
-    if (g !== gen) return false;
+    if (g !== gen) return true;
     home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
@@ -280,7 +280,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     const g = ++gen;
     const s = createProjectSession({ read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
-    if (g !== gen) return false;
+    if (g !== gen) return true;
     home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
