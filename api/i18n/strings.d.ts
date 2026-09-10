@@ -1424,4 +1424,184 @@ export declare const S: {
         readonly zh: "清理完成但扫到 {n} 处残留——重新加载后可再跑一次";
         readonly en: "Wiped, but {n} residue item(s) remain — reload and run again";
     };
+    readonly "project.new": {
+        readonly zh: "新建工程…";
+        readonly en: "New project…";
+    };
+    readonly "project.newTitle": {
+        readonly zh: "新建工程";
+        readonly en: "New project";
+    };
+    readonly "project.newHint": {
+        readonly zh: "一个工程 = 一个 zip：里面是一堆 txt 和它们之间的边。文件名只是管理用（OneDrive 上可见）。空 = 日期码。";
+        readonly en: "A project is one zip: a pile of txt files and the edges between them. The file name is just a handle (visible on OneDrive). Empty = date code.";
+    };
+    readonly "project.created": {
+        readonly zh: "已新建工程 {name}";
+        readonly en: "Project {name} created";
+    };
+    readonly "project.createFailed": {
+        readonly zh: "新建工程失败：{e}";
+        readonly en: "Could not create project: {e}";
+    };
+    readonly "project.openLocal": {
+        readonly zh: "打开本机工程…";
+        readonly en: "Open local project…";
+    };
+    readonly "project.localWriteBack": {
+        readonly zh: "本机工程：保存写回原文件";
+        readonly en: "Local project: saves write back to the file";
+    };
+    readonly "project.localDownloadOnly": {
+        readonly zh: "本机工程：改动只在内存，用保存钮下载一份";
+        readonly en: "Local project: edits live in memory; use Save to download a copy";
+    };
+    readonly "project.localRenameHint": {
+        readonly zh: "本机工程的文件名在磁盘上自己改";
+        readonly en: "Rename a local project on disk yourself";
+    };
+    readonly "project.saved": {
+        readonly zh: "已写回";
+        readonly en: "Written back";
+    };
+    readonly "project.downloaded": {
+        readonly zh: "已下载一份";
+        readonly en: "Downloaded a copy";
+    };
+    readonly "project.tooNew": {
+        readonly zh: "这个工程是更新版本的小黑屋写的（格式 v{v}），本版只读不覆盖";
+        readonly en: "This project was written by a newer WebXiaoHeiWu (format v{v}); read-only here, never overwritten";
+    };
+    readonly "project.corrupt": {
+        readonly zh: "工程文件坏了，打不开（zip 或 graph.json 不对）";
+        readonly en: "Project file is damaged (bad zip or graph.json)";
+    };
+    readonly "project.notProject": {
+        readonly zh: "这个 zip 不是小黑屋工程（没有 graph.json 也没有 contents/）";
+        readonly en: "This zip is not a WebXiaoHeiWu project (no graph.json, no contents/)";
+    };
+    readonly "project.unavailable": {
+        readonly zh: "本地没有这个工程，云端也拿不到";
+        readonly en: "Project not available locally, and the cloud is unreachable";
+    };
+    readonly "edge.aria": {
+        readonly zh: "节点边栏";
+        readonly en: "Edge sidebar";
+    };
+    readonly "edge.toggle": {
+        readonly zh: "显示 / 隐藏边栏";
+        readonly en: "Show / hide edges";
+    };
+    readonly "edge.back": {
+        readonly zh: "回到上一个节点";
+        readonly en: "Back to previous node";
+    };
+    readonly "edge.search": {
+        readonly zh: "检索";
+        readonly en: "Search";
+    };
+    readonly "edge.searchPh": {
+        readonly zh: "检索（至少两个字）";
+        readonly en: "Search (2+ characters)";
+    };
+    readonly "edge.results": {
+        readonly zh: "检索「{q}」";
+        readonly en: "Results for “{q}”";
+    };
+    readonly "edge.noResults": {
+        readonly zh: "没有";
+        readonly en: "Nothing";
+    };
+    readonly "edge.empty": {
+        readonly zh: "这个节点还没有边。选中一段字按 Ctrl+Enter 分裂成新节点，或在下面打一个名字。";
+        readonly en: "No edges yet. Select text and press Ctrl+Enter to split it into a new node, or type a name below.";
+    };
+    readonly "edge.addLinkPh": {
+        readonly zh: "打一个名字 = 连一条边";
+        readonly en: "Type a name = add an edge";
+    };
+    readonly "edge.addLink": {
+        readonly zh: "连";
+        readonly en: "Link";
+    };
+    readonly "edge.spawn": {
+        readonly zh: "分裂选中";
+        readonly en: "Split selection";
+    };
+    readonly "edge.spawnHint": {
+        readonly zh: "选中的字移进一个新节点，当前节点指向它（Ctrl+Enter）";
+        readonly en: "Move the selection into a new node linked from here (Ctrl+Enter)";
+    };
+    readonly "edge.spawnNoSelection": {
+        readonly zh: "先在正文里选中一段字";
+        readonly en: "Select some text first";
+    };
+    readonly "edge.spawnTitle": {
+        readonly zh: "新节点叫什么";
+        readonly en: "Name the new node";
+    };
+    readonly "edge.namePh": {
+        readonly zh: "名字.txt";
+        readonly en: "name.txt";
+    };
+    readonly "edge.badName": {
+        readonly zh: "名字不合法（不能有 / 之类的路径字符，不能以点开头）";
+        readonly en: "Invalid name (no path characters like /, no leading dot)";
+    };
+    readonly "edge.backlinks": {
+        readonly zh: "谁指向这里";
+        readonly en: "Backlinks";
+    };
+    readonly "edge.backlinksOf": {
+        readonly zh: "指向「{name}」的";
+        readonly en: "Linking to “{name}”";
+    };
+    readonly "edge.backlinksNone": {
+        readonly zh: "没有";
+        readonly en: "None";
+    };
+    readonly "edge.download": {
+        readonly zh: "下载一份";
+        readonly en: "Download a copy";
+    };
+    readonly "edge.more": {
+        readonly zh: "更多";
+        readonly en: "More";
+    };
+    readonly "edge.up": {
+        readonly zh: "上移";
+        readonly en: "Move up";
+    };
+    readonly "edge.down": {
+        readonly zh: "下移";
+        readonly en: "Move down";
+    };
+    readonly "edge.rename": {
+        readonly zh: "改名…";
+        readonly en: "Rename…";
+    };
+    readonly "edge.renameTitle": {
+        readonly zh: "节点改名";
+        readonly en: "Rename node";
+    };
+    readonly "edge.unlink": {
+        readonly zh: "断开这条边";
+        readonly en: "Unlink";
+    };
+    readonly "edge.delete": {
+        readonly zh: "删除节点";
+        readonly en: "Delete node";
+    };
+    readonly "edge.deleteTitle": {
+        readonly zh: "删除「{name}」？";
+        readonly en: "Delete “{name}”?";
+    };
+    readonly "edge.deleteMsg": {
+        readonly zh: "正文会没掉（工程 zip 整包重写，没有回收站）；别的节点指向它的边留着，变成占位符。";
+        readonly en: "Its text will be gone (the project zip is rewritten; no trash inside a project). Edges pointing to it stay as placeholders.";
+    };
+    readonly "edge.stub": {
+        readonly zh: "{name}（还没有正文，点它就生出来）";
+        readonly en: "{name} (no text yet; click to create)";
+    };
 };

@@ -1,0 +1,51 @@
+import { type Project, type UnpackResult } from "./format.ts";
+import { type NowFn } from "./graph.ts";
+export interface ProjectSessionDeps {
+    read(name: string): Promise<Blob | null>;
+    write(name: string, blob: Blob, opts: {
+        push: boolean;
+    }): Promise<{
+        pushed?: boolean;
+    }>;
+    now?: NowFn;
+}
+export type OpenResult = {
+    kind: "ok";
+    warnings: string[];
+} | {
+    kind: "unavailable";
+} | Exclude<UnpackResult, {
+    kind: "ok";
+}>;
+export declare function createProjectSession(d: ProjectSessionDeps): {
+    open: (projectName: string) => Promise<OpenResult>;
+    create: (projectName: string, firstNode: string) => void;
+    close: () => void;
+    flush: (push: boolean) => Promise<{
+        wrote: boolean;
+        pushed?: boolean;
+    }>;
+    toBlob: () => Promise<Blob>;
+    readonly name: string | null;
+    readonly dirty: boolean;
+    readonly readOnly: boolean;
+    readonly project: Project;
+    current: () => string | null;
+    currentText: () => string;
+    setCurrentText: (text: string) => boolean;
+    jump: (target: string) => string;
+    spawn: (newName: string, selectedText: string) => string;
+    addLink: (to: string, at?: "top" | "bottom" | undefined) => boolean;
+    removeLink: (to: string) => boolean;
+    setLinksOrder: (links: string[]) => void;
+    rename: (from: string, to: string) => void;
+    remove: (target: string) => boolean;
+    sidebar: () => {
+        name: string;
+        stub: boolean;
+    }[];
+    backlinksOf: (target: string) => string[];
+    find: (q: string, limit?: number) => string[];
+    exists: (target: string) => boolean;
+};
+export type ProjectSession = ReturnType<typeof createProjectSession>;

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="asr-worker" content="./dist/asr-worker-10472c72363d.js" />
+    <meta name="asr-worker" content="./dist/asr-worker-5260728245af.js" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#d8c8a8" />
     <meta name="color-scheme" content="light" />
@@ -121,6 +121,9 @@
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
         <button class="doc-name" id="docNameButton" type="button" hidden aria-label="文件名" data-i18n-aria="top.docName" data-i18n-title="top.docName"></button>
+        <button class="menu-button" id="edgeToggle" type="button" hidden aria-label="节点边栏" data-i18n-aria="edge.toggle" data-i18n-title="edge.toggle">
+          <svg class="ico" aria-hidden="true"><use href="#folder-open"/></svg>
+        </button>
         <span class="top-spacer" aria-hidden="true"></span>
         <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
         <button class="lock-toggle" id="lockToggle" type="button" hidden aria-label="只读保护" data-i18n-aria="top.readOnlyOn"></button>
@@ -138,6 +141,7 @@
         <span data-i18n="ui.key.otherPw">这篇用的不是当前密码（保存仍用它自己的密码）</span>
         <button class="auth-action" id="rekeyButton" type="button" data-i18n="ui.key.rekey">换成当前密码</button>
       </div>
+      <aside id="edgeSidebar" class="edge-sidebar" hidden aria-label="节点边栏" data-i18n-aria="edge.aria"></aside>
       <article class="page">
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
@@ -396,6 +400,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-6b4f3582d319.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-48ca2e52a7bd.mjs"></script>
   </body>
 </html>

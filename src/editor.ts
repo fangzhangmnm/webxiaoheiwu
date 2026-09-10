@@ -66,6 +66,7 @@ export function createEditor(d: EditorDeps) {
     d.editor.scrollTop = 0;
   }
   function applyGuards(): void {
+    if (parked) return;
     const blocked = st.readOnly || st.locked || st.unavailable;
     d.editor.classList.toggle("locked", blocked);
     d.editor.readOnly = blocked;   // 锁/只读 = 真 readOnly：敲进去的字不再被悄悄吞掉（user 2026-09-04「没解锁密码导致的煤气灯」；根治=0.3 懒空白稿）
@@ -87,7 +88,8 @@ export function createEditor(d: EditorDeps) {
     const dirty = pushPending || !!localTimer;
     return dirty ? (isOffline() ? "offline" : "unsynced") : "clean";
   }
-  const canEdit = () => !st.readOnly && !st.locked && !st.unavailable;
+  let parked = false;   // 2.0：工程模式接管 textarea 时 txt 编辑器静默（不收 input、不写盘、不改 readOnly）
+  const canEdit = () => !parked && !st.readOnly && !st.locked && !st.unavailable;
 
   // ── 落盘 / 推云 ──
   let persistInFlight: Promise<void> | null = null;   // 串行：两个 persist 同飞 = 双建稿（审计 L3）
@@ -473,9 +475,13 @@ export function createEditor(d: EditorDeps) {
     flushLocal, pushNow, refreshIfClean,
     toggleReadOnly, toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir, renameTo, displayName,
     canEdit, statusForDoc, syncKind,
-    isDirty: () => !!localTimer || pushPending || d.editor.value !== savedText,
+    isDirty: () => !parked && (!!localTimer || pushPending || d.editor.value !== savedText),
     isUnlockedDoc: () => st.encrypted && isUnlocked(),
     lastOpenName: () => (deviceKvGetJson<string | null>(KV_LAST_OPEN, null) ?? null),
+    /** 工程模式接管前：flush 后静默；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。 */
+    park: async () => { await flushLocal(); parked = true; st.name = null; st.pendingDate = null; st.pendingTitle = null; },
+    resume: () => { parked = false; applyGuards(); },
+    isParked: () => parked,
   };
 }
 

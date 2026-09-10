@@ -21,6 +21,13 @@ export interface DocListFrame {
     complete: boolean;
     stale: boolean;
 }
+export declare function readProjectBlob(name: string): Promise<Blob | null>;
+export declare function pullProjectIfClean(name: string): Promise<FreshResult>;
+export declare function saveProjectBlob(name: string, blob: Blob, opts: {
+    push: boolean;
+}): Promise<SaveResult>;
+/** 新建工程文件：撞名自动追加 " 1"…；返回最终身份（全路径）。 */
+export declare function createProjectDoc(title: string, blob: Blob, date?: string, dir?: string): Promise<string>;
 export declare function invalidateEncryptedFlag(name: string): void;
 export declare function watchDocs(folder: string, cb: (frame: DocListFrame) => void, opts?: {
     onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
@@ -55,7 +62,8 @@ export interface RenameResult {
     oldKept?: boolean;
     cloudDeferred?: boolean;
 }
-/** 改文件名 = 改身份（tryMove；ADR-0007：文件名是管理句柄不是标题）。撞名追加后缀。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
+/** 改文件名 = 改身份（tryMove；ADR-0007：文件名是管理句柄不是标题）。撞名追加后缀。
+ *  ⚠ 改名后新名不带日期前缀 → 名字降序排序下这篇会跳位——**user 2026-09-09 拍板「是 feature 不是 bug」**，别「修」（ai-docs/20260909-sync-hardening-round-vs-weebpaint.md §4）。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */
 export declare function renameDoc(name: string, newTitle: string): Promise<RenameResult | null>;
 /** 转加密后藏标题：改成日期码名 `yyyymmdd-hex4`（日期沿用原名的 8 位前缀，没有则今天）。已是日期码 → 原名不动。失败 → null。 */
 export declare function renameDocToOpaque(name: string): Promise<RenameResult | null>;

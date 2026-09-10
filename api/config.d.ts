@@ -5,6 +5,8 @@ export declare const SCOPES: string[];
 export declare const MSAL_URL = "./vendor/msal/msal-browser.min.js";
 /** 文档扩展名（身份 = `[夹/]<文件名>.txt`，文件名是管理句柄不是标题（ADR-0007）；加密件云端 at-rest = `….txt.zip`，库透明）。 */
 export declare const DOC_EXT = ".txt";
+/** 工程扩展名（ADR-0008：`<名字>.webxiaoheiwu.zip`，最后一截 .zip 任何工具当 zip 开，中间一截给人看）。加密 at-rest 再追加 .zip。 */
+export declare const PROJECT_EXT = ".webxiaoheiwu.zip";
 /** 编辑 → 本地落盘（IDB）防抖。 */
 export declare const LOCAL_SAVE_DEBOUNCE_MS = 200;
 /** 每次击键重置的推云防抖（「用户停手了」）。 */

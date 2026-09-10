@@ -1,5 +1,6 @@
 # 2.0 UI 接线 handoff：数据层已备好，剩下的是 UX 决定
 > 作者：Claude Fable 5.1（claude-fable-5-1）· created 20260910 · as-of dev 0.2.21 + 2.0 数据层（commit 见 git log 2026-09-10）· 69 测绿 · 真机零
+> **2026-09-10 晚更新（edited by Claude Fable 5.1）**：user「2 最好你先做吧」→ §2 的六条已按委托落了一版最小 UI（§4），dev = **v2.0.0-2026-09-10**，真机零。
 > 格式 = ADR-0008–0011；计划 = 家族根 `ai-docs/20260909-wxhw-2.0-long-haul-plan.md`；user 2026-09-09：「UX 不用你管。主要还是创作心理学」→ 本文只摊接口，不做 UI 决定。
 
 ## 1. 已落的（可直接消费）
@@ -25,3 +26,22 @@
 ## 3. 没做 / 不做
 - 没碰 `app.ts` / `editor.ts` / `drawer.ts`（UI 归 user）；没 build bundle、没推 dev。
 - 图片节点、缩略图、mimetype、zip 内历史：ADR-0008 §5 不做。
+
+## 4. 已落的最小 UI（2026-09-10 晚，委托下的 AI 决定；user 随时打回）
+- **工程编辑器** = 同一个 textarea 两种稿：`src/project/mode.ts` 控制器绑定 `ProjectSession`，节律与 txt 同款（200ms 本地 / 15s·30s 推云）；txt 编辑器在工程期 `park()`（不收 input、不写盘）。门面在 `app.ts`（`openAny / syncKindAny / canEditNow / flushLocalAny / pushNowAny`）：谁活着问谁。
+- **边栏** `src/project/sidebar.ts`（`#edgeSidebar`，宽屏常驻页左、<900px 浮层由顶栏钮开合）：当前节点的出边列表（占位符 = 虚线名字），行菜单 = 上移 / 下移 / 改名 / 断边 / 删节点；底部「打一个名字 = 连一条边」；「谁指向这里」= 一次查询临时列表；检索框 ≥2 字、结果临时；回退钮（回退栈只在内存）。
+- **spawn**：选中正文按 **Ctrl+Enter**（或边栏「分裂选中」）→ 问名字（默认 = 选中首行前 12 字 + .txt）→ 那段字从源稿移走（走 `replaceRange` 保 undo）进新节点，当前节点顶部长出一条边，光标跳过去。**Alt+←** 回退。
+- **新建工程**：抽屉「+」菜单「新建工程…」（名字空 = 日期码；首节点 = `yyyymmdd-hex4.txt`）。
+- **无地骑士**：「打开本机工程…」：有 FSA（Chromium / Quest）写回原文件；没有（iPad Safari）读走文件选择器、保存 = 下载一份。本机工程不自动写，Ctrl+S / 保存钮显式触发。
+- **图库 card view 没换**：抽屉照旧列 txt 与工程两档（`.webxiaoheiwu.zip` 显示为 stem）。`@internal/gallery` 已装未接（第四问的「Gallery+Editor / Editor Only」两模式：Editor Only 这半先落，Gallery 那半下一轮）。
+- 顶栏工程模式 = 「工程名 · 节点名」，加密 / 只读钮隐藏（工程整包加密走 store 透明层，UI 后补）。
+- 图标：边栏开关暂用 `folder-open` 顶位，真图标需求已登记图标库 TODO。
+
+### 真机清单（Quest / iPad）
+1. 抽屉「+」→「新建工程…」→ 顶栏显示「名 · yyyymmdd-xxxx.txt」，左侧边栏出现（iPad 竖屏需点顶栏边栏钮）。
+2. 打几行字 → 状态栏「未同步」→ 15s 内推云 → 徽章 synced；OneDrive 里出现 `名.webxiaoheiwu.zip`，7-Zip 打开 = `graph.json + contents/ + .webxiaoheiwu/`。
+3. 选中一段字 Ctrl+Enter（Quest 实体键盘）→ 名字框 → 新节点；边栏第一条是它；Alt+← 回来，源稿里那段字没了。
+4. 边栏打一个不存在的名字「连」→ 虚线条目；点它 → 生出空节点。
+5. 关掉重开 app → 落回上次所在节点（editor-state.last）。
+6. 换设备打开同一工程 → 落到上次**保存**时的节点。
+7. 「打开本机工程…」Quest 上选一个下载好的 zip → 改字 → Ctrl+S → 文件被写回（FSA）；iPad 上 = 下载一份。

@@ -1562,3 +1562,39 @@ button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -
 .save-btn.flash { color: var(--ok); }
 /* ── iOS 软键盘：纸面整体缩到键盘上方（visualViewport → --kb-offset），光标/候选/话筒都在可见区（user 2026-09-04「屏幕没跟上，被键盘遮挡，候选也看不到」）── */
 .page { height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px - var(--kb-offset, 0px)); }
+
+/* ═══ 2.0 工程模式：边栏 = 当前节点的出边列表（ADR-0008；journal 2026-09-09「左边栏变成这个 node 的 edge」）。
+   宽屏常驻在页左；窄屏（<900px）为浮层，顶栏 #edgeToggle 开合。零全图、零计数。 ═══ */
+.edge-sidebar {
+  position: fixed; top: 52px; bottom: 12px; left: 12px; width: 240px;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg-1); color: var(--ink);
+  font-family: var(--font-ui); font-size: 13px; z-index: 5; box-sizing: border-box;
+}
+.edge-sidebar[hidden] { display: none; }
+body[data-project] .page { margin-left: calc(264px + max(0px, (100vw - var(--box-max)) / 2 - 264px)); }
+.edge-head { display: flex; align-items: center; gap: 6px; }
+.edge-titles { min-width: 0; flex: 1; }
+.edge-node { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edge-project { color: var(--ink-soft); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edge-search, .edge-add-input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; }
+.edge-list { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.edge-row { display: flex; align-items: center; gap: 4px; }
+.edge-row.header { color: var(--ink-soft); font-size: 11px; text-transform: none; padding: 6px 4px 2px; }
+.edge-row.empty { color: var(--ink-soft); padding: 8px 4px; line-height: 1.5; }
+.edge-main { flex: 1; min-width: 0; text-align: left; background: transparent; border: none; border-radius: 6px; padding: 7px 8px; color: var(--ink); font: inherit; cursor: pointer; display: flex; flex-direction: column; }
+.edge-main:hover, .edge-main:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.edge-row.current .edge-main { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.edge-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edge-row.stub .edge-name { opacity: .7; border-bottom: 1px dashed currentColor; }   /* 占位符：只是还没有文件的名字 */
+.edge-sub { color: var(--ink-soft); font-size: 11px; }
+.edge-more { flex: none; }
+.edge-foot { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.edge-add { display: flex; gap: 4px; }
+.edge-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.edge-actions .auth-action .ico { width: 14px; height: 14px; margin-right: 4px; }
+@media (max-width: 900px) {
+  body[data-project] .page { margin-left: auto; }
+  .edge-sidebar { width: min(82vw, 320px); box-shadow: var(--shadow); }
+  .edge-sidebar.collapsed { display: none; }
+}

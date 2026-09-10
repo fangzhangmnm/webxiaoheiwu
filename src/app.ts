@@ -8,7 +8,12 @@ import { initSheets, openConfirmSheet, openInputSheet, openChoiceSheet, withBusy
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
-import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders } from "./docs.ts";
+import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc } from "./docs.ts";
+import { docKind, formatDate, hex4 } from "./doc-model.ts";
+import { createProjectMode } from "./project/mode.ts";
+import { createEdgeSidebar } from "./project/sidebar.ts";
+import { pickLocalProject, triggerDownload } from "./project/local-home.ts";
+import { packProject } from "./project/format.ts";
 import { createDrawer } from "./drawer.ts";
 import { initIdleGate } from "./idle-gate.ts";
 import type { SyncKind } from "./editor.ts";
@@ -57,7 +62,7 @@ const SAVE_SPEC: Record<SyncKind, { icon: string; cls: string; title: Parameters
   locked: null, unavailable: null, none: null,
 };
 function renderSaveButton(): void {
-  const spec = SAVE_SPEC[editor.syncKind()];
+  const spec = SAVE_SPEC[syncKindAny()];
   saveButton.hidden = !spec;
   if (!spec) return;
   useIcon(saveButton, spec.icon);
@@ -66,13 +71,13 @@ function renderSaveButton(): void {
 }
 /** Ctrl+S 与顶栏保存钮同一入口：脏 → 立即上传/落本地；干净且已登录 → 复查云端（同 WeebPaint「新鲜时点=刷新」）。 */
 async function smartSave(): Promise<void> {
-  const before = editor.syncKind();
+  const before = syncKindAny();
   if (before === "none" || before === "locked" || before === "unavailable") return;
   saveButton.classList.add("flash"); setTimeout(() => saveButton.classList.remove("flash"), 500);
   void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
-  if (before === "clean") { await editor.refreshIfClean(); if (editor.syncKind() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return; }
-  await editor.pushNow();
-  const after = editor.syncKind();
+  if (before === "clean") { await refreshIfCleanAny(); if (syncKindAny() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return; }
+  await pushNowAny();
+  const after = syncKindAny();
   setStatus(after === "clean" ? t("save.synced") : after === "local" ? t("save.local") : after === "offline" ? t("save.offline") : after === "unsynced" ? t("save.stillPending") : "");
   renderSaveButton();
 }
@@ -147,11 +152,66 @@ const editor = createEditor({
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
 });
 let voiceAbortHook: (() => void) | null = null;
+// ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
+const project = createProjectMode({
+  editorEl, setStatus, setState,
+  isSignedIn: () => auth.isSignedIn(),
+  onChanged: () => { renderTopbar(); renderSaveButton(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },
+  onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
+  askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
+});
+const edgeSidebar = createEdgeSidebar({
+  el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
+  onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
+});
+const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
+const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());
+const canEditNow = () => (project.active() ? project.canEdit() : editor.canEdit());
+const noteExternalEditAny = () => (project.active() ? project.noteExternalEdit() : editor.noteExternalEdit());
+const flushLocalAny = () => (project.active() ? project.flushLocal() : editor.flushLocal());
+const pushNowAny = () => (project.active() ? project.pushNow() : editor.pushNow());
+const refreshIfCleanAny = () => (project.active() ? Promise.resolve() : editor.refreshIfClean());
+async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
+/** 打开任一身份：工程 → 工程模式（txt 编辑器 park）；txt → txt 编辑器（工程模式关）。 */
+async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
+  if (docKind(name) === "project") {
+    if (!editor.isParked()) await editor.park();
+    const ok = await project.openStore(name);
+    document.body.dataset.project = "1";
+    return ok;
+  }
+  await leaveProject();
+  return editor.open(name, opts);
+}
+async function newProjectFlow(): Promise<void> {
+  const raw = await openInputSheet(t("project.newTitle"), { message: t("project.newHint"), placeholder: t("fn.ph"), okLabel: t("common.ok") });
+  if (raw == null) return;
+  const date = formatDate(Date.now());
+  const firstNode = `${date}-${hex4()}.txt`;
+  try {
+    const empty = await packProject({ nodes: new Map(), contents: new Map(), editorState: { last: null }, readVersion: 1 });
+    const name = await createProjectDoc(raw, empty, date, drawer.currentFolder());
+    if (!editor.isParked()) await editor.park();
+    await project.createInStore(name, firstNode);
+    document.body.dataset.project = "1";
+    drawer.close();
+    setStatus(t("project.created", { name: parseDocName(name).stem }));
+  } catch (e) { reportError(e); setStatus(t("project.createFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+}
+async function openLocalProjectFlow(): Promise<void> {
+  const lh = await pickLocalProject();
+  if (!lh) return;
+  if (!editor.isParked()) await editor.park();
+  const ok = await project.openLocal(lh);
+  document.body.dataset.project = "1";
+  drawer.close();
+  if (ok) setStatus(lh.canWriteBack ? t("project.localWriteBack") : t("project.localDownloadOnly"));
+}
 const drawer = createDrawer({
   drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
   docList: $("docList"), docListEmpty: $("docListEmpty"), docActions: $("drawerActions"), trashActions: $("trashActions"), settingsView: $("settingsView"),
   breadcrumb: $("docBreadcrumb"),
-  activeName: () => editor.state.name,
+  activeName: () => activeName(),
   currentDir: () => editor.currentDir(),
   onMoveDoc: async (name, toDir) => {
     if (editor.state.name === name) { await editor.moveTo(toDir); return; }
@@ -161,9 +221,9 @@ const drawer = createDrawer({
       setStatus(r.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: toDir || t("list.root") }), { error: !!r.oldKept });
     } catch (e) { reportError(e); setStatus(t("st.moveFailed"), { error: true }); }
   },
-  onOpenDoc: async (name) => { await editor.open(name, { promptUnlock: true }); },
+  onOpenDoc: async (name) => { await openAny(name, { promptUnlock: true }); },
   onRenameDoc: async (name) => { if (name === editor.state.name) await renameCurrentDoc(); else await renameOtherDoc(name); },   // 2026-09-09 审计 #6
-  onActiveTrashed: async () => { await editor.flushLocal(); editor.clear(); },
+  onActiveTrashed: async () => { if (project.active()) await leaveProject(); else await editor.flushLocal(); editor.clear(); },
   onSettingsShown: () => renderSettings(),
   focusEditor: () => editorEl.focus(),
   setStatus,
@@ -175,6 +235,14 @@ const lockToggle = $<HTMLButtonElement>("lockToggle");
 const docNameButton = $<HTMLButtonElement>("docNameButton");   // 文件名 = 管理句柄不是标题（ADR-0007）：住顶栏，点了改名
 const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`; };
 function renderTopbar(): void {
+  if (project.active()) {   // 工程模式：顶栏 = 工程名 · 节点名 + 边栏开关；加密/只读钮属于 txt 稿
+    docNameButton.hidden = false; docNameButton.textContent = `${project.displayName() ?? ""}${project.current() ? " · " + project.current() : ""}`; docNameButton.classList.remove("pending");
+    docNameButton.title = t("top.docName"); docNameButton.setAttribute("aria-label", t("top.docName"));
+    cryptoToggle.hidden = true; lockToggle.hidden = true; keyBanner.hidden = true; edgeToggle.hidden = false;
+    renderMicVisibility();
+    return;
+  }
+  edgeToggle.hidden = true;
   const st = editor.state;
   const hasDoc = !!st.name || !!st.pendingDate;
   const dn = editor.displayName();
@@ -195,9 +263,12 @@ function renderTopbar(): void {
   renderMicVisibility();
 }
 const keyBanner = $("keyBanner");
+const edgeToggle = $<HTMLButtonElement>("edgeToggle");
+edgeToggle.addEventListener("click", () => { $("edgeSidebar").classList.toggle("collapsed"); });
 docNameButton.addEventListener("click", () => { void renameCurrentDoc(); });
 /** 顶栏改名 sheet：文件名只是管理句柄，OneDrive 上可见（加密稿也一样）——文案里说清，别把标题写进来。空 = 不改。 */
 async function renameCurrentDoc(): Promise<void> {
+  if (project.active()) { await renameProjectFile(); return; }
   const st = editor.state;
   if (!st.name && !st.pendingDate) return;
   // 2026-09-09 审计 #6：失败不再一次性——保留输入再问（最多三轮），别让用户重打。
@@ -207,6 +278,25 @@ async function renameCurrentDoc(): Promise<void> {
     if (v == null || !v.trim()) return;
     if (await editor.renameTo(v)) return;
     typed = v;
+  }
+}
+/** 工程文件改名（文件名 = 管理句柄，ADR-0007；工程内节点改名在边栏）。本机工程不在这改（文件在磁盘上）。 */
+async function renameProjectFile(): Promise<void> {
+  const name = project.name();
+  if (!name) { setStatus(t("project.localRenameHint")); return; }
+  let typed = parseDocName(name).stem;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const v = await openInputSheet(t("fn.title"), { message: attempt ? t("fn.retryHint") : t("fn.hint"), defaultValue: typed, placeholder: t("fn.ph"), okLabel: t("fn.ok") });
+    if (v == null || !v.trim()) return;
+    typed = v;
+    try {
+      await project.flushLocal();
+      const rr = await renameDoc(name, v);
+      if (!rr) { setStatus(t("st.renameFailed"), { error: true }); continue; }
+      if (rr.oldKept) setStatus(t("st.renameOldKept"), { error: true }); else if (rr.cloudDeferred) setStatus(t("st.renameCloudDeferred"), { unsynced: true }); else setStatus(t("st.renamed", { name: parseDocName(rr.name).stem }));
+      await project.openStore(rr.name);
+      return;
+    } catch (e) { reportError(e); setStatus(t("st.renameFailed"), { error: true }); }
   }
 }
 /** 抽屉行改名（不是当前稿）：docs.renameDoc（tryMove；撞名加后缀）→ 状态行 + 列表重拉。文件名只是管理句柄（ADR-0007），文案同顶栏。 */
@@ -254,8 +344,8 @@ lockCardUnlock.addEventListener("click", reopenWithPrompt);
 lockCardRetry.addEventListener("click", reopenWithPrompt);
 $("lockCardNew").addEventListener("click", () => { void editor.newDoc({ dir: editor.currentDir() }); });
 function rememberLastActive(): void {
-  if (!booted || !editor.state.name || !auth.isSignedIn()) return;   // 冷启动 open(last) 不写云端指针——别盖掉别的设备最后写的那篇
-  appState.setItem("lastActive", { name: editor.state.name, savedAt: Date.now(), device: deviceLabel() });
+  if (!booted || !activeName() || !auth.isSignedIn()) return;   // 冷启动 open(last) 不写云端指针——别盖掉别的设备最后写的那篇
+  appState.setItem("lastActive", { name: activeName()!, savedAt: Date.now(), device: deviceLabel() });
 }
 function deviceLabel(): string {
   const ua = navigator.userAgent.toLowerCase();
@@ -298,7 +388,7 @@ async function toggleIme(): Promise<void> { await setImeEnabled(!ime.enabled); }
 imeStatus.addEventListener("mousedown", (e) => e.preventDefault());   // 别抢编辑器焦点
 imeStatus.addEventListener("click", () => {
   void ime.toggleAsciiMode().then((r) => {
-    if (r.type === "commit") { commitText(editorEl, r.consumedBuffer, r.text); editor.noteExternalEdit(); }
+    if (r.type === "commit") { commitText(editorEl, r.consumedBuffer, r.text); noteExternalEditAny(); }
     renderImeState();
   });
 });
@@ -318,11 +408,11 @@ async function imeKeydown(el: HTMLTextAreaElement | HTMLInputElement, event: Key
   }
   shiftCleanPress = false;
   if (voiceMode && el === editorEl && !event.ctrlKey && !event.metaKey && !event.altKey && (event.key.length === 1 || event.key === "Backspace" || event.key === "Enter")) { voiceMode = false; renderMicVisibility(); }   // 敲了实体键 = 不是纯口述
-  if (!editor.canEdit()) return;
+  if (!canEditNow()) return;
   const r = await ime.onKeydown(event);
   if (r.type === "commit") {
     commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
-    if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
+    if (el === editorEl) noteExternalEditAny(); else el.dispatchEvent(new Event("input"));
     void maybePushUserDict();
   }
   renderImeState();
@@ -335,7 +425,7 @@ function routeSyntheticKey(el: HTMLTextAreaElement | HTMLInputElement, key: stri
   void pending.then((r) => {
     if (r.type === "commit") {
       commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
-      if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
+      if (el === editorEl) noteExternalEditAny(); else el.dispatchEvent(new Event("input"));
       void maybePushUserDict();
     }
     renderImeState();
@@ -351,7 +441,7 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
     const r = await ime.toggleAsciiMode();
     if (r.type === "commit") {
       commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
-      if (el === editorEl) editor.noteExternalEdit(); else el.dispatchEvent(new Event("input"));
+      if (el === editorEl) noteExternalEditAny(); else el.dispatchEvent(new Event("input"));
     }
     renderImeState();
   });
@@ -774,10 +864,15 @@ newDocButton.addEventListener("click", (e) => {
     items: () => [
       { id: "doc", label: t("ui.newDoc"), icon: "new" },
       { id: "enc", label: t("ui.newEncDoc"), icon: "lock" },
+      { id: "project", label: t("project.new"), icon: "new", separatorBefore: true },
+      { id: "local", label: t("project.openLocal"), icon: "folder-open" },
       { id: "folder", label: t("ui.newFolder"), icon: "create-folder", separatorBefore: true, hidden: !!drawer.currentFolder() },   // 只一层：夹里不再建夹（ADR-0006）
     ],
     onPick: (id) => {
       if (id === "folder") { void drawer.newFolder(); return; }
+      if (id === "project") { void newProjectFlow(); return; }
+      if (id === "local") { void openLocalProjectFlow(); return; }
+      if (project.active()) { void leaveProject().then(() => editor.newDoc({ dir: drawer.currentFolder(), encrypted: id === "enc" })).then(() => drawer.close()); return; }
       void editor.newDoc({ dir: drawer.currentFolder(), encrypted: id === "enc" }).then(() => drawer.close());
     },
   });
@@ -788,16 +883,18 @@ $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash
 $("reloadButton").addEventListener("click", () => { void (async () => { await editor.flushLocal(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
-  if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); }
+  if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
+  if (project.active() && (event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void project.spawnFromSelection().then((ok) => { if (ok) edgeSidebar.render(); }); return; }
+  if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }
 });
 
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
 async function resumeSync(): Promise<void> {
   if (!auth.isSignedIn()) return;
   setStatus(t("st.syncing"));
-  await editor.pushNow();
+  await pushNowAny();
   await requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
-  await editor.refreshIfClean();
+  await refreshIfCleanAny();
   await reconcileCollections();
   drawer.subscribe();   // 2026-09-09 审计 #8：refresh 只重画缓存帧，回线/复查要重拉
   setState(editor.statusForDoc());
@@ -827,12 +924,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   void imeKeydown(editorEl, event);   // 这一击不丢：直接走编辑器的 IME 路径（放行键的默认动作会落进刚聚焦的编辑器）
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") { void editor.flushLocal().then(() => { if (auth.isSignedIn()) return editor.pushNow(); }); void pushUserDict(); void flushCollections(); }
+  if (document.visibilityState === "hidden") { void flushLocalAny().then(() => { if (auth.isSignedIn()) return pushNowAny(); }); void pushUserDict(); void flushCollections(); }
 });
 // #60-C 同款（2026-09-09，对账 WeebPaint v0.14.4）：只在 persisted=false（页面真在销毁）时写。persisted=true = 要进 bfcache：WebKit 上 pagehide 里起的
 //   IDB 写永远 commit 不了，只会把锁冻在旧页里、让 redirect 回来的新页全挂（WeebPaint ai-docs/20260909-bfcache-idb-lock-daily-reauth-analysis.md）；
 //   store 0.12.1 起也会把这种写直接弃掉。要落盘的必须在导航之前写完（onSignIn 已 await flush）。
-window.addEventListener("pagehide", (e: PageTransitionEvent) => { if (!e.persisted) { void editor.flushLocal(); void flushCollections(); } });
+window.addEventListener("pagehide", (e: PageTransitionEvent) => { if (!e.persisted) { void flushLocalAny(); void flushCollections(); } });
 window.addEventListener("online", () => {
   renderCloudButton(); renderSaveButton();
   if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); }
@@ -889,11 +986,11 @@ async function boot(): Promise<void> {
 
   // 续写：本机上次打开的稿 → 否则最新一篇 → 否则新稿
   const last = editor.lastOpenName();
-  if (last) await editor.open(last);
+  if (last) await openAny(last);
   else {
     await Promise.race([drawer.firstFrame(), new Promise((r) => setTimeout(r, 3000))]);   // 等列表首帧（最多 3s），不再死等 1.5s 后开空新稿
     const first = drawer.items()[0]?.name ?? null;
-    if (first) await editor.open(first); else await editor.newDoc();
+    if (first) await openAny(first); else await editor.newDoc();
   }
   booted = true;
   if (new URLSearchParams(location.search).has("reset")) { setStatus(t("settings.forceUpdated", { v: APP_VERSION })); try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ } }   // 强制更新回执
@@ -924,7 +1021,7 @@ function afterSignIn(): Promise<void> {
           if (known && !known.encrypted) await editor.open(remote.name);
         }
       }
-      await editor.refreshIfClean();
+      await refreshIfCleanAny();
       drawer.subscribe();   // 重拉（drawer.refresh 只重画缓存帧——审计 #8）
     } catch (e) { reportError(e, "warning"); }
   })().finally(() => { afterSignInInFlight = null; });

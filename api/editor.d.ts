@@ -56,5 +56,9 @@ export declare function createEditor(d: EditorDeps): {
     isDirty: () => boolean;
     isUnlockedDoc: () => boolean;
     lastOpenName: () => string | null;
+    /** 工程模式接管前：flush 后静默；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。 */
+    park: () => Promise<void>;
+    resume: () => void;
+    isParked: () => boolean;
 };
 export type Editor = ReturnType<typeof createEditor>;

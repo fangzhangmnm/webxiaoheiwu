@@ -10,6 +10,9 @@ export interface ParsedDocName {
     /** 去扩展名的显示名（不含夹）= title。 */
     stem: string;
 }
+/** 身份两档（2.0）：单篇 txt 稿 / zip 工程（ADR-0008 §8 并存）。 */
+export type DocKind = "txt" | "project";
+export declare function docKind(name: string): DocKind | null;
 export declare function splitDocPath(path: string): {
     dir: string;
     base: string;
@@ -24,7 +27,7 @@ export declare function sanitizeTitle(s: string): string;
 /** 4 位随机 hex（无名稿消歧；WeebPaint v217 惯例）。 */
 export declare function hex4(): string;
 /** 有名保名，无名日期：名 → `<名>.txt`；空 → `yyyymmdd-hex4.txt`（日期码）。dir 非空则带夹前缀（不含碰撞后缀）。 */
-export declare function makeDocName(date: string, title: string, dir?: string, suffix?: string): string;
+export declare function makeDocName(date: string, title: string, dir?: string, suffix?: string, kind?: DocKind): string;
 /** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
 export declare function isOpaqueStem(stem: string): boolean;
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */

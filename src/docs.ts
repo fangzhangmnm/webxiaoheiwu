@@ -28,6 +28,7 @@ const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => r
 // 2.0 工程（ADR-0008）：zip 容器走 isZip:true（store 的 ZipFile；加密透明，at-rest 追加 .zip）。字节对 store 不透明。
 const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().file(name, { isZip: true, mode });
 export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
+export function pullProjectIfClean(name: string): Promise<FreshResult> { return zipFile(name).pullIfClean(); }
 export async function saveProjectBlob(name: string, blob: Blob, opts: { push: boolean }): Promise<SaveResult> { return await zipFile(name).save(blob, { tryPush: opts.push }); }
 /** 新建工程文件：撞名自动追加 " 1"…；返回最终身份（全路径）。 */
 export async function createProjectDoc(title: string, blob: Blob, date = formatDate(Date.now()), dir = ""): Promise<string> {
@@ -138,7 +139,7 @@ export interface RenameResult { name: string; oldKept?: boolean; cloudDeferred?:
 export async function renameDoc(name: string, newTitle: string): Promise<RenameResult | null> {
   const p = parseDocName(name);
   if (!newTitle.trim()) return { name };   // 禁「未命名」：清空 = 不改名（WeebPaint 同约定）
-  return tryMoveWithCollision(name, makeDocName(formatDate(Date.now()), newTitle, p.dir));
+  return tryMoveWithCollision(name, makeDocName(formatDate(Date.now()), newTitle, p.dir, undefined, docKind(name) ?? "txt"));   // 2.0：工程改名保留 .webxiaoheiwu.zip
 }
 /** 转加密后藏标题：改成日期码名 `yyyymmdd-hex4`（日期沿用原名的 8 位前缀，没有则今天）。已是日期码 → 原名不动。失败 → null。 */
 export async function renameDocToOpaque(name: string): Promise<RenameResult | null> {
