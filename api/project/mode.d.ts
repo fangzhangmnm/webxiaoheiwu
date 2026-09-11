@@ -189,7 +189,8 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     detachFromTree: (target: string) => boolean;
     archiveAfterCurrent: (target: string) => boolean;
     archiveUnderCurrent: (target: string) => boolean;
-    joinTrunk: (target: string) => boolean;
+    movePage: (target: string, to: MoveTo) => boolean;
+    moveTargets: (target: string, q: string, limit?: number) => string[];
     exportBranchText: (target: string) => string;
     addLink: (to: string) => boolean;
     removeLink: (to: string) => boolean;
@@ -226,6 +227,13 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     thumbnail: () => Uint8Array | null;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;
+/** 挪到… 的落点：某页之下（孩子末尾）/ 之后（同层）/ 书的末尾（顶层）。 */
+export type MoveTo = {
+    kind: "under" | "after";
+    anchor: string;
+} | {
+    kind: "end";
+};
 /** spawn 默认名：选中文字首行前 12 个字（去路径字符）。空 → ""（调用方退到章节名）。 */
 export declare function defaultNodeName(sel: string): string;
 /** 用户输入 → 合法节点名（没扩展名补 .txt；非法 → null）。 */

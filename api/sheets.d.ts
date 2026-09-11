@@ -52,6 +52,31 @@ export interface Choice<T> {
     onPick?: () => void;
 }
 export declare function openChoiceSheet<T>(title: string, message: string, choices: Choice<T>[]): Promise<T | null>;
+/** 通用「搜索 + 选一项」sheet（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」「通用件同意」「不用原生 select」；created 2026-09-10 by Claude Fable 5.1）。
+ *  首用 = 挪到…（app.ts movePageFlow）；「链接到已有页」「移到夹」之类以后同一个件。列表自绘（iOS 原生 select 是滚轮、Quest 更糟）。
+ *  rows 由 search(q) **同步**给（q 空 = 默认列表，调用方决定给什么）；点行 = 选中 → 列表下方出现该行的动作钮（actions(row)，按行算：固定行可以只有一个动作）。
+ *  键盘：Enter 没选中 = 选第一行、已选中 = 主动作（primary，没有就第一个）；↑↓ 换行；Esc / 取消 / 点空白 = null。 */
+export interface PickRow<T> {
+    value: T;
+    label: string;
+    icon?: string;
+}
+export interface PickAction<A extends string> {
+    id: A;
+    label: string;
+    primary?: boolean;
+}
+export interface PickOpts<T, A extends string> {
+    message?: string;
+    placeholder?: string;
+    emptyText: string;
+    search: (q: string) => PickRow<T>[];
+    actions: (row: PickRow<T>) => PickAction<A>[];
+}
+export declare function openPickSheet<T, A extends string>(title: string, opts: PickOpts<T, A>): Promise<{
+    value: T;
+    action: A;
+} | null>;
 interface GateAction<T> {
     label: string;
     value: T;

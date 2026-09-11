@@ -1653,8 +1653,8 @@ export declare const S: {
         readonly en: "Sidebar";
     };
     readonly "top.addPage": {
-        readonly zh: "加一页";
-        readonly en: "Add a page";
+        readonly zh: "这一页…（加页 / 挪到）";
+        readonly en: "This page… (add / move)";
     };
     readonly "edge.back": {
         readonly zh: "回到上一页";
@@ -1884,13 +1884,49 @@ export declare const S: {
         readonly zh: "归档到这页之下";
         readonly en: "File under this page";
     };
-    readonly "edge.joinTrunk": {
-        readonly zh: "归入主干";
-        readonly en: "File into the trunk";
+    readonly "edge.moveTo": {
+        readonly zh: "挪到…";
+        readonly en: "Move to…";
     };
-    readonly "edge.joinedTrunk": {
-        readonly zh: "「{name}」已归入主干";
-        readonly en: "“{name}” filed into the trunk";
+    readonly "edge.moveTitle": {
+        readonly zh: "把「{name}」挪到…";
+        readonly en: "Move “{name}” to…";
+    };
+    readonly "edge.moveHintTree": {
+        readonly zh: "它下面的 {n} 个子节跟着一起挪。";
+        readonly en: "Its {n} child page(s) move with it.";
+    };
+    readonly "edge.movePh": {
+        readonly zh: "搜页名或正文";
+        readonly en: "Search page names or text";
+    };
+    readonly "edge.moveRootEnd": {
+        readonly zh: "书的末尾（顶层）";
+        readonly en: "End of the book (top level)";
+    };
+    readonly "edge.movePutHere": {
+        readonly zh: "放到这里";
+        readonly en: "Put it here";
+    };
+    readonly "edge.moveUnder": {
+        readonly zh: "放到它之下";
+        readonly en: "Put it under this page";
+    };
+    readonly "edge.moveAfter": {
+        readonly zh: "放到它之后";
+        readonly en: "Put it after this page";
+    };
+    readonly "edge.movedUnder": {
+        readonly zh: "已把「{name}」挪到「{to}」之下";
+        readonly en: "Moved “{name}” under “{to}”";
+    };
+    readonly "edge.movedAfter": {
+        readonly zh: "已把「{name}」挪到「{to}」之后";
+        readonly en: "Moved “{name}” after “{to}”";
+    };
+    readonly "edge.movedEnd": {
+        readonly zh: "已把「{name}」挪到书的末尾";
+        readonly en: "Moved “{name}” to the end of the book";
     };
     readonly "edge.exportBranch": {
         readonly zh: "导出这一支…";

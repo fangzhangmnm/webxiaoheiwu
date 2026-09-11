@@ -103,6 +103,13 @@ for (const [w, h] of sizes) {
   probe(tag, "sidebar keeps the state it had when 书库 was opened from it (no auto-close)", await sidebarShown());
   // 工程：写 + 退格探针
   probe(tag, "book mode: top-bar + (add page) visible, left of ☰", await page.evaluate(() => { const a = document.getElementById("addPageButton"), m = document.getElementById("menuButton"); return !a.hidden && a.getBoundingClientRect().right <= m.getBoundingClientRect().left + 1; }));
+  // 书库钮（user 2026-09-10「标题左边放书库图标。标题还是改名」）：顶栏最左 = 书库图标、常驻；点了开书库；标题仍是改名（下面「project rename → top bar updates」探针）
+  probe(tag, "top bar: library button = leftmost item, left of the project name, visible", await page.evaluate(() => { const l = document.getElementById("libraryButton"), n = document.getElementById("docNameButton"); const first = [...document.querySelector(".top-bar").children].filter((c) => !c.hidden && c.tagName !== "SPAN")[0]; return !!l && !l.hidden && !n.hidden && l.getBoundingClientRect().right <= n.getBoundingClientRect().left + 1 && first === l; }));
+  if (w < 900) await ensureSidebar(false);
+  await page.click("#libraryButton"); await wait(600);
+  probe(tag, "library button → 书库 opens", await page.evaluate(() => !document.getElementById("galleryFull").classList.contains("hidden")));
+  await page.click("#galleryBack"); await wait(300);
+  probe(tag, "galleryBack → editor again, same project, library button still there", await page.evaluate(() => document.getElementById("galleryFull").classList.contains("hidden") && !document.getElementById("libraryButton").hidden) && (await page.textContent("#docNameButton")).trim() === "作品");
   await clickEditor(); await page.keyboard.type("她推开门。他在窗边。窗外是雨。"); await wait(300);
   { const before = await page.inputValue("#editor"); await page.keyboard.press("End"); await page.keyboard.press("Backspace"); await wait(100);
     const after = await page.inputValue("#editor"); probe(tag, "backspace in project", after.length === before.length - 1, `(${before.length}→${after.length})`); await page.keyboard.type("。"); }
@@ -198,21 +205,56 @@ for (const [w, h] of sizes) {
     await page.fill("#edgeSearch", "她推"); await wait(300);
     r = await rowMenu("results", "她推开门。.txt"); probe(tag, "search finds the loose page; not discarded → no row menu (no orphan concept)", !r.opened && (await rows()).includes("她推开门。"), JSON.stringify(r));
     await page.fill("#edgeSearch", ""); await wait(200);
-    // 归入主干（user 2026-09-10「为什么对于txt转的书我还是只能加链接没法加孩子和兄弟」）：散页上 = 侧栏首行 + 顶栏「+」菜单一条；树空（v2.1.5 之前升的书）也能开树
+    // 挪到…（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」「通用件同意」「不用原生 select」；v2.1.6 归入主干并入 = 固定首行「书的末尾」）：
+    //   散页上 = 侧栏首行 + 顶栏「+」菜单一条；树行 ⋯ 菜单一条；pick sheet = 搜索框 + 自绘列表（#sheetPick）+ 选中后才出动作钮（之下 primary / 之后；书的末尾 = 放到这里）；自己 / 自己的子树不给；Enter / ↓ 键盘路
+    const pickRows = () => page.evaluate(() => [...document.querySelectorAll("#sheetPick li[role=option] span")].map((e) => e.textContent));
+    const pickActions = () => page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => (b.textContent ?? "").trim()));
+    const pickRow = async (label) => { await page.evaluate((l) => { [...document.querySelectorAll("#sheetPick li[role=option]")].find((li) => li.querySelector("span")?.textContent === l)?.querySelector("button")?.click(); }, label); await wait(120); };
+    const pickAction = async (re) => { await page.evaluate((r) => { [...document.querySelectorAll("#sheetChoices button")].find((x) => new RegExp(r).test(x.textContent ?? ""))?.click(); }, re.source); await wait(300); };
+    const pickSheetOpen = () => page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && !document.getElementById("sheetPick").classList.contains("hidden"));
     await page.evaluate(() => { window.__xhw.project.jump("她推开门。.txt"); window.__xhw.sidebar.render(); }); await wait(150);
-    probe(tag, "loose page: sidebar first row = 归入主干; no `..`, no + sibling", (await parentRow()) === null && await page.evaluate(() => { const j = document.getElementById("edgeJoinTrunk"); return !!j && !document.getElementById("edgeAddSibling") && document.querySelector("#edgeList .edge-row")?.contains(j) === true; }), JSON.stringify(await blocks()));
+    probe(tag, "loose page: sidebar first row = 挪到…; no `..`, no + sibling, no 归入主干", (await parentRow()) === null && await page.evaluate(() => { const j = document.getElementById("edgeMoveTo"); return !!j && !document.getElementById("edgeAddSibling") && !document.getElementById("edgeJoinTrunk") && document.querySelector("#edgeList .edge-row")?.contains(j) === true; }), JSON.stringify(await blocks()));
     if (w < 900) await ensureSidebar(false);
     await page.click("#addPageButton"); await wait(250);
     { const items = await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()));
-      probe(tag, "loose page: top-bar + menu = 加子节 / 归入主干 (no 加兄弟页)", items.some((x) => /归入主干/.test(x)) && items.some((x) => /子节/.test(x)) && !items.some((x) => /兄弟/.test(x)), JSON.stringify(items)); }
+      probe(tag, "loose page: top-bar + menu = 加子节 / 挪到… (no 加兄弟页, no 归入主干)", items.some((x) => /挪到/.test(x)) && items.some((x) => /子节/.test(x)) && !items.some((x) => /兄弟|归入主干/.test(x)), JSON.stringify(items)); }
     await page.keyboard.press("Escape"); await wait(150); await ensureSidebar(true);
     await page.evaluate(() => { const p = window.__xhw.project; p.detachFromTree("序章.txt"); p.detachFromTree("作品.txt"); p.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
-    probe(tag, "empty trunk (pre-v2.1.5 lifted book): every page loose, no `..`, no + sibling, 归入主干 offered", (await page.evaluate(() => window.__xhw.project.session().order().length)) === 0 && (await parentRow()) === null && await page.evaluate(() => !document.getElementById("edgeAddSibling") && !!document.getElementById("edgeJoinTrunk")), JSON.stringify(await blocks()));
-    await page.click("#edgeJoinTrunk"); await wait(300);
-    probe(tag, "归入主干 on an empty trunk → 作品 = first trunk node: `..` = book root, siblings = [作品], + sibling / + child back, 归入主干 gone, toast", JSON.stringify(await parentRow()) === JSON.stringify({ name: "作品", root: true, disabled: true }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品"]) && await page.evaluate(() => !!document.getElementById("edgeAddSibling") && !!document.getElementById("edgeAddChild") && !document.getElementById("edgeJoinTrunk")) && /已归入主干/.test(await page.textContent("#toast")), `${JSON.stringify(await parentRow())} ${JSON.stringify(await rowsIn("siblings"))} ${await page.textContent("#toast")}`);
+    probe(tag, "empty trunk (pre-v2.1.5 lifted book): every page loose, no `..`, no + sibling, 挪到… offered", (await page.evaluate(() => window.__xhw.project.session().order().length)) === 0 && (await parentRow()) === null && await page.evaluate(() => !document.getElementById("edgeAddSibling") && !!document.getElementById("edgeMoveTo")), JSON.stringify(await blocks()));
+    await page.click("#edgeMoveTo"); await wait(300);
+    probe(tag, "挪到… sheet on an empty trunk: title names the page, search box focused, only row = 书的末尾, no action buttons before a pick", await pickSheetOpen() && /把「作品」挪到/.test(await page.textContent("#sheetTitle")) && JSON.stringify(await pickRows()) === JSON.stringify(["书的末尾（顶层）"]) && (await pickActions()).length === 0 && await page.evaluate(() => document.activeElement === document.getElementById("sheetInput")), `${await page.textContent("#sheetTitle")} rows=${JSON.stringify(await pickRows())} actions=${JSON.stringify(await pickActions())}`);
+    await pickRow("书的末尾（顶层）");
+    probe(tag, "pick 书的末尾 → the one action 放到这里", JSON.stringify(await pickActions()) === JSON.stringify(["放到这里"]), JSON.stringify(await pickActions()));
+    await pickAction(/放到这里/);
+    probe(tag, "放到这里 on an empty trunk → 作品 = first trunk node: `..` = book root, siblings = [作品], + sibling / + child back, 挪到… row gone, toast", !(await pickSheetOpen()) && JSON.stringify(await parentRow()) === JSON.stringify({ name: "作品", root: true, disabled: true }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品"]) && await page.evaluate(() => !!document.getElementById("edgeAddSibling") && !!document.getElementById("edgeAddChild") && !document.getElementById("edgeMoveTo")) && /挪到书的末尾/.test(await page.textContent("#toast")), `${JSON.stringify(await parentRow())} ${JSON.stringify(await rowsIn("siblings"))} ${await page.textContent("#toast")}`);
     await page.evaluate(() => { const p = window.__xhw.project; p.jump("序章.txt"); window.__xhw.sidebar.render(); }); await wait(150);
-    await page.click("#edgeJoinTrunk"); await wait(300);
-    probe(tag, "归入主干 again on 序章 → appended at the trunk end: siblings = [作品, 序章]", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && (await cur()) === "序章.txt", JSON.stringify(await rowsIn("siblings")));
+    await page.click("#edgeMoveTo"); await wait(300);
+    probe(tag, "挪到… on loose 序章: rows = 书的末尾 + the trunk in DFS order (作品); self and loose pages not offered", JSON.stringify(await pickRows()) === JSON.stringify(["书的末尾（顶层）", "作品"]), JSON.stringify(await pickRows()));
+    await pickRow("作品");
+    probe(tag, "pick a page → two actions: 放到它之下 (primary) / 放到它之后", JSON.stringify(await pickActions()) === JSON.stringify(["放到它之下", "放到它之后"]) && await page.evaluate(() => document.querySelector("#sheetChoices button")?.classList.contains("primary") === true), JSON.stringify(await pickActions()));
+    await shot("26-pick-sheet");
+    await pickAction(/放到它之后/);
+    probe(tag, "放到它之后 → 序章 after 作品 at the top level: siblings = [作品, 序章], toast", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && (await cur()) === "序章.txt" && /挪到「作品」之后/.test(await page.textContent("#toast")), `${JSON.stringify(await rowsIn("siblings"))} ${await page.textContent("#toast")}`);
+    r = await rowMenu("siblings", "序章.txt", /挪到/); await wait(300);
+    probe(tag, "tree row menu 挪到… (on the current page's own row) → same sheet", r.hit && await pickSheetOpen() && /把「序章」挪到/.test(await page.textContent("#sheetTitle")), `${JSON.stringify(r)} ${await page.textContent("#sheetTitle")}`);
+    await pickRow("作品"); await pickAction(/放到它之下/);
+    probe(tag, "放到它之下 → 序章 under 作品: `..` = 作品, siblings = [序章], toast", JSON.stringify(await parentRow()) === JSON.stringify({ name: "作品", root: false, disabled: false }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["序章"]) && /挪到「作品」之下/.test(await page.textContent("#toast")), `${JSON.stringify(await parentRow())} ${JSON.stringify(await rowsIn("siblings"))} ${await page.textContent("#toast")}`);
+    await page.evaluate(() => { window.__xhw.project.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
+    r = await rowMenu("siblings", "作品.txt", /挪到/); await wait(300);
+    probe(tag, "挪到… on 作品 (has 1 child): message says 1 个子节 follow; self + own subtree excluded → only 书的末尾 offered", r.hit && await pickSheetOpen() && /1 个子节/.test(await page.textContent("#sheetMessage")) && JSON.stringify(await pickRows()) === JSON.stringify(["书的末尾（顶层）"]), `${await page.textContent("#sheetMessage")} rows=${JSON.stringify(await pickRows())}`);
+    await page.keyboard.press("Escape"); await wait(200);
+    probe(tag, "Esc closes the pick sheet, nothing moved", !(await pickSheetOpen()) && JSON.stringify(await rowsIn("children")) === JSON.stringify(["序章"]), JSON.stringify(await rowsIn("children")));
+    r = await rowMenu("children", "序章.txt", /挪到/); await wait(300);
+    await page.fill("#sheetInput", "zzz"); await wait(150);
+    probe(tag, "typing filters the list: no hit → only the pinned 书的末尾 row", r.hit && JSON.stringify(await pickRows()) === JSON.stringify(["书的末尾（顶层）"]), JSON.stringify(await pickRows()));
+    await page.fill("#sheetInput", "作"); await wait(150);
+    probe(tag, "typing 作 → 作品 is back", JSON.stringify(await pickRows()) === JSON.stringify(["书的末尾（顶层）", "作品"]), JSON.stringify(await pickRows()));
+    await page.keyboard.press("Enter"); await wait(120); await page.keyboard.press("ArrowDown"); await wait(120);
+    probe(tag, "Enter selects the first row, ↓ moves to 作品 → its two actions appear", JSON.stringify(await pickActions()) === JSON.stringify(["放到它之下", "放到它之后"]) && await page.evaluate(() => document.querySelectorAll("#sheetPick li[aria-selected=true]").length === 1 && document.querySelector("#sheetPick li[aria-selected=true] span")?.textContent === "作品"), JSON.stringify(await pickActions()));
+    await page.keyboard.press("Enter"); await wait(300);
+    probe(tag, "Enter on a selected row = primary action (放到它之下): 序章 still under 作品, sheet closed, toast", !(await pickSheetOpen()) && JSON.stringify(await rowsIn("children")) === JSON.stringify(["序章"]) && /挪到「作品」之下/.test(await page.textContent("#toast")), `${JSON.stringify(await rowsIn("children"))} ${await page.textContent("#toast")}`);
+    await page.evaluate(() => { const p = window.__xhw.project; p.movePage("序章.txt", { kind: "end" }); p.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
+    probe(tag, "mode.movePage end → 序章 back at the top level after 作品 (siblings = [作品, 序章]); later probes assume this shape", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && (await rowsIn("children")).length === 0, JSON.stringify(await rowsIn("siblings")));
     await page.evaluate(() => { window.__xhw.project.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
     await page.evaluate(() => window.__xhw.project.addLink("她推开门。")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
     r = await rowMenu("links", "她推开门。.txt", /归档到这页之下/); probe(tag, "link row of a loose page offers 归档到这页之后/之下 → files it back under 作品", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]) && /已归档/.test(await page.textContent("#toast")), `${JSON.stringify(await rowsIn("children"))} ${await page.textContent("#toast")}`);

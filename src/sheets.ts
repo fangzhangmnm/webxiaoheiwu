@@ -35,6 +35,7 @@ const g = {
   input2: () => $("sheetInput2") as HTMLInputElement,
   error: () => $("sheetError"),
   choices: () => $("sheetChoices"),
+  pick: () => $("sheetPick") as HTMLUListElement,
   check: () => $("sheetCheck"),
   checkInput: () => $("sheetCheckInput") as HTMLInputElement,
   checkLabel: () => $("sheetCheckLabel"),
@@ -54,6 +55,7 @@ function _reset(): void {
   g.input().classList.add("hidden"); g.input2().classList.add("hidden");
   g.error().classList.add("hidden"); g.error().textContent = "";
   g.choices().classList.add("hidden"); g.choices().innerHTML = "";
+  g.pick().classList.add("hidden"); g.pick().innerHTML = "";
   g.check().classList.add("hidden"); g.checkInput().checked = false;
   g.confirm().classList.remove("hidden", "danger"); g.cancel().classList.remove("hidden");
   g.input().value = ""; g.input2().value = "";
@@ -179,6 +181,79 @@ export function openChoiceSheet<T>(title: string, message: string, choices: Choi
     g.cancel().addEventListener("click", onCancel);
     _open = onCancel;
     _show();
+  });
+}
+
+/** 通用「搜索 + 选一项」sheet（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」「通用件同意」「不用原生 select」；created 2026-09-10 by Claude Fable 5.1）。
+ *  首用 = 挪到…（app.ts movePageFlow）；「链接到已有页」「移到夹」之类以后同一个件。列表自绘（iOS 原生 select 是滚轮、Quest 更糟）。
+ *  rows 由 search(q) **同步**给（q 空 = 默认列表，调用方决定给什么）；点行 = 选中 → 列表下方出现该行的动作钮（actions(row)，按行算：固定行可以只有一个动作）。
+ *  键盘：Enter 没选中 = 选第一行、已选中 = 主动作（primary，没有就第一个）；↑↓ 换行；Esc / 取消 / 点空白 = null。 */
+export interface PickRow<T> { value: T; label: string; icon?: string }
+export interface PickAction<A extends string> { id: A; label: string; primary?: boolean }
+export interface PickOpts<T, A extends string> {
+  message?: string; placeholder?: string; emptyText: string;
+  search: (q: string) => PickRow<T>[];
+  actions: (row: PickRow<T>) => PickAction<A>[];
+}
+export function openPickSheet<T, A extends string>(title: string, opts: PickOpts<T, A>): Promise<{ value: T; action: A } | null> {
+  _assertNotBusy("pick");
+  return new Promise((resolve) => {
+    _reset();
+    g.title().textContent = title;
+    if (opts.message) { g.message().textContent = opts.message; g.message().classList.remove("hidden"); }
+    const inp = g.input(), list = g.pick(), box = g.choices();
+    inp.classList.remove("hidden"); inp.type = "text"; inp.autocomplete = "off"; inp.placeholder = opts.placeholder ?? ""; inp.value = "";
+    list.classList.remove("hidden"); box.classList.remove("hidden");
+    g.confirm().classList.add("hidden");
+    let rows: PickRow<T>[] = []; let sel = -1; let done = false;
+    const finish = (r: { value: T; action: A } | null) => { if (done) return; done = true; cleanup(); _hide(); resolve(r); };
+    const renderActions = () => {
+      box.innerHTML = "";
+      const row = rows[sel]; if (!row) return;
+      for (const a of opts.actions(row)) {
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "sheet-choice" + (a.primary ? " primary" : ""); btn.dataset.action = a.id; btn.textContent = a.label;
+        btn.addEventListener("click", () => finish({ value: row.value, action: a.id }));
+        box.appendChild(btn);
+      }
+    };
+    const select = (i: number) => {
+      sel = i;
+      const items = list.querySelectorAll("li[role=option]");
+      items.forEach((li, k) => li.setAttribute("aria-selected", k === sel ? "true" : "false"));
+      items[sel]?.scrollIntoView({ block: "nearest" });
+      renderActions();
+    };
+    const renderRows = () => {
+      rows = opts.search(inp.value.trim()); sel = -1; list.innerHTML = ""; box.innerHTML = "";
+      if (!rows.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = opts.emptyText; list.appendChild(li); return; }
+      rows.forEach((r, i) => {
+        const li = document.createElement("li"); li.setAttribute("role", "option"); li.setAttribute("aria-selected", "false");
+        const btn = document.createElement("button"); btn.type = "button";
+        if (r.icon) btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${r.icon}"/></svg>`;
+        const span = document.createElement("span"); span.textContent = r.label; btn.appendChild(span);
+        btn.addEventListener("click", () => select(i));
+        li.appendChild(btn); list.appendChild(li);
+      });
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault(); if (!rows.length) return;
+        if (sel < 0) { select(0); return; }
+        const acts = opts.actions(rows[sel]!); const pick = acts.find((x) => x.primary) ?? acts[0];
+        if (pick) finish({ value: rows[sel]!.value, action: pick.id });
+      }
+      else if (e.key === "ArrowDown") { e.preventDefault(); if (rows.length) select(Math.min(rows.length - 1, sel + 1)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); if (rows.length) select(Math.max(0, sel - 1)); }
+      else if (e.key === "Escape") { e.preventDefault(); finish(null); }
+    };
+    const onInput = () => renderRows();
+    const onCancel = () => finish(null);
+    const cleanup = () => { g.cancel().removeEventListener("click", onCancel); inp.removeEventListener("keydown", onKey); inp.removeEventListener("input", onInput); inp.value = ""; };
+    g.cancel().addEventListener("click", onCancel); inp.addEventListener("keydown", onKey); inp.addEventListener("input", onInput);
+    renderRows();
+    _open = onCancel;
+    _show();
+    setTimeout(() => inp.focus(), 0);
   });
 }
 

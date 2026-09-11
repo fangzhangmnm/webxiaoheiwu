@@ -42,3 +42,4 @@
 - 实现 handoff = `ai-docs/20260910-v2-tree-schema-handoff.md`；迁移夹具 = `tmp/migration/`（不进 git，`build_books.py` 可重生成）。
 - app 版本号归 user / 实现 session 定（家规：AI 不提 major）。
 - **落地 2026-09-10 深夜 v2.1.1**（树 session，Claude Fable 5.1；状态见 `ai-docs/20260910-v2-ui-handoff.md` §4 末「v2.1.1」节）。实现时定的两条读法：§8「升级」= x 出到父亲那一层、插到父亲之后（x 已是顶层 → no-op）；「+ 兄弟 / + 子节」打已在树里的名 = 位置不动只跳过去，打散页名 = 归档到这里。
+- **v2.1.7（2026-09-10，Claude Fable 5.1）**：§8 的「归档」动词升级成通用「挪到…」——一个 pick sheet（搜索 + 自绘列表，`sheets.ts openPickSheet`）选主干里的锚点 → 放到它之下 / 之后 / 书的末尾（= v2.1.6「归入主干」并入）；三处入口（散页侧栏首行 / 顶栏「+」菜单 / 树行 ⋯ 菜单）；自己 / 自己的子树 / `_废-` 不给选；子树跟着走；命中行只显示名字（user「key 是唯一的」）。原语不变（`attachUnder / attachAfter / attachAtEnd`），只是 UI 从「拉它到当前页旁」补上了「把这页送过去」的方向（user「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」「reparent 是之下，但是同意你说的第二个选项」）。「链接行 → 归档到这页之后 / 之下」照旧。

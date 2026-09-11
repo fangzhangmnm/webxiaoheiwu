@@ -1,8 +1,8 @@
 // 侧栏（☰ 唯一入口）：顶部两个入口（书库 / 设置）+ 书内导航 = **当前页的邻域**（ADR-0014 §7 反清单化：不铺整棵树、不画第三层）：
-//   `..`（父；顶层 = 书，不可点）→ 兄弟（当前页高亮）→ 子节 → 链接（出边，手排）→ 谁指向这里（反链 = 查询）。散页没有 ../兄弟/子节，首行「归入主干」（进树末尾；空树唯一入口，v2.1.6）+ 链接 + 「+ 子节」（链出去）。
+//   `..`（父；顶层 = 书，不可点）→ 兄弟（当前页高亮）→ 子节 → 链接（出边，手排）→ 谁指向这里（反链 = 查询）。散页没有 ../兄弟/子节，首行「挪到…」（pick sheet 选锚点；书的末尾 = 空树唯一入口，v2.1.6「归入主干」并入 v2.1.7）+ 链接 + 「+ 子节」（链出去）。
 // created 2026-09-10 by Claude Fable 5.1；同日晚按 user 打回重做（「editor sidebar 只有一个三条杠」「侧栏不应默认开」「检索不限字数」「还是不显示扩展名吧」「分裂选中 连接已有 指向这里这三个先去掉」）；
 //   深夜 v2 树 session 接入邻域（user「树重新变成清单 → 看到的是 sibling 和一个 ..」「上一章下一章就是对主树做 dfs」）。
-// 行菜单：树行 = 上移 / 下移 / 升级 / 降级 / 移出树 / 废弃 / 导出这一支；链接行 = 上移 / 下移 / 归档到这页之后·之下（目标是散页时）/ 断开链接 / 废弃；入边行 = 断开；检索里的 `_废-` 页 = 彻底删除。
+// 行菜单：树行 = 上移 / 下移 / 升级 / 降级 / 挪到… / 移出树 / 废弃 / 导出这一支；链接行 = 上移 / 下移 / 归档到这页之后·之下（目标是散页时）/ 断开链接 / 废弃；入边行 = 断开；检索里的 `_废-` 页 = 彻底删除。
 //   删除模型三动词各归一层、无引用计数无孤儿（user 2026-09-10 深夜「不同意引用计数，那又是 cleverness. 删除是一个不同的语义」；ADR-0014 §8）。
 // 零态度：无全图、无计数、无衰减。页改名不在这里（章节名框，mode.ts）。
 import type { ProjectMode } from "./mode.ts";
@@ -23,8 +23,8 @@ export interface EdgeSidebarDeps {
   /** 「+ 兄弟」「+ 子节」（问名字 → mode.newSibling / newChild；散页上的子节 = 链出去）。返回 true = 已建/已跳。 */
   onAddSibling: () => Promise<boolean>;
   onAddChild: () => Promise<boolean>;
-  /** 散页上的「归入主干」（当前页 → 树末尾；树空时 = 第一节点）。返回 true = 已进树。 */
-  onJoinTrunk: () => Promise<boolean>;
+  /** 「挪到…」（app 层：pick sheet 搜主干里的页 → 之下 / 之后 / 书的末尾；散页首行 + 树行菜单共用）。返回 true = 已挪。 */
+  onMove: (name: string) => Promise<boolean>;
   /** 「导出这一支…」（app 层：问名字 → 落库 / 下载）。 */
   onExportBranch: (name: string) => Promise<void>;
   /** txt 模式：把这篇草稿变成书（user 2026-09-10）。canLift = 有正文可 lift。 */
@@ -107,11 +107,12 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     if (block === "parent") return [{ id: "export", label: t("edge.exportBranch"), icon: "download" }];
     return [   // 树行（兄弟 / 子节）：树移动六件 + 导出这一支
       { id: "up", label: t("edge.up") }, { id: "down", label: t("edge.down") }, { id: "outdent", label: t("edge.outdent") }, { id: "indent", label: t("edge.indent") },
-      { id: "detach", label: t("edge.detach"), icon: "x", separatorBefore: true }, { id: "discard", label: t("edge.discard"), icon: "trash-can", danger: true },
+      { id: "move", label: t("edge.moveTo"), icon: "move-to-file", separatorBefore: true },   // 挪到…（pick sheet；user 2026-09-10）
+      { id: "detach", label: t("edge.detach"), icon: "x" }, { id: "discard", label: t("edge.discard"), icon: "trash-can", danger: true },
       { id: "export", label: t("edge.exportBranch"), icon: "download", separatorBefore: true },
     ];
   }
-  function addRow(id: "edgeAddSibling" | "edgeAddChild" | "edgeJoinTrunk", label: string, onClick: () => Promise<boolean>, iconId = "new"): HTMLLIElement {
+  function addRow(id: "edgeAddSibling" | "edgeAddChild" | "edgeMoveTo", label: string, onClick: () => Promise<boolean>, iconId = "new"): HTMLLIElement {
     const li = document.createElement("li"); li.className = "edge-row add";
     const b = document.createElement("button"); b.type = "button"; b.className = "edge-main edge-add"; b.id = id; b.title = label;
     b.innerHTML = `${icon(iconId)}<span class="edge-name">${esc(label)}</span>`;
@@ -137,6 +138,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     else if (id === "after") { if (m.archiveAfterCurrent(name)) d.setStatus(t("edge.archived", { name: nodeDisplayName(name) })); }
     else if (id === "under") { if (m.archiveUnderCurrent(name)) d.setStatus(t("edge.archived", { name: nodeDisplayName(name) })); }
     else if (id === "export") { await d.onExportBranch(name); }
+    else if (id === "move") { await d.onMove(name); }
     else if (id === "purge") {
       if (!m.isDiscarded(name)) { d.setStatus(t("edge.notDiscarded", { prefix: t("edge.discardPrefix") }), { error: true }); }
       else { const n = m.backlinksOfPage(name).length; if (await openConfirmSheet(t("edge.purgeTitle", { name: nodeDisplayName(name) }), n ? t("edge.purgeMsg", { n }) : t("edge.purgeMsgNoLinks"), { danger: true, okLabel: t("edge.purge") })) m.purgePage(name); }
@@ -178,7 +180,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
       for (const n of nb.children) list.appendChild(row(n, "children"));
       list.appendChild(addRow("edgeAddChild", t("edge.addChild"), d.onAddChild));
     } else {   // 散页：不画 ../兄弟/子节，也不画说明（user 2026-09-10「散页：不在书的主干里…这种说明也不要」）；首行「归入主干」+ 链接 + 「+ 子节」+ 谁指向这里
-      list.appendChild(addRow("edgeJoinTrunk", t("edge.joinTrunk"), d.onJoinTrunk, "book"));   // 空树唯一的入口（v2.1.5 之前升的 txt 书；user 2026-09-10「只能加链接没法加孩子和兄弟」）
+      list.appendChild(addRow("edgeMoveTo", t("edge.moveTo"), () => d.onMove(cur!), "move-to-file"));   // 散页的入口 = 挪到…（书的末尾 = 空树唯一的入口；v2.1.6 归入主干并入，user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中」）
     }
     list.appendChild(headerRow(t("edge.links")));
     if (!nb.links.length) list.appendChild(emptyRow(t("edge.noLinks")));

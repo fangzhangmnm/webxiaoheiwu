@@ -4,7 +4,7 @@ import { APP_VERSION } from "./version.ts";
 import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
-import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openChoiceSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY } from "./sheets.ts";
+import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
@@ -188,7 +188,7 @@ const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
   onLibrary: () => { void galleryHost.open(); },
   onSettings: () => { drawer.open("settings"); },
-  onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"), onJoinTrunk: () => joinTrunkFlow(),
+  onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"), onMove: (name) => movePageFlow(name),
   onExportBranch: (name) => exportBranchFlow(name),
   onLift: () => liftDraftToBook(), canLift: () => !project.active() && editor.canEdit() && editorEl.value.trim().length > 0,
   onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
@@ -208,11 +208,21 @@ async function addPageFlow(where: "sibling" | "child"): Promise<boolean> {
   if (ok) { edgeSidebar.render(); editorEl.focus(); }
   return ok;
 }
-/** 「归入主干」：当前散页 → 树末尾（树空时就是第一节点）。v2.1.5 之前升的 txt 书 tree 为空、此前没有任何入口能开树（user 2026-09-10「为什么对于txt转的书我还是只能加链接没法加孩子和兄弟」）。 */
-async function joinTrunkFlow(): Promise<boolean> {
-  const cur = project.current(); if (!cur || project.isInTree(cur)) return false;
-  if (!project.joinTrunk(cur)) return false;
-  setStatus(t("edge.joinedTrunk", { name: nodeDisplayName(cur) }));
+/** 挪到…（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」）：通用 pick sheet（sheets.ts openPickSheet）搜主干里的页 → 放到它之下 / 之后；
+ *  固定首行「书的末尾（顶层）」= v2.1.6 的「归入主干」并进来（空树唯一入口仍在）。子树跟着走，文案写明子节数。散页首行 / 顶栏「+」菜单 / 树行 ⋯ 菜单三处同一条路。 */
+const MOVE_END = "\u0000end";   // pick sheet 固定首行「书的末尾」的哨兵（含 NUL，不会和页名撞）
+async function movePageFlow(name: string): Promise<boolean> {
+  if (!project.canEdit()) { if (project.active() && project.readOnly()) setStatus(t("edge.lockedHint"), { error: true }); return false; }
+  const n = project.subtreeCount(name);
+  const r = await openPickSheet<string, "under" | "after" | "end">(t("edge.moveTitle", { name: nodeDisplayName(name) }), {
+    ...(n ? { message: t("edge.moveHintTree", { n }) } : {}), placeholder: t("edge.movePh"), emptyText: t("edge.noResults"),
+    search: (q) => [{ value: MOVE_END, label: t("edge.moveRootEnd"), icon: "book" }, ...project.moveTargets(name, q).map((x) => ({ value: x, label: nodeDisplayName(x) }))],
+    actions: (row) => row.value === MOVE_END ? [{ id: "end", label: t("edge.movePutHere"), primary: true }] : [{ id: "under", label: t("edge.moveUnder"), primary: true }, { id: "after", label: t("edge.moveAfter") }],
+  });
+  if (!r) return false;
+  if (!project.movePage(name, r.action === "end" ? { kind: "end" } : { kind: r.action, anchor: r.value })) return false;
+  const shown = nodeDisplayName(name);
+  setStatus(r.action === "end" ? t("edge.movedEnd", { name: shown }) : t(r.action === "under" ? "edge.movedUnder" : "edge.movedAfter", { name: shown, to: nodeDisplayName(r.value) }));
   edgeSidebar.render(); editorEl.focus();
   return true;
 }
@@ -372,8 +382,8 @@ addPageButton.addEventListener("click", (e) => {
   togglePopupMenu({ anchor: addPageButton, align: "right", items: () => [
     { id: "sibling", label: t("edge.addSibling"), icon: "new", hidden: !inTree },
     { id: "child", label: t("edge.addChild"), icon: "new" },
-    { id: "trunk", label: t("edge.joinTrunk"), icon: "book", hidden: inTree, separatorBefore: true },   // 散页：归入主干（空树唯一入口，v2.1.6）
-  ], onPick: (id) => { if (id === "trunk") void joinTrunkFlow(); else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+    { id: "move", label: t("edge.moveTo"), icon: "move-to-file", separatorBefore: true },   // 挪到…（pick sheet；书的末尾 = 空树唯一入口，v2.1.6 归入主干并入）
+  ], onPick: (id) => { if (id === "move") { if (cur) void movePageFlow(cur); } else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
 });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());
@@ -518,6 +528,7 @@ function setSidebar(on: boolean): void {
 setSidebar(false);
 $("edgeBackdrop").addEventListener("click", () => setSidebar(false));
 docNameButton.addEventListener("click", () => { void renameCurrentDoc(); });
+$("libraryButton").addEventListener("click", () => { void galleryHost.open(); });   // 顶栏最左 = 回书库（user 2026-09-10「标题左边放书库图标。标题还是改名」）
 /** 顶栏改名 sheet：文件名只是管理句柄，OneDrive 上可见（加密稿也一样）——文案里说清，别把标题写进来。空 = 不改。 */
 async function renameCurrentDoc(): Promise<void> {
   if (project.active()) { await renameProjectFile(); return; }

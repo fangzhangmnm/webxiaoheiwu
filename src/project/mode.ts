@@ -459,8 +459,23 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 归档到当前页之后 / 之下（散页从 links / 谁指向这里 收进主干；树里的页 = 搬家，子树跟着）。 */
   const archiveAfterCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveAfter(target, session!.current()!); });
   const archiveUnderCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveUnder(target, session!.current()!); });
-  /** 归入主干：散页放到树末尾（树空时 = 第一节点；树里的页 = 搬到末尾，子树跟着）。空树唯一的入口——v2.1.5 之前升的 txt 书 tree 为空，此前没有任何入口能开树（user 2026-09-10「为什么对于txt转的书我还是只能加链接没法加孩子和兄弟」）。 */
-  const joinTrunk = guardEdit((target: string) => { commitEditor(); session!.archiveAtEnd(target); });
+  /** 挪到…（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」；v2.1.6 的「归入主干」并进来 = kind "end"，空树唯一的入口仍在）：
+   *  树里的页 = 搬家，子树跟着（graph.attachUnder / attachAfter 自带先 detach + 防环）；散页 = 进树。anchor 必须在树里（moveTargets 只给这种；原语对树外锚点会抛）。 */
+  const movePage = guardEdit((target: string, to: MoveTo) => { commitEditor(); if (to.kind === "end") session!.archiveAtEnd(target); else if (to.kind === "under") session!.archiveUnder(target, to.anchor); else session!.archiveAfter(target, to.anchor); });
+  /** 挪到… 的候选锚点：q 空 = 整棵主干的 DFS 顺序（小书不用打字）；有 q = 检索（名字 + 正文）里在树里的页。永远排除自己、自己的子树、`_废-` 页（原语会抛，这里先滤掉，UI 不弹红）。 */
+  function moveTargets(target: string, q: string, limit = 50): string[] {
+    const s = session; if (!s) return [];
+    const key = target.normalize("NFC").toLowerCase();
+    const pool = q.trim() ? s.find(q.trim(), limit * 2) : s.order();
+    const out: string[] = [];
+    for (const n of pool) {
+      if (n.normalize("NFC").toLowerCase() === key) continue;
+      if (!s.isInTree(n) || isDiscarded(n)) continue;
+      if (s.pathOf(n).includes(target)) continue;   // pathOf = 根到 n 的链；含 target = n 在 target 的子树里
+      out.push(n); if (out.length >= limit) break;
+    }
+    return out;
+  }
   /** 导出这一支：子树 DFS 拼成的正文（落库 / 下载归 app 层）。 */
   const exportBranchText = (target: string): string => { commitEditor(); return session!.exportBranch(target); };
   /** 「+」散页：调用方问好名字再来（撞已有名 = 连过去并跳，ADR-0009 §6）；边加在当前页末尾，跳过去。拖进来的 txt 也走这里。 */
@@ -517,13 +532,15 @@ export function createProjectMode(d: ProjectModeDeps) {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
-    jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, joinTrunk, exportBranchText,
+    jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
     cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail,
   };
 }
 export type ProjectMode = ReturnType<typeof createProjectMode>;
+/** 挪到… 的落点：某页之下（孩子末尾）/ 之后（同层）/ 书的末尾（顶层）。 */
+export type MoveTo = { kind: "under" | "after"; anchor: string } | { kind: "end" };
 
 /** spawn 默认名：选中文字首行前 12 个字（去路径字符）。空 → ""（调用方退到章节名）。 */
 export function defaultNodeName(sel: string): string {

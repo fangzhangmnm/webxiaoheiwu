@@ -1428,6 +1428,16 @@ body {
 .doc-main.static { cursor: default; }
 .sheet-choices { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
 .sheet-choices.hidden { display: none; }
+/* pick sheet 的自绘列表（sheets.ts openPickSheet；user 2026-09-10「弹一个对话框，搜索，下拉，选中」「不用原生 select」）：封顶后内滚（Quest 竖向空间紧） */
+.sheet-pick { list-style: none; margin: 0; padding: 0; max-height: min(40vh, 264px); overflow-y: auto; border: 1px solid var(--line-strong, #c9b89a); border-radius: 10px; background: var(--bg-1); }
+.sheet-pick.hidden { display: none; }
+.sheet-pick li { display: block; }
+.sheet-pick li.empty { padding: 9px 12px; color: var(--ink-muted); font-size: 12px; }
+.sheet-pick li > button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sheet-pick li:last-child > button { border-bottom: 0; }
+.sheet-pick li > button .ico { width: 16px; height: 16px; flex: 0 0 auto; color: var(--ink-muted); }
+.sheet-pick li > button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-pick li[aria-selected="true"] > button { background: var(--paper, #f1e6cf); font-weight: 600; }
 .sheet-choice { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line-strong, #c9b89a); background: var(--paper, #f1e6cf); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .sheet-choice.primary { background: var(--accent, #a05826); color: #fff; border-color: transparent; }
 .sheet-choice.danger { color: var(--danger, #b0413e); }

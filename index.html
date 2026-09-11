@@ -143,6 +143,10 @@
 
     <main class="surface" aria-label="网页版小黑屋" data-i18n-aria="ui.appTitle">
       <header class="top-bar">
+        <!-- 书库钮：顶栏最左 = 回书库（user 2026-09-10「标题左边放书库图标。标题还是改名」；侧栏里的「书库」照旧 = 外面和菜单里都有）；常驻，不随有没有稿隐藏 -->
+        <button class="menu-button" id="libraryButton" type="button" aria-label="书库" data-i18n-aria="sidebar.library" data-i18n-title="sidebar.library">
+          <svg class="ico" aria-hidden="true"><use href="#gallery"/></svg>
+        </button>
         <button class="doc-name" id="docNameButton" type="button" hidden aria-label="文件名" data-i18n-aria="top.docName" data-i18n-title="top.docName"></button>
         <span class="top-spacer" aria-hidden="true"></span>
         <button class="crypto-toggle" id="cryptoToggle" type="button" hidden aria-label="加密文档" data-i18n-aria="top.encryptDoc"></button>
@@ -252,6 +256,8 @@
         <p class="crypto-hint hidden" id="sheetMessage"></p>
         <input id="sheetInput" class="crypto-input hidden" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <input id="sheetInput2" class="crypto-input hidden" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="再次输入以确认" data-i18n-ph="ui.sheetInput2Ph" />
+        <!-- pick sheet 的自绘列表（搜索 + 选一项；不用原生 select）：sheets.ts openPickSheet -->
+        <ul id="sheetPick" class="sheet-pick hidden" role="listbox"></ul>
         <p id="sheetError" class="crypto-error hidden"></p>
         <div id="sheetChoices" class="sheet-choices hidden"></div>
         <label id="sheetCheck" class="sheet-check hidden"><input type="checkbox" id="sheetCheckInput" /><span id="sheetCheckLabel"></span></label>
@@ -467,6 +473,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-7c73ee2beca0.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-87838f635c04.mjs"></script>
   </body>
 </html>
