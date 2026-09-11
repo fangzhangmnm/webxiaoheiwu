@@ -224,11 +224,11 @@ async function exportBranchFlow(name: string): Promise<void> {
     setStatus(t("edge.exportDone", { name: parseDocName(created).stem }));
   } catch (e) { reportError(e); setStatus(t("edge.exportFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
-/** 纸面页脚的上一页 / 下一页（全树前序 DFS；树首 / 树尾 / 散页 → 灰）。 */
-const pageNav = $("pageNav"), pagePrev = $<HTMLButtonElement>("pagePrev"), pageNext = $<HTMLButtonElement>("pageNext");
+/** 章节名两侧的上一页 / 下一页 chevron（全树前序 DFS；树首 / 树尾 / 散页 → 灰；锁着 / 无书 → 整颗藏）。页脚那排 2026-09-10 撤（user「不应该浪费页脚的空间…放在标题行，用 ⟨ ⟩ 的 svg」）。 */
+const pagePrev = $<HTMLButtonElement>("pagePrev"), pageNext = $<HTMLButtonElement>("pageNext");
 function renderPageNav(): void {
   const nb = project.active() && !project.locked() ? project.neighborhood() : null;
-  pageNav.hidden = !nb;
+  pagePrev.hidden = pageNext.hidden = !nb;
   pagePrev.disabled = !nb?.prev; pageNext.disabled = !nb?.next;
   pagePrev.title = nb?.prev ? nodeDisplayName(nb.prev) : t("edge.prev"); pageNext.title = nb?.next ? nodeDisplayName(nb.next) : t("edge.next");
 }
@@ -909,22 +909,32 @@ function renderAuthRow(): void {
   btn.addEventListener("click", () => { void onSignIn(); });
   authRow.appendChild(btn);
 }
-const cloudButton = $<HTMLButtonElement>("cloudButton");
+/** 云状态钮 ×2 = 抽屉头 + 书库顶栏（user 2026-09-10「书库刷新和云状态不应跟藏扳手里面，而是外面和菜单里都有吧，当时 weebpaint 也是这么拍板的」——WeebPaint 图库 header 同款：云图标 + 刷新钮露在外面，菜单里照旧有）。 */
+const cloudButton = $<HTMLButtonElement>("cloudButton"), galleryCloudBtn = $<HTMLButtonElement>("galleryCloudBtn"), galleryRefreshBtn = $<HTMLButtonElement>("galleryRefreshBtn");
+const cloudWho = (): string => { const stt = auth.getAuthState(); return stt.signedIn ? ((stt.account as { username?: string; name?: string } | null)?.username || (stt.account as { name?: string } | null)?.name || t("auth.signedIn")) : ""; };
 function renderCloudButton(): void {
   const stt = auth.getAuthState();
   const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   const state = stt.signedIn ? (offline ? "offline" : "signedin") : "out";
-  cloudButton.dataset.cloudState = state;
-  cloudButton.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${state === "signedin" ? "cloud-synced" : state === "offline" ? "cloud-unavailable" : "cloud"}"/></svg>`;
-  const who = stt.signedIn ? ((stt.account as { username?: string; name?: string } | null)?.username || (stt.account as { name?: string } | null)?.name || t("auth.signedIn")) : "";
-  cloudButton.title = state === "signedin" ? t("cloud.titleIn", { who }) : state === "offline" ? t("cloud.titleOffline", { who }) : t("cloud.titleOut");
-  cloudButton.setAttribute("aria-label", cloudButton.title);
+  const who = cloudWho();
+  const title = state === "signedin" ? t("cloud.titleIn", { who }) : state === "offline" ? t("cloud.titleOffline", { who }) : t("cloud.titleOut");
+  for (const b of [cloudButton, galleryCloudBtn]) {
+    b.dataset.cloudState = state;
+    b.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${state === "signedin" ? "cloud-synced" : state === "offline" ? "cloud-unavailable" : "cloud"}"/></svg>`;
+    b.title = title; b.setAttribute("aria-label", title);
+  }
+  galleryRefreshBtn.hidden = state !== "signedin";   // 没登录 / 离线时藏刷新（按了没意义；WeebPaint cloudRefreshBtn 同款）
 }
-cloudButton.addEventListener("click", () => {
+/** 刷新云端（云菜单项 + 书库顶栏刷新钮走同一条路）：离线→在线后第一次按、没登录但有缓存账号 → 先静默补登一次（WeebPaint 同款）；然后重订阅列表 + 书库重列 + 推 / 拉活稿。 */
+async function refreshCloudNow(): Promise<void> {
+  if (!auth.isSignedIn() && navigator.onLine !== false) { await auth.retrySilentSignIn().catch((e) => reportError(e, "log")); renderCloudButton(); }
+  drawer.subscribe(); galleryHost.refresh(); void resumeSync();
+}
+function openCloudMenu(anchor: HTMLElement): void {
   const stt = auth.getAuthState();
-  const who = stt.signedIn ? ((stt.account as { username?: string; name?: string } | null)?.username || (stt.account as { name?: string } | null)?.name || t("auth.signedIn")) : "";
+  const who = cloudWho();
   togglePopupMenu({
-    anchor: cloudButton, align: "right",
+    anchor, align: "right",
     items: () => stt.signedIn
       ? [
           { id: "who", label: navigator.onLine === false ? t("cloud.accountOffline", { who }) : t("cloud.account", { who }), icon: "cloud-synced", disabled: true },
@@ -937,13 +947,16 @@ cloudButton.addEventListener("click", () => {
           { id: "signin", label: t("cloud.connect"), icon: "cloud-upload" },
         ],
     onPick: (id) => {
-      if (id === "refresh") { drawer.subscribe(); void resumeSync(); }
+      if (id === "refresh") void refreshCloudNow();
       else if (id === "lock") void lockCryptoNow();
       else if (id === "signout") void onSignOut();
       else if (id === "signin") void onSignIn();
     },
   });
-});
+}
+cloudButton.addEventListener("click", () => openCloudMenu(cloudButton));
+galleryCloudBtn.addEventListener("click", (e) => { e.stopPropagation(); openCloudMenu(galleryCloudBtn); });
+galleryRefreshBtn.addEventListener("click", () => { void refreshCloudNow(); });
 /** 登录（#60-C 两步手势，2026-09-09 对账 WeebPaint redirectAfterFlush）：先落盘（活稿 + collections），落盘失败不跳（响亮）；再弹「去登录」，
  *  onPick 在按钮 click 同步栈里起跳 redirect 登录起跳（手势纪律）。为什么：redirect 离场后 pagehide 里的写在 WebKit 上永远 commit 不了、只会把锁冻在旧页里。 */
 /** 返回：true = 点了「去登录」（已起跳）；false = 点了「暂不」；null = 背板/Esc 取消或落盘失败没弹。 */

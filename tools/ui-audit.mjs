@@ -48,7 +48,7 @@ for (const [w, h] of sizes) {
     return { opened: true, items };
   };
   const cur = () => page.evaluate(() => window.__xhw.project.current());
-  const navState = () => page.evaluate(() => ({ hidden: document.getElementById("pageNav").hidden, prev: document.getElementById("pagePrev").disabled, next: document.getElementById("pageNext").disabled }));
+  const navState = () => page.evaluate(() => ({ hidden: document.getElementById("pagePrev").hidden, prev: document.getElementById("pagePrev").disabled, next: document.getElementById("pageNext").disabled }));
   const ensureSidebar = async (open) => { if ((await sidebarShown()) !== open) { await page.click("#menuButton"); await wait(300); } };
   const clickEditor = async () => { if (w < 900) await ensureSidebar(false); await page.click("#editor"); };   // 窄屏浮层不再自动收：点纸面前探针自己收
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
@@ -57,6 +57,7 @@ for (const [w, h] of sizes) {
   probe(tag, "txt doc materialized after typing", !!(await page.evaluate(() => window.__xhw.editor.state.name)));
   // 页脚字数统计（user 2026-09-10）：打字后显示「N 字 M 词」；设置 toggle 关 → 隐藏；再开 → 回来
   probe(tag, "word count footer shows N 字 M 词 after typing", await page.evaluate(() => { const e = document.getElementById("wordCount"); return !e.hidden && /^\d+ 字 \d+ 词$/.test(e.textContent ?? ""); }), await page.evaluate(() => document.getElementById("wordCount").textContent));
+  probe(tag, "mic floats above the word-count footer (no overlap when both visible)", await page.evaluate(() => { const m = document.getElementById("micButton"), f = document.getElementById("wordCount"); const was = m.hidden; m.hidden = false; const a = m.getBoundingClientRect(), b = f.getBoundingClientRect(); m.hidden = was; const overlap = a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top; return !f.hidden && getComputedStyle(f).display !== "none" && !overlap && a.bottom <= b.top + 1 && getComputedStyle(m).position === "absolute"; }), await page.evaluate(() => { const m = document.getElementById("micButton"), f = document.getElementById("wordCount"); const was = m.hidden; m.hidden = false; const a = m.getBoundingClientRect(), b = f.getBoundingClientRect(); m.hidden = was; return `mic ${Math.round(a.top)}-${Math.round(a.bottom)} foot ${Math.round(b.top)}-${Math.round(b.bottom)}`; }));
   probe(tag, "word count toggle off hides the footer, on brings it back", await page.evaluate(() => { const tg = document.getElementById("wordCountToggle"), e = document.getElementById("wordCount"); tg.click(); const off = e.hidden; tg.click(); return off && !e.hidden; }));
   await shot("01-editor-txt");
   probe(tag, "sidebar closed by default", !(await sidebarShown()));
@@ -77,6 +78,12 @@ for (const [w, h] of sizes) {
   // 书库
   await page.click("#edgeLibrary"); await wait(1200); await shot("03-library");
   probe(tag, "library title says 书库", (await page.textContent(".gallery-chrome-title")).trim() === "书库");
+  // 云状态 + 刷新露在书库顶栏（user 2026-09-10「不应跟藏扳手里面，而是外面和菜单里都有」）：没登录 → 云图标灰态、刷新藏；点云图标 = 云菜单（连接 OneDrive）
+  probe(tag, "library chrome: cloud status button outside the wrench (state=out), refresh hidden while signed out", await page.evaluate(() => { const c = document.getElementById("galleryCloudBtn"), r = document.getElementById("galleryRefreshBtn"), w = document.getElementById("gallerySettingsBtn"); const vis = (e) => !e.hidden && getComputedStyle(e).display !== "none"; return vis(c) && c.dataset.cloudState === "out" && !vis(r) && vis(w) && c.getBoundingClientRect().left < w.getBoundingClientRect().left; }), await page.evaluate(() => document.getElementById("galleryCloudBtn")?.dataset.cloudState));
+  await page.click("#galleryCloudBtn"); await wait(200);
+  probe(tag, "library cloud button opens the cloud menu (连接 OneDrive)", await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].some((b) => /OneDrive/.test(b.textContent ?? ""))), await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => b.textContent.trim()).join("|")));
+  await page.keyboard.press("Escape"); await wait(150);
+  probe(tag, "Escape closes the cloud menu, library stays open", await page.evaluate(() => !document.querySelector(".popup-menu") && document.body.dataset.mode === "gallery"));
   console.log(tag, "top element at center:", await page.evaluate(() => { const e = document.elementFromPoint(innerWidth / 2, innerHeight / 2); return e ? `${e.tagName.toLowerCase()}#${e.id}.${[...e.classList].join(".")}` : null; }), "| top-bar covered:", await page.evaluate(() => { const tb = document.querySelector(".top-bar").getBoundingClientRect(); const e = document.elementFromPoint(tb.left + tb.width / 2, tb.top + tb.height / 2); return !!e?.closest("#galleryFull"); }));
   await page.click("#galleryNewBtn"); await wait(300); await shot("04-library-newmenu");
   await page.keyboard.press("Escape"); await wait(200);
@@ -124,6 +131,16 @@ for (const [w, h] of sizes) {
   await ensureSidebar(true);
   probe(tag, "back to 作品; siblings = 作品 (current), 序章 without .txt (rename rewrote the tree)", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && (await cur()) === "作品.txt", JSON.stringify(await rowsIn("siblings")));
   probe(tag, "row shows modified time as small text", await page.evaluate(() => /\d+\/\d+ \d\d:\d\d/.test(document.querySelector("#edgeList .edge-row[data-block='siblings'] .edge-sub")?.textContent ?? "")));
+  // 前进 = 回退的逆（user 2026-09-10「既然有 back 了也加一个右箭头」）：回退后前进亮 → 前进回到序章 → 再回退回作品；新导航清空前进栈
+  probe(tag, "after back: sidebar forward button live (right of back); back grey (that stack held one entry)", await page.evaluate(() => { const f = document.getElementById("edgeForward"), b = document.getElementById("edgeBack"); return !!f && !f.disabled && b.disabled && b.getBoundingClientRect().right <= f.getBoundingClientRect().left + 1 && !!f.querySelector("use[href='#forward']"); }), await page.evaluate(() => `forward.disabled=${document.getElementById("edgeForward")?.disabled} back.disabled=${document.getElementById("edgeBack").disabled}`));
+  await page.click("#edgeForward"); await wait(300);
+  probe(tag, "forward → 序章 again; forward grey, back live", (await cur()) === "序章.txt" && await page.evaluate(() => document.getElementById("edgeForward").disabled && !document.getElementById("edgeBack").disabled), await cur());
+  await page.click("#edgeBack"); await wait(300);
+  probe(tag, "back again → 作品; forward live", (await cur()) === "作品.txt" && await page.evaluate(() => !document.getElementById("edgeForward").disabled), await cur());
+  await page.evaluate(() => window.__xhw.project.jump("序章.txt")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
+  probe(tag, "a fresh jump clears the forward stack (back keeps)", await page.evaluate(() => document.getElementById("edgeForward").disabled && window.__xhw.project.canGoBack() && !window.__xhw.project.canGoForward()));
+  await page.evaluate(() => window.__xhw.project.goBack()); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
+  probe(tag, "…and back lands on 作品 again", (await cur()) === "作品.txt", await cur());
   // Ctrl+Enter 分裂已去掉（user 2026-09-10「先不要做去奇怪的静默行为」）：无入口
   if (w < 900) await ensureSidebar(false);
   await page.evaluate(() => { const el = document.getElementById("editor"); el.focus(); el.setSelectionRange(0, 5); });
@@ -149,6 +166,7 @@ for (const [w, h] of sizes) {
   await shot("10-tree-moves");
   // 上一页 / 下一页 = 全树前序 DFS（作品 → 她推开门。 → 序章）；首尾不绕回
   { let n = await navState(); probe(tag, "page nav: at tree head prev is grey, next is live", !n.hidden && n.prev && !n.next, JSON.stringify(n));
+    probe(tag, "prev/next are ⟨ ⟩ chevrons flanking the chapter title on one row; footer nav gone", await page.evaluate(() => { const p = document.getElementById("pagePrev").getBoundingClientRect(), x = document.getElementById("pageNext").getBoundingClientRect(), t = document.getElementById("nodeTitle").getBoundingClientRect(); const cy = (r) => r.top + r.height / 2; return !document.getElementById("pageNav") && p.right <= t.left + 1 && t.right <= x.left + 1 && Math.abs(cy(p) - cy(t)) < 8 && Math.abs(cy(x) - cy(t)) < 8 && !!document.querySelector("#pagePrev use[href='#chevron-left']") && !!document.querySelector("#pageNext use[href='#chevron-right']"); }), await page.evaluate(() => { const p = document.getElementById("pagePrev").getBoundingClientRect(), t = document.getElementById("nodeTitle").getBoundingClientRect(); return `prev ${Math.round(p.right)}/${Math.round(p.top)} title ${Math.round(t.left)}/${Math.round(t.top)}`; }));
     if (w < 900) await ensureSidebar(false);
     // 切页即落盘（ADR-0015 d）：打一个字 → 200ms 防抖还挂着就换页 → 防抖被取消、立刻本地落盘（dirty 很快清零），推云节律不动
     await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type("切页前的字。");

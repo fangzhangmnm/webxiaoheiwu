@@ -51,6 +51,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   let home: ProjectHome | null = null;
   let session: ProjectSession | null = null;
   let back: string[] = [];
+  let forward: string[] = [];   // 前进栈 = 回退的逆（user 2026-09-10「既然有 back 了也加一个右箭头」）；内存态不进 editor-state——任何新导航即清空（同浏览器历史）
   let localTimer: ReturnType<typeof setTimeout> | null = null;
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
   let firstDirtyAt = 0, pushPending = false, pushFailures = 0, gen = 0;
@@ -61,9 +62,9 @@ export function createProjectMode(d: ProjectModeDeps) {
   const userReadOnly = (): boolean => session?.project.readOnly ?? false;   // 修改锁跟着作品（graph.json readOnly；user 2026-09-10「zip 锁跟着作品」——成品不想被误改，不是本机名单）
 
   const syncBack = () => { session?.setBack(back); };
-  const pushBack = (n: string) => { back.push(n); if (back.length > 50) back.shift(); syncBack(); };
+  const pushBack = (n: string) => { back.push(n); if (back.length > 50) back.shift(); forward = []; syncBack(); };   // 新导航 = 前进栈作废
   const popBack = (): string | undefined => { const v = back.pop(); syncBack(); return v; };
-  const renameInBack = (from: string, to: string) => { let hit = false; back = back.map((n) => (n === from ? (hit = true, to) : n)); if (hit) syncBack(); };
+  const renameInBack = (from: string, to: string) => { let hit = false; back = back.map((n) => (n === from ? (hit = true, to) : n)); if (hit) syncBack(); forward = forward.map((n) => (n === from ? to : n)); };
   const active = () => !!session && !!home;
   const canEdit = () => active() && !locked && session!.canMutate();   // 改动能不能做 = session 说了算（锁在工件层）；locked = 加密未解锁
   const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
@@ -239,7 +240,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   }
   function enterLocked(projectName: string): void {
     home = { kind: "store", name: projectName }; session = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
-    encrypted = true; locked = true; back = []; pushPending = false;
+    encrypted = true; locked = true; back = []; forward = []; pushPending = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     hideImage();
     d.editorEl.value = ""; d.editorEl.readOnly = true; d.editorEl.classList.add("locked");
@@ -264,7 +265,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.setStatus(t("st.loading"));
     const r = await s.open(projectName);
     if (g !== gen) return true;
-    home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
+    home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; forward = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
     const ok = reportOpen(r);
@@ -314,7 +315,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     const s = createProjectSession({ read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
     if (g !== gen) return true;
-    home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; pushPending = false; encrypted = false; locked = false;
+    home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; forward = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -326,7 +327,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++;
     const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
-    home = { kind: "store", name: projectName }; session = s; back = []; pushPending = false; encrypted = false; locked = false;
+    home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     await s.flush(false);
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
@@ -338,7 +339,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
-    home = null; session = null; back = []; pushPending = false; encrypted = false; locked = false;
+    home = null; session = null; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
     hideImage();
     d.editorEl.readOnly = false; d.editorEl.classList.remove("locked");
     d.titleEl.value = ""; d.titleEl.readOnly = false; d.titleEl.classList.remove("locked");
@@ -365,7 +366,22 @@ export function createProjectMode(d: ProjectModeDeps) {
     let prev = popBack(); while (prev && !session!.exists(prev)) prev = popBack();   // 历史里改名/删掉的名字跳过（jump 到不存在的名字会抛）
     if (!prev) return false;
     commitEditor();
+    const cur = session!.current();
     try { session!.jump(prev); } catch { return false; }
+    if (cur && cur !== prev) { forward.push(cur); if (forward.length > 50) forward.shift(); }   // 离开的那页进前进栈
+    loadCurrentIntoEditor(); d.onChanged();
+    flushOnPageChange();
+    return true;
+  }
+  /** 前进 = 回退的逆：只在回退之后有货；任何新导航（jump / 加页 / 上下页）清空。不经 pushBack（那会清前进栈）。 */
+  function goForward(): boolean {
+    if (!active()) return false;
+    let next = forward.pop(); while (next && !session!.exists(next)) next = forward.pop();
+    if (!next) return false;
+    commitEditor();
+    const cur = session!.current();
+    try { session!.jump(next); } catch { return false; }
+    if (cur && cur !== next) { back.push(cur); if (back.length > 50) back.shift(); syncBack(); }
     loadCurrentIntoEditor(); d.onChanged();
     flushOnPageChange();
     return true;
@@ -475,13 +491,13 @@ export function createProjectMode(d: ProjectModeDeps) {
   let lastDropped: string | null = null;
   const dropRef = guardEdit((to: string) => { commitEditor(); const nn = session!.drop(to, t("edge.orphanPrefix")); lastDropped = nn; if (nn && nn !== to) renameInBack(to, nn); });
   /** 彻底删除：只准孤儿（调用方先弹框确认）。当前页被删 → 回退或落到任一页。 */
-  const purgeOrphan = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.purge(target); back = back.filter((n) => n !== target); syncBack(); if (wasCurrent) { const next = popBack() ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
+  const purgeOrphan = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.purge(target); back = back.filter((n) => n !== target); forward = forward.filter((n) => n !== target); syncBack(); if (wasCurrent) { const next = popBack() ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
 
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
-    jump, goBack, canGoBack: () => back.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, exportBranchText,
+    jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, exportBranchText,
     addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
     cutIncoming, backlinksOfCurrent, addImagePages, lastAdded: () => lastAdded, pageBytes, replaceImage, setThumbnail, thumbnail,

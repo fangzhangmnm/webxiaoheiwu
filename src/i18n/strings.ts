@@ -445,6 +445,7 @@ export const S = {
   "edge.aria":              { zh: "侧栏", en: "Sidebar" },
   "top.addPage":            { zh: "加一页", en: "Add a page" },
   "edge.back":              { zh: "回到上一页", en: "Back to the previous page" },
+  "edge.forward":           { zh: "前进（回退之后再回去）", en: "Forward (after going back)" },
   "edge.search":            { zh: "检索", en: "Search" },
   "edge.searchPh":          { zh: "检索", en: "Search" },
   "edge.results":           { zh: "检索「{q}」", en: "Results for “{q}”" },

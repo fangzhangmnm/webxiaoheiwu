@@ -141,6 +141,7 @@ body {
 }
 
 .menu-button svg { width: 16px; height: 16px; }
+.menu-button[hidden] { display: none; }
 
 .lock-toggle {
   flex: 0 0 auto;
@@ -1517,8 +1518,10 @@ body {
 .page { --editor-font: calc(clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max)) * var(--font-scale, 1)); }   /* 规范管行宽，档位乘字号（设置「字号」） */
 .body { font-size: var(--editor-font); }
 /* 章节名框（v0.2.15 的 #titleInput 捞回来当节点名；user 2026-09-10）：只在工程模式显示；正文字号 ×1.25、居中、无边框 */
-.node-title { display: none; flex: none; width: 100%; box-sizing: border-box; border: 0; background: transparent; outline: none; text-align: center; line-height: 1.4; font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink); padding: 0 0 calc(var(--editor-font) * 0.5); margin: 0 0 calc(var(--editor-font) * 0.5); caret-color: var(--accent); }
-body[data-project] .node-title { display: block; }
+/* 章节名行 = ⟨ 章节名 ⟩：上一页 / 下一页 chevron 住章节名两侧，不再占页脚（user 2026-09-10「上一页和下一页可以放在标题行，用 ⟨ ⟩ 的 svg…quest 屏幕 vertical space is scarcity」） */
+.node-title-row { display: none; flex: none; align-items: center; gap: 4px; margin: 0 0 calc(var(--editor-font) * 0.5); }
+body[data-project] .node-title-row { display: flex; }
+.node-title { flex: 1 1 auto; min-width: 0; width: auto; box-sizing: border-box; border: 0; background: transparent; outline: none; text-align: center; line-height: 1.4; font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink); padding: 0; margin: 0; caret-color: var(--accent); }
 .node-title::placeholder { color: var(--ink-muted); font-weight: 400; opacity: 0.7; }
 .page-foot { flex: none; text-align: right; font-size: 12px; line-height: 1.4; color: var(--ink-muted); padding-top: 6px; font-variant-numeric: tabular-nums; user-select: none; }   /* 页脚字数统计（user 2026-09-10「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」） */
 .page-foot[hidden] { display: none; }
@@ -1565,6 +1568,9 @@ body.ruled-lines .body {
 /* 语音模式退格钮（话筒左邻，只在纯口述时出现）。Quest「键盘不在本页」提示条 + 压暗 2026-09-04 撤（user：光标失踪本身看得见，没有煤气灯疑惑）；焦点找回逻辑留在 app.ts */
 .mic-side { right: 70px; width: 40px; height: 40px; bottom: 18px; }
 .mic-side .ico { width: 18px; height: 18px; }
+/* 话筒悬浮在纸面右下、不占版面；页脚字数统计露着时往上让一让（user 2026-09-10「麦克风也是悬浮的，如果和字数统计挡了可以稍微往上挪一点」）。#wordCount 在 DOM 里排在话筒前面，兄弟选择器够用 */
+.page-foot:not([hidden]) ~ .mic-button { bottom: 52px; }
+.page-foot:not([hidden]) ~ .mic-side { bottom: 56px; }
 /* 锁卡（0.2 护栏，2026-09-04）：锁着 / 不可用的稿不再假装是编辑器 */
 .lock-card { position: absolute; inset: 0; z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
 .lock-card[hidden] { display: none; }
@@ -1642,11 +1648,12 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-row.parent.root .edge-main { color: var(--ink-soft); font-weight: 500; cursor: default; }
 .edge-row.parent.root .edge-main:hover { background: transparent; }
 /* 纸面页脚：上一页 / 下一页（全树前序 DFS；首尾灰、散页灰）。书模式才显示；图片页也要有（DFS 会经过图片页）。 */
-.page-nav { display: none; flex: none; justify-content: flex-start; gap: 8px; padding: 6px 72px 0 0; font-family: var(--font-ui); }   /* 靠左、右边留给话筒（.mic-button 绝对定位在纸面右下角，ui-audit 抓到过遮挡） */
-body[data-project] .page-nav:not([hidden]) { display: flex; }
-.page-nav-btn { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; color: var(--ink-soft); font: inherit; font-size: 12px; cursor: pointer; }
+/* 上一页 / 下一页 = 章节名两侧的 chevron 钮（页脚 .page-nav 2026-09-10 撤）；锁着 / 无书时整颗 hidden，两端到头只是灰（仍占位让章节名居中） */
+.page-nav-btn { flex: none; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; padding: 0; color: var(--ink-soft); cursor: pointer; }
+.page-nav-btn .ico { width: 20px; height: 20px; }
+.page-nav-btn[hidden] { display: none; }
 .page-nav-btn:hover:not(:disabled), .page-nav-btn:focus-visible:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
-.page-nav-btn:disabled { opacity: .35; cursor: default; }
+.page-nav-btn:disabled { opacity: .3; cursor: default; }
 @media (max-width: 900px) {
   .edge-sidebar { width: min(82vw, 320px); }
   body[data-edges="1"] .edge-backdrop { display: block; }

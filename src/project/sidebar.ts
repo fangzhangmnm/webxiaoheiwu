@@ -54,6 +54,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     <div class="edge-pane" id="edgePane" hidden>
       <div class="edge-head">
         <button type="button" class="row-icon-button edge-back" id="edgeBack" title="${esc(t("edge.back"))}" aria-label="${esc(t("edge.back"))}">${icon("back")}</button>
+        <button type="button" class="row-icon-button edge-forward" id="edgeForward" title="${esc(t("edge.forward"))}" aria-label="${esc(t("edge.forward"))}">${icon("forward")}</button>
         <div class="edge-titles"><div class="edge-project" id="edgeProject"></div><div class="edge-node" id="edgeNode"></div></div>
       </div>
       <input type="search" class="edge-search" id="edgeSearch" placeholder="${esc(t("edge.searchPh"))}" aria-label="${esc(t("edge.search"))}" autocomplete="off" />
@@ -143,6 +144,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     nodeEl.textContent = cur ? nodeDisplayName(cur) : "";
     projEl.textContent = m.displayName() ?? "";
     $("edgeBack").toggleAttribute("disabled", !m.canGoBack());
+    $("edgeForward").toggleAttribute("disabled", !m.canGoForward());
     const canDownload = m.home()?.kind === "local" && !!d.onDownload;
     $("edgeDownload").hidden = !canDownload; $("edgeFoot").hidden = !canDownload;
     list.innerHTML = "";
@@ -198,6 +200,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   $("edgeLift").addEventListener("click", () => { void d.onLift().then((ok) => { if (ok) render(); }); });
   $("edgeSettings").addEventListener("click", () => d.onSettings());
   $("edgeBack").addEventListener("click", () => { if (d.mode.goBack()) { clearQuery(); render(); d.focusEditor(); } });   // 不自动收（user「点 return back 的时候侧栏不应自动弹回」）
+  $("edgeForward").addEventListener("click", () => { if (d.mode.goForward()) { clearQuery(); render(); d.focusEditor(); } });   // 前进 = 回退的逆（user 2026-09-10「既然有 back 了也加一个右箭头」）
   search.addEventListener("input", () => { query = search.value.trim(); render(); });
   search.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); clearQuery(); render(); d.focusEditor(); } });
   $("edgeDownload").addEventListener("click", () => d.onDownload?.());

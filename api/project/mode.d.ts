@@ -150,7 +150,9 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     lastPersistMs: () => number;
     jump: (target: string) => void;
     goBack: () => boolean;
+    goForward: () => boolean;
     canGoBack: () => boolean;
+    canGoForward: () => boolean;
     prevPage: () => boolean;
     nextPage: () => boolean;
     neighborhood: () => {

@@ -46,7 +46,7 @@
     <!-- ICON-SPRITE:BEGIN — 由 tools/inline-sprites.py 生成，勿手改 -->
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  36 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  39 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
@@ -99,6 +99,12 @@
   <symbol id="x" data-cat="common" data-src="own" data-note="叉" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 L17.5 17.5 M17.5 6.5 L6.5 17.5"/></symbol>
   <!-- back — 返回:左向整箭头(带杆;裸 chevron-left 曾因小尺寸渲染差被 sunset) -->
   <symbol id="back" data-cat="common" data-src="own" data-note="返回:左向整箭头(带杆;裸 chevron-left 曾因小尺寸渲染差被 sunset)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H5"/><polyline points="11 6 5 12 11 18"/></symbol>
+  <!-- forward — 前进:back 的精确镜像(右向整箭头带杆;与 chevron-right 裸 chevron 分工)【WebXiaoHeiWu 侧栏页头「回退」右邻的「前进」钮（回退之后再回去）；2026-09-10 fable 自画未过目】 -->
+  <symbol id="forward" data-cat="common" data-src="own" data-note="前进:back 的精确镜像(右向整箭头带杆;与 chevron-right 裸 chevron 分工)【WebXiaoHeiWu 侧栏页头「回退」右邻的「前进」钮（回退之后再回去）；2026-09-10 fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12H19"/><polyline points="13 6 19 12 13 18"/></symbol>
+  <!-- chevron-left — ‹ 小尺寸优化裸 chevron:描边 2.4、臂短(14px chip 用)；库里带杆的 back 是另一语义【WeebPaint 参考窗多图时窗底翻页 chip；fable 自画未过目】 -->
+  <symbol id="chevron-left" data-cat="common" data-src="own" data-note="‹ 小尺寸优化裸 chevron:描边 2.4、臂短(14px chip 用)；库里带杆的 back 是另一语义【WeebPaint 参考窗多图时窗底翻页 chip；fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 6 9 12 14.5 18" stroke-width="2.4"/></symbol>
+  <!-- chevron-right — › chevron-left 的精确镜像【WeebPaint 参考窗翻页 chip；fable 自画未过目】 -->
+  <symbol id="chevron-right" data-cat="common" data-src="own" data-note="› chevron-left 的精确镜像【WeebPaint 参考窗翻页 chip；fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="9.5 6 15 12 9.5 18" stroke-width="2.4"/></symbol>
   <!-- cloud -->
   <!-- refresh — 刷新:顺时针 3/4 圆 + 箭头(从 12 点绕到 9 点, 箭头尖在右上) -->
   <symbol id="refresh" data-cat="cloud" data-src="own" data-note="刷新:顺时针 3/4 圆 + 箭头(从 12 点绕到 9 点, 箭头尖在右上)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><!-- 顺时针 3/4 圆 + 箭头：从 12 点出发顺时针绕到 9 点；箭头尖在右上 --> <path d="M21 12a9 9 0 1 1-3.5-7.1"/> <polyline points="21 4 21 9 16 9"/></symbol>
@@ -166,6 +172,8 @@
           <button class="menu-button" id="galleryBack" type="button" aria-label="回到编辑器" data-i18n-aria="gal.back" data-i18n-title="gal.back"><svg class="ico" aria-hidden="true"><use href="#back"/></svg></button>
           <div class="gallery-chrome-title" data-i18n="gal.title">书库</div>
           <span class="top-spacer" aria-hidden="true"></span>
+          <button class="menu-button cloud-btn" id="galleryCloudBtn" type="button" aria-label="云端" data-i18n-aria="ui.cloud" data-cloud-state="out" aria-haspopup="menu"><svg class="ico" aria-hidden="true"><use href="#cloud"/></svg></button>
+          <button class="menu-button" id="galleryRefreshBtn" type="button" aria-label="刷新云端" data-i18n-aria="cloud.refresh" data-i18n-title="cloud.refresh" hidden><svg class="ico" aria-hidden="true"><use href="#refresh"/></svg></button>
           <button class="auth-action" id="galleryNewBtn" type="button" aria-haspopup="menu"><svg class="ico" aria-hidden="true"><use href="#new"/></svg><span data-i18n="gal.new">新建</span></button>
           <button class="menu-button" id="galleryTrashBtn" type="button" aria-label="回收站" data-i18n-aria="gal.trash" data-i18n-title="gal.trash"><svg class="ico" aria-hidden="true"><use href="#trash-can"/></svg></button>
           <button class="menu-button" id="gallerySettingsBtn" type="button" aria-label="设置" data-i18n-aria="gal.settings" data-i18n-title="gal.settings"><svg class="ico" aria-hidden="true"><use href="#wrench"/></svg></button>
@@ -179,7 +187,11 @@
       <div id="edgeBackdrop" class="edge-backdrop" aria-hidden="true"></div>
       <aside id="edgeSidebar" class="edge-sidebar" aria-label="侧栏" data-i18n-aria="edge.aria"></aside>
       <article class="page">
-        <input id="nodeTitle" type="text" class="node-title" placeholder="页名" data-i18n-ph="edge.title.ph" data-i18n-aria="edge.title.aria" aria-label="页名" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        <div class="node-title-row" role="group" aria-label="上一页 / 下一页" data-i18n-aria="edge.pageNav">
+          <button type="button" class="page-nav-btn" id="pagePrev" aria-label="上一页" data-i18n-aria="edge.prev" hidden><svg class="ico" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+          <input id="nodeTitle" type="text" class="node-title" placeholder="页名" data-i18n-ph="edge.title.ph" data-i18n-aria="edge.title.aria" aria-label="页名" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+          <button type="button" class="page-nav-btn" id="pageNext" aria-label="下一页" data-i18n-aria="edge.next" hidden><svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+        </div>
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
         <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
         <div id="wordCount" class="page-foot" aria-live="off" hidden></div>
@@ -191,10 +203,6 @@
             <button type="button" class="auth-action" id="pageImageReplace" data-i18n="img.replace">替换图片…</button>
           </div>
         </div>
-        <nav id="pageNav" class="page-nav" hidden aria-label="上一页 / 下一页" data-i18n-aria="edge.pageNav">
-          <button type="button" class="page-nav-btn" id="pagePrev" data-i18n="edge.prev">上一页</button>
-          <button type="button" class="page-nav-btn" id="pageNext" data-i18n="edge.next">下一页</button>
-        </nav>
         <input type="file" id="imageFileInput" accept="image/*" multiple hidden />
         <input type="file" id="imageReplaceInput" accept="image/*" hidden />
         <button id="micButton" class="mic-button" type="button" hidden aria-label="语音输入" data-i18n-aria="ui.mic" data-state="idle">
@@ -458,6 +466,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-069ee5e30c04.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-4599cc480481.mjs"></script>
   </body>
 </html>

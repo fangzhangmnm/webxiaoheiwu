@@ -103,3 +103,11 @@ user 原话（按时序）：「工程改名之后得刷新页面」「一开始
 - **b 防抖随体重**：`src/project/cadence.ts` `bookLocalDebounceMs(lastPersistMs)` = clamp(200, 耗时 × 5, 3000)；只量本地落盘；只对书。
 - **c 不做**（store 库改动，escalate 归 user 立项）。
 - **验证**：107 测绿；build / smoke 绿；ui-audit 两尺寸 204（1280×800 103 + 400×800 101） 探针全绿（+1「切页即落盘」）；四本夹具 verify 全 ok。真机零。
+
+### v2.1.3 顶栏 / 页头 / 侧栏三条 QoL（2026-09-10 深夜，user 三条连发；Claude Fable 5.1）
+- **书库顶栏露出云状态 + 刷新**（user「书库刷新和云状态不应跟藏扳手里面，而是外面和菜单里都有吧，当时 weebpaint 也是这么拍板的」）：`#galleryCloudBtn`（`.cloud-btn` 同抽屉头那颗：signedin 蓝勾 / offline 灰断 / out 淡）+ `#galleryRefreshBtn`（只在已登录且在线时露面，WeebPaint `cloudRefreshBtn` 同款）排在「新建」左边；点云图标 = 同一份云菜单（`openCloudMenu(anchor)`：账号行 / 刷新云端 / 锁定 / 断开 或 连接 OneDrive）。刷新 = `refreshCloudNow()`：没登录但在线先 `retrySilentSignIn` 一次 → `drawer.subscribe()` + `galleryHost.refresh()` + `resumeSync()`；云菜单里的「刷新云端」走同一条。扳手 → 设置抽屉不动（抽屉头仍有云图标 / 刷新页面）——「外面和菜单里都有」。
+- **侧栏页头「前进」**（user「editor side panel 的导航页既然有 back 了也加一个右箭头呗」）：`mode.goForward / canGoForward`，`#edgeForward` 在 `#edgeBack` 右邻。语义 = 浏览器历史：回退把离开的页压进前进栈，前进把离开的页压回回退栈（不经 `pushBack`），**任何新导航（jump / 加页 / 上下页 / 分裂）清空前进栈**；改名 / 彻底删除同步改前进栈。**前进栈只在内存，不进 editor-state.json**（AI 决定：不改容器格式；user 要跟着书走再加字段）。图标 `forward` = 图标库 PENDING 新画（`back` 精确镜像，待过目，TODO.md 已登记）。
+- **上一页 / 下一页搬到章节名两侧 + 话筒让位**（user「上一页下一页和麦克风不应该浪费页脚的空间，上一页和下一页可以放在标题行，用 ⟨ ⟩ 的 svg，然后麦克风也是悬浮的，如果和字数统计挡了可以稍微往上挪一点。因为 quest 屏幕 vertical space is scarcity」）：`.node-title-row` = `‹`(`chevron-left`) + `#nodeTitle` + `›`(`chevron-right`)，chevron 32px 方钮、两端到头只灰不藏（占位让章节名居中）、锁着 / 无书整颗 hidden；页脚 `<nav id="pageNav">` 删（`renderPageNav` 改 hidden 两颗钮）。话筒本来就是 `position:absolute` 悬浮（bottom 14px）；字数统计露着时 `.page-foot:not([hidden]) ~ .mic-button { bottom: 52px }`（退格钮 56px）——量过 800px 高时页脚带 24–47px，14px 会压住。chevron 两枚 = 图标库 PENDING 既有（fable 为 WeebPaint 参考窗画的，未过目；TODO.md 加了 WXHW 用量）。
+- **验证**：107 测绿；build / smoke 绿；`node tools/ui-audit.mjs` 两尺寸 **224 探针全绿**（1280×800 113 + 400×800 111；每尺寸 +10：书库云钮 out 态 + 刷新藏 / 云钮开菜单有 OneDrive / Esc 关菜单书库仍开 / 话筒在页脚字数上方不相撞 / chevron 与章节名同行且页脚 nav 不存在 / 回退后前进亮 / 前进回序章 / 再回退 / 新跳转清前进栈 / 回退落作品；navState 改看 `#pagePrev.hidden`）；api 重打。真机零。
+- **待 user**：`forward` / `chevron-left` / `chevron-right` / `book` 图标过目；前进栈要不要跟着书持久化。
+

@@ -1652,6 +1652,10 @@ export declare const S: {
         readonly zh: "回到上一页";
         readonly en: "Back to the previous page";
     };
+    readonly "edge.forward": {
+        readonly zh: "前进（回退之后再回去）";
+        readonly en: "Forward (after going back)";
+    };
     readonly "edge.search": {
         readonly zh: "检索";
         readonly en: "Search";
