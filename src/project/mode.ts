@@ -18,6 +18,7 @@ import { isValidNodeName, nameKey, nodeKind, nodeExt, type NodeKind } from "./fo
 import { nodeDisplayName } from "./naming.ts";
 import type { SyncKind } from "../editor.ts";
 import { t } from "../i18n/index.ts";
+import { S } from "../i18n/strings.ts";
 
 export type ProjectHome = { kind: "store"; name: string } | { kind: "local"; home: LocalHome };
 export interface ProjectModeDeps {
@@ -441,8 +442,20 @@ export function createProjectMode(d: ProjectModeDeps) {
     scheduleLocalSave(); d.onChanged();
     return true;
   }
-  /** 移出树：页变散页（带着子树），文件与 links 不动、不改名（只有丢引用会改名）。 */
-  const detachFromTree = guardEdit((target: string) => { commitEditor(); if (!session!.treeDetach(target)) throw new Error(t("edge.noSuchPage")); });
+  /** 移出树：x 连同子树出树，子树边降级成 links（结构不丢），不删、不改名。lastDetached = 改成链接的页数（toast 用）。 */
+  let lastDetached = 0;
+  const detachFromTree = guardEdit((target: string) => { commitEditor(); const n = session!.treeDetach(target); if (n == null) throw new Error(t("edge.noSuchPage")); lastDetached = n; });
+  // ── 删除模型（ADR-0014 §8 改写；user 2026-09-10 深夜「不同意引用计数」）：断开链接 = removeLink；废弃 = discardPage；彻底删除 = purgePage。没有孤儿概念。──
+  /** 带废弃前缀（任一界面语言的前缀都认——书可能在别的语言下废弃过）。 */
+  const discardPrefixes = (): string[] => Object.values(S["edge.discardPrefix"]);
+  const isDiscarded = (target: string): boolean => discardPrefixes().some((pre) => target.startsWith(pre));
+  /** 废弃（用户面 = 删除）：改名 `_废-`（前缀按界面语言）+ 在树里连同子树出树、子节各自改名；不删字节。回退 / 前进栈跟着改名。lastDiscarded = 改名表（toast 用）。 */
+  let lastDiscarded: { from: string; to: string }[] = [];
+  const discardPage = guardEdit((target: string) => { commitEditor(); const r = session!.discard(target, t("edge.discardPrefix"), discardPrefixes()); lastDiscarded = r.renamed; for (const x of r.renamed) if (x.from !== x.to) renameInBack(x.from, x.to); });
+  /** 废弃前给 sheet 的数：子树里有几个子节（不在树里 = 0）。 */
+  const subtreeCount = (target: string): number => { const s = session; if (!s) return 0; const depth = s.pathOf(target).length; if (!depth) return 0; const order = s.order(); const i = order.indexOf(target); let n = 0; for (let j = i + 1; j < order.length && s.pathOf(order[j]!).length > depth; j++) n++; return n; };
+  /** 彻底删除：只对 `_废-` 页（调用方先弹 sheet 写明有几页链接到它）；删文件 + 指向它的 links 条目移除；回退 / 前进栈过滤掉目标。当前页被删 → 回退或落到树首 / 任一页。 */
+  const purgePage = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.purge(target, discardPrefixes()); back = back.filter((n) => n !== target); forward = forward.filter((n) => n !== target); syncBack(); if (wasCurrent) { const next = popBack() ?? session!.order()[0] ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
   /** 归档到当前页之后 / 之下（散页从 links / 谁指向这里 收进主干；树里的页 = 搬家，子树跟着）。 */
   const archiveAfterCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveAfter(target, session!.current()!); });
   const archiveUnderCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveUnder(target, session!.current()!); });
@@ -466,6 +479,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 断入边（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能」）：纯 unlink from → 当前页。 */
   const cutIncoming = guardEdit((from: string) => { if (!session!.cutIncoming(from)) throw new Error("no such incoming link"); });
   const backlinksOfCurrent = (): string[] => { const c = session?.current(); return c ? session!.backlinksOf(c) : []; };
+  const backlinksOfPage = (target: string): string[] => session?.backlinksOf(target) ?? [];
   // ── 图片页（2.1，ADR-0012/0013）──
   /** 减肥后的图片 → 新页（撞名 hex4）+ 当前页末尾一条边；全部加完跳到最后一张（同加页手感）。返回最终名列表。 */
   let lastAdded: string[] = [];
@@ -487,20 +501,15 @@ export function createProjectMode(d: ProjectModeDeps) {
   const setThumbnail = guardEdit((png: Uint8Array | null) => { session!.setThumbnail(png); });
   const thumbnail = (): Uint8Array | null => session?.thumbnail() ?? null;
   const moveLink = guardEdit((to: string, dir: -1 | 1) => { const links = session!.sidebar(); const i = links.indexOf(to); const j = i + dir; if (i < 0 || j < 0 || j >= links.length) return; [links[i], links[j]] = [links[j]!, links[i]!]; session!.setLinksOrder(links); });
-  /** 丢引用（删除模型）：断边；成孤儿则改名 `_废-…`（回退栈跟着改名）。返回孤儿新名（toast 用）。 */
-  let lastDropped: string | null = null;
-  const dropRef = guardEdit((to: string) => { commitEditor(); const nn = session!.drop(to, t("edge.orphanPrefix")); lastDropped = nn; if (nn && nn !== to) renameInBack(to, nn); });
-  /** 彻底删除：只准孤儿（调用方先弹框确认）。当前页被删 → 回退或落到任一页。 */
-  const purgeOrphan = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.purge(target); back = back.filter((n) => n !== target); forward = forward.filter((n) => n !== target); syncBack(); if (wasCurrent) { const next = popBack() ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
 
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
     jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, exportBranchText,
-    addLink, removeLink, moveLink, dropRef, lastDropped: () => lastDropped, purgeOrphan, isOrphan: (n: string) => session?.orphan(n) ?? false, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
+    addLink, removeLink, moveLink, lastDetached: () => lastDetached, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
-    cutIncoming, backlinksOfCurrent, addImagePages, lastAdded: () => lastAdded, pageBytes, replaceImage, setThumbnail, thumbnail,
+    cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, pageBytes, replaceImage, setThumbnail, thumbnail,
   };
 }
 export type ProjectMode = ReturnType<typeof createProjectMode>;

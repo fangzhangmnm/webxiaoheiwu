@@ -44,9 +44,14 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     setLinksOrder: (list: string[]) => void;
     rename: (from: string, to: string) => void;
     remove: (target: string) => boolean;
-    drop: (to: string, orphanPrefix: string) => string | null;
-    purge: (target: string) => boolean;
-    orphan: (target: string) => boolean;
+    discard: (target: string, prefix: string, prefixes?: readonly string[] | undefined) => {
+        renamed: {
+            from: string;
+            to: string;
+        }[];
+        detached: number;
+    };
+    purge: (target: string, prefixes: readonly string[]) => string[];
     setReadOnly: (v: boolean) => void;
     cutIncoming: (from: string) => boolean;
     addBytesPage: (pageName: string, bytes: Uint8Array<ArrayBufferLike>) => string;
@@ -59,7 +64,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     treeDown: (target: string) => boolean;
     treeOutdent: (target: string) => boolean;
     treeIndent: (target: string) => boolean;
-    treeDetach: (target: string) => boolean;
+    treeDetach: (target: string) => number | null;
     archiveAfter: (target: string, anchor: string) => void;
     archiveUnder: (target: string, parent: string) => void;
     archiveAtEnd: (target: string) => void;

@@ -1,8 +1,12 @@
 // 书的图操作（ADR-0009 / ADR-0014；无 DOM）：页 = pages/ 文件；tree = 整理（主干树，一页至多一个父亲、兄弟有序、成员可选）；links = 指向（有向、零属性、顺序 = 用户手排）；反链 = 查询。
 // created 2026-09-10 by Claude Fable 5.1；v2 树操作同日由树 session 落地。系统对图零态度：没有全图、没有计数面板、没有衰减。
 //   · 占位符已废（ADR-0014 §4）：links / tree 里的每个名字必有文件；打新名 = 当场建空文件。
-//   · 树操作全部是对一个数组的编辑，links 一个字节不动（ADR-0014 §8）。语义钉在 handoff §2：兄弟顺序 = 数组顺序；升级 = 出到父亲那一层（插到父亲之后）；
-//     降级 = 进到上一个兄弟的孩子末尾；移出树 = 整个子树拿掉（页文件、links 不动）；归档 = 放到锚之后 / 之下；一页只有一个位置。
+//   · 树操作全部是对一个数组的编辑（ADR-0014 §8）。语义钉在 handoff §2：兄弟顺序 = 数组顺序；升级 = 出到父亲那一层（插到父亲之后）；
+//     降级 = 进到上一个兄弟的孩子末尾；归档 / 搬家 = 放到锚之后 / 之下（子树跟着）；一页只有一个位置。
+//   · 删除模型 = 三个显式动词各归一层，**没有引用计数、没有「孤儿」概念**（user 2026-09-10 深夜「不同意引用计数，那又是 cleverness. 删除是一个不同的语义」，迁移 session 转述）：
+//     断开链接 unlink = 只删这一条边；移出树 detachToLinks = x 连同子树出树、子树边降级成 links（结构不丢）、不改名；
+//     废弃 discard = 改名 `_废-x`（撞名 hex4）+ 在树里则连同子树出树、子节各自也改名（删容器 = 删内容）；彻底删除 purge = 只对 `_废-` 页、删文件、指向它的 links 条目移除（v2 不许悬空）。
+//     一页没人指就是没人指，app 不替它做任何事。
 //   · 图片页（2.1）= 字节页：同一张表，进门撞名走 hex4 不走「撞名=链接」（新字节不是同一页）。
 import { type Project, type NodeMeta, type TreeNode, nameKey, isValidNodeName, writeNodeText, readNodeText, nodeKind, treeNodeName, treeNodeChildren } from "./format.ts";
 import { hex4 } from "../doc-model.ts";
@@ -108,24 +112,30 @@ export function renameNode(p: Project, from: string, to: string, now: NowFn = DE
   if (p.editorState.last && nameKey(p.editorState.last) === k) p.editorState.last = t;
   p.editorState.back = p.editorState.back.map((n) => (nameKey(n) === k ? t : n));
 }
-/** 孤儿：有文件、不在树里、也没有任何页指向它（ADR-0014 之后树也是引用）。 */
-export const isOrphan = (p: Project, name: string): boolean => { const n = resolveName(p, name); return !!n && !inTree(p, n) && backlinks(p, n).length === 0; };
-/** 丢引用（user 2026-09-10「删除模型就是 gc 里面的丢引用」）：断开 from→to；to 若因此成孤儿（有文件、不在树、没人再指向）→ 改名 `<prefix><名>`（唯一化）让原名腾出来
- *  （prefix 由调用方按界面语言给，如 zh `_废-`、en `_dropped-`——user「英文界面不要自动生成中文名字」；ADR-0009 §2 的沉底前缀）。
- *  **只有这个动作改名**：别的途径成孤儿（移出树、读进来的散 txt）一律不动（user「非删除的变成孤儿不应自动改名」）。返回孤儿的新名；没成孤儿 → null。 */
-export function dropRef(p: Project, from: string, to: string, prefix: string, now: NowFn = DEFAULT_NOW): string | null {
-  const n = resolveName(p, to);
-  if (!n) return null;
-  const removed = unlink(p, from, n, now);
-  if (!removed || !isOrphan(p, n)) return null;   // 没边可断 / 树里还有它 / 别处还指着 → 不动
-  if (prefix && n.startsWith(prefix)) return n;
-  const m = n.match(/^(.*?)(\.[A-Za-z0-9]{1,8})?$/); const base = m?.[1] ?? n, ext = m?.[2] ?? "";
-  let cand = `${prefix}${base}${ext}`; for (let i = 2; resolveName(p, cand); i++) cand = `${prefix}${base} ${i}${ext}`;
-  renameNode(p, n, cand, now);
-  return cand;
+/** 废弃（用户面 = 删除；ADR-0014 §8）：改名 `<prefix>x`（撞名 → `<prefix>x-hex4`）；在树里 → 连同子树出树（子树边降级成 links，同 detachToLinks）且**子节各自也改名**（删容器 = 删内容）；
+ *  不删字节；指向它们的 links 随改名重写（renameNode 既有行为）。已带前缀的页不再套第二层。返回 { renamed: 旧名→新名 的顺序表（x 在首）, detached: 出树的子树页数 }。散页上的废弃 = 只改名。 */
+export function discard(p: Project, name: string, prefix: string, now: NowFn = DEFAULT_NOW, prefixes: readonly string[] = [prefix]): { renamed: { from: string; to: string }[]; detached: number } {
+  const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
+  const l = locate(p.tree, n);
+  const members = l ? dfsOrder(p, [l.arr[l.index]!]) : [n];   // x 在首，子树按 DFS
+  if (l) detachToLinks(p, n, now);
+  const renamed: { from: string; to: string }[] = [];
+  for (const m of members) {
+    if (prefixes.some((pre) => pre && m.startsWith(pre))) { renamed.push({ from: m, to: m }); continue; }   // 任一语言的前缀都算已废弃，不套第二层
+    const to = uniqueNodeName(p, prefix + m);
+    renameNode(p, m, to, now);
+    renamed.push({ from: m, to });
+  }
+  return { renamed, detached: members.length - 1 };
 }
-/** 彻底删除：只准孤儿（还有人指向 / 在树里 → 抛；UI 先弹框确认）。 */
-export function purgeOrphan(p: Project, name: string): boolean { if (!isOrphan(p, name)) throw new Error(`not an orphan: ${name}`); return deleteNode(p, name); }
+/** 彻底删除：只对带废弃前缀的页（别的 → 抛；UI 先弹 sheet 写明有几页链接到它）。删文件 + 指向它的 links 条目移除（deleteNode）。返回被移除的入链来源。 */
+export function purge(p: Project, name: string, prefixes: readonly string[]): string[] {
+  const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
+  if (!prefixes.some((pre) => pre && n.startsWith(pre))) throw new Error(`not a discarded page: ${n}`);
+  const from = backlinks(p, n);
+  deleteNode(p, n);
+  return from;
+}
 /** 删除页（正文没了）。不留悬空：指向它的边一并断掉；在树里则拿掉（它的孩子提到它的位置）。2.0.7 起 UI 不直接用它（走 dropRef / purgeOrphan）。 */
 export function deleteNode(p: Project, name: string): boolean {
   const n = resolveName(p, name); if (!n) return false;
@@ -227,6 +237,15 @@ export function detach(p: Project, name: string): TreeNode | null {
   const [x] = l.arr.splice(l.index, 1);
   collapseEmpty(p);
   return x!;
+}
+/** 移出树（用户面动作；ADR-0014 §8）：x 连同子树离开树，**子树边降级成 links**——每一层的孩子按原顺序追加到父亲的 links 末尾（已有的边不重复），结构不丢；不改名。
+ *  返回改成链接的页数（= 子树里的边数）；不在树里 → null。树内搬家仍用纯 detach（子树保持为树）。 */
+export function detachToLinks(p: Project, name: string, now: NowFn = DEFAULT_NOW): number | null {
+  const node = detach(p, name); if (node == null) return null;
+  let converted = 0;
+  const walk = (n: TreeNode) => { for (const c of treeNodeChildren(n)) { link(p, treeNodeName(n), treeNodeName(c), { at: "bottom", now }); converted++; walk(c); } };
+  walk(node);
+  return converted;
 }
 /** 归档 / 移动：x 放到 anchor 之后（同一层）。x 已在树里 → 先 detach（子树跟着走）再放；anchor 在 x 的子树里 → 抛（不能把自己放进自己）。x / anchor 没文件 → 抛。 */
 export function attachAfter(p: Project, name: string, anchor: string): void {

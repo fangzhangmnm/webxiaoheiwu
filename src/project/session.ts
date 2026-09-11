@@ -3,11 +3,11 @@
 //   · 正文改了才 dirty；**跳转 / 滚动不标脏**（ADR-0010）——editor-state.last 随下一次保存写
 //   · 落盘 = 整包重写（ADR-0008 §4），字节源 = packProject（同内容同字节）
 //   · 撞名 = 链接不是新建；占位符已废（ADR-0014 §4）：跳到没有的名字 = 抛，不再「跳上去才生文件」
-//   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 丢引用 / 彻底删 /
-//     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页 / 封面 / 断入边 / 修改锁本身
+//   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 废弃 / 彻底删 /
+//     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页（可指定位置）/ 封面 / 断入边 / 修改锁本身。删除模型 = 断开链接 / 废弃 / 彻底删除 三个显式动词，无引用计数（ADR-0014 §8）
 import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
-import { createNode, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, dropRef, purgeOrphan, isOrphan, createBytesNode, replaceNodeBytes,
-  inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detach, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
+import { createNode, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes,
+  inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 
 export interface ProjectSessionDeps {
   read(name: string): Promise<Blob | null>;                                     // store file(name,{isZip:true}).open()
@@ -93,7 +93,10 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const remove = guard((target: string) => deleteNode(project, target));
   /** 修改锁（跟着作品进 graph.json）：切换 = 正经改动（标脏；调用方随即落盘/推云）。唯一不受锁挡的改动（解锁本身）；格式太新仍不许。 */
   function setReadOnly(v: boolean): void { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly === v) return; project.readOnly = v; touch(); }
-  const drop = guard((to: string, orphanPrefix: string) => dropRef(project, requireCurrent(), to, orphanPrefix, now));
+  /** 废弃（用户面 = 删除）：改名 `_废-`（前缀按界面语言给）+ 在树里连同子树出树、子节各自改名；不删字节。 */
+  const discard = guard((target: string, prefix: string, prefixes: readonly string[] = [prefix]) => discardNode(project, target, prefix, now, prefixes));
+  /** 彻底删除：只对带废弃前缀的页；删文件 + 指向它的 links 条目移除。返回被移除的入链来源。 */
+  const purge = guard((target: string, prefixes: readonly string[]) => purgeNode(project, target, prefixes));
   /** 断一条**入**边：from → 当前页（user 2026-09-10「显示入度的时候需要加一个删除入度边的功能」）。纯断边，不走「移出」的孤儿改名。 */
   const cutIncoming = guard((from: string) => { const src = resolveName(project, from); if (!src) return false; return unlink(project, src, requireCurrent(), now); });
   // ── 主干树（ADR-0014 §8：全部是对一个数组的编辑，links 不动）──
@@ -101,8 +104,8 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const treeDown = guard((target: string) => moveDown(project, target));
   const treeOutdent = guard((target: string) => outdent(project, target));
   const treeIndent = guard((target: string) => indent(project, target));
-  /** 移出树：页变散页（带着子树），不删、不改名。 */
-  const treeDetach = guard((target: string) => detach(project, target) != null);
+  /** 移出树：x 连同子树出树，子树边降级成 links（结构不丢），不删、不改名。返回改成链接的页数；不在树里 → null。 */
+  const treeDetach = guard((target: string) => detachToLinks(project, target, now));
   /** 归档：散页（或树里别处的页，子树跟着走）放到 anchor 之后 / parent 之下 / 树末尾。 */
   const archiveAfter = guard((target: string, anchor: string) => attachAfter(project, target, anchor));
   const archiveUnder = guard((target: string, parent: string) => attachUnder(project, target, parent));
@@ -111,7 +114,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const newSibling = guard((newName: string) => { const r = insertSibling(project, requireCurrent(), newName, now); project.editorState.last = r.name; return r; });
   const newChild = guard((newName: string) => { const r = insertChild(project, requireCurrent(), newName, now); project.editorState.last = r.name; return r; });
   // ── 图片页（2.1，ADR-0012/0013）：字节页 + 封面 ──
-  /** 图片进门：减肥后的字节 → 新页（撞名 hex4）+ 当前页末尾长一条边。不跳转（UI 自己 jump，同加页手感）。返回最终名。 */
+  /** 图片进门：减肥后的字节 → 新页（撞名 hex4）+ 当前页末尾长一条边。只管建页 + 一条边；放进树（兄弟 / 子节）由 mode.addImagePages 在上层用 archiveAfter / archiveUnder 挂（user 2026-09-10「加图片没说清楚是兄弟还是孩子」）。不跳转（UI 自己 jump）。返回最终名。 */
   const addBytesPage = guard((pageName: string, bytes: Uint8Array) => { const from = requireCurrent(); const n = createBytesNode(project, pageName, bytes, now); link(project, from, n, { at: "bottom", now }); return n; });
   /** 替换图片：保名保边只换字节。 */
   const replaceBytes = guard((target: string, bytes: Uint8Array) => replaceNodeBytes(project, target, bytes, now));
@@ -120,8 +123,6 @@ export function createProjectSession(d: ProjectSessionDeps) {
   /** 封面 = Thumbnails/thumbnail.png 本身（ADR-0012；没有 cover 字段）：设 / 清都是正经改动。 */
   const setThumbnail = guard((png: Uint8Array | null) => { project.thumbnail = png && png.length ? png : null; });
   const thumbnail = (): Uint8Array | null => project.thumbnail;
-  const purge = guard((target: string) => purgeOrphan(project, target));
-  const orphan = (target: string) => isOrphan(project, target);
 
   // ── 查询（零态度：无全图、无计数）──
   /** 当前页的邻域（侧栏数据；ADR-0014 §7）：树里 = 父 / 兄弟 / 孩子；links = 出边；incoming = 谁指向这里。 */
@@ -160,7 +161,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   return {
     open, create, close, flush, toBlob, adoptName, setBack,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
-    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, drop, purge, orphan, setReadOnly,
+    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, discard, purge, setReadOnly,
     cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail,
     treeUp, treeDown, treeOutdent, treeIndent, treeDetach, archiveAfter, archiveUnder, archiveAtEnd, newSibling, newChild,
     neighborhood, sidebar, backlinksOf, find, exists, pathOf, isInTree, order, exportBranch, canMutate,

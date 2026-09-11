@@ -2,7 +2,8 @@
 //   `..`（父；顶层 = 书，不可点）→ 兄弟（当前页高亮）→ 子节 → 链接（出边，手排）→ 谁指向这里（反链 = 查询）。散页没有 ../兄弟/子节，只有链接 + 「+ 子节」（链出去）。
 // created 2026-09-10 by Claude Fable 5.1；同日晚按 user 打回重做（「editor sidebar 只有一个三条杠」「侧栏不应默认开」「检索不限字数」「还是不显示扩展名吧」「分裂选中 连接已有 指向这里这三个先去掉」）；
 //   深夜 v2 树 session 接入邻域（user「树重新变成清单 → 看到的是 sibling 和一个 ..」「上一章下一章就是对主树做 dfs」）。
-// 行菜单：树行 = 上移 / 下移 / 升级 / 降级 / 移出树 / 导出这一支；链接行 = 上移 / 下移 / 归档到这页之后·之下（目标是散页时）/ 移出（丢引用）；入边行 = 断开；检索里的孤儿 = 彻底删除。
+// 行菜单：树行 = 上移 / 下移 / 升级 / 降级 / 移出树 / 废弃 / 导出这一支；链接行 = 上移 / 下移 / 归档到这页之后·之下（目标是散页时）/ 断开链接 / 废弃；入边行 = 断开；检索里的 `_废-` 页 = 彻底删除。
+//   删除模型三动词各归一层、无引用计数无孤儿（user 2026-09-10 深夜「不同意引用计数，那又是 cleverness. 删除是一个不同的语义」；ADR-0014 §8）。
 // 零态度：无全图、无计数、无衰减。页改名不在这里（章节名框，mode.ts）。
 import type { ProjectMode } from "./mode.ts";
 import { nodeDisplayName } from "./naming.ts";
@@ -93,18 +94,18 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   }
   function rawMenuItems(name: string, block: Block, cur: string | null): PopupMenuItem[] {
     const m = d.mode;
-    if (block === "results") return m.isOrphan(name) ? [{ id: "purge", label: t("edge.purge"), icon: "trash-can", danger: true }] : [];   // 检索结果里的孤儿：只有彻底删除（弹框确认）
+    if (block === "results") return m.isDiscarded(name) ? [{ id: "purge", label: t("edge.purge"), icon: "trash-can", danger: true }] : [];   // 检索结果里的 `_废-` 页：彻底删除（弹 sheet 写明有几页链接到它）
     if (block === "incoming") return [{ id: "cut", label: t("edge.cutIncoming"), icon: "x" }];   // 入边：断开（user「显示入度的时候需要加一个删除入度边的功能」）
     if (block === "links") {
       const items: PopupMenuItem[] = [{ id: "lup", label: t("edge.up") }, { id: "ldown", label: t("edge.down") }];
       if (cur && m.isInTree(cur) && !m.isInTree(name)) items.push({ id: "after", label: t("edge.archiveAfter"), separatorBefore: true }, { id: "under", label: t("edge.archiveUnder") });   // 散页归档进主干（ADR-0014 §8）
-      items.push({ id: "drop", label: t("edge.drop"), icon: "x", separatorBefore: true });   // 删除模型 = 丢引用（GC 语义）
+      items.push({ id: "unlink", label: t("edge.unlink"), icon: "x", separatorBefore: true }, { id: "discard", label: t("edge.discard"), icon: "trash-can", danger: true });   // 断开链接 = 只删这一条边；废弃 = 改名 _废-（+ 子树出树）
       return items;
     }
     if (block === "parent") return [{ id: "export", label: t("edge.exportBranch"), icon: "download" }];
     return [   // 树行（兄弟 / 子节）：树移动六件 + 导出这一支
       { id: "up", label: t("edge.up") }, { id: "down", label: t("edge.down") }, { id: "outdent", label: t("edge.outdent") }, { id: "indent", label: t("edge.indent") },
-      { id: "detach", label: t("edge.detach"), icon: "x", separatorBefore: true },
+      { id: "detach", label: t("edge.detach"), icon: "x", separatorBefore: true }, { id: "discard", label: t("edge.discard"), icon: "trash-can", danger: true },
       { id: "export", label: t("edge.exportBranch"), icon: "download", separatorBefore: true },
     ];
   }
@@ -122,14 +123,21 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     else if (id === "lup") m.moveLink(name, -1);
     else if (id === "ldown") m.moveLink(name, 1);
     else if (id === "up" || id === "down" || id === "outdent" || id === "indent") m.treeMove(name, id);
-    else if (id === "detach") { if (m.detachFromTree(name)) d.setStatus(t("edge.detached", { name: nodeDisplayName(name) })); }
+    else if (id === "detach") { if (m.detachFromTree(name)) { const n = m.lastDetached(); d.setStatus(n ? t("edge.detached", { name: nodeDisplayName(name), n }) : t("edge.detachedLeaf", { name: nodeDisplayName(name) })); } }
+    else if (id === "unlink") { if (m.removeLink(name)) d.setStatus(t("edge.unlinked", { name: nodeDisplayName(name) })); }
+    else if (id === "discard") {
+      const n = m.subtreeCount(name); const prefix = t("edge.discardPrefix");
+      if (await openConfirmSheet(n ? t("edge.discardTitleTree", { name: nodeDisplayName(name), n }) : t("edge.discardTitle", { name: nodeDisplayName(name) }), n ? t("edge.discardMsgTree", { prefix, n }) : t("edge.discardMsg", { prefix }), { danger: true, okLabel: t("edge.discard") }) && m.discardPage(name)) {
+        const r = m.lastDiscarded(); const first = r[0];
+        d.setStatus(n ? t("edge.discardedTree", { name: nodeDisplayName(name), n, prefix }) : t("edge.discarded", { from: nodeDisplayName(first?.from ?? name), to: nodeDisplayName(first?.to ?? name) }));
+      }
+    }
     else if (id === "after") { if (m.archiveAfterCurrent(name)) d.setStatus(t("edge.archived", { name: nodeDisplayName(name) })); }
     else if (id === "under") { if (m.archiveUnderCurrent(name)) d.setStatus(t("edge.archived", { name: nodeDisplayName(name) })); }
     else if (id === "export") { await d.onExportBranch(name); }
-    else if (id === "drop") { if (m.dropRef(name)) { const nn = m.lastDropped(); d.setStatus(nn ? t("edge.droppedOrphan", { name: nodeDisplayName(nn) }) : t("edge.dropped")); } }
     else if (id === "purge") {
-      if (!m.isOrphan(name)) { d.setStatus(t("edge.notOrphan"), { error: true }); }
-      else if (await openConfirmSheet(t("edge.purgeTitle", { name: nodeDisplayName(name) }), t("edge.purgeMsg"), { danger: true, okLabel: t("edge.purge") })) m.purgeOrphan(name);
+      if (!m.isDiscarded(name)) { d.setStatus(t("edge.notDiscarded", { prefix: t("edge.discardPrefix") }), { error: true }); }
+      else { const n = m.backlinksOfPage(name).length; if (await openConfirmSheet(t("edge.purgeTitle", { name: nodeDisplayName(name) }), n ? t("edge.purgeMsg", { n }) : t("edge.purgeMsgNoLinks"), { danger: true, okLabel: t("edge.purge") })) m.purgePage(name); }
     }
     render();
   }

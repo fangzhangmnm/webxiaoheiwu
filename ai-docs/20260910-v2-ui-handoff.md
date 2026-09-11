@@ -111,3 +111,7 @@ user 原话（按时序）：「工程改名之后得刷新页面」「一开始
 - **验证**：107 测绿；build / smoke 绿；`node tools/ui-audit.mjs` 两尺寸 **224 探针全绿**（1280×800 113 + 400×800 111；每尺寸 +10：书库云钮 out 态 + 刷新藏 / 云钮开菜单有 OneDrive / Esc 关菜单书库仍开 / 话筒在页脚字数上方不相撞 / chevron 与章节名同行且页脚 nav 不存在 / 回退后前进亮 / 前进回序章 / 再回退 / 新跳转清前进栈 / 回退落作品；navState 改看 `#pagePrev.hidden`）；api 重打。真机零。
 - **待 user**：`forward` / `chevron-left` / `chevron-right` / `book` 图标过目；前进栈要不要跟着书持久化。
 
+### v2.1.4 删除模型改写：引用计数整个删掉（2026-09-10 深夜；user「不同意引用计数，那又是 cleverness. 删除是一个不同的语义」，迁移 session 转述；SSoT = ADR-0014 §8）
+- graph：删 `isOrphan / dropRef / purgeOrphan`；加 `detachToLinks`（移出树 = 子树边降级成 links，不改名）/ `discard`（`_废-` + 子树出树子节同改名，撞名 hex4，任一语言前缀不再套）/ `purge`（只对 `_废-`，deleteNode 清入链，返回被移除的来源）。session：`treeDetach` 改返回改成链接的页数；`discard(target, prefix, prefixes)` / `purge(target, prefixes)`；守卫 22 动词逐个验。mode：`discardPage / subtreeCount / isDiscarded / purgePage / lastDetached / lastDiscarded / backlinksOfPage`；彻底删除时 back / forward 栈都过滤目标。
+- 侧栏行菜单：树行 + 废弃；链接行 = 上移 / 下移 / 归档… / 断开链接 / 废弃；检索里 `_废-` 页 = 彻底删除（sheet 写明 N 页链接到它）；废弃弹 sheet「废弃「x」及其 N 个子节」。i18n 删 `edge.drop / orphanPrefix / dropped / droppedOrphan / notOrphan`，加 `edge.unlink / unlinked / discardPrefix / discard* / purgeMsg(NoLinks) / notDiscarded / detached(Leaf)`。
+- 验证：111 测绿；ui-audit 两尺寸 232（1280×800 117 + 400×800 115；基线 224 + 8） 探针全绿（移出树带子节 → 链接 + 不改名 / 未废弃散页无菜单 / 断开链接不改名 / 废弃 sheet 子节数 / 废弃后两页 `_废-` 出树、结构留成链接 / 彻底删除 sheet 入链数 + 清入链）；四本夹具 verify 全 ok。真机零。

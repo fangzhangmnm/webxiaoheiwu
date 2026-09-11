@@ -78,9 +78,14 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         setLinksOrder: (list: string[]) => void;
         rename: (from: string, to: string) => void;
         remove: (target: string) => boolean;
-        drop: (to: string, orphanPrefix: string) => string | null;
-        purge: (target: string) => boolean;
-        orphan: (target: string) => boolean;
+        discard: (target: string, prefix: string, prefixes?: readonly string[] | undefined) => {
+            renamed: {
+                from: string;
+                to: string;
+            }[];
+            detached: number;
+        };
+        purge: (target: string, prefixes: readonly string[]) => string[];
         setReadOnly: (v: boolean) => void;
         cutIncoming: (from: string) => boolean;
         addBytesPage: (pageName: string, bytes: Uint8Array<ArrayBufferLike>) => string;
@@ -93,7 +98,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         treeDown: (target: string) => boolean;
         treeOutdent: (target: string) => boolean;
         treeIndent: (target: string) => boolean;
-        treeDetach: (target: string) => boolean;
+        treeDetach: (target: string) => number | null;
         archiveAfter: (target: string, anchor: string) => void;
         archiveUnder: (target: string, parent: string) => void;
         archiveAtEnd: (target: string) => void;
@@ -188,10 +193,15 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     addLink: (to: string) => boolean;
     removeLink: (to: string) => boolean;
     moveLink: (to: string, dir: 1 | -1) => boolean;
-    dropRef: (to: string) => boolean;
-    lastDropped: () => string | null;
-    purgeOrphan: (target: string) => boolean;
-    isOrphan: (n: string) => boolean;
+    lastDetached: () => number;
+    discardPage: (target: string) => boolean;
+    lastDiscarded: () => {
+        from: string;
+        to: string;
+    }[];
+    subtreeCount: (target: string) => number;
+    isDiscarded: (target: string) => boolean;
+    purgePage: (target: string) => boolean;
     isInTree: (n: string) => boolean;
     commitTitle: () => boolean;
     focusTitle: () => void;
@@ -200,6 +210,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     currentKind: () => NodeKind | null;
     cutIncoming: (from: string) => boolean;
     backlinksOfCurrent: () => string[];
+    backlinksOfPage: (target: string) => string[];
     addImagePages: (items: {
         name: string;
         bytes: Uint8Array;

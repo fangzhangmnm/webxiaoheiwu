@@ -99,7 +99,7 @@ describe("project/session · 主干树动词（ADR-0014）+ 邻域查询", () =>
     r = ps.newChild("散.txt"); eq(r.created, false); eq(r.placed, true); assert(ps.isInTree("散.txt")); eq(ps.current(), "散.txt"); eq(ps.pathOf("散.txt").join("|"), "正文.txt|第二幕.txt|散.txt");
     n = ps.neighborhood(); eq(n.parent, "第二幕.txt"); eq(n.incoming.join(), "第二幕.txt"); eq(n.prev, "第二幕.txt"); eq(n.next, null);
     ps.jump("正文.txt"); r = ps.newSibling("一话.txt"); eq(r.placed, false); eq(ps.current(), "一话.txt"); eq(ps.neighborhood().parent, "第一幕.txt", "已在树里 → 位置不动，只跳");
-    ps.treeDetach("散.txt"); ps.jump("散.txt"); n = ps.neighborhood(); eq(n.inTree, false); eq(n.parent, null); eq(n.siblings.length, 0); eq(n.prev, null); eq(n.next, null); eq(n.incoming.join(), "第二幕.txt");
+    eq(ps.treeDetach("散.txt"), 0); ps.jump("散.txt"); n = ps.neighborhood(); eq(n.inTree, false); eq(n.parent, null); eq(n.siblings.length, 0); eq(n.prev, null); eq(n.next, null); eq(n.incoming.join(), "第二幕.txt");
     let threw = false; try { ps.newSibling("x.txt"); } catch { threw = true; } assert(threw, "散页上没有「+ 兄弟」");
     assert(ps.dirty);
   });
@@ -110,7 +110,7 @@ describe("project/session · 主干树动词（ADR-0014）+ 邻域查询", () =>
     assert(ps.treeDown("b.txt")); eq(ps.neighborhood().children.join("|"), "a.txt|b.txt");
     assert(ps.treeOutdent("b.txt")); eq(ps.order().join("|"), "正文.txt|a.txt|b.txt|设定.txt");
     assert(ps.treeIndent("设定.txt")); eq(ps.neighborhood().siblings.join("|"), "正文.txt|b.txt"); eq(ps.pathOf("设定.txt").join("|"), "b.txt|设定.txt"); eq(ps.order().join("|"), "正文.txt|a.txt|b.txt|设定.txt");
-    assert(ps.treeDetach("b.txt")); eq(ps.order().join("|"), "正文.txt|a.txt", "移出树 = 带着子树（设定 也散了）"); assert(ps.exists("b.txt") && ps.exists("设定.txt")); assert(!ps.isInTree("设定.txt"));
+    eq(ps.treeDetach("b.txt"), 1, "移出树 = 带着子树（设定 也散了），子树边降级成 1 条 link"); eq(ps.order().join("|"), "正文.txt|a.txt"); assert(ps.exists("b.txt") && ps.exists("设定.txt")); assert(!ps.isInTree("设定.txt")); ps.jump("b.txt"); eq(ps.sidebar().join(), "设定.txt"); ps.jump("正文.txt");
     ps.archiveAfter("b.txt", "正文.txt"); eq(ps.order().join("|"), "正文.txt|a.txt|b.txt");
     ps.archiveUnder("b.txt", "a.txt"); eq(ps.order().join("|"), "正文.txt|a.txt|b.txt"); eq(ps.pathOf("b.txt").join("|"), "正文.txt|a.txt|b.txt");
     ps.archiveAtEnd("设定.txt"); eq(ps.order().join("|"), "正文.txt|a.txt|b.txt|设定.txt"); eq(ps.pathOf("设定.txt").join(), "设定.txt");
@@ -121,17 +121,17 @@ describe("project/session · 主干树动词（ADR-0014）+ 邻域查询", () =>
 });
 
 describe("project/session · 修改锁在工件层：锁住 = 所有改动动词一律拒绝（user 2026-09-10「不要 ad hoc add hooks」）", () => {
-  it("setReadOnly(true) 后：正文/spawn/兄弟/子节/连边/断边/排序/改名/删/丢引用/彻底删/树移动六件/归档/图片/封面/断入边 全部不动；解锁本身仍可；解锁后恢复", async () => {
+  it("setReadOnly(true) 后：正文/spawn/兄弟/子节/连边/断边/排序/改名/删/废弃/彻底删/树移动六件/归档/图片/封面/断入边 全部不动；解锁本身仍可；解锁后恢复", async () => {
     const s = fakeStore(); const ps = createProjectSession(s.deps);
     ps.create("p.webxiaoheiwu.zip", "作品.txt"); ps.setCurrentText("A"); ps.newChild("b.txt"); ps.setCurrentText("B"); ps.jump("作品.txt"); ps.spawn("c.txt", "C"); ps.jump("作品.txt"); await ps.flush(false);
     ps.setReadOnly(true); assert(ps.dirty, "上锁 = 正经改动"); await ps.flush(false); assert(!ps.canMutate());
     const snap = () => JSON.stringify([[...ps.project.contents.keys()].sort(), [...ps.project.nodes].map(([k, v]) => [k, v.links]), ps.project.tree, ps.project.thumbnail]);
     const before = snap();
     eq(ps.setCurrentText("A2"), false);
-    const verbs = [() => ps.spawn("x.txt", "t"), () => ps.newSibling("x.txt"), () => ps.newChild("x.txt"), () => ps.addLink("b.txt"), () => ps.removeLink("c.txt"), () => ps.setLinksOrder([]), () => ps.rename("b.txt", "bb.txt"), () => ps.remove("b.txt"), () => ps.drop("c.txt", "_废-"), () => ps.purge("c.txt"),
+    const verbs = [() => ps.spawn("x.txt", "t"), () => ps.newSibling("x.txt"), () => ps.newChild("x.txt"), () => ps.addLink("b.txt"), () => ps.removeLink("c.txt"), () => ps.setLinksOrder([]), () => ps.rename("b.txt", "bb.txt"), () => ps.remove("b.txt"), () => ps.discard("c.txt", "_废-"), () => ps.purge("c.txt", ["_废-"]),
       () => ps.treeUp("b.txt"), () => ps.treeDown("b.txt"), () => ps.treeOutdent("b.txt"), () => ps.treeIndent("b.txt"), () => ps.treeDetach("b.txt"), () => ps.archiveAfter("c.txt", "作品.txt"), () => ps.archiveUnder("c.txt", "作品.txt"), () => ps.archiveAtEnd("c.txt"),
       () => ps.addBytesPage("a.png", new Uint8Array([1])), () => ps.replaceBytes("b.txt", new Uint8Array([1])), () => ps.setThumbnail(new Uint8Array([1])), () => ps.cutIncoming("作品.txt")];
-    for (const v of verbs) throwsName(v, "LockedBookError");
+    eq(verbs.length, 22); for (const v of verbs) throwsName(v, "LockedBookError");
     eq(snap(), before, "图纹丝不动"); assert(!ps.dirty);
     eq(ps.jump("b.txt"), "b.txt", "跳到已有页不算改动，锁着也能导航"); eq(ps.neighborhood().parent, "作品.txt", "查询不受锁挡"); eq(ps.exportBranch("作品.txt"), "A\n\nB\n");
     ps.jump("作品.txt");
@@ -163,5 +163,19 @@ describe("project/session · 2.1 图片页 / 封面 / 断入边（ADR-0012/0013 
     eq(ps.backlinksOf("作品.txt").join(), "b.txt");
     assert(ps.cutIncoming("b.txt")); eq(ps.backlinksOf("作品.txt").length, 0); eq(ps.exists("作品.txt"), true); eq(ps.current(), "作品.txt");
     eq(ps.cutIncoming("nope.txt"), false); eq(ps.cutIncoming("b.txt"), false);
+  });
+});
+
+
+describe("project/session · 删除模型三动词（ADR-0014 §8 改写）", () => {
+  it("discard 子树全改名出树 + 外部 links 重写；purge 清入链、非 _废- 拒；removeLink 永不改名", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("p.webxiaoheiwu.zip", "正文.txt"); ps.newChild("第一幕.txt"); ps.newChild("一话.txt"); ps.jump("正文.txt"); ps.spawn("笔记.txt", ""); ps.addLink("一话.txt"); ps.jump("正文.txt");
+    const r = ps.discard("第一幕.txt", "_废-"); eq(r.detached, 1); eq(r.renamed.map((x) => x.to).join("|"), "_废-第一幕.txt|_废-一话.txt");
+    eq(ps.order().join("|"), "正文.txt"); ps.jump("笔记.txt"); eq(ps.sidebar().join(), "_废-一话.txt", "外部 link 重写");
+    let threw = false; try { ps.purge("正文.txt", ["_废-"]); } catch { threw = true; } assert(threw);
+    eq(ps.purge("_废-一话.txt", ["_废-"]).join("|"), "_废-第一幕.txt|笔记.txt"); eq(ps.sidebar().length, 0); assert(!ps.exists("_废-一话.txt"));
+    assert(ps.removeLink("正文.txt") === false); ps.jump("正文.txt"); assert(ps.removeLink("笔记.txt")); assert(ps.exists("笔记.txt"), "断开链接不改名不删");
+    await ps.flush(false); const ps2 = createProjectSession(s.deps); eq((await ps2.open("p.webxiaoheiwu.zip")).warnings.length, 0);
   });
 });

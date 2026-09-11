@@ -1,8 +1,8 @@
 // 图操作（ADR-0009）+ 主干树（ADR-0014）。created 2026-09-10 by Claude Fable 5.1（v2 树操作测试同日）
 import { describe, it, eq, assert } from "./runner.mjs";
 import { emptyProject } from "../src/project/format.ts";
-import { createNode, setNodeText, link, unlink, links, backlinks, renameNode, deleteNode, search, resolveName, uniqueNodeName, createBytesNode, replaceNodeBytes, dropRef, purgeOrphan, isOrphan,
-  inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detach, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree } from "../src/project/graph.ts";
+import { createNode, setNodeText, link, unlink, links, backlinks, renameNode, deleteNode, search, resolveName, uniqueNodeName, createBytesNode, replaceNodeBytes, discard, purge,
+  inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detach, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree } from "../src/project/graph.ts";
 const tick = () => { let t = 0; return () => ++t; };
 const throws = (fn, re) => { try { fn(); } catch (e) { if (re && !re.test(e.message)) throw new Error(`threw the wrong thing: ${e.message}`); return true; } throw new Error("expected a throw"); };
 const T = (p) => JSON.stringify(p.tree);
@@ -58,27 +58,51 @@ describe("project/graph · 撞名=链接、占位符已废、反链=查询", () 
   });
 });
 
-describe("project/graph · 删除模型 = 丢引用（user 2026-09-10）；树也是引用（ADR-0014）", () => {
-  it("dropRef：断边；成孤儿（不在树、没人指）→ 改名 <prefix>名（撞名加序号）；仍有人指向 / 在树里 → 不改名；purgeOrphan 只准孤儿", () => {
+describe("project/graph · 删除模型 = 三个显式动词、无引用计数无孤儿（user 2026-09-10 深夜「不同意引用计数」；ADR-0014 §8）", () => {
+  const book = () => {
     const p = emptyProject(); const now = tick();
-    createNode(p, "第一章.txt", "", now); createNode(p, "第二章.txt", "B", now); createNode(p, "第三章.txt", "C", now);
-    link(p, "第一章.txt", "第二章.txt", { now }); link(p, "第一章.txt", "第三章.txt", { now }); link(p, "第三章.txt", "第二章.txt", { now });
-    eq(dropRef(p, "第一章.txt", "第二章.txt", "_废-", now), null, "第三章 还指着它 → 不改名");
-    assert(p.contents.has("第二章.txt")); eq(links(p, "第一章.txt").join(), "第三章.txt");
-    eq(dropRef(p, "第一章.txt", "第三章.txt", "_废-", now), "_废-第三章.txt", "没人指了、不在树 → 孤儿改名");
-    assert(!p.contents.has("第三章.txt") && p.contents.has("_废-第三章.txt")); eq(backlinks(p, "第二章.txt").join(), "_废-第三章.txt", "改名重写了它的出边持有者");
-    createNode(p, "第三章.txt", "again", now); link(p, "第一章.txt", "第三章.txt", { now });
-    eq(dropRef(p, "第一章.txt", "第三章.txt", "_废-", now), "_废-第三章 2.txt", "同名孤儿已存在 → 加序号");
-    eq(dropRef(p, "第一章.txt", "没有.txt", "_废-", now), null, "没这页");
-    assert(isOrphan(p, "第一章.txt"), "根页本来就没人指——但只有 dropRef 会改名，它不动");
-    throws(() => purgeOrphan(p, "第二章.txt"), /not an orphan/);
-    assert(purgeOrphan(p, "_废-第三章.txt")); assert(!p.contents.has("_废-第三章.txt"));
-    eq(dropRef(p, "第一章.txt", "_废-第三章 2.txt", "_dropped-", now), null, "没边可断（早是孤儿）→ 不动，不套第二层前缀");
-    // 树也是引用：在树里的页丢了最后一条 link 也不是孤儿、不改名、不能彻底删
-    createNode(p, "树页.txt", "", now); link(p, "第一章.txt", "树页.txt", { now }); p.tree = ["第一章.txt", "树页.txt"];
-    eq(dropRef(p, "第一章.txt", "树页.txt", "_废-", now), null); assert(p.contents.has("树页.txt")); assert(!isOrphan(p, "树页.txt"));
-    throws(() => purgeOrphan(p, "树页.txt"), /not an orphan/);
-    detach(p, "树页.txt"); assert(isOrphan(p, "树页.txt"), "移出树后才是孤儿（但移出树本身不改名）"); assert(p.contents.has("树页.txt"));
+    for (const n of ["正文", "第一幕", "一话", "二话", "第二幕", "三话", "设定", "笔记"]) createNode(p, n + ".txt", n, now);
+    p.tree = [{ name: "正文.txt", children: [{ name: "第一幕.txt", children: ["一话.txt", "二话.txt"] }, { name: "第二幕.txt", children: ["三话.txt"] }] }, "设定.txt"];
+    link(p, "笔记.txt", "第一幕.txt", { now }); link(p, "笔记.txt", "二话.txt", { now }); link(p, "一话.txt", "设定.txt", { now }); link(p, "设定.txt", "笔记.txt", { now });
+    return { p, now };
+  };
+  const names = (p) => [...p.contents.keys()].sort().join("|");
+  it("断开链接 unlink：只删这一条边，永不改名、不看对方还剩几个引用", () => {
+    const { p, now } = book(); const before = names(p);
+    assert(unlink(p, "笔记.txt", "二话.txt", now)); eq(links(p, "笔记.txt").join(), "第一幕.txt"); eq(names(p), before);
+    assert(unlink(p, "设定.txt", "笔记.txt", now)); eq(backlinks(p, "笔记.txt").length, 0, "没人指了"); eq(names(p), before, "还是不改名（无孤儿概念）"); assert(p.contents.has("笔记.txt"));
+  });
+  it("移出树 detachToLinks：x 连同子树出树，子树边降级成 links（每层孩子按原顺序追加到父亲 links 末尾）、结构不丢、不改名；叶子 → 0；散页 → null", () => {
+    const { p, now } = book(); const before = names(p); const L = links(p, "一话.txt").join();
+    eq(detachToLinks(p, "正文.txt", now), 5, "正文→第一幕/第二幕 + 第一幕→一话/二话 + 第二幕→三话 = 5 条边");
+    eq(dfsOrder(p).join("|"), "设定.txt"); eq(names(p), before);
+    eq(links(p, "正文.txt").join("|"), "第一幕.txt|第二幕.txt"); eq(links(p, "第一幕.txt").join("|"), "一话.txt|二话.txt"); eq(links(p, "第二幕.txt").join("|"), "三话.txt");
+    eq(links(p, "一话.txt").join(), L, "原有 links 留在前面，不重复不乱序");
+    eq(detachToLinks(p, "设定.txt", now), 0, "叶子：没有边可降级"); eq(p.tree.length, 0);
+    eq(detachToLinks(p, "笔记.txt", now), null, "散页");
+    // 已有同名边不重复：先把 一话 链到 二话 再移出
+    const q = book().p; link(q, "第一幕.txt", "二话.txt", { now }); eq(detachToLinks(q, "第一幕.txt", now), 2); eq(links(q, "第一幕.txt").join("|"), "二话.txt|一话.txt", "已有的边不重复，只补缺的");
+  });
+  it("废弃 discard：改名 _废-x（撞名 hex4）；在树里 → 连同子树出树、子节各自也改名（删容器 = 删内容）、子树边降级成 links；外部 links 重写到新名；不删字节；已带前缀不再套；散页只改名", () => {
+    const { p, now } = book(); const files = p.contents.size;
+    const r = discard(p, "第一幕.txt", "_废-", now);
+    eq(r.detached, 2); eq(r.renamed.map((x) => `${x.from}>${x.to}`).join("|"), "第一幕.txt>_废-第一幕.txt|一话.txt>_废-一话.txt|二话.txt>_废-二话.txt");
+    eq(p.contents.size, files, "不删字节"); eq(dfsOrder(p).join("|"), "正文.txt|第二幕.txt|三话.txt|设定.txt", "整支出树");
+    eq(links(p, "笔记.txt").join("|"), "_废-第一幕.txt|_废-二话.txt", "外部 links 重写到新名");
+    eq(links(p, "_废-第一幕.txt").join("|"), "_废-一话.txt|_废-二话.txt", "子树结构留成 links"); eq(links(p, "_废-一话.txt").join(), "设定.txt");
+    createNode(p, "第一幕.txt", "again", now); const r2 = discard(p, "第一幕.txt", "_废-", now); assert(/^_废-第一幕-[0-9a-f]{4}\.txt$/.test(r2.renamed[0].to), r2.renamed[0].to); eq(r2.detached, 0, "散页：只改名");
+    const r3 = discard(p, "_废-一话.txt", "_废-", now); eq(r3.renamed[0].to, "_废-一话.txt", "已带前缀不再套");
+    throws(() => discard(p, "没有.txt", "_废-", now), /no such page/);
+    p.editorState.last = "_废-二话.txt"; discard(p, "_废-二话.txt", "_dropped-", now, ["_废-", "_dropped-"]); eq(p.editorState.last, "_废-二话.txt", "别的语言前缀：中文前缀已在 → 不套");
+  });
+  it("彻底删除 purge：只对带前缀（任一语言）的页；删文件 + 指向它的 links 条目移除；返回被移除的入链来源；非 _废- 页拒绝", () => {
+    const { p, now } = book();
+    discard(p, "二话.txt", "_废-", now); eq(links(p, "笔记.txt").join("|"), "第一幕.txt|_废-二话.txt");
+    throws(() => purge(p, "一话.txt", ["_废-", "_dropped-"]), /not a discarded page/);
+    eq(purge(p, "_废-二话.txt", ["_废-", "_dropped-"]).join(), "笔记.txt");
+    assert(!p.contents.has("_废-二话.txt")); eq(links(p, "笔记.txt").join(), "第一幕.txt", "入链移除，不留悬空");
+    renameNode(p, "一话.txt", "_dropped-一话.txt", now); eq(purge(p, "_dropped-一话.txt", ["_废-", "_dropped-"]).length, 0); assert(!p.contents.has("_dropped-一话.txt")); eq(treeChildren(p, "第一幕.txt").length, 0, "树里也拿掉");
+    throws(() => purge(p, "没有.txt", ["_废-"]), /no such page/);
   });
 });
 

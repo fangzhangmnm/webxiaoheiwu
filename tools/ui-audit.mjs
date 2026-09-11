@@ -162,7 +162,7 @@ for (const [w, h] of sizes) {
     r = await rowMenu("children", "序章.txt", /上移/); probe(tag, "row menu 上移 → children = [序章, 她推开门。]", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["序章", "她推开门。"]), JSON.stringify(await rowsIn("children")));
     r = await rowMenu("children", "序章.txt", /升级/); probe(tag, "row menu 升级 → 序章 back to top level right after 作品", r.hit && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]), JSON.stringify(await rowsIn("siblings")));
     r = await rowMenu("siblings", "作品.txt", /上移/); probe(tag, "row menu 上移 at the top → no-op + toast, tree unchanged", r.hit && /到头/.test(await page.textContent("#toast")) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]), await page.textContent("#toast"));
-    r = await rowMenu("siblings", "作品.txt"); probe(tag, "tree row menu = 上移/下移/升级/降级/移出树/导出这一支 (no rename, no hard delete, no 移出丢引用)", r.opened && r.items.some((x) => /升级/.test(x.label)) && r.items.some((x) => /移出树/.test(x.label)) && r.items.some((x) => /导出这一支/.test(x.label)) && !r.items.some((x) => /改名|彻底|丢引用/.test(x.label)) && r.items.every((x) => !x.disabled), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(150); }
+    r = await rowMenu("siblings", "作品.txt"); probe(tag, "tree row menu = 上移/下移/升级/降级/移出树/废弃/导出这一支 (no rename, no hard delete, no 丢引用)", r.opened && r.items.some((x) => /升级/.test(x.label)) && r.items.some((x) => /移出树/.test(x.label)) && r.items.some((x) => /^废弃$/.test(x.label)) && r.items.some((x) => /导出这一支/.test(x.label)) && !r.items.some((x) => /改名|彻底|丢引用/.test(x.label)) && r.items.every((x) => !x.disabled), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(150); }
   await shot("10-tree-moves");
   // 上一页 / 下一页 = 全树前序 DFS（作品 → 她推开门。 → 序章）；首尾不绕回
   { let n = await navState(); probe(tag, "page nav: at tree head prev is grey, next is live", !n.hidden && n.prev && !n.next, JSON.stringify(n));
@@ -183,22 +183,34 @@ for (const [w, h] of sizes) {
     probe(tag, "addLink to a page that does not exist is refused (no placeholders, no dashed rows)", refused === false && /没有这一页/.test(await page.textContent("#toast")) && (await rowsIn("links")).length === 0 && (await page.evaluate(() => document.querySelectorAll("#edgeList .edge-row.stub").length)) === 0, await page.textContent("#toast"));
     await page.evaluate(() => window.__xhw.project.addLink("序章")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
     probe(tag, "addLink to an existing page → links block", JSON.stringify(await rowsIn("links")) === JSON.stringify(["序章"]), JSON.stringify(await rowsIn("links")));
-    let r = await rowMenu("links", "序章.txt"); probe(tag, "link row of an in-tree page: 上移/下移/移出（丢引用）, no 归档 items", r.opened && r.items.some((x) => /丢引用/.test(x.label)) && !r.items.some((x) => /归档/.test(x.label)), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(150);
+    let r = await rowMenu("links", "序章.txt"); probe(tag, "link row of an in-tree page: 上移/下移/断开链接/废弃, no 归档 items, no 丢引用", r.opened && r.items.some((x) => /断开链接/.test(x.label)) && r.items.some((x) => /废弃/.test(x.label)) && !r.items.some((x) => /归档|丢引用/.test(x.label)), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(150);
+    // 删除模型三动词（user 2026-09-10 深夜「不同意引用计数」）：移出树 = 子树边降级成链接、不改名；断开链接 = 只删一条边；废弃 = _废- + 子树；彻底删除 = 只对 _废-，清入链
+    await page.evaluate(() => { const p = window.__xhw.project; p.jump("她推开门。.txt"); p.newChild("插图说明"); p.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
     r = await rowMenu("children", "她推开门。.txt", /移出树/); const names = await page.evaluate(() => window.__xhw.project.nodeNames());
-    probe(tag, "row menu 移出树 → gone from children, file kept, NOT renamed, prev/next of the parent skip it", r.hit && (await rowsIn("children")).length === 0 && names.includes("她推开门。.txt") && !names.some((x) => /_废-/.test(x)) && (await navState()).next === false && (await page.evaluate(() => window.__xhw.project.neighborhood().next)) === "序章.txt", JSON.stringify(names));
+    const linksOfDoor = await page.evaluate(() => window.__xhw.project.session().project.nodes.get("她推开门。.txt")?.links ?? []);
+    probe(tag, "row menu 移出树 (with a child) → gone from children, file kept, NOT renamed, child edge became a link, toast counts 1", r.hit && (await rowsIn("children")).length === 0 && names.includes("她推开门。.txt") && names.includes("插图说明.txt") && !names.some((x) => /_废-/.test(x)) && JSON.stringify(linksOfDoor) === JSON.stringify(["插图说明.txt"]) && /1 页改为链接/.test(await page.textContent("#toast")) && (await page.evaluate(() => window.__xhw.project.neighborhood().next)) === "序章.txt", `${JSON.stringify(linksOfDoor)} ${await page.textContent("#toast")}`);
     await page.fill("#edgeSearch", "她推"); await wait(300);
-    r = await rowMenu("results", "她推开门。.txt"); probe(tag, "search finds the loose page; as an orphan its menu = 彻底删除 only", r.opened && r.items.length === 1 && /彻底删除/.test(r.items[0].label), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(200);
+    r = await rowMenu("results", "她推开门。.txt"); probe(tag, "search finds the loose page; not discarded → no row menu (no orphan concept)", !r.opened && (await rows()).includes("她推开门。"), JSON.stringify(r));
+    await page.fill("#edgeSearch", ""); await wait(200);
     await page.evaluate(() => window.__xhw.project.addLink("她推开门。")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
     r = await rowMenu("links", "她推开门。.txt", /归档到这页之下/); probe(tag, "link row of a loose page offers 归档到这页之后/之下 → files it back under 作品", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]) && /已归档/.test(await page.textContent("#toast")), `${JSON.stringify(await rowsIn("children"))} ${await page.textContent("#toast")}`);
-    await rowMenu("children", "她推开门。.txt", /移出树/);
-    const ok = await page.evaluate(() => window.__xhw.project.dropRef("她推开门。.txt")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(200);
+    await page.evaluate(() => { const p = window.__xhw.project; p.jump("她推开门。.txt"); p.archiveUnderCurrent("插图说明.txt"); p.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
+    r = await rowMenu("links", "她推开门。.txt", /断开链接/); const names1 = await page.evaluate(() => window.__xhw.project.nodeNames());
+    probe(tag, "link row 断开链接 → only that edge gone; page stays (still a child), never renamed", r.hit && !(await rowsIn("links")).includes("她推开门。") && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]) && names1.includes("她推开门。.txt") && /已断开/.test(await page.textContent("#toast")), await page.textContent("#toast"));
+    r = await rowMenu("children", "她推开门。.txt", /废弃/); await wait(200);
+    probe(tag, "row menu 废弃 on a page with a child → sheet says 及其 1 个子节", r.hit && await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && /及其 1 个子节/.test(document.getElementById("sheetTitle")?.textContent ?? document.getElementById("sheet").textContent)), await page.evaluate(() => document.getElementById("sheet").textContent.slice(0, 80)));
+    await page.click("#sheetConfirm"); await wait(400);
     const names2 = await page.evaluate(() => window.__xhw.project.nodeNames());
-    probe(tag, "drop reference (out of tree + last link) → orphan renamed _废-她推开门。, gone from list", ok && names2.includes("_废-她推开门。.txt") && !names2.includes("她推开门。.txt") && !(await rows()).includes("她推开门。"), JSON.stringify(names2));
+    probe(tag, "discard → both renamed _废-, both out of the tree, bytes kept, toast", names2.includes("_废-她推开门。.txt") && names2.includes("_废-插图说明.txt") && !names2.includes("她推开门。.txt") && (await rowsIn("children")).length === 0 && /已废弃/.test(await page.textContent("#toast")) && (await page.evaluate(() => window.__xhw.project.session().order().length)) === 2, JSON.stringify(names2));
+    probe(tag, "discard keeps the subtree structure as links (_废-她推开门。 → _废-插图说明)", JSON.stringify(await page.evaluate(() => window.__xhw.project.session().project.nodes.get("_废-她推开门。.txt")?.links ?? [])) === JSON.stringify(["_废-插图说明.txt"]));
     await page.fill("#edgeSearch", "废"); await wait(300);
-    probe(tag, "search finds the orphan; its row menu = 彻底删除 only", (await rows()).includes("_废-她推开门。") && await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row")].find((x) => /_废-她推开门/.test(x.textContent)); return !!r?.querySelector(".edge-more"); }));
-    await page.click("#edgeList .edge-row .edge-more"); await wait(200);
-    probe(tag, "orphan menu = 彻底删除 only", await page.evaluate(() => { const items = [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()); return items.length === 1 && /彻底删除/.test(items[0]); }));
-    await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(200); }
+    r = await rowMenu("results", "_废-插图说明.txt"); probe(tag, "search finds the discarded pages; a _废- row menu = 彻底删除 only", r.opened && r.items.length === 1 && /彻底删除/.test(r.items[0].label) && (await rows()).includes("_废-她推开门。"), JSON.stringify(r.items)); await page.keyboard.press("Escape"); await wait(150);
+    r = await rowMenu("results", "_废-插图说明.txt", /彻底删除/); await wait(200);
+    probe(tag, "purge sheet says how many pages link to it (1) and that links will be removed", r.hit && await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && /1 页链接到它/.test(document.getElementById("sheet").textContent)), await page.evaluate(() => document.getElementById("sheet").textContent.slice(0, 120)));
+    await page.click("#sheetConfirm"); await wait(400);
+    const names3 = await page.evaluate(() => window.__xhw.project.nodeNames());
+    probe(tag, "purge → file gone, inbound link removed from _废-她推开门。 (no dangling)", !names3.includes("_废-插图说明.txt") && names3.includes("_废-她推开门。.txt") && (await page.evaluate(() => (window.__xhw.project.session().project.nodes.get("_废-她推开门。.txt")?.links ?? []).length)) === 0, JSON.stringify(names3));
+    await page.fill("#edgeSearch", ""); await wait(200); }
   probe(tag, "no spawn/link/backlinks buttons in sidebar", await page.evaluate(() => !document.getElementById("edgeSpawn") && !document.getElementById("edgeLink") && !document.getElementById("edgeBacklinks") && document.getElementById("edgeFoot").hidden));
   // 检索：一个字就搜（孤儿也能扫）
   await page.fill("#edgeSearch", "章"); await wait(300); await shot("11-sidebar-search");

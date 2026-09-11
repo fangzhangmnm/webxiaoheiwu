@@ -30,14 +30,17 @@ export declare function replaceNodeBytes(p: Project, name: string, bytes: Uint8A
 export declare function backlinks(p: Project, name: string): string[];
 /** 改名 = 改 entry 名 + 重写所有引用它的 links + tree 里的条目 + editor-state（ADR-0009 §7 / ADR-0014 §11）。目标撞名 → 抛。 */
 export declare function renameNode(p: Project, from: string, to: string, now?: NowFn): void;
-/** 孤儿：有文件、不在树里、也没有任何页指向它（ADR-0014 之后树也是引用）。 */
-export declare const isOrphan: (p: Project, name: string) => boolean;
-/** 丢引用（user 2026-09-10「删除模型就是 gc 里面的丢引用」）：断开 from→to；to 若因此成孤儿（有文件、不在树、没人再指向）→ 改名 `<prefix><名>`（唯一化）让原名腾出来
- *  （prefix 由调用方按界面语言给，如 zh `_废-`、en `_dropped-`——user「英文界面不要自动生成中文名字」；ADR-0009 §2 的沉底前缀）。
- *  **只有这个动作改名**：别的途径成孤儿（移出树、读进来的散 txt）一律不动（user「非删除的变成孤儿不应自动改名」）。返回孤儿的新名；没成孤儿 → null。 */
-export declare function dropRef(p: Project, from: string, to: string, prefix: string, now?: NowFn): string | null;
-/** 彻底删除：只准孤儿（还有人指向 / 在树里 → 抛；UI 先弹框确认）。 */
-export declare function purgeOrphan(p: Project, name: string): boolean;
+/** 废弃（用户面 = 删除；ADR-0014 §8）：改名 `<prefix>x`（撞名 → `<prefix>x-hex4`）；在树里 → 连同子树出树（子树边降级成 links，同 detachToLinks）且**子节各自也改名**（删容器 = 删内容）；
+ *  不删字节；指向它们的 links 随改名重写（renameNode 既有行为）。已带前缀的页不再套第二层。返回 { renamed: 旧名→新名 的顺序表（x 在首）, detached: 出树的子树页数 }。散页上的废弃 = 只改名。 */
+export declare function discard(p: Project, name: string, prefix: string, now?: NowFn, prefixes?: readonly string[]): {
+    renamed: {
+        from: string;
+        to: string;
+    }[];
+    detached: number;
+};
+/** 彻底删除：只对带废弃前缀的页（别的 → 抛；UI 先弹 sheet 写明有几页链接到它）。删文件 + 指向它的 links 条目移除（deleteNode）。返回被移除的入链来源。 */
+export declare function purge(p: Project, name: string, prefixes: readonly string[]): string[];
 /** 删除页（正文没了）。不留悬空：指向它的边一并断掉；在树里则拿掉（它的孩子提到它的位置）。2.0.7 起 UI 不直接用它（走 dropRef / purgeOrphan）。 */
 export declare function deleteNode(p: Project, name: string): boolean;
 /** 检索（结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。最少字数默认 1（user 2026-09-10「检索不限字数，这样可以搜全量孤儿」）。 */
@@ -68,6 +71,9 @@ export declare function outdent(p: Project, name: string): boolean;
 export declare function indent(p: Project, name: string): boolean;
 /** 移出树：整个子树拿掉（x 的孩子跟着 x 走——树是唯一的容器，它们也都成散页）。页文件、links 一个字节不动。返回拿掉的子树（归档 / 移动时原样放回）；不在树里 → null。 */
 export declare function detach(p: Project, name: string): TreeNode | null;
+/** 移出树（用户面动作；ADR-0014 §8）：x 连同子树离开树，**子树边降级成 links**——每一层的孩子按原顺序追加到父亲的 links 末尾（已有的边不重复），结构不丢；不改名。
+ *  返回改成链接的页数（= 子树里的边数）；不在树里 → null。树内搬家仍用纯 detach（子树保持为树）。 */
+export declare function detachToLinks(p: Project, name: string, now?: NowFn): number | null;
 /** 归档 / 移动：x 放到 anchor 之后（同一层）。x 已在树里 → 先 detach（子树跟着走）再放；anchor 在 x 的子树里 → 抛（不能把自己放进自己）。x / anchor 没文件 → 抛。 */
 export declare function attachAfter(p: Project, name: string, anchor: string): void;
 /** 归档 / 移动：x 放到 parent 之下（孩子末尾；parent 是字符串 → 升格为组）。规则同 attachAfter。 */

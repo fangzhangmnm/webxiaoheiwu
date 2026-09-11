@@ -1700,37 +1700,73 @@ export declare const S: {
         readonly zh: "名字不合法（不能有 / 之类的路径字符，不能以点开头）";
         readonly en: "Invalid name (no path characters like /, no leading dot)";
     };
-    readonly "edge.drop": {
-        readonly zh: "移出（丢引用）";
-        readonly en: "Remove (drop reference)";
-    };
-    readonly "edge.orphanPrefix": {
-        readonly zh: "_废-";
-        readonly en: "_dropped-";
-    };
-    readonly "edge.dropped": {
-        readonly zh: "已移出这一页的边（那页还有别处指向，仍在）";
-        readonly en: "Edge removed (that page is still referenced elsewhere)";
-    };
-    readonly "edge.droppedOrphan": {
-        readonly zh: "已移出；没有页再指向它，改名为「{name}」（孤儿，检索能找到，只有孤儿能彻底删除）";
-        readonly en: "Removed; nothing points to it now, renamed “{name}” (an orphan — search finds it; only orphans can be deleted for good)";
-    };
     readonly "edge.purge": {
         readonly zh: "彻底删除";
         readonly en: "Delete for good";
+    };
+    readonly "edge.unlink": {
+        readonly zh: "断开链接";
+        readonly en: "Unlink";
+    };
+    readonly "edge.unlinked": {
+        readonly zh: "已断开到「{name}」的链接（那页还在）";
+        readonly en: "Unlinked “{name}” (the page stays)";
+    };
+    readonly "edge.discardPrefix": {
+        readonly zh: "_废-";
+        readonly en: "_dropped-";
+    };
+    readonly "edge.discard": {
+        readonly zh: "废弃";
+        readonly en: "Discard";
+    };
+    readonly "edge.discardTitle": {
+        readonly zh: "废弃「{name}」？";
+        readonly en: "Discard “{name}”?";
+    };
+    readonly "edge.discardTitleTree": {
+        readonly zh: "废弃「{name}」及其 {n} 个子节？";
+        readonly en: "Discard “{name}” and its {n} child page(s)?";
+    };
+    readonly "edge.discardMsg": {
+        readonly zh: "改名为「{prefix}…」沉到底；正文不删，检索能找到，之后可彻底删除。";
+        readonly en: "Renamed “{prefix}…” and sunk to the bottom; text is kept, search still finds it, and it can be deleted for good later.";
+    };
+    readonly "edge.discardMsgTree": {
+        readonly zh: "这一支从主干拿掉，{n} 个子节各自也改名「{prefix}…」（删容器 = 删内容）；正文都不删，之后可逐页彻底删除。";
+        readonly en: "This branch leaves the trunk and each of its {n} child page(s) is renamed “{prefix}…” too (deleting the container deletes the contents); no text is removed, and each can be deleted for good later.";
+    };
+    readonly "edge.discarded": {
+        readonly zh: "已废弃：「{from}」→「{to}」";
+        readonly en: "Discarded: “{from}” → “{to}”";
+    };
+    readonly "edge.discardedTree": {
+        readonly zh: "已废弃「{name}」及其 {n} 个子节（都改名「{prefix}…」）";
+        readonly en: "Discarded “{name}” and its {n} child page(s) (all renamed “{prefix}…”)";
     };
     readonly "edge.purgeTitle": {
         readonly zh: "彻底删除「{name}」？";
         readonly en: "Delete “{name}” for good?";
     };
     readonly "edge.purgeMsg": {
-        readonly zh: "没有任何页指向这一页（孤儿）。删了正文就没了，书里没有回收站。";
-        readonly en: "No page points to this one (an orphan). Its text will be gone; there is no trash inside a book.";
+        readonly zh: "{n} 页链接到它，那些链接会被移除。正文就没了，书里没有回收站。";
+        readonly en: "{n} page(s) link to it; those links will be removed. Its text will be gone; there is no trash inside a book.";
     };
-    readonly "edge.notOrphan": {
-        readonly zh: "还有页指向它，先移出（丢引用）";
-        readonly en: "Still referenced — remove the references first";
+    readonly "edge.purgeMsgNoLinks": {
+        readonly zh: "没有页链接到它。正文就没了，书里没有回收站。";
+        readonly en: "No page links to it. Its text will be gone; there is no trash inside a book.";
+    };
+    readonly "edge.notDiscarded": {
+        readonly zh: "只有「{prefix}」开头的页能彻底删除——先废弃";
+        readonly en: "Only pages starting with “{prefix}” can be deleted for good — discard it first";
+    };
+    readonly "edge.detached": {
+        readonly zh: "已移出树：「{name}」成了散页，{n} 页改为链接";
+        readonly en: "Out of the tree: “{name}” is loose now; {n} page(s) turned into links";
+    };
+    readonly "edge.detachedLeaf": {
+        readonly zh: "已移出树：「{name}」成了散页";
+        readonly en: "Out of the tree: “{name}” is loose now";
     };
     readonly "edge.lockedHint": {
         readonly zh: "这本书是只读的，先点顶栏的笔解除";
@@ -1851,10 +1887,6 @@ export declare const S: {
     readonly "edge.moveNoop": {
         readonly zh: "已经到头了，没动";
         readonly en: "Already at the edge; nothing moved";
-    };
-    readonly "edge.detached": {
-        readonly zh: "已移出树：「{name}」成了散页（检索能找到；链接不动）";
-        readonly en: "Out of the tree: “{name}” is now a loose page (search finds it; links untouched)";
     };
     readonly "edge.archived": {
         readonly zh: "已归档「{name}」";
