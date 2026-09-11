@@ -212,7 +212,6 @@
         <button id="voiceBackspaceButton" class="mic-button mic-side" type="button" hidden aria-label="退格" data-i18n-aria="ui.voiceBackspace" data-i18n-title="ui.voiceBackspace">
           <svg class="ico" aria-hidden="true"><use href="#backspace"/></svg>
         </button>
-        <div id="candidateBar" class="candidates hidden" aria-live="polite"></div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
         <div id="lockCard" class="lock-card" hidden role="group" aria-label="已锁定" data-i18n-aria="lock.aria">
           <svg class="ico lock-card-ico" aria-hidden="true"><use href="#lock"/></svg>
@@ -245,6 +244,8 @@
     </div>
 
     <!-- 通用 sheet（确认 / 输入 / 多选）——沿用 v1 密码框的视觉（crypto-modal 系） -->
+    <!-- 内置输入法候选条：住 body 层（不在 .page 的堆叠上下文里），fixed 贴底跟着 --kb-offset，z = --z-ime（高于 sheet 500）——名字 sheet / 侧栏检索框里打字候选也在最上（user 2026-09-10「输入法的 z order 不对」） -->
+    <div id="candidateBar" class="candidates hidden" aria-live="polite"></div>
     <div id="sheet" class="crypto-modal hidden" role="dialog" aria-modal="true">
       <div class="crypto-card" id="sheetCard">
         <h3 class="crypto-title" id="sheetTitle"></h3>
@@ -466,6 +467,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-a468c50f897c.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-4d6c73d905ce.mjs"></script>
   </body>
 </html>

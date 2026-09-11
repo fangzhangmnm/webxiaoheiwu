@@ -481,11 +481,20 @@ export function createProjectMode(d: ProjectModeDeps) {
   const backlinksOfCurrent = (): string[] => { const c = session?.current(); return c ? session!.backlinksOf(c) : []; };
   const backlinksOfPage = (target: string): string[] => session?.backlinksOf(target) ?? [];
   // ── 图片页（2.1，ADR-0012/0013）──
-  /** 减肥后的图片 → 新页（撞名 hex4）+ 当前页末尾一条边；全部加完跳到最后一张（同加页手感）。返回最终名列表。 */
-  let lastAdded: string[] = [];
-  const addImagePages = guardEdit((items: { name: string; bytes: Uint8Array }[]) => {
-    commitEditor(); const from = session!.current(); lastAdded = items.map((it) => session!.addBytesPage(it.name, it.bytes));
-    const last = lastAdded[lastAdded.length - 1]; if (last) { session!.jump(last); if (from && from !== last) pushBack(from); loadCurrentIntoEditor(); }
+  /** 减肥后的图片 → 新页（撞名 hex4），落点（user 2026-09-10「加图片没说清楚是兄弟还是孩子」；ADR-0013 修订 / ADR-0014 §8）：`sibling` = 当前页之后（多选依次排在同一位置之后，保持文件顺序）/ `child` = 当前页孩子末尾 / `link` = 当前页末尾一条边。
+   *  当前页不在树里 → 一律 link（散页维持现状）。session.addBytesPage 只管建页 + 一条边；进树 = 这里断那条边再 archiveAfter / archiveUnder（图片 session 备注：漏斗与 addBytesPage 签名不动）。全部加完跳到最后一张。lastPlaced = 实际落点（toast 用）。 */
+  let lastAdded: string[] = []; let lastPlaced: "sibling" | "child" | "link" = "link";
+  const addImagePages = guardEdit((items: { name: string; bytes: Uint8Array }[], opts: { as?: "sibling" | "child" | "link" } = {}) => {
+    commitEditor(); const from = session!.current(); if (!from) throw new Error("no current page");
+    const as = opts.as && opts.as !== "link" && session!.isInTree(from) ? opts.as : "link"; lastPlaced = as;
+    let anchor = from; lastAdded = [];
+    for (const it of items) {
+      const n = session!.addBytesPage(it.name, it.bytes);
+      if (as === "sibling") { session!.removeLink(n); session!.archiveAfter(n, anchor); anchor = n; }
+      else if (as === "child") { session!.removeLink(n); session!.archiveUnder(n, from); }
+      lastAdded.push(n);
+    }
+    const last = lastAdded[lastAdded.length - 1]; if (last) { session!.jump(last); if (from !== last) pushBack(from); loadCurrentIntoEditor(); }
   });
   const pageBytes = (): Uint8Array | null => session?.currentBytes() ?? null;
   /** 替换图片：保名保边只换字节；字节类型变了（png → jpg）扩展名跟着变（撞名 hex4），名字不能撒谎。 */
@@ -509,7 +518,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, exportBranchText,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
-    cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, pageBytes, replaceImage, setThumbnail, thumbnail,
+    cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail,
   };
 }
 export type ProjectMode = ReturnType<typeof createProjectMode>;

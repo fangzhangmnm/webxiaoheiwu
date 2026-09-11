@@ -73,6 +73,8 @@ for (const [w, h] of sizes) {
     await page.click("#sheetConfirm"); await wait(1200);
     probe(tag, "lift → book mode, first page = draft name, text carried over", await page.evaluate(({ dn, dt }) => window.__xhw.project.active() && document.getElementById("nodeTitle").value === dn.replace(/\.txt$/i, "") && document.getElementById("editor").value === dt, { dn: draftName, dt: draftText }), await page.evaluate(() => `active=${window.__xhw.project.active()} title=${document.getElementById("nodeTitle").value}`));
     probe(tag, "lift keeps the draft in the library", await page.evaluate((dn) => window.__xhw.drawer.items().some((x) => x.name === dn), draftName));
+    await ensureSidebar(true);
+    probe(tag, "lifted book: first page is in the trunk (`..` = book root, + 兄弟 present)", (await parentRow())?.root === true && await page.evaluate(() => !!document.getElementById("edgeAddSibling")), JSON.stringify(await parentRow()));   // user 2026-09-10 真机「加兄弟怎么没了」
     await page.evaluate(async (dn) => { await window.__xhw.openAny(dn); }, draftName); await wait(500);   // 回到 txt 稿，后面的流程照旧
     await ensureSidebar(true); }
   // 书库
@@ -113,11 +115,15 @@ for (const [w, h] of sizes) {
   { await page.click("#edgeSearch"); await page.keyboard.type("nihao"); await wait(300);
     const comp = await page.evaluate(() => { const c = document.getElementById("candidateBar"); return c ? getComputedStyle(c).display !== "none" && (c.textContent ?? "").trim().length > 0 : false; });
     const raw = await page.inputValue("#edgeSearch"); probe(tag, "ime on edgeSearch", comp || raw === "", `(value=${JSON.stringify(raw)})`);
+    probe(tag, "ime candidates above the sidebar search box: bar visible and elementFromPoint hits the bar (not the sidebar)", await page.evaluate(() => { const c = document.getElementById("candidateBar"); if (!c || getComputedStyle(c).display === "none") return false; const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && !!e.closest("#candidateBar") && !e.closest("#edgeSidebar"); }), await page.evaluate(() => { const c = document.getElementById("candidateBar"); const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return `${getComputedStyle(c).position} z=${getComputedStyle(c).zIndex} hit=${e?.id || e?.className}`; }));   // user 2026-09-10「输入法的 z order 不对」
     await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(100); }
   await ensureSidebar(true);
   // 「+ 兄弟」→ 第二章（作品 的兄弟），章节名框全选 → 改名「序章」→ Enter
   await page.click("#edgeAddSibling"); await wait(400);
   probe(tag, "+ sibling → asks for a name (no chapter suggestion, not prefilled)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && !/章/.test(document.getElementById("sheetInput").placeholder) && document.getElementById("sheetInput").value === ""));
+  await page.keyboard.type("ni"); await wait(250);
+  probe(tag, "ime candidates above the name sheet: bar visible and elementFromPoint hits the bar (not the sheet)", await page.evaluate(() => { const c = document.getElementById("candidateBar"); if (!c || getComputedStyle(c).display === "none") return false; const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && !!e.closest("#candidateBar") && !e.closest("#sheet"); }), await page.evaluate(() => { const c = document.getElementById("candidateBar"); const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return `display=${getComputedStyle(c).display} hit=${e?.id || e?.className}`; }));   // Quest 上用自带输入法给页起名
+  await page.evaluate(() => window.__xhw.ime.resetComposition()); await wait(100);
   await page.fill("#sheetInput", "第二章"); await page.click("#sheetConfirm"); await wait(400);
   probe(tag, "+ sibling → new page 第二章 opened as a sibling of 作品, empty file, title shows it", await page.evaluate(() => document.getElementById("nodeTitle").value === "第二章" && window.__xhw.project.current() === "第二章.txt" && document.getElementById("editor").value === "") && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "第二章"]), JSON.stringify(await rowsIn("siblings")));
   probe(tag, "sidebar stays open after + (no auto-close)", await sidebarShown());
@@ -149,7 +155,7 @@ for (const [w, h] of sizes) {
   // 顶栏「+」= 菜单（加兄弟页 / 加子节 / 从图片…）→ 加子节 → 她推开门。（作品 的孩子）
   await page.click("#addPageButton"); await wait(250);
   { const items = await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()));
-    probe(tag, "top-bar + opens a menu: 加兄弟页 / 加子节 / 从图片…", items.some((x) => /兄弟/.test(x)) && items.some((x) => /子节/.test(x)) && items.some((x) => /图片/.test(x)), JSON.stringify(items)); }
+    probe(tag, "top-bar + opens a menu: 加兄弟页 / 加子节 (从图片… moved into the name sheet)", items.some((x) => /兄弟/.test(x)) && items.some((x) => /子节/.test(x)) && !items.some((x) => /图片/.test(x)), JSON.stringify(items)); }
   await page.evaluate(() => { const it = [...document.querySelectorAll(".popup-menu button")].find((b) => /子节/.test(b.textContent ?? "")); it.click(); }); await wait(300);
   await page.fill("#sheetInput", "她推开门。"); await page.click("#sheetConfirm"); await wait(400);
   await ensureSidebar(true);
@@ -267,6 +273,12 @@ for (const [w, h] of sizes) {
   // 书库：工程卡片名无扩展名；卡片菜单；回收站；设置叠书库
   await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(1200); await shot("15-library-with-project");
   probe(tag, "library tile shows project stem", await page.evaluate(() => [...document.querySelectorAll("#galleryMount .gallery-tile:not(.folder)")].some((t) => /秋音/.test(t.textContent) && !/webxiaoheiwu/.test(t.textContent))));
+  // 书库缩略图占位（图片 session 2026-09-10，gallery 0.2.2）：无封面的书 = 书图标不是云；fetch null = 确定没封面进 IDB 缓存，重开书库不再拉
+  probe(tag, "book without cover shows the book placeholder, not the cloud icon", await page.evaluate(() => [...document.querySelectorAll("#galleryMount .gallery-tile")].some((t) => /秋音/.test(t.textContent) && t.querySelector(".gallery-tile-ph-icon use")?.getAttribute("href") === "#book" && !t.querySelector(".gallery-tile-thumb.placeholder span[style]"))));
+  { const missesA = (await page.evaluate(() => window.__xhwGalleryThumbStats()))?.misses ?? -1;
+    await page.click("#galleryBack"); await wait(300); await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(1500);
+    const missesB = (await page.evaluate(() => window.__xhwGalleryThumbStats()))?.misses ?? -2;
+    probe(tag, "negative peek is cached: reopening the library does not refetch thumbnails", missesA >= 0 && missesB === missesA, `${missesA} → ${missesB}`); }
   await page.click(".gallery-tile:not(.folder) .gallery-tile-menu-btn"); await wait(300); await shot("16-tile-menu");
   await page.mouse.click(w - 40, h - 40); await wait(200);
   await page.click("#galleryTrashBtn"); await wait(800); await shot("17-trash-view");
@@ -307,9 +319,9 @@ for (const [w, h] of sizes) {
   probe(tag, "image page: word count footer + mic hidden", await page.evaluate(() => getComputedStyle(document.getElementById("wordCount")).display === "none" && document.getElementById("micButton").hidden));
   probe(tag, "toast reports compression (已压缩 A → B)", /已压缩/.test(await page.textContent("#toast")), await page.textContent("#toast"));
   await ensureSidebar(true); await shot("21-image-page");
-  await page.click("#edgeBack"); await wait(300);   // 回到 作品：它的出边列表里才有两张图
-  probe(tag, "sidebar rows for image pages carry the image icon (in the links block)", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row[data-block='links']")].filter((r) => r.querySelector(".edge-kind")).length === 2), await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row .edge-name")].map((e) => e.textContent).join("|")));
-  await page.evaluate(() => { const r = [...document.querySelectorAll("#edgeList .edge-row .edge-main")].find((b) => /地图\.jpg/.test(b.textContent)); if (!r) throw new Error("地图 row missing"); r.click(); }); await page.waitForFunction(() => window.__xhw.project.current() === "地图.jpg", null, { timeout: 5000 }); await wait(300);
+  // 落点（user 2026-09-10「加图片没说清楚是兄弟还是孩子」）：直接喂 file input = 没选位置 → 当前页（作品）的子节末尾，按文件顺序；toast 说明进了哪
+  probe(tag, "images without a chosen position land as children of the current page, in file order; `..` = 作品; toast says 子节", JSON.stringify(await parentRow()) === JSON.stringify({ name: "作品", root: false, disabled: false }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["夏音.png", "地图.jpg"]) && /子节/.test(await page.textContent("#toast")) && (await cur()) === "地图.jpg", `${JSON.stringify(await rowsIn("siblings"))} ${await page.textContent("#toast")}`);
+  probe(tag, "sidebar rows for image pages carry the image icon (siblings block)", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row[data-block='siblings']")].filter((r) => r.querySelector(".edge-kind")).length === 2), await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row .edge-name")].map((e) => e.textContent).join("|")));
   // 设为封面
   if (w < 900) await ensureSidebar(false);   // 窄屏侧栏是浮层，盖着纸面上的钮
   await page.click("#pageImageCover"); await page.waitForFunction(() => !!window.__xhw.project.thumbnail(), null, { timeout: 30000 }); await wait(300);
@@ -322,19 +334,34 @@ for (const [w, h] of sizes) {
   await page.waitForFunction(() => /已替换/.test(document.getElementById("toast").textContent), null, { timeout: 60000 }); await wait(300);
   const thumb2 = await page.evaluate(() => Array.from(window.__xhw.project.thumbnail()));
   probe(tag, "replace image on the cover page → cover regenerated (bytes differ), name kept", thumb2.length > 0 && thumb2.join() !== thumb1.join() && (await page.evaluate(() => window.__xhw.project.current())) === "地图.jpg", await page.textContent("#toast"));
-  // 断入边：图片页的「谁指向这里」列出 作品 → 断开
+  // 断入边：先从 序章 链到 地图.jpg，图片页的「谁指向这里」列出 序章 → 断开
+  await page.evaluate(() => { const p = window.__xhw.project; p.jump("序章.txt"); p.addLink("地图.jpg"); p.jump("地图.jpg"); window.__xhw.sidebar.render(); }); await wait(150);
   await ensureSidebar(true);
   probe(tag, "incoming section lists the page that links here", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row.header")].some((h) => /指向这里/.test(h.textContent))));
   await page.evaluate(() => { const rows = [...document.querySelectorAll("#edgeList .edge-row")]; const hi = rows.findIndex((r) => r.classList.contains("header") && /指向这里/.test(r.textContent)); rows[hi + 1].querySelector(".edge-more").click(); }); await wait(250);
   await page.evaluate(() => { const it = [...document.querySelectorAll(".popup-menu-item")].find((b) => /断开/.test(b.textContent)); if (!it) throw new Error("cut item missing"); it.click(); }); await wait(300);
   probe(tag, "cut incoming link → no backlinks left, page not renamed", await page.evaluate(() => window.__xhw.project.session().backlinksOf("地图.jpg").length === 0 && window.__xhw.project.nodeNames().includes("地图.jpg")));
-  // 拖 txt → 新页；粘贴位图 → 日期码名图片页
+  // 名字框里的「从图片…」= 先选位置再选来源：加兄弟页 → 从图片…（两张，顺序保持）→ 排在当前页之后；加子节 → 从图片… → 当前页的子节
+  await ensureSidebar(true); await page.click("#edgeAddSibling"); await wait(300); await page.click("#sheetSecondary"); await wait(300);
+  probe(tag, "name sheet 从图片… (sibling) → image sheet with the HD checkbox", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && /2048/.test(document.getElementById("sheet").textContent)));
+  { const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 10000 }), page.click("#sheetConfirm")]);
+    await chooser.setFiles([{ name: "插图A.png", mimeType: "image/png", buffer: makePng(120, 80, 21) }, { name: "插图B.png", mimeType: "image/png", buffer: makePng(100, 60, 22) }]);
+    await page.waitForFunction(() => window.__xhw.project.nodeNames().includes("插图B.png") && window.__xhw.project.current() === "插图B.png", null, { timeout: 60000 }); await wait(300); await ensureSidebar(true);
+    probe(tag, "from the sibling sheet: two images inserted right after 地图.jpg in file order (siblings = 夏音, 地图, 插图A, 插图B); toast says 之后", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["夏音.png", "地图.jpg", "插图A.png", "插图B.png"]) && /之后/.test(await page.textContent("#toast")), `${JSON.stringify(await rowsIn("siblings"))} ${await page.textContent("#toast")}`); }
+  await page.click("#edgeAddChild"); await wait(300); await page.click("#sheetSecondary"); await wait(300);
+  { const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 10000 }), page.click("#sheetConfirm")]);
+    await chooser.setFiles([{ name: "插图C.png", mimeType: "image/png", buffer: makePng(90, 70, 23) }]);
+    await page.waitForFunction(() => window.__xhw.project.current() === "插图C.png", null, { timeout: 60000 }); await wait(300); await ensureSidebar(true);
+    probe(tag, "from the child sheet: image becomes a child of 插图B (`..` = 插图B); toast says 子节", JSON.stringify(await parentRow()) === JSON.stringify({ name: "插图B.png", root: false, disabled: false }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["插图C.png"]) && /子节/.test(await page.textContent("#toast")), `${JSON.stringify(await parentRow())} ${await page.textContent("#toast")}`); }
+  // 粘贴位图（没有位置选择）→ 当前页（作品）的子节末尾，日期码名
+  await page.evaluate(() => { window.__xhw.project.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
+  await page.evaluate(async () => { const c = new OffscreenCanvas(40, 30); const cx = c.getContext("2d"); cx.fillStyle = "#c33"; cx.fillRect(0, 0, 40, 30); const blob = await c.convertToBlob({ type: "image/png" }); const dt = new DataTransfer(); dt.items.add(new File([blob], "image.png", { type: "image/png" })); document.getElementById("editor").dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); });
+  await page.waitForFunction(() => window.__xhw.project.nodeNames().some((n) => /^\d{8}-[0-9a-f]{4}\.png$/.test(n)), null, { timeout: 15000 }); await wait(300); await ensureSidebar(true);
+  probe(tag, "paste a bitmap on an in-tree page → date-code image page as the LAST child of 作品; toast says 子节", await page.evaluate(() => { const nb = window.__xhw.project.neighborhood(); return nb.parent === "作品.txt" && /^\d{8}-[0-9a-f]{4}\.png$/.test(nb.current) && nb.siblings.at(-1) === nb.current; }) && /子节/.test(await page.textContent("#toast")), await page.textContent("#toast"));
+  // 拖 txt → 新页（链出，维持现状）
   await page.evaluate(() => { const dt = new DataTransfer(); dt.items.add(new File(["拖进来的正文"], "拖进来的.txt", { type: "text/plain" })); document.querySelector(".page").dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true })); });
   await page.waitForFunction(() => window.__xhw.project.nodeNames().includes("拖进来的.txt"), null, { timeout: 10000 });
   probe(tag, "drop .txt onto the paper → new page with the file's text", (await page.evaluate(() => window.__xhw.project.session().bytesOf("拖进来的.txt") && new TextDecoder().decode(window.__xhw.project.session().bytesOf("拖进来的.txt")))) === "拖进来的正文");
-  await page.evaluate(async () => { const c = new OffscreenCanvas(40, 30); const cx = c.getContext("2d"); cx.fillStyle = "#c33"; cx.fillRect(0, 0, 40, 30); const blob = await c.convertToBlob({ type: "image/png" }); const dt = new DataTransfer(); dt.items.add(new File([blob], "image.png", { type: "image/png" })); document.getElementById("editor").dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); });
-  await page.waitForFunction(() => window.__xhw.project.nodeNames().some((n) => /^\d{8}-[0-9a-f]{4}\.png$/.test(n)), null, { timeout: 15000 });
-  probe(tag, "paste a bitmap → image page named by date code", true);
   await shot("22-after-drop-paste");
   // 书库：2:3 竖版、窄屏三列、封面缩略图露面
   await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(2500);

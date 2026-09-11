@@ -8,6 +8,8 @@ export declare function createNode(p: Project, name: string, text?: string, now?
     name: string;
     created: boolean;
 };
+/** 新书的第一页 = 树的第一个节点（唯一的默认页）。新建书 / 升 txt 成书共用这一处——别再各自 emptyProject + createNode（2026-09-10 深夜 user 真机「加兄弟怎么没了」：升上来的书第一页是散页）。返回最终名。 */
+export declare function seedBook(p: Project, firstPage: string, text?: string, now?: NowFn): string;
 /** 写正文（内容变了才 touch modified）。 */
 export declare function setNodeText(p: Project, name: string, text: string, now?: NowFn): boolean;
 /** 重排出边（只准重排：目标必须都是已有文件的页，悬空一律丢）。 */

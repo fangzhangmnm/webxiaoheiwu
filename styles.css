@@ -13,6 +13,7 @@
   --z-idle: 470;
   --z-busy: 490;
   --z-modal: 500;
+  --z-ime: 530;      /* 内置输入法候选条：高于 sheet(500)、低于 gate/notice——名字 sheet / 侧栏检索框里打字候选也在最上（user 2026-09-10「输入法的 z order 不对」） */
   --z-gate: 540;
   --z-notice: 560;
   --z-error: 9999;
@@ -407,9 +408,9 @@ body {
 /* Candidate bar — floats absolutely at the bottom of the page box */
 
 .candidates {
-  position: absolute;
+  position: fixed;   /* 2026-09-10：从 .page 挪到 body 层；贴底 = 纸面底边（bottom-floor − 2 + 10）再跟着软键盘 --kb-offset 抬 */
   left: 50%;
-  bottom: 10px;
+  bottom: calc(var(--bottom-floor, 14px) + 8px + var(--kb-offset, 0px));
   transform: translateX(-50%);
   display: inline-flex;
   flex-wrap: nowrap;
@@ -421,7 +422,7 @@ body {
   backdrop-filter: blur(14px);
   padding: 4px 8px;
   border-radius: 10px;
-  z-index: var(--z-page);
+  z-index: var(--z-ime);
   max-width: calc(100% - 24px);
   overflow-x: auto;
   scrollbar-width: none;
@@ -1564,7 +1565,7 @@ body.ruled-lines .body {
 }
 .toast.show { opacity: 1; visibility: visible; transition: opacity 120ms ease; }
 .toast.error { background: var(--danger); color: #fff; }
-.candidates:not(.hidden) ~ .toast { bottom: 64px; }
+body:has(.candidates:not(.hidden)) .toast { bottom: 64px; }   /* 候选条已不在 .page 里：兄弟选择器换成 body:has */
 /* 语音模式退格钮（话筒左邻，只在纯口述时出现）。Quest「键盘不在本页」提示条 + 压暗 2026-09-04 撤（user：光标失踪本身看得见，没有煤气灯疑惑）；焦点找回逻辑留在 app.ts */
 .mic-side { right: 70px; width: 40px; height: 40px; bottom: 18px; }
 .mic-side .ico { width: 18px; height: 18px; }

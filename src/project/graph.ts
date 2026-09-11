@@ -33,6 +33,13 @@ export function createNode(p: Project, name: string, text = "", now: NowFn = DEF
   p.nodes.set(nfc, { links: [], created: t, modified: t });
   return { name: nfc, created: true };
 }
+/** 新书的第一页 = 树的第一个节点（唯一的默认页）。新建书 / 升 txt 成书共用这一处——别再各自 emptyProject + createNode（2026-09-10 深夜 user 真机「加兄弟怎么没了」：升上来的书第一页是散页）。返回最终名。 */
+export function seedBook(p: Project, firstPage: string, text = "", now: NowFn = DEFAULT_NOW): string {
+  const r = createNode(p, firstPage, text, now);
+  if (!inTree(p, r.name)) p.tree.push(r.name);
+  p.editorState.last = r.name;
+  return r.name;
+}
 /** 写正文（内容变了才 touch modified）。 */
 export function setNodeText(p: Project, name: string, text: string, now: NowFn = DEFAULT_NOW): boolean {
   const cur = readNodeText(p, name);

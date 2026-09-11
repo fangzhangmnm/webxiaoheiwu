@@ -468,13 +468,21 @@ export declare const S: {
         readonly zh: "「{name}」不是图片（jpg / png / webp / gif）";
         readonly en: "“{name}” is not an image (jpg / png / webp / gif)";
     };
-    readonly "img.added": {
-        readonly zh: "已加入 {n} 张图片";
-        readonly en: "Added {n} image(s)";
+    readonly "img.addedSibling": {
+        readonly zh: "已加入 {n} 张图片，放在「{name}」之后";
+        readonly en: "Added {n} image(s) after “{name}”";
     };
-    readonly "img.addedCompressed": {
-        readonly zh: "已加入 {n} 张图片（已压缩 {from} → {to}）";
-        readonly en: "Added {n} image(s) (compressed {from} → {to})";
+    readonly "img.addedChild": {
+        readonly zh: "已加入 {n} 张图片，作为「{name}」的子节";
+        readonly en: "Added {n} image(s) as children of “{name}”";
+    };
+    readonly "img.addedLinked": {
+        readonly zh: "已加入 {n} 张图片，从「{name}」链出";
+        readonly en: "Added {n} image(s), linked from “{name}”";
+    };
+    readonly "img.compressedSuffix": {
+        readonly zh: "（已压缩 {from} → {to}）";
+        readonly en: " (compressed {from} → {to})";
     };
     readonly "img.txtAdded": {
         readonly zh: "已加入「{name}」";
@@ -1676,10 +1684,6 @@ export declare const S: {
         readonly zh: "还没有链接";
         readonly en: "No links yet";
     };
-    readonly "edge.loose": {
-        readonly zh: "散页：不在书的主干里（从链接或检索到达）";
-        readonly en: "Loose page: not in the book’s trunk (reached via links or search)";
-    };
     readonly "edge.spawnTitle": {
         readonly zh: "分裂出去的页叫什么";
         readonly en: "Name the split-off page";
@@ -1857,8 +1861,8 @@ export declare const S: {
         readonly en: "The new page goes under this one (at the end). An existing page’s name = file that page here.";
     };
     readonly "edge.addLooseHint": {
-        readonly zh: "这页不在书的主干里：新页从这里链出去，也是散页。打已有页的名字 = 从这里连过去。";
-        readonly en: "This page is not in the trunk: the new page is linked from here and stays loose. An existing page’s name = link to it from here.";
+        readonly zh: "打已有页的名字 = 从这里连过去。";
+        readonly en: "An existing page’s name = link to it from here.";
     };
     readonly "edge.outdent": {
         readonly zh: "升级（出到上一层）";

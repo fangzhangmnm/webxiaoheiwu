@@ -1,11 +1,20 @@
 // 图操作（ADR-0009）+ 主干树（ADR-0014）。created 2026-09-10 by Claude Fable 5.1（v2 树操作测试同日）
 import { describe, it, eq, assert } from "./runner.mjs";
 import { emptyProject } from "../src/project/format.ts";
-import { createNode, setNodeText, link, unlink, links, backlinks, renameNode, deleteNode, search, resolveName, uniqueNodeName, createBytesNode, replaceNodeBytes, discard, purge,
+import { createNode, seedBook, setNodeText, link, unlink, links, backlinks, renameNode, deleteNode, search, resolveName, uniqueNodeName, createBytesNode, replaceNodeBytes, discard, purge,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detach, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree } from "../src/project/graph.ts";
 const tick = () => { let t = 0; return () => ++t; };
 const throws = (fn, re) => { try { fn(); } catch (e) { if (re && !re.test(e.message)) throw new Error(`threw the wrong thing: ${e.message}`); return true; } throw new Error("expected a throw"); };
 const T = (p) => JSON.stringify(p.tree);
+
+describe("project/graph · 新书的第一页入树（seedBook；user 2026-09-10 真机「加兄弟怎么没了」）", () => {
+  it("seedBook：建页 + 放进树 + 设为当前；带正文（升 txt 成书）；已有同名 = 不重建、树里不重复", () => {
+    const p = emptyProject(); const now = tick();
+    eq(seedBook(p, "作品.txt", "正文", now), "作品.txt"); eq(JSON.stringify(p.tree), JSON.stringify(["作品.txt"])); eq(p.editorState.last, "作品.txt"); eq(new TextDecoder().decode(p.contents.get("作品.txt")), "正文");
+    eq(seedBook(p, "作品.TXT", "x", now), "作品.txt"); eq(p.tree.length, 1); eq(new TextDecoder().decode(p.contents.get("作品.txt")), "正文");
+    assert(inTree(p, "作品.txt")); eq(dfsOrder(p).join(), "作品.txt");
+  });
+});
 
 describe("project/graph · 撞名=链接、占位符已废、反链=查询", () => {
   it("createNode 撞名（大小写/NFC 不敏感）→ 返回已有名不新建；link 到没有的名字 → 抛（占位符已废）", () => {

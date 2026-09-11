@@ -18,7 +18,7 @@ import { createEdgeSidebar } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
 import { nodeDisplayName } from "./project/naming.ts";
 import { packProject, emptyProject } from "./project/format.ts";
-import { createNode } from "./project/graph.ts";
+import { seedBook } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
@@ -200,9 +200,9 @@ async function addPageFlow(where: "sibling" | "child"): Promise<boolean> {
   const cur = project.current(); if (!cur) return false;
   const inTree = project.isInTree(cur);
   if (where === "sibling" && !inTree) return false;
-  const hint = where === "sibling" ? t("edge.addSiblingHint") : inTree ? t("edge.addChildHint") : t("edge.addLooseHint");
+  const hint = where === "sibling" ? t("edge.addSiblingHint") : inTree ? t("edge.addChildHint") : t("edge.addLooseHint");   // 散页：一句不带解释（user 2026-09-10「这种说明也不要」）
   const v = await openInputSheet(t(where === "sibling" ? "edge.addSiblingTitle" : "edge.addChildTitle"), { message: hint, placeholder: t("edge.namePh"), okLabel: t("common.ok"), secondary: { label: t("edge.fromImage") } });   // 「从图片…」= 同一个 sheet 的副按钮（user 2026-09-10 同意）
-  if (v === INPUT_SECONDARY) { void pickImagesFlow(); return false; }
+  if (v === INPUT_SECONDARY) { void pickImagesFlow(false, where); return false; }   // 位置已选（兄弟 / 子节）→ 再选图片
   if (v == null || !v.trim()) return false;
   const ok = where === "sibling" ? project.newSibling(v) : project.newChild(v);
   if (ok) { edgeSidebar.render(); editorEl.focus(); }
@@ -237,15 +237,16 @@ pageNext.addEventListener("click", () => { if (project.nextPage()) edgeSidebar.r
 // ── 图片页（2.1，ADR-0012/0013）：单一漏斗 importImageFiles（文件选择 / 多选 / 拖放 / 粘贴 / 替换都走 slimImage）──
 const imageFileInput = $<HTMLInputElement>("imageFileInput"), imageReplaceInput = $<HTMLInputElement>("imageReplaceInput");
 let pendingHd = false;   // 「保留高清」勾（sheet 里选，跟着这一次选择）
+let pendingAs: "sibling" | "child" = "child";   // 「从图片…」的落点（名字框里先选位置再选来源；user 2026-09-10「加图片没说清楚是兄弟还是孩子」）；拖放 / 粘贴没选位置 → 子节（散页上 mode 退成链出）
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 /** 「从图片…」：一个 sheet（说明 + 保留高清勾）→ 系统文件选择器（多选）。 */
-async function pickImagesFlow(replace = false): Promise<void> {
+async function pickImagesFlow(replace = false, as: "sibling" | "child" = "child"): Promise<void> {
   if (!project.active()) { setStatus(t("img.dropTxtMode"), { error: true }); return; }
   if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
   const r = await openConfirmSheetEx(t(replace ? "img.replace" : "img.pickTitle"), t("img.pickHint"), { okLabel: t("img.pick"), checkbox: { label: t("img.hd"), checked: pendingHd } });
   if (!r.ok) return;
-  pendingHd = r.checked;
+  pendingHd = r.checked; if (!replace) pendingAs = as;
   const input = replace ? imageReplaceInput : imageFileInput; input.value = ""; input.click();
 }
 imageFileInput.addEventListener("change", () => { const files = [...(imageFileInput.files ?? [])]; imageFileInput.value = ""; if (files.length) void importImageFiles(files, { hd: pendingHd }); });
@@ -253,6 +254,7 @@ imageReplaceInput.addEventListener("change", () => { const f = imageReplaceInput
 async function importImageFiles(files: File[], opts: { hd: boolean; unnamed?: boolean }): Promise<void> {   // unnamed：粘贴的位图浏览器一律叫 image.png，不算有名 → 日期码
   if (!project.active()) { setStatus(t("img.dropTxtMode"), { error: true }); return; }
   if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
+  const as = pendingAs; pendingAs = "child";   // 消费这一次的落点；拖放 / 粘贴走默认（子节；散页上 mode 退成链出）
   const date = formatDate(Date.now());
   const results: { name: string; r: SlimResult }[] = []; const bad: string[] = [];
   await withBusy(t("img.making"), async () => {
@@ -266,9 +268,12 @@ async function importImageFiles(files: File[], opts: { hd: boolean; unnamed?: bo
     if (it.r.fatGif && !(await openConfirmSheet(t("img.fatGifTitle"), t("img.fatGifMsg", { name: it.name, size: humanSize(it.r.bytes.length) }), { okLabel: t("img.fatGifOk") }))) continue;
     keep.push(it);
   }
-  if (keep.length && project.addImagePages(keep.map((k) => ({ name: k.name, bytes: k.r.bytes })))) {
+  const anchor = project.current();
+  if (keep.length && project.addImagePages(keep.map((k) => ({ name: k.name, bytes: k.r.bytes })), { as })) {
     const from = keep.reduce((a, k) => a + k.r.from, 0), to = keep.reduce((a, k) => a + k.r.to, 0);
-    setStatus(keep.some((k) => k.r.reencoded) ? t("img.addedCompressed", { n: keep.length, from: humanSize(from), to: humanSize(to) }) : t("img.added", { n: keep.length }));   // 只状态行不弹框（抄 WeebPaint 参考图）
+    const placed = project.lastPlaced();
+    const where = t(placed === "sibling" ? "img.addedSibling" : placed === "child" ? "img.addedChild" : "img.addedLinked", { n: keep.length, name: nodeDisplayName(anchor ?? "") });   // 状态行说进了哪（user「加图片没说清楚是兄弟还是孩子」）
+    setStatus(where + (keep.some((k) => k.r.reencoded) ? t("img.compressedSuffix", { from: humanSize(from), to: humanSize(to) }) : ""));   // 只状态行不弹框（抄 WeebPaint 参考图）
     edgeSidebar.render();
   }
   if (bad.length) setStatus(t("img.notImage", { name: bad.join(", ") }), { error: true });
@@ -341,7 +346,7 @@ async function liftDraftToBook(): Promise<boolean> {
   if (raw == null) return false;
   const wasEncrypted = editor.state.encrypted;
   try {
-    const p = emptyProject(); const r = createNode(p, pageName, text); p.editorState.last = r.name;
+    const p = emptyProject(); seedBook(p, pageName, text);   // 第一页入树（user 2026-09-10 真机「加兄弟怎么没了」：以前这里没 tree → 升上来的书第一页是散页）
     const name = await createProjectDoc(raw.trim() || stem, await packProject(p), formatDate(Date.now()), editor.currentDir());
     const ok = await openAny(name);
     if (!ok) return false;
@@ -352,15 +357,14 @@ async function liftDraftToBook(): Promise<boolean> {
   } catch (e) { reportError(e); setStatus(t("lift.failed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); return false; }
 }
 const addPageButton = $<HTMLButtonElement>("addPageButton");
-/** 顶栏「+」（书模式，☰ 左边）：菜单 = 加兄弟页（树里才有）/ 加子节 / 从图片…（ADR-0014 把「+」拆成兄弟 / 子节）。 */
+/** 顶栏「+」（书模式，☰ 左边）：菜单 = 加兄弟页（树里才有）/ 加子节（ADR-0014 把「+」拆成兄弟 / 子节）；「从图片…」住名字框里（先选位置再选来源）。 */
 addPageButton.addEventListener("click", (e) => {
   e.stopPropagation();
   const cur = project.current(); const inTree = !!cur && project.isInTree(cur);
   togglePopupMenu({ anchor: addPageButton, align: "right", items: () => [
     { id: "sibling", label: t("edge.addSibling"), icon: "new", hidden: !inTree },
     { id: "child", label: t("edge.addChild"), icon: "new" },
-    { id: "image", label: t("edge.fromImage"), icon: "image", separatorBefore: true },
-  ], onPick: (id) => { if (id === "image") void pickImagesFlow(); else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+  ], onPick: (id) => { void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
 });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());

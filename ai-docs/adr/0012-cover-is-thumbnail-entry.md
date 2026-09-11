@@ -8,6 +8,7 @@
 4. **加密书**：store `crypt.makePeek(plain)` 从明文 zip 抽 `Thumbnails/thumbnail.png` → 库另封成密文 peek 尾片；书库锁着显示锁图标，解锁后 `decryptPeek` 非交互解；零 app 加密代码。txt 稿 / 没封面 → peek 空（仍加密，verifyPassword 靠它验密码）。
 5. **替换图片时封面要不要跟着换，不需要字段**：管线确定性 → 把旧字节重算一遍 thumb 和现有 `thumbnail.png`（剥掉文本块后）比对字节，相同 = 这页就是封面 → 重生。
 6. **书库**：gallery `policy.thumbs`（fetch = `getPeek` 按名尾读，`has` = 只有书，IDB `webxiaoheiwu-thumbs` 派生缓存，user「weebpaint 不是一直 idb 的吗」= 批）；tile 2:3 竖版书封、窄屏一排三本（gallery 0.2.0 `tile.aspect`）。
+   - 0.2.2（图片 session 2026-09-10；edited by Claude Fable 5.1 2026-09-10 代记）：fetch null = 确定没封面，进 IDB 缓存并显示书图标；抛 = 未知，不缓存，只有云端-only 显示云。
 7. **「cover 做 root」不是机制**：2.0/2.1 模型里没有 root，也推不出来（任何一章引用了封面图它就不是链头）。ADR-0014 的 `tree` 之后「封面放树顶」也只是排法习惯，封面仍是这个 entry。
 
 ## 否决

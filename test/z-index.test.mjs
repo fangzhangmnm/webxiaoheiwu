@@ -6,6 +6,6 @@ describe("styles · z-index 只在 :root 表", () => {
     const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
     const bad = [...css.matchAll(/z-index:\s*([^;}]+)/g)].map((m) => m[1].trim()).filter((v) => !/^(calc\()?var\(--z-/.test(v) && !/^[0-3]$/.test(v));
     eq(bad.length, 0, "numeric z-index outside the :root band table: " + bad.join(", "));
-    for (const k of ["--z-page", "--z-chrome", "--z-overlay", "--z-drawer", "--z-menu", "--z-toast", "--z-modal", "--z-error"]) eq(css.includes(k + ":"), true, k + " missing from :root");
+    for (const k of ["--z-page", "--z-chrome", "--z-overlay", "--z-drawer", "--z-menu", "--z-toast", "--z-modal", "--z-ime", "--z-error"]) eq(css.includes(k + ":"), true, k + " missing from :root");
   });
 });

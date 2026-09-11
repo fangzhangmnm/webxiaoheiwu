@@ -175,9 +175,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
       list.appendChild(headerRow(t("edge.children")));
       for (const n of nb.children) list.appendChild(row(n, "children"));
       list.appendChild(addRow("edgeAddChild", t("edge.addChild"), d.onAddChild));
-    } else {
-      list.appendChild(emptyRow(t("edge.loose")));
-    }
+    }   // 散页：不画 ../兄弟/子节，也不画说明（user 2026-09-10「散页：不在书的主干里…这种说明也不要」）；只有链接 + 「+ 子节」+ 谁指向这里
     list.appendChild(headerRow(t("edge.links")));
     if (!nb.links.length) list.appendChild(emptyRow(t("edge.noLinks")));
     for (const n of nb.links) list.appendChild(row(n, "links"));

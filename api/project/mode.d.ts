@@ -214,8 +214,11 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     addImagePages: (items: {
         name: string;
         bytes: Uint8Array;
-    }[]) => boolean;
+    }[], opts?: {
+        as?: "sibling" | "child" | "link";
+    } | undefined) => boolean;
     lastAdded: () => string[];
+    lastPlaced: () => "link" | "sibling" | "child";
     pageBytes: () => Uint8Array | null;
     replaceImage: (bytes: Uint8Array<ArrayBufferLike>, ext: string) => boolean;
     setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => boolean;

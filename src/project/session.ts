@@ -6,7 +6,7 @@
 //   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 废弃 / 彻底删 /
 //     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页（可指定位置）/ 封面 / 断入边 / 修改锁本身。删除模型 = 断开链接 / 废弃 / 彻底删除 三个显式动词，无引用计数（ADR-0014 §8）
 import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
-import { createNode, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes,
+import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 
 export interface ProjectSessionDeps {
@@ -49,9 +49,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   function create(projectName: string, firstNode: string): void {
     gen++;
     name = projectName; project = emptyProject(); readOnly = false;
-    const r = createNode(project, firstNode, "", now);
-    project.tree = [r.name];
-    project.editorState.last = r.name;
+    seedBook(project, firstNode, "", now);   // 第一页 = 树的第一个节点（与 app.ts 升 txt 成书同一处）
     dirty = true;
   }
   function close(): void { gen++; name = null; project = emptyProject(); dirty = false; readOnly = false; }
