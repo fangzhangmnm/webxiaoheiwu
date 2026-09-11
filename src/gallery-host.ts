@@ -2,7 +2,7 @@
 // created 2026-09-10 by Claude Fable 5.1。包出屏幕 + 动词 + 数据面；本文件只出：Vue 注入、DocHost（编辑器端口）、policy（两档扩展名、身份=全名、缩略图 = 书的 Thumbnails/thumbnail.png 尾读，2.1）、
 //   加密适配（crypto-state）、chrome 按钮（返回 / 新建 / 回收站 / 设置）。文案 = 包内 zh/en 默认（按 lang 切）。
 import { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } from "../vendor/vue/vue.esm-browser.prod.js";
-import { createGallery, fetchZipEntryThumb, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type VerbStore, type DataFaceStore, type Gallery, type PeekableFile } from "@internal/gallery";
+import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type VerbStore, type DataFaceStore, type Gallery } from "@internal/gallery";
 import { requireStore, auth } from "./app-store.ts";
 import { appEncryption } from "./encryption.ts";
 import { THUMBNAIL_ENTRY } from "./project/format.ts";
@@ -95,8 +95,10 @@ export function initGalleryHost(d: GalleryHostDeps) {
     isZipDoc: (n) => isProjectName(n),
     policy: {
       isDoc: (p) => docKind(p) != null, isImage: () => false, naming: NAMING,
-      // 缩略图（2.1，ADR-0012）：只有书有；fetch = store getPeek 按名尾读（source 必填：cloud 绝不落回本地，WeebPaint「新 token 配旧字节」学费）
-      thumbs: { has: isProjectName, dbName: THUMB_DB, fetch: (name, source) => fetchZipEntryThumb(zipFile(name) as unknown as PeekableFile, source, { zipEntry: THUMBNAIL_ENTRY, bytesLength: THUMB_PEEK_BYTES }) },
+      // 缩略图（2.1，ADR-0012）：只有书有；fetch = store getPeek 按名尾读（source 必填：cloud 绝不落回本地，WeebPaint「新 token 配旧字节」学费）。
+      //   store 语义：**null = 到达了但没有**（entry 不存在 / 文件不在云端；本地有副本时 Blob.slice 根本不碰网）→ 原样返 null = 确定没封面 → 包层进缓存、卡片显示书图标；
+      //   **抛 = 够不着**（provider downloadRange 网络失败 reject）→ 包层不缓存、云端-only 的卡才显示云（user 2026-09-10 真机「thumb 不是用来显示 cloud status 的地方，应该是书，未知的话是另外一回事可以显示云」）。
+      thumbs: { has: isProjectName, dbName: THUMB_DB, fetch: (name, source) => zipFile(name).getPeek({ bytesLength: THUMB_PEEK_BYTES, zipEntry: THUMBNAIL_ENTRY, source }) },
     },
     tile: { aspect: "2/3" },   // 竖版书封（user 2026-09-10「加 2:3 的选项…iphone se2 可以一排三本」）
     encryption,
@@ -109,6 +111,8 @@ export function initGalleryHost(d: GalleryHostDeps) {
   };
   let gallery: Gallery | null = null;
   function ensureMounted(): Gallery { if (!gallery) gallery = createGallery(d.mountEl, deps); return gallery; }
+  // 供 ui-audit 探针（非 API）：缩略图缓存命中/未命中/错误计数——「否定 peek 命中缓存不重拉」靠它验
+  (window as unknown as { __xhwGalleryThumbStats?: () => unknown }).__xhwGalleryThumbStats = () => gallery?.thumbs?.stats ?? null;
   async function open(): Promise<void> {
     await d.flushLocal();
     const g = ensureMounted();
