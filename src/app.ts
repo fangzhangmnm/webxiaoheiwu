@@ -188,7 +188,7 @@ const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
   onLibrary: () => { void galleryHost.open(); },
   onSettings: () => { drawer.open("settings"); },
-  onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"),
+  onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"), onJoinTrunk: () => joinTrunkFlow(),
   onExportBranch: (name) => exportBranchFlow(name),
   onLift: () => liftDraftToBook(), canLift: () => !project.active() && editor.canEdit() && editorEl.value.trim().length > 0,
   onDownload: () => { const s = project.session(); const h = project.home(); if (!s || !h || h.kind !== "local") return; void packProject(s.project).then((b) => { triggerDownload(b, h.home.fileName); setStatus(t("project.downloaded")); }); },
@@ -207,6 +207,14 @@ async function addPageFlow(where: "sibling" | "child"): Promise<boolean> {
   const ok = where === "sibling" ? project.newSibling(v) : project.newChild(v);
   if (ok) { edgeSidebar.render(); editorEl.focus(); }
   return ok;
+}
+/** 「归入主干」：当前散页 → 树末尾（树空时就是第一节点）。v2.1.5 之前升的 txt 书 tree 为空、此前没有任何入口能开树（user 2026-09-10「为什么对于txt转的书我还是只能加链接没法加孩子和兄弟」）。 */
+async function joinTrunkFlow(): Promise<boolean> {
+  const cur = project.current(); if (!cur || project.isInTree(cur)) return false;
+  if (!project.joinTrunk(cur)) return false;
+  setStatus(t("edge.joinedTrunk", { name: nodeDisplayName(cur) }));
+  edgeSidebar.render(); editorEl.focus();
+  return true;
 }
 /** 导出这一支（ADR-0014 §6）：子树 DFS 拼成一篇 txt → 存进书库（撞名 hex4）或下载一份；无地的书只有下载。名字归 user（默认 = 页名）。 */
 async function exportBranchFlow(name: string): Promise<void> {
@@ -364,7 +372,8 @@ addPageButton.addEventListener("click", (e) => {
   togglePopupMenu({ anchor: addPageButton, align: "right", items: () => [
     { id: "sibling", label: t("edge.addSibling"), icon: "new", hidden: !inTree },
     { id: "child", label: t("edge.addChild"), icon: "new" },
-  ], onPick: (id) => { void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+    { id: "trunk", label: t("edge.joinTrunk"), icon: "book", hidden: inTree, separatorBefore: true },   // 散页：归入主干（空树唯一入口，v2.1.6）
+  ], onPick: (id) => { if (id === "trunk") void joinTrunkFlow(); else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
 });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());

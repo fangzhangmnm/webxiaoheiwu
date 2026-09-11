@@ -189,6 +189,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     detachFromTree: (target: string) => boolean;
     archiveAfterCurrent: (target: string) => boolean;
     archiveUnderCurrent: (target: string) => boolean;
+    joinTrunk: (target: string) => boolean;
     exportBranchText: (target: string) => string;
     addLink: (to: string) => boolean;
     removeLink: (to: string) => boolean;

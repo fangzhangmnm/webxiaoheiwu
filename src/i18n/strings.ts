@@ -505,6 +505,8 @@ export const S = {
   "edge.detach":            { zh: "移出树（变散页）", en: "Take out of the tree (loose page)" },
   "edge.archiveAfter":      { zh: "归档到这页之后", en: "File after this page" },
   "edge.archiveUnder":      { zh: "归档到这页之下", en: "File under this page" },
+  "edge.joinTrunk":         { zh: "归入主干", en: "File into the trunk" },
+  "edge.joinedTrunk":       { zh: "「{name}」已归入主干", en: "“{name}” filed into the trunk" },
   "edge.exportBranch":      { zh: "导出这一支…", en: "Export this branch…" },
   "edge.moveNoop":          { zh: "已经到头了，没动", en: "Already at the edge; nothing moved" },
   "edge.archived":          { zh: "已归档「{name}」", en: "Filed “{name}”" },

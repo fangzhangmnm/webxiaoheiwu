@@ -198,6 +198,22 @@ for (const [w, h] of sizes) {
     await page.fill("#edgeSearch", "她推"); await wait(300);
     r = await rowMenu("results", "她推开门。.txt"); probe(tag, "search finds the loose page; not discarded → no row menu (no orphan concept)", !r.opened && (await rows()).includes("她推开门。"), JSON.stringify(r));
     await page.fill("#edgeSearch", ""); await wait(200);
+    // 归入主干（user 2026-09-10「为什么对于txt转的书我还是只能加链接没法加孩子和兄弟」）：散页上 = 侧栏首行 + 顶栏「+」菜单一条；树空（v2.1.5 之前升的书）也能开树
+    await page.evaluate(() => { window.__xhw.project.jump("她推开门。.txt"); window.__xhw.sidebar.render(); }); await wait(150);
+    probe(tag, "loose page: sidebar first row = 归入主干; no `..`, no + sibling", (await parentRow()) === null && await page.evaluate(() => { const j = document.getElementById("edgeJoinTrunk"); return !!j && !document.getElementById("edgeAddSibling") && document.querySelector("#edgeList .edge-row")?.contains(j) === true; }), JSON.stringify(await blocks()));
+    if (w < 900) await ensureSidebar(false);
+    await page.click("#addPageButton"); await wait(250);
+    { const items = await page.evaluate(() => [...document.querySelectorAll(".popup-menu button")].map((b) => (b.textContent ?? "").trim()));
+      probe(tag, "loose page: top-bar + menu = 加子节 / 归入主干 (no 加兄弟页)", items.some((x) => /归入主干/.test(x)) && items.some((x) => /子节/.test(x)) && !items.some((x) => /兄弟/.test(x)), JSON.stringify(items)); }
+    await page.keyboard.press("Escape"); await wait(150); await ensureSidebar(true);
+    await page.evaluate(() => { const p = window.__xhw.project; p.detachFromTree("序章.txt"); p.detachFromTree("作品.txt"); p.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
+    probe(tag, "empty trunk (pre-v2.1.5 lifted book): every page loose, no `..`, no + sibling, 归入主干 offered", (await page.evaluate(() => window.__xhw.project.session().order().length)) === 0 && (await parentRow()) === null && await page.evaluate(() => !document.getElementById("edgeAddSibling") && !!document.getElementById("edgeJoinTrunk")), JSON.stringify(await blocks()));
+    await page.click("#edgeJoinTrunk"); await wait(300);
+    probe(tag, "归入主干 on an empty trunk → 作品 = first trunk node: `..` = book root, siblings = [作品], + sibling / + child back, 归入主干 gone, toast", JSON.stringify(await parentRow()) === JSON.stringify({ name: "作品", root: true, disabled: true }) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品"]) && await page.evaluate(() => !!document.getElementById("edgeAddSibling") && !!document.getElementById("edgeAddChild") && !document.getElementById("edgeJoinTrunk")) && /已归入主干/.test(await page.textContent("#toast")), `${JSON.stringify(await parentRow())} ${JSON.stringify(await rowsIn("siblings"))} ${await page.textContent("#toast")}`);
+    await page.evaluate(() => { const p = window.__xhw.project; p.jump("序章.txt"); window.__xhw.sidebar.render(); }); await wait(150);
+    await page.click("#edgeJoinTrunk"); await wait(300);
+    probe(tag, "归入主干 again on 序章 → appended at the trunk end: siblings = [作品, 序章]", JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]) && (await cur()) === "序章.txt", JSON.stringify(await rowsIn("siblings")));
+    await page.evaluate(() => { window.__xhw.project.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);
     await page.evaluate(() => window.__xhw.project.addLink("她推开门。")); await page.evaluate(() => window.__xhw.sidebar.render()); await wait(150);
     r = await rowMenu("links", "她推开门。.txt", /归档到这页之下/); probe(tag, "link row of a loose page offers 归档到这页之后/之下 → files it back under 作品", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]) && /已归档/.test(await page.textContent("#toast")), `${JSON.stringify(await rowsIn("children"))} ${await page.textContent("#toast")}`);
     await page.evaluate(() => { const p = window.__xhw.project; p.jump("她推开门。.txt"); p.archiveUnderCurrent("插图说明.txt"); p.jump("作品.txt"); window.__xhw.sidebar.render(); }); await wait(150);

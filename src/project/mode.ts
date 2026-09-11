@@ -459,6 +459,8 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 归档到当前页之后 / 之下（散页从 links / 谁指向这里 收进主干；树里的页 = 搬家，子树跟着）。 */
   const archiveAfterCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveAfter(target, session!.current()!); });
   const archiveUnderCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveUnder(target, session!.current()!); });
+  /** 归入主干：散页放到树末尾（树空时 = 第一节点；树里的页 = 搬到末尾，子树跟着）。空树唯一的入口——v2.1.5 之前升的 txt 书 tree 为空，此前没有任何入口能开树（user 2026-09-10「为什么对于txt转的书我还是只能加链接没法加孩子和兄弟」）。 */
+  const joinTrunk = guardEdit((target: string) => { commitEditor(); session!.archiveAtEnd(target); });
   /** 导出这一支：子树 DFS 拼成的正文（落库 / 下载归 app 层）。 */
   const exportBranchText = (target: string): string => { commitEditor(); return session!.exportBranch(target); };
   /** 「+」散页：调用方问好名字再来（撞已有名 = 连过去并跳，ADR-0009 §6）；边加在当前页末尾，跳过去。拖进来的 txt 也走这里。 */
@@ -515,7 +517,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
-    jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, exportBranchText,
+    jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, joinTrunk, exportBranchText,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
     cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail,
