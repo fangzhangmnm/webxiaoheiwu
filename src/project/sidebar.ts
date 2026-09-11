@@ -48,7 +48,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   let query = "";
   el.innerHTML = `
     <div class="edge-entries">
-      <button type="button" class="edge-entry" id="edgeLibrary">${icon("gallery")}<span>${esc(t("sidebar.library"))}</span></button>
+      <button type="button" class="edge-entry" id="edgeLibrary">${icon("bookshelf")}<span>${esc(t("sidebar.library"))}</span></button>
       <button type="button" class="edge-entry" id="edgeSettings">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
     </div>
     <div class="edge-txt" id="edgeTxtPane" hidden>

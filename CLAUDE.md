@@ -47,4 +47,4 @@ Web Speech / Groq / OpenAI 2026-09-03 sunset（语音字节永不外发）；旧
 3. 重构/大功能：`bash scripts/gen-api.sh` 重打 `api/`。
 4. `git add -A && git commit && git push origin main`。prod = `git push origin main:prod`（**先问人**）。
 
-图标：`python3 "../20260708 SVG Icons/extract-icons.py" assets/icons.svg <ids…> --catalog` → `python3 tools/inline-sprites.py`。缺的先烤 stopgap（`tools/bake-stopgap-glyphs.py` SPECS）+ 登记图标库 `TODO.md`；现登记：`settings` `microphone`；PENDING 待过目在用：`book` `forward` `chevron-left` `chevron-right`（2026-09-10）。
+图标：`python3 "../20260708 SVG Icons/extract-icons.py" assets/icons.svg <ids…> --catalog` → `python3 tools/inline-sprites.py`。缺的先烤 stopgap（`tools/bake-stopgap-glyphs.py` SPECS）+ 登记图标库 `TODO.md`；现登记：`settings` `microphone`；PENDING 待过目在用：`book` `forward` `chevron-left` `chevron-right` `bookshelf`（2026-09-10；`bookshelf` = 顶栏最左书库钮 + 侧栏书库入口，v2.1.8 起不再借 `gallery`）。

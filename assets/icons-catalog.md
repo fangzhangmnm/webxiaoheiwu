@@ -12,7 +12,7 @@
 <svg width="24" height="24"><use href="#move-to-file"/></svg>
 ```
 
-> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`forward`、`chevron-left`、`chevron-right`
+> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`
 > 见库 `index.html` 的「待过目」栏；过目后进库/打回归库 session。
 
 
@@ -36,8 +36,8 @@
 | `image` | 从图片新建:相框+山+太阳 |
 | `file` | 文档:单张纸+折角(copy/paste/clear-canvas 共用母题) |
 | `rename` | 重命名:文字光标+铅笔 |
-| `gallery` | 图库入口:图片堆叠(沿用 image 的太阳+山母题) |
 | `book` 👁待过目 | 书:合上的书侧视——左脊直立、封面与书页在右、脊底一道弧连回封面(与 file 单张纸同族体量,不画文字)【WebXiaoHeiWu 书库工程卡片占位图（无缩略图时,替代名字首字）；2026-09-10 fable 自画未过目】 |
+| `bookshelf` 👁待过目 | 书库入口:两本直立的书共边 + 一本斜靠(倾 16°,顶角贴在直立书的上沿)；每本一道书脊标签线(直立两本错开高度)；不画书架线；与 gallery(图片堆叠)分工=书库 vs 图库。cairosvg 渲 160/20/16px 比过 12 个候选(三本各自独立外框 16px 缝糊、三本等高共边像三扇窗、阶梯共框+书架线)后 user 选定【WebXiaoHeiWu 顶栏最左「书库」钮 + 侧栏顶部「书库」入口（v2.1.8 起替换借用的 gallery）；2026-09-10 fable 自画未过目，user 原话「你那个是图库，画一个几个并列在一起的书看看？」→「use 6 two lean but add the bar in each book like 3 three tabs」→「用6d」】 |
 
 ## hierarchy
 
