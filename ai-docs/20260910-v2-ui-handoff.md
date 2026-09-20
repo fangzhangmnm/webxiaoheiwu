@@ -27,6 +27,7 @@
 ## 3. 没做 / 不做
 - 没碰 `app.ts` / `editor.ts` / `drawer.ts`（UI 归 user）；没 build bundle、没推 dev。
 - 图片节点、缩略图、mimetype、zip 内历史：ADR-0008 §5 不做。
+- [ ] 顺手做（下次重构整改时带上，不单开）：`crypto-*` 命名化石 → `sheet-*`。通用 sheet（`#sheet` + `src/sheets.ts`）沿用 v1 密码框视觉，class 名带 crypto 但早已与加密无关；JRB 09-19 抄走同款（家族仅此两处，各持一份副本，是 `@internal/workbench-elements` 吸收候选，minor 级要 user 批）。user 2026-09-20「命名化石记一下账，以后重构整改的时候可以提出顺手做，其他兄弟项目也是」。Claude Fable 5.1 2026-09-20
 
 ## 4. 已落的最小 UI（2026-09-10 晚，委托下的 AI 决定；user 随时打回）
 - **工程编辑器** = 同一个 textarea 两种稿：`src/project/mode.ts` 控制器绑定 `ProjectSession`，节律与 txt 同款（200ms 本地 / 15s·30s 推云）；txt 编辑器在工程期 `park()`（不收 input、不写盘）。门面在 `app.ts`（`openAny / syncKindAny / canEditNow / flushLocalAny / pushNowAny`）：谁活着问谁。
