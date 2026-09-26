@@ -10,7 +10,7 @@
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
 import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "./config.ts";
 import { formatDate, parseDocName, splitDocPath, sanitizeTitle, docKind } from "./doc-model.ts";
-import { readDoc, saveDoc, createDoc, renameDoc, renameDocToOpaque, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, rekeyDoc, moveDoc } from "./docs.ts";
+import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, rekeyDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword, currentPassword } from "./crypto-state.ts";
 import { deviceKvGet, deviceKvGetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
@@ -224,18 +224,6 @@ export function createEditor(d: EditorDeps) {
       if (gen === loadGen && d.editor.value !== savedText) scheduleLocalSave();   // 改名期间挂起的正文补落盘
     }
   }
-  /** 明文稿转加密后藏标题：改成日期码名。返回 {stem, oldKept}；改不成 → null（调用方响亮报「文件名仍带标题」）。 */
-  async function hideNameAfterEncrypt(from: string): Promise<{ stem: string; oldKept: boolean } | null> {
-    const gen = loadGen;
-    renameInFlight = true;
-    try {
-      const rr = await renameDocToOpaque(from);
-      if (gen !== loadGen || !rr) return null;
-      adoptName(from, rr.name);   // oldKept（库降级 save-as）也采纳新名——与 renameTo 同：旧名那份仍在云端，下面响亮告知
-      return { stem: parseDocName(rr.name).stem, oldKept: !!rr.oldKept };
-    } catch (e) { reportError(e, "warning"); return null; }
-    finally { renameInFlight = false; }
-  }
   /** 顶栏显示名：已物化 = stem；新稿 = 预定的文件名或 null（顶栏画占位）。 */
   function displayName(): string | null { return st.name ? parseDocName(st.name).stem : st.pendingTitle; }
 
@@ -378,13 +366,7 @@ export function createEditor(d: EditorDeps) {
         await busy(t("busy.encrypting"), () => encryptDoc(name));
         sealed = true; st.encrypted = true;
       } catch (e) { reportError(e); d.setStatus(t("st.encryptFailed", { e: errMsg(e) }), { error: true }); }
-      if (sealed) {
-        // 藏标题（ADR-0007）：封完把带标题的文件名换成日期码。改不成（离线谱系不明 / 撞名耗尽）→ 响亮说「文件名仍带标题」，绝不静默。
-        const hidden = await hideNameAfterEncrypt(name);
-        if (!hidden) d.setStatus(t("st.encryptedNameKept", { name: parseDocName(name).stem }), { error: true });
-        else if (hidden.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });
-        else d.setStatus(t("st.encryptedRenamed", { time: fmtTime(Date.now()), name: hidden.stem }));
-      }
+      if (sealed) d.setStatus(t("st.encryptedKeepName", { time: fmtTime(Date.now()), name: parseDocName(name).stem }));   // 名字不动（2026-09-26 user「加密不改名同意」，ADR-0007 修订）
       d.onDocChanged();
       return;
     }

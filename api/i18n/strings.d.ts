@@ -668,6 +668,10 @@ export declare const S: {
         readonly zh: "加密还没成功（本地已存、不会推云）——联网后会自动重试";
         readonly en: "Encryption has not succeeded yet (saved locally, not pushed) — retries automatically when online";
     };
+    readonly "st.encryptedKeepName": {
+        readonly zh: "已加密 {time}；文件名「{name}」不变（OneDrive 上可见，想藏点顶栏改名）";
+        readonly en: "Encrypted {time}; file name “{name}” unchanged (visible on OneDrive — rename from the top bar to hide it)";
+    };
     readonly "st.renameOldKept": {
         readonly zh: "已按新文件名另存；旧名那份云端还在（列表里会有两份）";
         readonly en: "Saved under the new file name; the old copy is still in the cloud (you will see both)";
@@ -675,14 +679,6 @@ export declare const S: {
     readonly "st.renameCloudDeferred": {
         readonly zh: "文件名已改（云端待推）";
         readonly en: "File name changed (cloud pending)";
-    };
-    readonly "st.encryptedRenamed": {
-        readonly zh: "已加密 {time}；文件名已改为「{name}」（藏标题）";
-        readonly en: "Encrypted {time}; file renamed to “{name}” (title hidden)";
-    };
-    readonly "st.encryptedNameKept": {
-        readonly zh: "已加密，但文件名仍是「{name}」（OneDrive 上可见）——点顶栏文件名改掉";
-        readonly en: "Encrypted, but the file name is still “{name}” (visible on OneDrive) — tap the file name in the top bar to rename";
     };
     readonly "st.encryptFailed": {
         readonly zh: "加密失败：{e}";
@@ -1571,6 +1567,14 @@ export declare const S: {
     readonly "project.newHint": {
         readonly zh: "一本书 = 一个 zip：里面是一堆章节（txt）和它们之间的边。文件名只是管理用（OneDrive 上可见），撞名自动加序号。";
         readonly en: "A book is one zip: a pile of chapters (txt) and the edges between them. The file name is just a handle (visible on OneDrive); a clash gets a number.";
+    };
+    readonly "project.newEncrypt": {
+        readonly zh: "加密这本书（建好即封，先要密码）";
+        readonly en: "Encrypt this book (sealed on creation; asks for the password first)";
+    };
+    readonly "project.encryptSkipped": {
+        readonly zh: "没设密码，这本书先是明文——顶栏锁钮随时可加密";
+        readonly en: "No password set — the book stays plain for now; the lock button in the top bar can encrypt it any time";
     };
     readonly "project.defaultName": {
         readonly zh: "作品";

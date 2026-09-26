@@ -111,11 +111,15 @@ export interface InputOpts {
   error?: string;
   /** 副按钮（2.1 加页 sheet 的「从图片…」）：点了 resolve INPUT_SECONDARY。 */
   secondary?: { label: string };
+  /** 一个勾（v2.1.11 新建书「加密」）：勾态经 openInputSheetEx 的结果拿；openInputSheet 只返字串。 */
+  checkbox?: { label: string; checked?: boolean };
 }
 /** openInputSheet 的副按钮结果哨兵（不会和用户输入撞：含 NUL）。 */
 export const INPUT_SECONDARY = "\u0000secondary";
 /** 输入 sheet → string | null（取消）。密码态用 -webkit-text-security 打码（不用 type=password：绕开浏览器记密码弹窗——WeebPaint 教训）。 */
-export function openInputSheet(title: string, opts: InputOpts = {}): Promise<string | null> {
+export function openInputSheet(title: string, opts: InputOpts = {}): Promise<string | null> { return openInputSheetEx(title, opts).then((r) => (r ? r.value : null)); }
+/** 输入 sheet 带勾态 → { value, checked } | null（取消）；副按钮 → value = INPUT_SECONDARY。 */
+export function openInputSheetEx(title: string, opts: InputOpts = {}): Promise<{ value: string; checked: boolean } | null> {
   _assertNotBusy("input");
   return new Promise((resolve) => {
     _reset();
@@ -134,17 +138,18 @@ export function openInputSheet(title: string, opts: InputOpts = {}): Promise<str
       secondaryBtn = document.createElement("button"); secondaryBtn.type = "button"; secondaryBtn.className = "sheet-choice"; secondaryBtn.id = "sheetSecondary"; secondaryBtn.textContent = opts.secondary.label;
       g.choices().appendChild(secondaryBtn); g.choices().classList.remove("hidden");
     }
+    if (opts.checkbox) { g.checkLabel().textContent = opts.checkbox.label; g.checkInput().checked = !!opts.checkbox.checked; g.check().classList.remove("hidden"); }
     const cleanup = () => {
       g.confirm().removeEventListener("click", onOk); g.cancel().removeEventListener("click", onCancel);
       inp.removeEventListener("keydown", onKey); inp2.removeEventListener("keydown", onKey);
       g.confirm().textContent = okDefault;
       inp.value = ""; inp2.value = "";
     };
-    if (secondaryBtn) secondaryBtn.addEventListener("click", () => { cleanup(); _hide(); resolve(INPUT_SECONDARY); });
+    if (secondaryBtn) secondaryBtn.addEventListener("click", () => { const checked = g.checkInput().checked; cleanup(); _hide(); resolve({ value: INPUT_SECONDARY, checked }); });
     const onOk = () => {
       const err = opts.validate?.(inp.value, inp2.value) ?? null;
       if (err) { g.error().textContent = err; g.error().classList.remove("hidden"); return; }
-      const v = inp.value; cleanup(); _hide(); resolve(v);
+      const v = inp.value, checked = g.checkInput().checked; cleanup(); _hide(); resolve({ value: v, checked });
     };
     const onCancel = () => { cleanup(); _hide(); resolve(null); };
     const onKey = (e: KeyboardEvent) => {

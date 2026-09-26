@@ -8,7 +8,7 @@
 import { PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { bookLocalDebounceMs } from "./cadence.ts";
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
-import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
+import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc } from "../docs.ts";
 import { note as diagNote } from "../diag-log.ts";   // 2026-09-26 黑匣子：书的推 / 拉结果（user 真机「卡在上传 / 下载」时 log 里是盲区）
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
 import { deviceKvSet } from "../device-kv.ts";
@@ -317,7 +317,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   }
   /** 锁图标 / 锁卡手势：重开并弹密码。 */
   async function unlock(): Promise<boolean> { const n = name(); if (!n || !locked) return false; return openStore(n, { promptUnlock: true }); }
-  /** 顶栏加密开关（镜像 txt 编辑器 toggleEncryption）：明文 → 封 + 藏标题改日期码；加密 → 确认 → 解封。 */
+  /** 顶栏加密开关（镜像 txt 编辑器 toggleEncryption）：明文 → 封（名字不动）；加密 → 确认 → 解封。 */
   async function toggleEncryption(confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
     const n = name(); if (!n || home?.kind !== "store") return;
     if (locked) { await unlock(); return; }
@@ -327,14 +327,7 @@ export function createProjectMode(d: ProjectModeDeps) {
       let sealed = false;
       try { await busy(t("busy.encrypting"), () => encryptDoc(n)); sealed = true; encrypted = true; }
       catch (e) { reportError(e); d.setStatus(t("st.encryptFailed", { e: errMsg(e) }), { error: true }); }
-      if (sealed) {
-        let renamed: { name: string; oldKept?: boolean } | null = null;
-        try { renamed = await renameDocToOpaque(n); } catch (e) { reportError(e, "warning"); }
-        if (!renamed) d.setStatus(t("st.encryptedNameKept", { name: parseDocName(n).stem }), { error: true });
-        else if (renamed.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });
-        else d.setStatus(t("st.encryptedRenamed", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }), name: parseDocName(renamed.name).stem }));
-        if (renamed && renamed.name !== n) await openStore(renamed.name);   // 身份换了：按新名重开（字节同一份）
-      }
+      if (sealed) d.setStatus(t("st.encryptedKeepName", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }), name: parseDocName(n).stem }));   // 名字不动（2026-09-26 user「加密不改名同意」，ADR-0007 修订：漏不漏标题由用户逐篇自决，对齐 WeebPaint）
       d.onChanged();
       return;
     }

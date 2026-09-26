@@ -201,12 +201,16 @@
           <button type="button" class="page-nav-btn" id="pageNext" aria-label="下一页" data-i18n-aria="edge.next" hidden><svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg></button>
         </div>
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
-        <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
-        <!-- 子节目录（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表」）：正文之下、页脚之上；正文滚到底 / 装得下才露出（app.ts 迟滞）；行 = 子节名 + 修改时间，点 = 跳 -->
-        <nav id="childToc" class="child-toc" hidden aria-label="子节" data-i18n-aria="edge.children">
-          <div class="child-toc-head" data-i18n="edge.children">子节</div>
-          <ul id="childTocList" class="child-toc-list" role="list"></ul>
-        </nav>
+        <!-- 正文 + 子节目录的容器（v2.1.11）：有子节的页里 textarea 按内容高度伸缩（上限 = 本容器 − 露着的目录），目录紧跟正文最后一行
+             （user 2026-09-26「如果父节点没有输入很多段的话子节不应该在最下面，而是取决于父节点输入了多少行…相当于嵌入了」）；正文超过上限退回内部滚动；写字线在本容器上继续；点正文下方空白照样能写 -->
+        <div class="page-body" id="pageBody">
+          <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
+          <!-- 子节目录（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表」）：正文之下；长正文滚到底才露出（app.ts 迟滞）；行 = 子节名 + 修改时间，点 = 跳 -->
+          <nav id="childToc" class="child-toc" hidden aria-label="子节" data-i18n-aria="edge.children">
+            <div class="child-toc-head" data-i18n="edge.children">子节</div>
+            <ul id="childTocList" class="child-toc-list" role="list"></ul>
+          </nav>
+        </div>
         <div id="wordCount" class="page-foot" aria-live="off" hidden></div>
         <div id="pageImage" class="page-image" hidden>
           <img id="pageImageImg" alt="" />
@@ -482,6 +486,6 @@
       </footer>
     </aside>
 
-    <script type="module" src="./dist/xiaoheiwu-150a5c28ec63.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-915f8ca0aafb.mjs"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ import { APP_VERSION } from "./version.ts";
 import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
-import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY } from "./sheets.ts";
+import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
@@ -258,16 +258,37 @@ pageNext.addEventListener("click", () => { if (project.nextPage()) edgeSidebar.r
 //   `.. 父页名` 住章节名上方（顶层页藏：顶栏已是书名；与侧栏 `..` 行同一语汇）；子节目录住正文之下，**只在正文滚到底（或装得下）时露出**——写到中段不占地，写到末尾自然看见下一层。
 //   textarea 的内部滚动模型不动（编辑手感不冒险）：露出 = 目录占位、正文让出同样的高度并保持贴底；迟滞 = 露出后往上滚超过目录高度 + 24px 才收（否则边界上抖）。图片页没正文可滚：有子节就露。
 const parentLink = $<HTMLButtonElement>("parentLink"), parentLinkName = $("parentLinkName");
-const childToc = $("childToc"), childTocList = $("childTocList"), pageEl = document.querySelector<HTMLElement>(".page")!;
+const childToc = $("childToc"), childTocList = $("childTocList"), pageEl = document.querySelector<HTMLElement>(".page")!, pageBody = $("pageBody");
 let tocChildren: string[] = [];
-const TOC_SHOW_EPS_PX = 2, TOC_HIDE_SLACK_PX = 24;
+const TOC_SHOW_EPS_PX = 2, TOC_HIDE_SLACK_PX = 24, TOC_GAP_PX = 8;
 const tocDistance = (): number => editorEl.scrollHeight - editorEl.clientHeight - editorEl.scrollTop;   // 正文离底还有几像素（≤0 = 贴底 / 装得下）
-function setTocVar(): void { pageEl.style.setProperty("--child-toc-h", childToc.hidden ? "0px" : `${childToc.offsetHeight + 8}px`); }   // 话筒上让
-function showToc(): void { if (!childToc.hidden) return; childToc.hidden = false; setTocVar(); editorEl.scrollTop = editorEl.scrollHeight; }   // 让出高度后正文仍贴底（否则下一个 scroll 事件判「没到底」→ 收 → 抖）
-function hideToc(): void { if (childToc.hidden) return; childToc.hidden = true; setTocVar(); }
+const embedMode = (): boolean => tocChildren.length > 0 && project.active() && project.currentKind() !== "image";
+/** 嵌入态（v2.1.11，user 2026-09-26「如果父节点没有输入很多段的话子节不应该在最下面，而是取决于父节点输入了多少行…相当于嵌入了」）：有子节的页里 textarea 按内容高度伸缩，
+ *  上限 = 容器高度 − 露着的目录 → 正文短时目录紧跟最后一行；正文长过上限退回内部滚动（v2.1.9 的滚到底才露 / 迟滞照旧）。没子节的页 = 恢复 flex 填满，零变化。
+ *  量法：`height:0` → scrollHeight = 内容高（两次布局，只在正文装得下时做）；长正文稳态（顶到上限还在溢出）不量。话筒只在目录贴着纸底（正文顶到上限）时上让。 */
+function syncBodyHeight(): void {
+  if (!embedMode()) {
+    if (pageEl.hasAttribute("data-toc-embed")) { pageEl.removeAttribute("data-toc-embed"); editorEl.style.height = ""; }
+    delete pageEl.dataset.tocShown; setTocVar(); return;
+  }
+  pageEl.setAttribute("data-toc-embed", "");
+  const maxH = Math.max(0, pageBody.clientHeight - (childToc.hidden ? 0 : childToc.offsetHeight + TOC_GAP_PX));
+  const cur = editorEl.clientHeight;
+  if (!(editorEl.scrollHeight > cur + 1 && cur >= maxH - 1)) {
+    editorEl.style.height = "0px";
+    const lineH = parseFloat(getComputedStyle(editorEl).lineHeight) || 24;
+    const contentH = Math.max(editorEl.scrollHeight, lineH);
+    editorEl.style.height = `${Math.min(contentH, maxH)}px`;
+  } else if (cur !== maxH) editorEl.style.height = `${maxH}px`;
+  if (!childToc.hidden && editorEl.clientHeight >= maxH - 1) pageEl.dataset.tocShown = "1"; else delete pageEl.dataset.tocShown;
+  setTocVar();
+}
+function setTocVar(): void { pageEl.style.setProperty("--child-toc-h", pageEl.dataset.tocShown ? `${childToc.offsetHeight + TOC_GAP_PX}px` : "0px"); }   // 话筒上让
+function showToc(): void { if (!childToc.hidden) return; childToc.hidden = false; syncBodyHeight(); editorEl.scrollTop = editorEl.scrollHeight; }   // 让出高度后正文仍贴底（否则下一个 scroll 事件判「没到底」→ 收 → 抖）
+function hideToc(): void { if (childToc.hidden) return; childToc.hidden = true; syncBodyHeight(); }
 function updateChildToc(): void {
   if (!tocChildren.length) { hideToc(); return; }
-  if (project.currentKind() === "image") { showToc(); return; }
+  if (project.currentKind() === "image") { showToc(); return; }   // 图片页没有正文可滚：有子节就露
   const dist = tocDistance();
   if (childToc.hidden) { if (dist <= TOC_SHOW_EPS_PX) showToc(); }
   else if (dist > childToc.offsetHeight + TOC_HIDE_SLACK_PX) hideToc();
@@ -292,12 +313,13 @@ function renderPageKin(): void {
     b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); editorEl.focus(); });
     li.appendChild(b); childTocList.appendChild(li);
   }
-  updateChildToc();
+  syncBodyHeight(); updateChildToc();
 }
 parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); editorEl.focus(); } });
 editorEl.addEventListener("scroll", updateChildToc, { passive: true });
-editorEl.addEventListener("input", updateChildToc);   // 末尾续写：正文长了仍贴底 → 目录留着；中段删多了装得下 → 露出
-window.addEventListener("resize", updateChildToc);   // 键盘 / 转屏改了 clientHeight
+editorEl.addEventListener("input", () => { syncBodyHeight(); updateChildToc(); });   // 末尾续写：正文长一行目录跟着下一行；顶到上限后仍贴底 → 目录留着
+window.addEventListener("resize", () => { syncBodyHeight(); updateChildToc(); });   // 键盘 / 转屏改了容器高度
+pageBody.addEventListener("pointerdown", (e) => { if (e.target !== pageBody) return; e.preventDefault(); editorEl.focus(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });   // 嵌入态正文下方的空白纸面：点了照样能写（光标到末尾），别让人以为纸「断」了
 // ── 导出 = 当前页全页进剪贴板（v2.1.9，user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮…方便的导出分享功能其实很重要」）：
 //   txt 稿 = 整篇；书的文字页 = 这一页（textarea 里的活字，所见即所得）；图片页 = 图片本身（PNG 直给，其余经 codec 转 PNG——系统剪贴板只认 PNG；ClipboardItem 里塞 Promise 保住 Safari 的用户手势）。
 //   锁着 / 空页 / 浏览器不支持 → toast 说清，不谎报已复制。
@@ -448,7 +470,7 @@ async function liftDraftToBook(): Promise<boolean> {
     const name = await createProjectDoc(raw.trim() || stem, await packProject(p), formatDate(Date.now()), editor.currentDir());
     const ok = await openAny(name);
     if (!ok) return false;
-    if (wasEncrypted) await project.toggleEncryption(() => Promise.resolve(false), withBusy);   // 原稿加密 → 新书也封（改日期码名由 toggleEncryption 内部做）
+    if (wasEncrypted) await project.toggleEncryption(() => Promise.resolve(false), withBusy);   // 原稿加密 → 新书也封（名字不动：2026-09-26 user「加密不改名同意」）
     edgeSidebar.render();
     setStatus(t(wasEncrypted ? "lift.doneEncrypted" : "lift.done", { name: project.displayName() ?? name }));
     return true;
@@ -489,8 +511,9 @@ async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Pro
 }
 async function newProjectFlow(): Promise<void> {
   // 默认名「作品」（user 2026-09-10「default 还是叫“作品”吧」；撞名由 createProjectDoc 加序号）；首节点「第一章」按语言生成
-  const raw = await openInputSheet(t("project.newTitle"), { message: t("project.newHint"), defaultValue: t("project.defaultName"), placeholder: t("project.defaultName"), okLabel: t("common.ok") });
-  if (raw == null) return;
+  const r = await openInputSheetEx(t("project.newTitle"), { message: t("project.newHint"), defaultValue: t("project.defaultName"), placeholder: t("project.defaultName"), okLabel: t("common.ok"), checkbox: { label: t("project.newEncrypt") } });   // 「加密」勾 = 建完即封（user 2026-09-26「加密勾勾同意」；明文只在本地 IDB 停留一步，同 txt 升书）
+  if (r == null) return;
+  const raw = r.value, wantEncrypt = r.checked;
   const date = formatDate(Date.now());
   const firstNode = `${t("project.defaultName")}.txt`;   // 唯一的默认页名 =《作品》及各语言对应词（user 2026-09-10）
   try {
@@ -501,6 +524,10 @@ async function newProjectFlow(): Promise<void> {
     document.body.dataset.project = "1";
     if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
     setStatus(t("project.created", { name: parseDocName(name).stem }));
+    if (wantEncrypt) {   // 勾了加密：走顶栏锁钮同一条路（先要密码；取消密码框 = 这本书先明文，说清楚，锁钮随时可封）
+      await project.toggleEncryption(() => Promise.resolve(false), withBusy);
+      if (!project.encrypted()) setStatus(t("project.encryptSkipped"), { error: true });
+    }
   } catch (e) { reportError(e); setStatus(t("project.createFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
 async function openLocalProjectFlow(): Promise<void> {
@@ -978,7 +1005,7 @@ prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("read
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
 const fontScalePref = (): string => { const v = deviceKvGet("fontScale"); return v && FONT_SCALES.includes(v) ? v : "1"; };
-function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; }
+function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; syncBodyHeight(); updateChildToc(); }   // 嵌入态的正文高度随字号变
 fontScaleSelect.addEventListener("change", () => { const v = FONT_SCALES.includes(fontScaleSelect.value) ? fontScaleSelect.value : "1"; deviceKvSet("fontScale", v === "1" ? null : v); applyFontScale(v); });
 // 写字线（synced prefs，与阅读节奏同席：视觉偏好跟人走；缺省开）
 const ruledLinesToggle = $<HTMLInputElement>("ruledLinesToggle");

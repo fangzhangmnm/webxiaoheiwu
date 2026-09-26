@@ -38,11 +38,21 @@ export interface InputOpts {
     secondary?: {
         label: string;
     };
+    /** 一个勾（v2.1.11 新建书「加密」）：勾态经 openInputSheetEx 的结果拿；openInputSheet 只返字串。 */
+    checkbox?: {
+        label: string;
+        checked?: boolean;
+    };
 }
 /** openInputSheet 的副按钮结果哨兵（不会和用户输入撞：含 NUL）。 */
 export declare const INPUT_SECONDARY = "\0secondary";
 /** 输入 sheet → string | null（取消）。密码态用 -webkit-text-security 打码（不用 type=password：绕开浏览器记密码弹窗——WeebPaint 教训）。 */
 export declare function openInputSheet(title: string, opts?: InputOpts): Promise<string | null>;
+/** 输入 sheet 带勾态 → { value, checked } | null（取消）；副按钮 → value = INPUT_SECONDARY。 */
+export declare function openInputSheetEx(title: string, opts?: InputOpts): Promise<{
+    value: string;
+    checked: boolean;
+} | null>;
 /** onPick（2026-09-09，对账 WeebPaint sheets）：在按钮 click 监听器里**同步**调——iOS 的 redirect 登录起跳 必须在手势同步栈起跳，resolve 之后的微任务续体会丢手势。 */
 export interface Choice<T> {
     label: string;
