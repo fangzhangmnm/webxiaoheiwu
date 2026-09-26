@@ -8,7 +8,8 @@
 import { PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { bookLocalDebounceMs } from "./cadence.ts";
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
-import { readProjectBlob, saveProjectBlob, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
+import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc, renameDocToOpaque } from "../docs.ts";
+import { note as diagNote } from "../diag-log.ts";   // 2026-09-26 黑匣子：书的推 / 拉结果（user 真机「卡在上传 / 下载」时 log 里是盲区）
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
 import { deviceKvSet } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
@@ -57,6 +58,8 @@ export function createProjectMode(d: ProjectModeDeps) {
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
   let firstDirtyAt = 0, pushPending = false, pushFailures = 0, gen = 0;
   let persistInFlight: Promise<void> | null = null;
+  let reloadAfterPersist = false;   // takeCloud 之后要整体重开（不能在 persist 链里做：openStore 会 await persistInFlight = 自己）
+  let refreshInFlight = false;
   let lastPersistMs = 0;   // 上次整包落盘（打包 + 写）耗时 → 本地防抖随体重放缓（ADR-0015 b）
   let titleTimer: ReturnType<typeof setTimeout> | null = null;
   let encrypted = false, locked = false;   // 工程整包加密（store 透明层）：locked = 加密且未解锁 → 空白只读，锁图标 = 手势才弹密码
@@ -134,7 +137,9 @@ export function createProjectMode(d: ProjectModeDeps) {
       const r = await session!.flush(push, { force: push && pushPending });   // 推云：本地落盘已清 dirty，同一份字节还得以 tryPush 交给库（否则永远推不出去）
       if (r.wrote && !push) lastPersistMs = performance.now() - t0;   // 只量本地落盘（推云那次含网络，不算体重）
       if (g !== gen) return;
+      if (r.wrote && push) diagNote("book", `push "${home!.name}": ${r.pushed ? "pushed" : `not pushed (${r.reason ?? "?"})`}${r.resolution ? ` resolution=${r.resolution}` : ""} in ${Math.round(performance.now() - t0)}ms`);
       if (r.wrote) { if (push) { if (r.pushed) { pushPending = false; pushFailures = 0; } else pushPending = true; } else pushPending = true; }
+      if (r.wrote && r.resolution === "takeCloud") reloadAfterPersist = true;   // 世界线换了（冲突面选了云端）：本地 IDB 已是云端版本，内存图还是旧的 → persist 链外整体重开（2026-08-25 案卷同款，txt 编辑器早有，书模式以前吞掉）
     })();
     persistInFlight = run;
     try { await run; } finally { if (persistInFlight === run) persistInFlight = null; }
@@ -176,6 +181,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     try {
       await persist(true);
       if (g !== gen) return;
+      if (reloadAfterPersist) { reloadAfterPersist = false; await reopenFromStore("takeCloud"); return; }
       d.setState(stateText(), { unsynced: pushPending });
       if (pushPending) schedulePush();
     } catch (e) {
@@ -266,6 +272,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.setStatus(t("st.loading"));
     const r = await s.open(projectName);
     if (g !== gen) return true;
+    diagNote("book", `open "${projectName}": ${r.kind}${r.kind === "ok" ? ` pages=${s.project.contents.size}` : ""} encrypted=${encrypted}`);
     home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; forward = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
@@ -273,6 +280,33 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (ok && r.kind === "ok") d.setStatus("");   // 收掉「加载中…」
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
     return ok;
+  }
+  /** 从 store 整体重开当前书（云端快进 / takeCloud 之后）：留在原来那一页（还在的话）、光标与滚动尽量放回；回退栈按书里的 editor-state 回来。 */
+  async function reopenFromStore(why: string): Promise<void> {
+    const n = name(); if (!n) return;
+    const prevPage = session?.current() ?? null;
+    const caret = d.editorEl.selectionStart ?? 0, scrollTop = d.editorEl.scrollTop;
+    diagNote("book", `reload "${n}" (${why})`);
+    await openStore(n);
+    if (name() !== n || !session || locked) return;
+    if (prevPage && session.exists(prevPage) && session.current() !== prevPage) { try { session.jump(prevPage); } catch { /* fall back to whatever page the book opened at */ } loadCurrentIntoEditor(); d.onChanged(); }
+    if (session.current() === prevPage) { try { const max = d.editorEl.value.length; d.editorEl.selectionStart = d.editorEl.selectionEnd = Math.min(caret, max); d.editorEl.scrollTop = scrollTop; } catch { /* ignore */ } }
+  }
+  /** 事件驱动「干净快进」（focus / online / 前台轮询 / 登录后；镜像 txt 编辑器 refreshIfClean）：本地干净 ∧ 云端有新版 → 库拉新版覆盖本地 → 整体重开留在原页；
+   *  有本地未推字节 / 正在落盘 / 锁着 / 离线 → 不动（脏永不被静默覆盖是库的红线，这里只是不白跑）。2026-09-26 之前书模式这一面是空操作（只有 txt 稿有）——
+   *  别的设备改了书，这台打开着就永远看不到，书库角标一直「云端更新」（user 真机「旧书卡在下载」）。 */
+  async function refreshIfClean(): Promise<void> {
+    if (!active() || home!.kind !== "store" || locked || !d.isSignedIn() || isOffline()) return;
+    if (refreshInFlight || persistInFlight || localTimer || pushPending || session!.dirty || session!.readOnly) return;
+    const n = name()!; const g = gen; refreshInFlight = true;
+    try {
+      const r = await pullProjectIfClean(n);
+      if (g !== gen) return;
+      if (r.status && !["in-sync", "dirty-skip", "offline"].includes(r.status)) diagNote("book", `refresh "${n}": ${r.status}${r.reason ? ` (${r.reason})` : ""}`);   // 60 s 轮询的常态不刷黑匣子；只记真动了 / 拉失败 / 云端没了
+      if (r.status === "fast-forwarded") { await reopenFromStore("fast-forwarded"); d.setStatus(t("st.loadedCloudLatest", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }) })); }
+      else if (r.status === "cloud-absent") d.setStatus(t("st.cloudGone"), { error: true });
+    } catch (e) { reportError(e, "log"); }
+    finally { refreshInFlight = false; }
   }
   /** 工程文件在 store 里改了名（顶栏改名）：只换身份，不重开、不重载正文、回退栈不丢。 */
   function adoptName(newName: string): void {
@@ -331,7 +365,9 @@ export function createProjectMode(d: ProjectModeDeps) {
     home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     await s.flush(false);
-    loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
+    pushPending = true;   // 新书 = 云端还没有：待推（以前这里不标，15 s 后 pushNow 的 flush 因 session 不脏直接跳过，新书直到用户打第一个字才上云；2026-09-26 user 真机「新书一直卡在上传」链条之一）
+    diagNote("book", `created "${projectName}" (local); signedIn=${d.isSignedIn()}`);
+    loadCurrentIntoEditor(); d.setState(stateText(), { unsynced: d.isSignedIn() }); d.onChanged();
     if (d.isSignedIn()) schedulePush();
   }
   async function close(): Promise<void> {
@@ -531,7 +567,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
-    openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
+    openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, refreshIfClean, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
     jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,

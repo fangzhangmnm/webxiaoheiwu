@@ -100,6 +100,10 @@ export declare const S: {
         readonly zh: "新建稿";
         readonly en: "New draft";
     };
+    readonly "lock.unpushedHint": {
+        readonly zh: "这篇有还没上传的改动，解锁后会自动上传。";
+        readonly en: "It has changes not yet uploaded; they upload once you unlock.";
+    };
     readonly "save.aria": {
         readonly zh: "保存 / 同步";
         readonly en: "Save / sync";
@@ -643,6 +647,14 @@ export declare const S: {
     readonly "st.cloudGone": {
         readonly zh: "此文件在云端已不存在";
         readonly en: "This file no longer exists in the cloud";
+    };
+    readonly "st.pushedAll": {
+        readonly zh: "已补传 {n} 个文件";
+        readonly en: "Caught up: {n} file(s) uploaded";
+    };
+    readonly "st.pushAllFailed": {
+        readonly zh: "{n} 个文件没传上去（加密未解锁 / 冲突 / 网络），详见诊断日志";
+        readonly en: "{n} file(s) still not uploaded (locked / conflict / network); see diagnostics";
     };
     readonly "st.pendingEncrypted": {
         readonly zh: "新稿将以加密保存";

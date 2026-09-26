@@ -471,7 +471,7 @@ const canEditNow = () => (project.active() ? project.canEdit() : editor.canEdit(
 const noteExternalEditAny = () => (project.active() ? project.noteExternalEdit() : editor.noteExternalEdit());
 const flushLocalAny = () => (project.active() ? project.flushLocal() : editor.flushLocal());
 const pushNowAny = () => (project.active() ? project.pushNow() : editor.pushNow());
-const refreshIfCleanAny = () => (project.active() ? Promise.resolve() : editor.refreshIfClean());
+const refreshIfCleanAny = () => (project.active() ? project.refreshIfClean() : editor.refreshIfClean());   // 2026-09-26：书也快进（以前书这一面是空操作 → 别的设备改了书这台永远看不到）
 const stateAny = () => (project.active() ? project.stateText() : editor.statusForDoc());   // 顶栏粘性稿态也是「谁活着问谁」（以前 boot 末尾拿 parked 的 txt 编辑器状态 → 工程一开就显「本地没有缓存」）
 const isDirtyAny = () => (project.active() ? (project.session()?.dirty ?? false) : editor.isDirty());
 async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
@@ -679,16 +679,18 @@ const lockCard = $("lockCard"), lockCardText = $("lockCardText"), lockCardUnlock
 function renderLockCard(): void {
   if (project.active()) {   // 工程锁态：同一张锁卡，解锁 = 手势重开
     lockCard.hidden = !project.locked();
-    if (project.locked()) { lockCardText.textContent = t("lock.locked", { name: project.displayName() ?? "" }); lockCardUnlock.hidden = false; lockCardRetry.hidden = true; }
+    if (project.locked()) { lockCardText.textContent = t("lock.locked", { name: project.displayName() ?? "" }) + unpushedHint(project.name()); lockCardUnlock.hidden = false; lockCardRetry.hidden = true; }
     return;
   }
   const st = editor.state;
   const kind = st.locked && st.name ? (fileUsesOtherPassword(st.name) ? "other" : "locked") : st.unavailable && booted && st.name ? "unavailable" : null;
   lockCard.hidden = !kind;
   if (!kind) return;
-  lockCardText.textContent = t(kind === "other" ? "lock.otherPw" : kind === "locked" ? "lock.locked" : "lock.unavailable", { name: parseDocName(st.name!).title });
+  lockCardText.textContent = t(kind === "other" ? "lock.otherPw" : kind === "locked" ? "lock.locked" : "lock.unavailable", { name: parseDocName(st.name!).title }) + (kind === "unavailable" ? "" : unpushedHint(st.name));
   lockCardUnlock.hidden = kind === "unavailable"; lockCardRetry.hidden = kind !== "unavailable";
 }
+/** 锁着的稿 / 书有没有未推字节（drawer 当前帧的 per-item dirty，best-effort：不在帧里 = 不说）→ 锁卡多一句「解锁后会自动上传」（2026-09-26：别让人对着「上传」角标干等）。 */
+const unpushedHint = (name: string | null): string => (name && drawer.findByName(name)?.dirty ? " " + t("lock.unpushedHint") : "");
 const reopenWithPrompt = () => { if (project.active()) { void project.unlock(); return; } const n = editor.state.name; if (n) void editor.open(n, { promptUnlock: true }); };
 lockCardUnlock.addEventListener("click", reopenWithPrompt);
 lockCardRetry.addEventListener("click", reopenWithPrompt);
@@ -1274,17 +1276,37 @@ document.addEventListener("keydown", (event) => {
   if (project.active() && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey) { event.preventDefault(); if (event.key === "ArrowUp" ? project.prevPage() : project.nextPage()) edgeSidebar.render(); }   // 上一页 / 下一页（DFS）
 });
 
+// ── 补传全部未推文件（store 的脏账为准；2026-09-26 user 真机「新书一直卡在上传」）──
+//   为什么需要它：书 / 稿在登出态落盘走 tryPush:false，**不进**库的离线上传队列（那队列只收「推过但没落地」的）；编辑器内存里的「待推」标记重开后归零；
+//   加密文件的推送还必须内存里有密码（库 pushLocalBytes 先解壳，锁着 = locked 算失败）。所以三个时刻都得问库一遍：登录后 / 回前台回线 / **解锁后**。
+//   pushAll 不开文档、per-name 串行与用户操作互斥；failed 是错误报告不是列举面（进黑匣子；verbose 时 toast 一句）。
+let pushDirtyAllInFlight: Promise<void> | null = null;
+function pushDirtyAll(opts: { verbose?: boolean } = {}): Promise<void> {
+  if (pushDirtyAllInFlight) return pushDirtyAllInFlight;
+  pushDirtyAllInFlight = (async () => {
+    if (!auth.isSignedIn() || navigator.onLine === false) return;
+    try {
+      const r = await requireStore().files.dirty.pushAll();
+      if (r.pushed || r.failed.length) diagNote("sync", `dirty.pushAll: pushed=${r.pushed} failed=${r.failed.length}${r.failed.length ? " [" + r.failed.join(", ") + "]" : ""}`);
+      if (r.pushed) { setStatus(t("st.pushedAll", { n: r.pushed })); drawer.refresh(); galleryHost.refresh(); }
+      if (opts.verbose && r.failed.length) setStatus(t("st.pushAllFailed", { n: r.failed.length }), { error: true });
+    } catch (e) { reportError(e, "log"); }
+  })().finally(() => { pushDirtyAllInFlight = null; });
+  return pushDirtyAllInFlight;
+}
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
 async function resumeSync(): Promise<void> {
   if (!auth.isSignedIn()) return;
   setStatus(t("st.syncing"));
   await pushNowAny();
   await requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
+  await pushDirtyAll();   // 2026-09-26：开着的推完再问库还有谁没推（顺序保证开着的那篇不会被推两遍）
   await refreshIfCleanAny();
   await reconcileCollections();
   drawer.subscribe();   // 2026-09-09 审计 #8：refresh 只重画缓存帧，回线/复查要重拉
   setState(stateAny());
 }
+onLockChange((unlocked) => { if (unlocked) void pushDirtyAll({ verbose: true }); });   // 2026-09-26：解锁 = 加密文件的推送第一次有钥匙；登录 / 回前台那两下如果当时锁着都推不动（库 locked 算失败留 dirty）
 const idle = initIdleGate({
   overlay: $("idleOverlay"),
   onIdle: () => { if (auth.isSignedIn()) { void pushNowAny(); void pushUserDict(); rememberLastActive(); } else void flushLocalAny(); },
@@ -1399,10 +1421,11 @@ function afterSignIn(): Promise<void> {
   if (afterSignInInFlight) return afterSignInInFlight;
   afterSignInInFlight = (async () => {
     try {
-      diagNote("auth", "afterSignIn: reconcile collections + user dict + drain offline queue");
+      diagNote("auth", "afterSignIn: reconcile collections + user dict + push open doc + drain offline queue + push all dirty");
       await reconcileCollections();
       await pullUserDict();
-      void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
+      await pushNowAny().catch((e) => reportError(e, "log"));   // 2026-09-26：登录那一下先把开着的推上去（以前登录后没人推，登出态写的书一直「未同步」）
+      void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log")).then(() => pushDirtyAll());   // 大文件慢网不阻塞后面的 lastActive / 快进；pushAll 排在队列回放之后
       if (!bootLastActiveHandled) {
         bootLastActiveHandled = true;
         // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切。

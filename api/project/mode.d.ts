@@ -60,6 +60,8 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         }) => Promise<{
             wrote: boolean;
             pushed?: boolean;
+            reason?: string;
+            resolution?: "keepMine" | "takeCloud";
         }>;
         toBlob: () => Promise<Blob>;
         adoptName: (newName: string) => void;
@@ -150,6 +152,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     close: () => Promise<void>;
     flushLocal: () => Promise<void>;
     pushNow: () => Promise<void>;
+    refreshIfClean: () => Promise<void>;
     noteExternalEdit: () => void;
     pendingLocalSave: () => boolean;
     lastPersistMs: () => number;

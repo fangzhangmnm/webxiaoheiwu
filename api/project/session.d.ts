@@ -6,6 +6,8 @@ export interface ProjectSessionDeps {
         push: boolean;
     }): Promise<{
         pushed?: boolean;
+        reason?: string;
+        resolution?: "keepMine" | "takeCloud";
     }>;
     now?: NowFn;
 }
@@ -26,6 +28,8 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     }) => Promise<{
         wrote: boolean;
         pushed?: boolean;
+        reason?: string;
+        resolution?: "keepMine" | "takeCloud";
     }>;
     toBlob: () => Promise<Blob>;
     adoptName: (newName: string) => void;

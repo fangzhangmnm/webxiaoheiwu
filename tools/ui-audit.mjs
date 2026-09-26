@@ -391,6 +391,7 @@ for (const [w, h] of sizes) {
   probe(tag, "txt draft can be encrypted (audit precondition)", encOk === "encrypted", encOk);
   await page.evaluate(() => window.__xhw.lockNow()); await wait(1500);
   probe(tag, "locked encrypted draft shows the lock card", await page.evaluate(() => !document.getElementById("lockCard").hidden && /加密稿/.test(document.getElementById("lockCardText").textContent ?? "")));
+  probe(tag, "lock card also says the draft has not-yet-uploaded changes (they upload once unlocked) — never pushed while signed out", await page.evaluate(() => /还没上传/.test(document.getElementById("lockCardText").textContent ?? "")), await page.evaluate(() => document.getElementById("lockCardText").textContent));   // 2026-09-26 user 真机「卡在上传」：锁着的加密件推不动，锁卡得说清
   await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(1200);
   await page.click("#galleryNewBtn"); await wait(200);
   await page.evaluate(() => { const it = [...document.querySelectorAll("button")].find((b) => /新建书/.test(b.textContent ?? "")); if (!it) throw new Error("new-project menu item not found"); it.click(); }); await wait(400);

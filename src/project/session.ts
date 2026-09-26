@@ -11,7 +11,7 @@ import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as lin
 
 export interface ProjectSessionDeps {
   read(name: string): Promise<Blob | null>;                                     // store file(name,{isZip:true}).open()
-  write(name: string, blob: Blob, opts: { push: boolean }): Promise<{ pushed?: boolean }>;
+  write(name: string, blob: Blob, opts: { push: boolean }): Promise<{ pushed?: boolean; reason?: string; resolution?: "keepMine" | "takeCloud" }>;   // reason / resolution 原样透传（store SaveResult）：takeCloud = 本地 IDB 已换成云端版本，调用方必须整体重载
   now?: NowFn;
 }
 export type OpenResult = { kind: "ok"; warnings: string[] } | { kind: "unavailable" } | Exclude<UnpackResult, { kind: "ok" }>;
@@ -142,14 +142,14 @@ export function createProjectSession(d: ProjectSessionDeps) {
 
   // ── 落盘 ──
   /** opts.force：不脏也写（推云节律用——本地 200ms 落盘已清 dirty，15s 后推云还得把同一份字节以 tryPush 再交给库，否则永远推不出去）。 */
-  async function flush(push: boolean, opts: { force?: boolean } = {}): Promise<{ wrote: boolean; pushed?: boolean }> {
+  async function flush(push: boolean, opts: { force?: boolean } = {}): Promise<{ wrote: boolean; pushed?: boolean; reason?: string; resolution?: "keepMine" | "takeCloud" }> {
     if (!name || readOnly || (!dirty && !opts.force)) return { wrote: false };
     const g = gen, n = name;
     const blob = await packProject(project);
     if (g !== gen) return { wrote: false };
     const r = await d.write(n, blob, { push });
     if (g === gen) dirty = false;
-    return { wrote: true, pushed: r.pushed };
+    return { wrote: true, pushed: r.pushed, reason: r.reason, resolution: r.resolution };
   }
   /** 回退栈（UI 的内存态镜像进 editor-state；不标脏，随下次保存写——ADR-0010 口径）。 */
   function setBack(list: readonly string[]): void { project.editorState.back = list.slice(-50); }
