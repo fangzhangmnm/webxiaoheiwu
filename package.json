@@ -16,9 +16,9 @@
     "typescript": "5.7.3"
   },
   "dependencies": {
-    "@internal/store": "file:./vendor-pkgs/internal-store-0.13.0.tgz",
+    "@internal/store": "file:./vendor-pkgs/internal-store-0.15.1.tgz",
     "@internal/encryption": "file:./vendor-pkgs/internal-encryption-0.1.0.tgz",
-    "@internal/gallery": "file:./vendor-pkgs/internal-gallery-0.2.2.tgz",
+    "@internal/gallery": "file:./vendor-pkgs/internal-gallery-0.4.0.tgz",
     "@internal/workbench-elements": "file:./vendor-pkgs/internal-workbench-elements-0.1.0.tgz"
   }
 }
