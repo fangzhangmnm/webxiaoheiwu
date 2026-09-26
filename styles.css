@@ -431,7 +431,6 @@ body {
 
 .candidates::-webkit-scrollbar { display: none; }
 .candidates.hidden { display: none; }
-body:has(#idleOverlay:not(.hidden)) .candidates { display: none; }   /* 闲置锁屏露着时候选条不许浮在模糊层上（--z-ime 530 > --z-idle 470）：拼音 / 候选是正文的一部分，锁屏就是为了不给人看；组字状态不动，解锁后照旧（v2.1.13，user 2026-09-26「和锁屏的 ui z order 关系呢」） */
 
 .buffer-chip {
   flex: 0 0 auto;

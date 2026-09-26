@@ -750,7 +750,12 @@ function renderImeState(): void {
   imeStatus.textContent = !s.enabled ? "" : s.asciiMode ? t("ime.modeEn") : t("ime.modeZh");
   imeStatus.title = s.enabled ? `${s.engine === "rime" ? schemaName(ime.schema) : t("ime.nameFallback")} · ${t("ime.clickToToggle")}` : "";
   applyInputMode(s.enabled);
-  if (!s.enabled || !s.buffer) { candidateBar.classList.add("hidden"); candidateBar.innerHTML = ""; return; }
+  // 输入法附件（候选条；将来的软键盘同一条规则）**跟着焦点所在的文本框走**：只有绑了内置输入法的文本框（data-ime）聚焦、且不是密码框时才显示。
+  //   层级 --z-ime 在 sheet / 锁屏之上是对的——锁屏之上允许有 sheet、sheet 里有输入框，候选条得在它上面；锁屏时候选条消失靠的是 idle-gate 失焦，不是锁屏本身
+  //   （v2.1.14，user 2026-09-26「你弄反了，锁屏的时候也可能有文本框的。未来的软键盘也需要这么处理」）。组字状态不动：焦点回来候选原样回来。
+  const a = document.activeElement;
+  const fieldFocused = a instanceof HTMLElement && a.dataset.ime === "1" && !isMaskedInput(a as HTMLTextAreaElement | HTMLInputElement);
+  if (!s.enabled || !s.buffer || !fieldFocused) { candidateBar.classList.add("hidden"); candidateBar.innerHTML = ""; return; }
   candidateBar.classList.remove("hidden");
   const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
   candidateBar.innerHTML = `<span class="buffer-chip">${esc(s.buffer)}</span>` + s.candidates.slice(0, 9).map((w, i) => `<span class="candidate-chip"><span class="index">${i + 1}</span>${esc(w)}</span>`).join("");
@@ -829,6 +834,7 @@ function routeSyntheticKey(el: HTMLTextAreaElement | HTMLInputElement, key: stri
 }
 function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
   const node: HTMLElement = el;   // 联合类型上 addEventListener 的重载退化成 Event；收窄到 HTMLElement 拿回 KeyboardEvent
+  node.dataset.ime = "1";   // 候选条只跟这些框的焦点走（renderImeState）
   node.addEventListener("keydown", (event: KeyboardEvent) => { void imeKeydown(el, event); });
   node.addEventListener("keyup", async (event: KeyboardEvent) => {
     if (event.key !== "Shift" || !shiftCleanPress) return;
@@ -874,6 +880,8 @@ function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
   });
 }
 setupImeOn(editorEl);
+document.addEventListener("focusin", () => renderImeState());   // 焦点进了哪个框 → 候选条跟过去 / 进了非文本框 → 收起
+document.addEventListener("focusout", () => { setTimeout(renderImeState, 0); });   // focusout 时 activeElement 还没换，下一拍再看
 // 2.0（user 2026-09-10「别的文本框输入法没接」）：文件名/节点名 sheet、边栏检索与连边输入框也走内置输入法（Quest 没系统 IME）；密码态由 isMaskedInput 挡。
 for (const id of ["nodeTitle", "sheetInput", "sheetInput2", "edgeSearch"]) { const el = document.getElementById(id); if (el) setupImeOn(el as HTMLInputElement); }
 

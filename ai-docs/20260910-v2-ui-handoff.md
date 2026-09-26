@@ -184,3 +184,8 @@ user 起手「点左上角标题直觉应该是回书库。然后改名放哪里
   - 候选条：`candidateBar` 委托 `pointerdown`（preventDefault 保焦点）→ 点第 i 个 = `routeSyntheticKey(activeElement, String(i+1))`（同一条提交路，词频照学）；点拼音芯片 = 空格上屏；`mousedown` preventDefault（桌面别抢焦点）；`@media (pointer: coarse)` 候选 19px / 44px 触控高、序号 12px、拼音 14px。
   - 收货 gallery **0.4.1**（改名只编辑主干、扩展名自动保留；user 自跑发版命令在后台 job 里没执行，改由本 session 代跑 = user 明示的那条命令）。
 - **验证**：tsc 绿；112 测绿；build / smoke 绿；ui-audit 两尺寸 346 探针全绿（1280×800 174 + 400×800 172）（新增每尺寸 +9：组字中 Enter 不改名不动焦点 / compositionend 后 0.8 s 不自动改名不回写 / 真 Enter 改名 / 中途删字停 0.8 s 值不回写光标不跳 / 离开框才改名 / 删空停顿不「复原」+ 离开框有名保名 / sheet 组字 Enter 不确认 / 触点第二个候选落进检索框 / 撞名改成 Enter 触发）；api 重打；**真机零**——请 user 用 iOS 系统输入法重试：改标题删字、删空、拼音中途按 return；内置输入法下手点候选。
+
+### v2.1.14 候选条跟焦点走（纠正 v2.1.13 的「锁屏藏候选条」）（2026-09-26；user「你弄反了，锁屏的时候也可能有文本框的。未来的软键盘也需要这么处理」；Claude Fable 5.1）
+- **规则**：输入法附件（候选条；将来的 app 内软键盘同一条）**跟着焦点所在的文本框走**——`renderImeState` 只在 `document.activeElement` 是绑了内置输入法的框（`setupImeOn` 打 `data-ime="1"`）且不是密码框时显示；`focusin` / `focusout`（下一拍）重画。组字状态不动，焦点回来候选原样回来。
+- **层级**：`--z-ime 530` 在 `--z-modal 500` / `--z-idle 470` 之上**是对的**：锁屏之上允许有 sheet（gate / 密码框），sheet 里的输入框要能用候选条。锁屏时候选条消失靠 idle-gate 的 `blur()`，不是锁屏本身。v2.1.13 那条 `body:has(#idleOverlay:not(.hidden)) .candidates { display:none }` 撤销。
+- 探针：失焦 → 收、回焦 → 原样回来；锁屏遮罩露着但输入框仍聚焦 → 候选条仍在且 z 高于遮罩。两尺寸 348 探针全绿（175 + 173）；112 测 / build / smoke 绿；api 重打；真机零。
