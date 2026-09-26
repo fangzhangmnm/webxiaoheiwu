@@ -431,6 +431,7 @@ body {
 
 .candidates::-webkit-scrollbar { display: none; }
 .candidates.hidden { display: none; }
+body:has(#idleOverlay:not(.hidden)) .candidates { display: none; }   /* 闲置锁屏露着时候选条不许浮在模糊层上（--z-ime 530 > --z-idle 470）：拼音 / 候选是正文的一部分，锁屏就是为了不给人看；组字状态不动，解锁后照旧（v2.1.13，user 2026-09-26「和锁屏的 ui z order 关系呢」） */
 
 .buffer-chip {
   flex: 0 0 auto;
@@ -463,6 +464,14 @@ body {
   font-size: 10px;
   font-family: ui-monospace, monospace;
 }
+/* 粗指针（触屏 / Quest 手柄）：候选是要用指头点的——44px 触控高度、字放大；桌面（键盘选数字）保持紧凑（user 2026-09-26 iPad mini「字太小」「触屏没法点输入法候选」） */
+@media (pointer: coarse) {
+  .candidates { gap: 6px; padding: 6px 10px; border-radius: 14px; }
+  .buffer-chip { font-size: 14px; padding: 6px 10px; }
+  .candidate-chip { font-size: 19px; padding: 0 14px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 10px; cursor: pointer; }
+  .candidate-chip .index { font-size: 12px; margin-right: 6px; }
+}
+.candidate-chip { cursor: pointer; user-select: none; -webkit-user-select: none; }
 
 /* Voice input — floating mic button anchored to the page box */
 

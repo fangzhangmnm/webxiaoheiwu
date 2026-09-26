@@ -130,6 +130,11 @@ for (const [w, h] of sizes) {
     const comp = await page.evaluate(() => { const c = document.getElementById("candidateBar"); return c ? getComputedStyle(c).display !== "none" && (c.textContent ?? "").trim().length > 0 : false; });
     const raw = await page.inputValue("#edgeSearch"); probe(tag, "ime on edgeSearch", comp || raw === "", `(value=${JSON.stringify(raw)})`);
     probe(tag, "ime candidates above the sidebar search box: bar visible and elementFromPoint hits the bar (not the sidebar)", await page.evaluate(() => { const c = document.getElementById("candidateBar"); if (!c || getComputedStyle(c).display === "none") return false; const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && !!e.closest("#candidateBar") && !e.closest("#edgeSidebar"); }), await page.evaluate(() => { const c = document.getElementById("candidateBar"); const r = c.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return `${getComputedStyle(c).position} z=${getComputedStyle(c).zIndex} hit=${e?.id || e?.className}`; }));   // user 2026-09-10「输入法的 z order 不对」
+    // v2.1.13 锁屏 z order（user 2026-09-26「和锁屏的 ui z order 关系呢」）：候选条 --z-ime 530 高于 --z-idle 470，锁屏露着时必须藏（隐私）；解锁后回来、组字状态没丢
+    probe(tag, "idle lock overlay shown → IME candidate bar hidden (not floating above the blur); overlay hidden → bar back with the same buffer", await page.evaluate(() => { const ov = document.getElementById("idleOverlay"), bar = document.getElementById("candidateBar"); const before = getComputedStyle(bar).display !== "none" && (bar.textContent ?? "").length > 0; ov.classList.remove("hidden"); const locked = getComputedStyle(bar).display === "none"; ov.classList.add("hidden"); const after = getComputedStyle(bar).display !== "none" && (bar.textContent ?? "").length > 0; return before && locked && after; }));
+    // v2.1.13 触屏点候选（user 2026-09-26「ios 触屏没法点输入法候选」）：pointerdown 第二个候选 → 落进正在打字的检索框、候选条收起、焦点没丢
+    { const picked = await page.evaluate(() => { const chips = [...document.querySelectorAll("#candidateBar .candidate-chip")]; if (chips.length < 2) return null; const txt = (chips[1].textContent ?? "").replace(/^\d+/, ""); chips[1].dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "touch", isPrimary: true })); return txt; }); await wait(400);
+      probe(tag, "tap (pointerdown) on the 2nd candidate chip → that word lands in #edgeSearch, bar hides, focus stays in the search box", picked != null && (await page.inputValue("#edgeSearch")) === picked && await page.evaluate(() => document.getElementById("candidateBar").classList.contains("hidden") && document.activeElement?.id === "edgeSearch"), `picked=${picked} value=${await page.inputValue("#edgeSearch")} active=${await page.evaluate(() => document.activeElement?.id)}`); }
     await page.keyboard.press("Escape"); await page.fill("#edgeSearch", ""); await wait(100); }
   await ensureSidebar(true);
   // 「+ 兄弟」→ 第二章（作品 的兄弟），章节名框全选 → 改名「序章」→ Enter
@@ -144,6 +149,52 @@ for (const [w, h] of sizes) {
   if (w < 900) await ensureSidebar(false);   // 窄屏浮层盖住章节名框，探针自己收
   await page.click("#nodeTitle"); await page.evaluate(() => document.getElementById("nodeTitle").select()); await page.keyboard.type("序章"); await page.keyboard.press("Enter"); await wait(300);
   probe(tag, "title Enter → renamed + focus body", await page.evaluate(() => document.activeElement?.id === "editor" && window.__xhw.project.current() === "序章.txt"), await page.evaluate(() => window.__xhw.project.current()));
+  // v2.1.13 系统输入法合成态（user 2026-09-26「修改标题的会有一些奇怪的bug。我在用ios自带输入法删字」「删完标题之后会错误复原一开始删的东西」）：
+  //   模拟 iOS/桌面 IME：compositionstart → 半截拼音 input → keydown Enter(isComposing) 不许当命令；compositionend 后**不再有 500ms 自动改名 / 回写**；Enter/blur 才提交；删字中途光标不跳、值不被回写
+  { const ime = (el, type, init) => el.dispatchEvent(new (type.startsWith("composition") ? CompositionEvent : type === "keydown" ? KeyboardEvent : InputEvent)(type, { bubbles: true, cancelable: true, ...init }));
+    const sim = async (fn) => page.evaluate(fn); void sim; void ime;
+    const r1 = await page.evaluate(async () => {
+      const el = document.getElementById("nodeTitle"); const cur0 = window.__xhw.project.current();
+      el.focus(); el.setSelectionRange(el.value.length, el.value.length);
+      el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+      el.value = "序章ni"; el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "ni", isComposing: true }));
+      el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", isComposing: true }));
+      await new Promise((r) => setTimeout(r, 700));
+      const midEnter = { cur: window.__xhw.project.current(), value: el.value, active: document.activeElement?.id };
+      el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "你" })); el.value = "序章你"; el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "你" }));
+      await new Promise((r) => setTimeout(r, 800));
+      const afterPause = { cur: window.__xhw.project.current(), value: el.value, active: document.activeElement?.id };
+      el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }));
+      await new Promise((r) => setTimeout(r, 300));
+      return { cur0, midEnter, afterPause, final: { cur: window.__xhw.project.current(), value: el.value, active: document.activeElement?.id } };
+    });
+    probe(tag, "IME composing + Enter → NOT a command: no rename, pinyin stays in the box, focus stays", r1.midEnter.cur === r1.cur0 && r1.midEnter.value === "序章ni" && r1.midEnter.active === "nodeTitle", JSON.stringify(r1.midEnter));
+    probe(tag, "after compositionend, a 0.8s pause does NOT auto-rename nor rewrite the box (no debounce commit any more)", r1.afterPause.cur === r1.cur0 && r1.afterPause.value === "序章你" && r1.afterPause.active === "nodeTitle", JSON.stringify(r1.afterPause));
+    probe(tag, "real Enter → rename 序章你 + focus body", r1.final.cur === "序章你.txt" && r1.final.active === "editor", JSON.stringify(r1.final));
+    // 删字：光标在中间删一个字、停 0.8s → 值不被回写、光标不跳、还没改名；离开框才改名；删空 + 离开 = 不改名（有名保名）而不是「复原一开始删的东西」
+    const r2 = await page.evaluate(async () => {
+      const el = document.getElementById("nodeTitle"); el.focus();
+      el.value = "序你"; el.setSelectionRange(1, 1); el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));   // 删掉中间的「章」，光标停在 1
+      await new Promise((r) => setTimeout(r, 800));
+      const mid = { cur: window.__xhw.project.current(), value: el.value, sel: el.selectionStart };
+      el.blur(); await new Promise((r) => setTimeout(r, 300));
+      const afterBlur = { cur: window.__xhw.project.current(), value: el.value };
+      el.focus(); el.value = ""; el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" })); await new Promise((r) => setTimeout(r, 800));
+      const emptyMid = { value: el.value, cur: window.__xhw.project.current() };
+      el.blur(); await new Promise((r) => setTimeout(r, 300));
+      const emptyBlur = { value: el.value, cur: window.__xhw.project.current() };
+      el.focus(); el.value = "序章"; el.dispatchEvent(new InputEvent("input", { bubbles: true })); el.blur(); await new Promise((r) => setTimeout(r, 300));   // 恢复后面流程依赖的名字
+      return { mid, afterBlur, emptyMid, emptyBlur, restored: window.__xhw.project.current() };
+    });
+    probe(tag, "deleting mid-title + pause: box untouched (no write-back), caret stays at 1, no rename yet", r2.mid.value === "序你" && r2.mid.sel === 1 && r2.mid.cur === "序章你.txt", JSON.stringify(r2.mid));
+    probe(tag, "blur → rename lands (序你)", r2.afterBlur.cur === "序你.txt" && r2.afterBlur.value === "序你", JSON.stringify(r2.afterBlur));
+    probe(tag, "deleted everything + pause: stays empty (nothing \"restored\" mid-edit); blur → keep-name rule shows the real name", r2.emptyMid.value === "" && r2.emptyMid.cur === "序你.txt" && r2.emptyBlur.value === "序你" && r2.emptyBlur.cur === "序你.txt", JSON.stringify({ emptyMid: r2.emptyMid, emptyBlur: r2.emptyBlur }));
+    probe(tag, "restored to 序章 for the rest of the flow", r2.restored === "序章.txt", r2.restored);
+    // sheet：组字中的 Enter 不确认（新页名字框）
+    await ensureSidebar(true); await page.click("#edgeAddSibling"); await wait(300);
+    const r3 = await page.evaluate(async () => { const inp = document.getElementById("sheetInput"); inp.focus(); inp.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })); inp.value = "di"; inp.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", isComposing: true })); await new Promise((r) => setTimeout(r, 200)); const open = !document.getElementById("sheet").classList.contains("hidden"); inp.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "di" })); inp.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" })); await new Promise((r) => setTimeout(r, 200)); return { open, closed: document.getElementById("sheet").classList.contains("hidden"), pages: window.__xhw.project.nodeNames().length }; });
+    probe(tag, "name sheet: Enter while composing does NOT confirm (sheet stays open); real Escape closes it; no page created", r3.open && r3.closed, JSON.stringify(r3));
+    if (w < 900) await ensureSidebar(false); }
   await clickEditor(); await page.keyboard.type("序章正文。"); await wait(300);
   await shot("08-after-plus-rename");
   // 回退 → 作品：兄弟块 = 作品(当前)、序章（无 .txt；改名重写了树）
@@ -313,8 +364,8 @@ for (const [w, h] of sizes) {
   probe(tag, "search with 1 char works", (await rows()).length >= 1 && (await rows()).includes("序章"), JSON.stringify(await rows()));
   await page.fill("#edgeSearch", ""); await wait(200);
   // 章节名撞名：改成已有名 → 提示、不改
-  await ensureSidebar(false); await page.click("#nodeTitle"); await page.fill("#nodeTitle", "序章"); await wait(700);
-  probe(tag, "title collision → refused + toast", await page.evaluate(() => window.__xhw.project.current() === "作品.txt" && /同名/.test(document.getElementById("toast").textContent)), await page.evaluate(() => window.__xhw.project.current()));
+  await ensureSidebar(false); await page.click("#nodeTitle"); await page.fill("#nodeTitle", "序章"); await page.keyboard.press("Enter"); await wait(300);   // v2.1.13：提交只在 Enter / 离开框（不再 500ms 自动改名）
+  probe(tag, "title collision (Enter) → refused + toast, focus stays in the title box", await page.evaluate(() => window.__xhw.project.current() === "作品.txt" && /同名/.test(document.getElementById("toast").textContent) && document.activeElement?.id === "nodeTitle"), await page.evaluate(() => `${window.__xhw.project.current()} active=${document.activeElement?.id}`));
   await page.keyboard.press("Escape"); await wait(100);
   probe(tag, "title Escape → reverted", (await page.inputValue("#nodeTitle")) === "作品");
   // 顶栏改名工程 → 不重开，正文/边栏不动，顶栏即时换名

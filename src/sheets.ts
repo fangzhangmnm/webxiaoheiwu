@@ -4,6 +4,8 @@
 // busy/sheet 互斥护栏（WeebPaint 2026-06-12 死锁修复）：busy 遮罩盖住输入框 → await 永不 resolve。
 //   → 交互输入必须在 withBusy 之外；这里对 confirm/input/choice **响亮 throw**。gate 不受此限（自带 spinner，与 busy 协同）。
 
+import { isCompositionKey } from "./ui/text-field.ts";   // v2.1.13：系统输入法合成态守卫（窄接口）
+
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
 // ── busy 遮罩（可重入 ref-count；store 深模块内部也会嵌套调 busy）──
@@ -153,6 +155,7 @@ export function openInputSheetEx(title: string, opts: InputOpts = {}): Promise<{
     };
     const onCancel = () => { cleanup(); _hide(); resolve(null); };
     const onKey = (e: KeyboardEvent) => {
+      if (isCompositionKey(e)) return;   // 系统输入法组字中的 Enter = 上屏、Esc = 取消组字，不是确认 / 取消（v2.1.13：以前拿半截拼音当名字 / 密码确认）
       if (e.key === "Enter") { e.preventDefault(); if (opts.confirmField && e.target === inp) inp2.focus(); else onOk(); }
       else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
     };
@@ -241,6 +244,7 @@ export function openPickSheet<T, A extends string>(title: string, opts: PickOpts
       });
     };
     const onKey = (e: KeyboardEvent) => {
+      if (isCompositionKey(e)) return;   // 组字中的 Enter / Esc / 方向键归输入法（v2.1.13）
       if (e.key === "Enter") {
         e.preventDefault(); if (!rows.length) return;
         if (sel < 0) { select(0); return; }

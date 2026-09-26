@@ -11,6 +11,7 @@ import { nodeKind } from "./format.ts";
 import { t } from "../i18n/index.ts";
 import { togglePopupMenu, closePopupMenu, type PopupMenuItem } from "../ui/popup-menu.ts";
 import { openConfirmSheet } from "../sheets.ts";
+import { isCompositionKey } from "../ui/text-field.ts";
 
 export interface EdgeSidebarDeps {
   el: HTMLElement;
@@ -217,7 +218,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   $("edgeBack").addEventListener("click", () => { if (d.mode.goBack()) { clearQuery(); render(); d.focusEditor(); } });   // 不自动收（user「点 return back 的时候侧栏不应自动弹回」）
   $("edgeForward").addEventListener("click", () => { if (d.mode.goForward()) { clearQuery(); render(); d.focusEditor(); } });   // 前进 = 回退的逆（user 2026-09-10「既然有 back 了也加一个右箭头」）
   search.addEventListener("input", () => { query = search.value.trim(); render(); });
-  search.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); clearQuery(); render(); d.focusEditor(); } });
+  search.addEventListener("keydown", (e) => { if (isCompositionKey(e)) return; if (e.key === "Escape") { e.stopPropagation(); clearQuery(); render(); d.focusEditor(); } });   // 组字中的 Esc 归输入法（v2.1.13）
   $("edgeDownload").addEventListener("click", () => d.onDownload?.());
   render();
   return { render, el };

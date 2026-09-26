@@ -9,7 +9,8 @@ import { PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { bookLocalDebounceMs } from "./cadence.ts";
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc } from "../docs.ts";
-import { note as diagNote } from "../diag-log.ts";   // 2026-09-26 黑匣子：书的推 / 拉结果（user 真机「卡在上传 / 下载」时 log 里是盲区）
+import { note as diagNote } from "../diag-log.ts";
+import { bindTextField } from "../ui/text-field.ts";   // v2.1.13：章节名框的合成态 / 受控回写窄接口（user 2026-09-26「能否抽一个窄接口」）   // 2026-09-26 黑匣子：书的推 / 拉结果（user 真机「卡在上传 / 下载」时 log 里是盲区）
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
 import { deviceKvSet } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
@@ -46,7 +47,6 @@ export interface ProjectModeDeps {
   onLockChange: (cb: (unlocked: boolean) => void) => void;
 }
 const KV_LAST_OPEN = "last-open";
-const TITLE_DEBOUNCE_MS = 500;
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function createProjectMode(d: ProjectModeDeps) {
@@ -61,7 +61,6 @@ export function createProjectMode(d: ProjectModeDeps) {
   let reloadAfterPersist = false;   // takeCloud 之后要整体重开（不能在 persist 链里做：openStore 会 await persistInFlight = 自己）
   let refreshInFlight = false;
   let lastPersistMs = 0;   // 上次整包落盘（打包 + 写）耗时 → 本地防抖随体重放缓（ADR-0015 b）
-  let titleTimer: ReturnType<typeof setTimeout> | null = null;
   let encrypted = false, locked = false;   // 工程整包加密（store 透明层）：locked = 加密且未解锁 → 空白只读，锁图标 = 手势才弹密码
   const userReadOnly = (): boolean => session?.project.readOnly ?? false;   // 修改锁跟着作品（graph.json readOnly；user 2026-09-10「zip 锁跟着作品」——成品不想被误改，不是本机名单）
 
@@ -88,10 +87,17 @@ export function createProjectMode(d: ProjectModeDeps) {
   // ── 章节名框 = 当前节点名（改了就是改名；撞名响亮、不吞）──
   const currentKind = (): NodeKind | null => { const c = session?.current(); return c ? nodeKind(c) : null; };
   const stemOf = (n: string): string => { const i = n.lastIndexOf("."); return i > 0 ? n.slice(0, i) : n; };
-  function syncTitle(): void { const cur = session?.current() ?? null; d.titleEl.value = cur ? (nodeKind(cur) === "image" ? stemOf(cur) : nodeDisplayName(cur)) : ""; }
-  /** 把章节名框里的字落成改名。返回 true = 名字已与框一致（含「没改」）；false = 没落成（撞名/非法），框保留用户打的字让人改。 */
+  /** 章节名框 = 窄接口（v2.1.13）：合成态里 Enter/Esc 不是命令；回写只在值真变时写、光标放回原处。 */
+  const titleField = bindTextField(d.titleEl, {
+    onInput: () => { if (!canEdit()) { syncTitle(); return; } d.setState(stateText(), { unsynced: d.isSignedIn() && home?.kind === "store" }); },   // 打字中途**不提交不回写**（以前 500ms 就改名 + 回写 .value → iOS 系统输入法删字时光标跳 / 空格被吃 / 组字被打断；user 2026-09-26）
+    onEnter: () => { if (commitTitle()) d.editorEl.focus(); },
+    onEscape: () => { syncTitle(); d.editorEl.focus(); },
+    onBlur: () => { if (!commitTitle()) syncTitle(); },   // 离开框 = 提交；没落成（撞名 / 非法）→ 回显真名，别留个假名字在屏上
+  });
+  function syncTitle(): void { const cur = session?.current() ?? null; titleField.setValue(cur ? (nodeKind(cur) === "image" ? stemOf(cur) : nodeDisplayName(cur)) : ""); }
+  /** 把章节名框里的字落成改名。返回 true = 名字已与框一致（含「没改」/ 合成中先不动）；false = 没落成（撞名/非法），框保留用户打的字让人改。 */
   function commitTitle(): boolean {
-    if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
+    if (titleField.composing()) return true;   // 系统输入法正在组字：半截拼音不是名字，等它上屏（blur / Enter 再来）
     if (!canEdit()) return true;
     const cur = session!.current(); if (!cur) return true;
     const raw = d.titleEl.value.replace(/[\r\n]+/g, " ");
@@ -106,26 +112,19 @@ export function createProjectMode(d: ProjectModeDeps) {
     syncTitle(); scheduleLocalSave(); d.onChanged();
     return true;
   }
-  function scheduleTitle(): void { if (titleTimer) clearTimeout(titleTimer); titleTimer = setTimeout(() => { titleTimer = null; commitTitle(); }, TITLE_DEBOUNCE_MS); }
-  d.titleEl.addEventListener("input", () => { if (!canEdit()) { syncTitle(); return; } scheduleTitle(); d.setState(stateText(), { unsynced: d.isSignedIn() && home?.kind === "store" }); });
-  d.titleEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); if (commitTitle()) d.editorEl.focus(); }
-    else if (e.key === "Escape") { e.preventDefault(); if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; } syncTitle(); d.editorEl.focus(); }
-  });
-  d.titleEl.addEventListener("blur", () => { if (!commitTitle()) syncTitle(); });   // 离开框还没落成 → 回显真名，别留个假名字在屏上
   /** 让编辑器自己起名：焦点到章节名框并全选（新节点 / 分裂后）。 */
   function focusTitle(): void { try { d.titleEl.focus(); d.titleEl.select(); } catch { /* ignore */ } }
 
   // ── 落盘节律 ──
   function commitTextarea(): void { if (canEdit() && session!.current() && currentKind() !== "image") session!.setCurrentText(d.editorEl.value); }   // 图片页的 textarea 是空壳，绝不提交   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
-  /** 切节点 / 落盘前：章节名框 + 正文都先落进内存图。 */
-  function commitEditor(): void { commitTitle(); commitTextarea(); }
+  /** 切节点 / 落盘前：章节名框 + 正文都先落进内存图。force=false（定时落盘 / 推云）：章节名框还聚焦着就别碰它——半截名字不是名字，离开框自会提交（v2.1.13）。 */
+  function commitEditor(force = true): void { if (force || document.activeElement !== d.titleEl) commitTitle(); commitTextarea(); }
   async function persist(push: boolean): Promise<void> {
     if (persistInFlight) await persistInFlight;
     const g = gen;
     const run = (async () => {
       if (g !== gen || !active() || session!.readOnly) return;
-      commitEditor();
+      commitEditor(false);   // 节律落盘：不打断正在编辑的章节名
       if (home!.kind === "local") {
         if (!session!.dirty) return;
         const r = await session!.flush(false);
@@ -215,7 +214,6 @@ export function createProjectMode(d: ProjectModeDeps) {
   d.imageEl.addEventListener("click", () => { d.imageBox.classList.toggle("natural"); });   // 点击切 fit / 1:1（双指以后再说）
   function loadCurrentIntoEditor(): void {
     const s = session!;
-    if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
     const cur = s.current();
     if (cur && nodeKind(cur) === "image") { d.editorEl.value = ""; showImage(cur, s.currentBytes() ?? new Uint8Array(0)); }
     else { hideImage(); d.editorEl.value = s.currentText(); }
@@ -368,7 +366,6 @@ export function createProjectMode(d: ProjectModeDeps) {
     await flushLocal();
     gen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
     home = null; session = null; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
     hideImage();
     d.editorEl.readOnly = false; d.editorEl.classList.remove("locked");

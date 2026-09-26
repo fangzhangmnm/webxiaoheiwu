@@ -755,6 +755,19 @@ function renderImeState(): void {
   const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
   candidateBar.innerHTML = `<span class="buffer-chip">${esc(s.buffer)}</span>` + s.candidates.slice(0, 9).map((w, i) => `<span class="candidate-chip"><span class="index">${i + 1}</span>${esc(w)}</span>`).join("");
 }
+// 候选条触屏可点（v2.1.13，user 2026-09-26「ios 触屏没法点输入法候选」「ipad mini 上字太小」）：候选一直只有数字键 / 空格能选，触屏从没接过——
+//   点第 i 个 = 当数字键 i 喂 IME（同一条提交路，用户词频照学）；点拼音芯片 = 首选上屏（同空格）。pointerdown 里 preventDefault：别把焦点从正在打字的框抢走
+//   （软键盘一收、组字就散）；目标 = activeElement 那个框，不是文本框就退回主编辑区。字号 / 触控高度在 styles.css `@media (pointer: coarse)`。
+const imeTargetEl = (): HTMLTextAreaElement | HTMLInputElement => { const a = document.activeElement; return a instanceof HTMLTextAreaElement || a instanceof HTMLInputElement ? a : editorEl; };
+candidateBar.addEventListener("mousedown", (e) => e.preventDefault());   // 桌面：别抢焦点
+candidateBar.addEventListener("pointerdown", (e) => {
+  const chip = (e.target as HTMLElement).closest<HTMLElement>(".candidate-chip, .buffer-chip");
+  if (!chip) return;
+  e.preventDefault();
+  const chips = [...candidateBar.querySelectorAll<HTMLElement>(".candidate-chip")];
+  const i = chip.classList.contains("buffer-chip") ? -1 : chips.indexOf(chip);
+  routeSyntheticKey(imeTargetEl(), i < 0 ? " " : String(i + 1));
+});
 async function setImeEnabled(on: boolean): Promise<void> {
   if (on) {
     if (!ime.initialized) { imeStatus.textContent = t("ime.loading"); ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
@@ -1295,6 +1308,7 @@ $("settingsButton").addEventListener("click", () => drawer.open("settings"));   
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
 $("reloadButton").addEventListener("click", () => { void (async () => { await flushLocalAny(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
+  if (event.isComposing) return;   // 系统输入法组字中的按键归输入法（v2.1.13；检索框 / sheet 里组字按 Esc 不该顺手把侧栏关了）
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); editorEl.focus(); return; }

@@ -173,3 +173,14 @@ user 起手「点左上角标题直觉应该是回书库。然后改名放哪里
 - **gallery 0.4.1（改名保扩展名，库仓工作树已改好、157 测绿）发版被本 session 的权限分类器整条拦下**（commit + tag + push + gh release 一条命令）——不绕；user 自己跑后 WXHW 再 `pull-package.sh 0.4.1` 重收（一行 pin）。
 - 机器备忘：本机 `pnpm` 不在 PATH，`release.sh` 的 `pnpm pack` 用 `corepack pnpm pack` 代跑（tgz 文件集与上一版逐项一致）。
 - **验证**：112 测绿；build / smoke 绿；ui-audit 两尺寸 326 探针全绿（书库卡片 / 菜单 / 缩略图 / 回收站段全走新 gallery）；api 重打；真机零。
+
+### v2.1.13 文本框窄接口 + 章节名框提交时机 + 候选条触屏可点 + 收货 gallery 0.4.1（2026-09-26；Claude Fable 5.1）
+- **user 报告**：「修改标题的会有一些奇怪的bug。我在用ios自带输入法删字。会不会是文本编辑器做对了，其他的文本框没有修。能否抽一个窄接口。会不会有比较深的广的bug」「用系统输入法删完标题之后会错误复原一开始删的东西」「ios 触屏没法点输入法候选」「ipad mini 上字太小」「ios 软键盘没有数字键，需要手点」。
+- **诊断（代码证据）**：主编辑区 textarea 从不在打字中途回写 `.value`、不在合成态里提交，所以没事。章节名框（`mode.ts`）是唯一带 **500 ms 防抖自动改名 + `syncTitle()` 回写 `.value`** 的框；而且 `persist()` 每次落盘都 `commitEditor()` → 再提交一次 → 200 ms 落盘节律里名字被反复规范化回写：删到一半停一下就改名 + 回写 → 光标跳末尾、末尾空格被吃、组字被打断；删空时 `commitTitle` 走「空 = 不改名」`syncTitle()` 把**上一次中途提交的半截名**写回来 = 「错误复原一开始删的东西」。**广的**：全仓没有一处认系统输入法合成态——sheet（改名 / 新页名 / 密码）、pick sheet、侧栏检索、章节名框、全局 Esc 的 keydown 都把组字中的 Enter/Esc 当命令（iOS 中文键盘 / 桌面 IME 的 Enter = 上屏候选，keydown 照样到手 isComposing=true / keyCode 229）→ 半截拼音当名字 / 密码确认。**候选条**：`renderImeState` 画的是一排 `<span>`，从没接过任何点击——只能数字键 / 空格选，触屏（iOS、Quest 手柄）点不中；字号 15/10px 是桌面尺寸。
+- **修法**：
+  - `src/ui/text-field.ts`（窄接口，只做三件事）：① 认合成态；② `onEnter/onEscape` 合成态一律不触发；③ `setValue` 值没变不碰、变了写完把光标放回原处、合成中推迟到 compositionend。导出 `isCompositionKey(e)` 给只需守卫的地方。
+  - 章节名框：`bindTextField`；**提交只在 Enter / 离开框 / 导航 / 显式 flush**（`commitEditor(force)`：节律落盘 `persist()` 传 false = 章节名框还聚焦着就不碰它）；`commitTitle` 合成中直接返回；`TITLE_DEBOUNCE_MS / titleTimer / scheduleTitle` 删除。
+  - sheets.ts 两处 onKey、sidebar.ts 检索 Esc、app.ts 全局 Esc：`isCompositionKey` / `event.isComposing` 守卫。
+  - 候选条：`candidateBar` 委托 `pointerdown`（preventDefault 保焦点）→ 点第 i 个 = `routeSyntheticKey(activeElement, String(i+1))`（同一条提交路，词频照学）；点拼音芯片 = 空格上屏；`mousedown` preventDefault（桌面别抢焦点）；`@media (pointer: coarse)` 候选 19px / 44px 触控高、序号 12px、拼音 14px。
+  - 收货 gallery **0.4.1**（改名只编辑主干、扩展名自动保留；user 自跑发版命令在后台 job 里没执行，改由本 session 代跑 = user 明示的那条命令）。
+- **验证**：tsc 绿；112 测绿；build / smoke 绿；ui-audit 两尺寸 346 探针全绿（1280×800 174 + 400×800 172）（新增每尺寸 +9：组字中 Enter 不改名不动焦点 / compositionend 后 0.8 s 不自动改名不回写 / 真 Enter 改名 / 中途删字停 0.8 s 值不回写光标不跳 / 离开框才改名 / 删空停顿不「复原」+ 离开框有名保名 / sheet 组字 Enter 不确认 / 触点第二个候选落进检索框 / 撞名改成 Enter 触发）；api 重打；**真机零**——请 user 用 iOS 系统输入法重试：改标题删字、删空、拼音中途按 return；内置输入法下手点候选。
