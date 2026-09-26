@@ -26,7 +26,7 @@ const errors = []; let fails = 0;
 const probe = (tag, name, ok, detail = "") => { console.log(tag, name + ":", ok ? "ok" : `FAIL ${detail}`); if (!ok) fails++; };
 for (const [w, h] of sizes) {
   const tag = `${w}x${h}`;
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, permissions: ["clipboard-read", "clipboard-write"] });   // v2.1.9 导出 = 剪贴板探针
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`[${tag}] ${e.message}`));
   page.on("console", (m) => { if (m.type() === "warning" || m.type() === "error") errors.push(`[${tag}] console.${m.type()}: ${m.text()}`); });
@@ -66,6 +66,12 @@ for (const [w, h] of sizes) {
   // ☰ → 侧栏（txt 稿：只有书库/设置两个入口）
   await page.click("#menuButton"); await wait(300); await shot("02-sidebar-txt");
   probe(tag, "☰ opens sidebar", await sidebarShown());
+  // v2.1.9 侧栏「导出」（user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮」）：书库 | 导出 | 设置；一下 = 当前页全文进剪贴板 + toast「已复制全页」
+  probe(tag, "sidebar top entries = 书库 | 导出 | 设置 in that order (export in the middle, export icon)", await page.evaluate(() => { const ids = [...document.querySelectorAll(".edge-entries .edge-entry")].map((b) => b.id); const x = (id) => document.getElementById(id).getBoundingClientRect().left; return JSON.stringify(ids) === JSON.stringify(["edgeLibrary", "edgeExport", "edgeSettings"]) && x("edgeLibrary") < x("edgeExport") && x("edgeExport") < x("edgeSettings") && document.querySelector("#edgeExport span").textContent === "导出" && !!document.querySelector("#edgeExport use[href='#export']"); }), await page.evaluate(() => [...document.querySelectorAll(".edge-entries .edge-entry")].map((b) => b.id + ":" + b.textContent.trim()).join("|")));
+  { const text = await page.inputValue("#editor"); await page.click("#edgeExport"); await wait(400);
+    const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => "ERR:" + e.message));
+    probe(tag, "导出 (txt draft) → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
+    probe(tag, "sidebar stays open after 导出 (no auto-close)", await sidebarShown()); }
   probe(tag, "txt mode: project pane hidden, lift entry visible", await page.evaluate(() => document.getElementById("edgePane").hidden && !document.getElementById("edgeTxtPane").hidden));
   { const draftName = await page.evaluate(() => window.__xhw.editor.state.name); const draftText = await page.inputValue("#editor");
     await page.click("#edgeLift"); await wait(300);
@@ -170,6 +176,29 @@ for (const [w, h] of sizes) {
   await shot("09-after-topbar-add");
   await page.click("#edgeParent"); await wait(300);
   probe(tag, "`..` click → jumps to the parent 作品; children block = [她推开门。]", (await cur()) === "作品.txt" && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。"]) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品", "序章"]), JSON.stringify(await rowsIn("children")));
+  // v2.1.9 纸面亲缘（user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表，然后标题栏也有回到上一级的链接」）：父页正文短 → 子节目录露在正文之下；顶层页无「..」；长正文 = 滚到底才露、往上滚超过目录高度才收（迟滞）；点行 → 子节，子节页章节名上方「.. 作品」→ 点回父页
+  if (w < 900) await ensureSidebar(false);
+  probe(tag, "parent page (short body): child TOC under the body, rows = [她推开门。]; `..` link hidden at top level", await page.evaluate(() => { const toc = document.getElementById("childToc"), pl = document.getElementById("parentLink"); const rows = [...toc.querySelectorAll(".child-toc-name")].map((e) => e.textContent); const ed = document.getElementById("editor").getBoundingClientRect(), tr = toc.getBoundingClientRect(); return !toc.hidden && getComputedStyle(toc).display !== "none" && JSON.stringify(rows) === JSON.stringify(["她推开门。"]) && tr.top >= ed.bottom - 1 && pl.hidden && getComputedStyle(pl).display === "none"; }), await page.evaluate(() => JSON.stringify({ hidden: document.getElementById("childToc").hidden, rows: [...document.querySelectorAll("#childToc .child-toc-name")].map((e) => e.textContent), pl: document.getElementById("parentLink").hidden })));
+  probe(tag, "mic floats above the child TOC (no overlap)", await page.evaluate(() => { const m = document.getElementById("micButton"), c = document.getElementById("childToc"); const was = m.hidden; m.hidden = false; const a = m.getBoundingClientRect(), b = c.getBoundingClientRect(); m.hidden = was; return a.bottom <= b.top + 1; }), await page.evaluate(() => { const m = document.getElementById("micButton"), c = document.getElementById("childToc"); const was = m.hidden; m.hidden = false; const a = m.getBoundingClientRect(), b = c.getBoundingClientRect(); m.hidden = was; return `mic ${Math.round(a.top)}-${Math.round(a.bottom)} toc ${Math.round(b.top)}-${Math.round(b.bottom)}`; }));
+  await shot("09b-child-toc");
+  { const saved = await page.inputValue("#editor");
+    await page.evaluate(() => { const el = document.getElementById("editor"); el.value = Array.from({ length: 160 }, (_, i) => `第${i + 1}行：她推开门。他在窗边。窗外是雨。`).join("\n"); el.scrollTop = 0; el.dispatchEvent(new Event("input", { bubbles: true })); }); await wait(350);
+    probe(tag, "long body at the top → child TOC hidden (body gets the space back)", await page.evaluate(() => { const el = document.getElementById("editor"); return document.getElementById("childToc").hidden && el.scrollHeight > el.clientHeight; }));
+    await page.evaluate(() => { const el = document.getElementById("editor"); el.scrollTop = el.scrollHeight; }); await wait(250);
+    probe(tag, "scroll to the bottom → child TOC appears and the body stays at its end", await page.evaluate(() => { const el = document.getElementById("editor"); return !document.getElementById("childToc").hidden && el.scrollHeight - el.clientHeight - el.scrollTop <= 2; }), await page.evaluate(() => { const el = document.getElementById("editor"); return `hidden=${document.getElementById("childToc").hidden} dist=${el.scrollHeight - el.clientHeight - el.scrollTop}`; }));
+    await shot("09c-child-toc-long");
+    await page.evaluate(() => { const el = document.getElementById("editor"); el.scrollTop = Math.max(0, el.scrollTop - 12); }); await wait(250);
+    probe(tag, "scroll up a little (< TOC height) → TOC stays (hysteresis, no flicker)", await page.evaluate(() => !document.getElementById("childToc").hidden));
+    await page.evaluate(() => { document.getElementById("editor").scrollTop = 0; }); await wait(250);
+    probe(tag, "scroll back to the top → TOC hides", await page.evaluate(() => document.getElementById("childToc").hidden));
+    await page.evaluate((v) => { const el = document.getElementById("editor"); el.value = v; el.scrollTop = 0; el.dispatchEvent(new Event("input", { bubbles: true })); }, saved); await wait(350);
+    probe(tag, "short body again → TOC back", await page.evaluate(() => !document.getElementById("childToc").hidden)); }
+  await page.click("#childToc .child-toc-row"); await wait(300);
+  probe(tag, "TOC row click → child 她推开门。 opened; `.. 作品` link above the title row; its own TOC hidden (no children)", (await cur()) === "她推开门。.txt" && await page.evaluate(() => { const pl = document.getElementById("parentLink"); const tr = document.querySelector(".node-title-row").getBoundingClientRect(); return !pl.hidden && getComputedStyle(pl).display !== "none" && document.getElementById("parentLinkName").textContent === "作品" && pl.getBoundingClientRect().bottom <= tr.top + 1 && document.getElementById("childToc").hidden; }), await page.evaluate(() => `cur=${window.__xhw.project.current()} pl=${document.getElementById("parentLinkName").textContent} hidden=${document.getElementById("parentLink").hidden}`));
+  await shot("09d-parent-link");
+  await page.click("#parentLink"); await wait(300);
+  probe(tag, "`..` link click → back on 作品 (a real jump: back stack live)", (await cur()) === "作品.txt" && await page.evaluate(() => window.__xhw.project.canGoBack()), await cur());
+  await ensureSidebar(true);
   // 树移动六件（行菜单）：序章 降级 → 作品 的孩子末尾；上移；升级 → 回顶层；到头 no-op 只 toast
   { let r = await rowMenu("siblings", "序章.txt", /降级/); probe(tag, "row menu 降级 → 序章 becomes the last child of 作品", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["她推开门。", "序章"]) && JSON.stringify(await rowsIn("siblings")) === JSON.stringify(["作品"]), JSON.stringify(await rowsIn("children")));
     r = await rowMenu("children", "序章.txt", /上移/); probe(tag, "row menu 上移 → children = [序章, 她推开门。]", r.hit && JSON.stringify(await rowsIn("children")) === JSON.stringify(["序章", "她推开门。"]), JSON.stringify(await rowsIn("children")));
@@ -392,6 +421,9 @@ for (const [w, h] of sizes) {
   await page.waitForFunction(() => /已替换/.test(document.getElementById("toast").textContent), null, { timeout: 60000 }); await wait(300);
   const thumb2 = await page.evaluate(() => Array.from(window.__xhw.project.thumbnail()));
   probe(tag, "replace image on the cover page → cover regenerated (bytes differ), name kept", thumb2.length > 0 && thumb2.join() !== thumb1.join() && (await page.evaluate(() => window.__xhw.project.current())) === "地图.jpg", await page.textContent("#toast"));
+  // v2.1.9 导出图片页 = 图片本身进剪贴板（jpg → PNG 经 codec）
+  await ensureSidebar(true); await page.click("#edgeExport"); await wait(1500);
+  probe(tag, "导出 on an image page → clipboard holds image/png + toast 已复制这张图", await page.evaluate(async () => { try { const items = await navigator.clipboard.read(); return items.some((it) => it.types.includes("image/png")); } catch (e) { return "ERR:" + e.message; } }) === true && /已复制这张图/.test(await page.textContent("#toast")), await page.textContent("#toast"));
   // 断入边：先从 序章 链到 地图.jpg，图片页的「谁指向这里」列出 序章 → 断开
   await page.evaluate(() => { const p = window.__xhw.project; p.jump("序章.txt"); p.addLink("地图.jpg"); p.jump("地图.jpg"); window.__xhw.sidebar.render(); }); await wait(150);
   await ensureSidebar(true);

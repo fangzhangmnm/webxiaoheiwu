@@ -14,10 +14,11 @@ import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./ima
 import { importPageName } from "./image/policy.ts";
 import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD } from "@internal/gallery";
 import { createProjectMode } from "./project/mode.ts";
-import { createEdgeSidebar } from "./project/sidebar.ts";
+import { createEdgeSidebar, fmtTime } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
 import { nodeDisplayName } from "./project/naming.ts";
-import { packProject, emptyProject } from "./project/format.ts";
+import { packProject, emptyProject, nodeExt, nodeKind } from "./project/format.ts";
+import { decodeToRgba, encodePng } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）
 import { seedBook } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
@@ -168,7 +169,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); drawer.refresh(); rememberLastActive(); },
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
 });
@@ -179,7 +180,7 @@ const project = createProjectMode({
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderMicVisibility(); renderPageNav(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
@@ -187,6 +188,7 @@ const project = createProjectMode({
 const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
   onLibrary: () => { void galleryHost.open(); },
+  onExport: () => { void copyCurrentPage(); },
   onSettings: () => { drawer.open("settings"); },
   onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"), onMove: (name) => movePageFlow(name),
   onExportBranch: (name) => exportBranchFlow(name),
@@ -252,6 +254,84 @@ function renderPageNav(): void {
 }
 pagePrev.addEventListener("click", () => { if (project.prevPage()) edgeSidebar.render(); });
 pageNext.addEventListener("click", () => { if (project.nextPage()) edgeSidebar.render(); });
+// ── 纸面亲缘（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表，然后标题栏也有回到上一级的链接，这样导航就舒服」）：
+//   `.. 父页名` 住章节名上方（顶层页藏：顶栏已是书名；与侧栏 `..` 行同一语汇）；子节目录住正文之下，**只在正文滚到底（或装得下）时露出**——写到中段不占地，写到末尾自然看见下一层。
+//   textarea 的内部滚动模型不动（编辑手感不冒险）：露出 = 目录占位、正文让出同样的高度并保持贴底；迟滞 = 露出后往上滚超过目录高度 + 24px 才收（否则边界上抖）。图片页没正文可滚：有子节就露。
+const parentLink = $<HTMLButtonElement>("parentLink"), parentLinkName = $("parentLinkName");
+const childToc = $("childToc"), childTocList = $("childTocList"), pageEl = document.querySelector<HTMLElement>(".page")!;
+let tocChildren: string[] = [];
+const TOC_SHOW_EPS_PX = 2, TOC_HIDE_SLACK_PX = 24;
+const tocDistance = (): number => editorEl.scrollHeight - editorEl.clientHeight - editorEl.scrollTop;   // 正文离底还有几像素（≤0 = 贴底 / 装得下）
+function setTocVar(): void { pageEl.style.setProperty("--child-toc-h", childToc.hidden ? "0px" : `${childToc.offsetHeight + 8}px`); }   // 话筒上让
+function showToc(): void { if (!childToc.hidden) return; childToc.hidden = false; setTocVar(); editorEl.scrollTop = editorEl.scrollHeight; }   // 让出高度后正文仍贴底（否则下一个 scroll 事件判「没到底」→ 收 → 抖）
+function hideToc(): void { if (childToc.hidden) return; childToc.hidden = true; setTocVar(); }
+function updateChildToc(): void {
+  if (!tocChildren.length) { hideToc(); return; }
+  if (project.currentKind() === "image") { showToc(); return; }
+  const dist = tocDistance();
+  if (childToc.hidden) { if (dist <= TOC_SHOW_EPS_PX) showToc(); }
+  else if (dist > childToc.offsetHeight + TOC_HIDE_SLACK_PX) hideToc();
+}
+function renderPageKin(): void {
+  const nb = project.active() && !project.locked() ? project.neighborhood() : null;
+  const parent = nb?.parent ?? null;
+  parentLink.hidden = !parent;
+  parentLinkName.textContent = parent ? nodeDisplayName(parent) : "";
+  parentLink.title = parent ? t("kin.parentTitle", { name: nodeDisplayName(parent) }) : ""; parentLink.setAttribute("aria-label", parentLink.title);
+  tocChildren = nb?.children ?? [];
+  childTocList.innerHTML = "";
+  const s = project.session();
+  for (const n of tocChildren) {
+    const li = document.createElement("li");
+    const b = document.createElement("button"); b.type = "button"; b.className = "child-toc-row"; b.dataset.name = n;
+    const meta = s?.project.nodes.get(n);
+    b.title = meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : nodeDisplayName(n);
+    const kindIcon = nodeKind(n) === "image" ? `<svg class="ico" aria-hidden="true"><use href="#image"/></svg>` : "";
+    b.innerHTML = kindIcon + `<span class="child-toc-name"></span>` + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
+    b.querySelector(".child-toc-name")!.textContent = nodeDisplayName(n);
+    b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); editorEl.focus(); });
+    li.appendChild(b); childTocList.appendChild(li);
+  }
+  updateChildToc();
+}
+parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); editorEl.focus(); } });
+editorEl.addEventListener("scroll", updateChildToc, { passive: true });
+editorEl.addEventListener("input", updateChildToc);   // 末尾续写：正文长了仍贴底 → 目录留着；中段删多了装得下 → 露出
+window.addEventListener("resize", updateChildToc);   // 键盘 / 转屏改了 clientHeight
+// ── 导出 = 当前页全页进剪贴板（v2.1.9，user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮…方便的导出分享功能其实很重要」）：
+//   txt 稿 = 整篇；书的文字页 = 这一页（textarea 里的活字，所见即所得）；图片页 = 图片本身（PNG 直给，其余经 codec 转 PNG——系统剪贴板只认 PNG；ClipboardItem 里塞 Promise 保住 Safari 的用户手势）。
+//   锁着 / 空页 / 浏览器不支持 → toast 说清，不谎报已复制。
+async function copyCurrentPage(): Promise<void> {
+  const locked = project.active() ? project.locked() : editor.state.locked;
+  if (locked) { setStatus(t("copy.locked"), { error: true }); return; }
+  if (project.active() && project.currentKind() === "image") { await copyCurrentImage(); return; }
+  const text = editorEl.value;
+  if (!text.trim()) { setStatus(t("copy.empty")); return; }
+  try {
+    await writeClipboardText(text);
+    const st = statsForText(text);
+    setStatus(t("copy.done", { cjk: st.cjk, en: st.en }));
+  } catch (e) { reportError(e, "log"); setStatus(t("copy.failed", { e: errText(e) }), { error: true }); }
+}
+async function writeClipboardText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+  // 退路（旧 WebView / 非安全上下文）：借 textarea 全选 + execCommand，选区与滚动原样放回
+  const el = editorEl; const s0 = el.selectionStart, e0 = el.selectionEnd, top = el.scrollTop;
+  el.focus(); el.select();
+  const ok = document.execCommand("copy");
+  el.setSelectionRange(s0, e0); el.scrollTop = top;
+  if (!ok) throw new Error("clipboard unavailable");
+}
+async function copyCurrentImage(): Promise<void> {
+  const bytes = project.pageBytes(), cur = project.current();
+  if (!bytes || !cur) { setStatus(t("copy.empty")); return; }
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) { setStatus(t("copy.imageUnsupported"), { error: true }); return; }
+  const png: Promise<Blob> = nodeExt(cur) === "png"
+    ? Promise.resolve(new Blob([bytes as unknown as BlobPart], { type: "image/png" }))
+    : (async () => { const img = await decodeToRgba(new Blob([bytes as unknown as BlobPart])); const out = await encodePng(img.data, img.w, img.h, 0); return new Blob([out as unknown as BlobPart], { type: "image/png" }); })();
+  try { await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]); setStatus(t("copy.doneImage")); }
+  catch (e) { reportError(e, "log"); setStatus(t("copy.failed", { e: errText(e) }), { error: true }); }
+}
 // ── 图片页（2.1，ADR-0012/0013）：单一漏斗 importImageFiles（文件选择 / 多选 / 拖放 / 粘贴 / 替换都走 slimImage）──
 const imageFileInput = $<HTMLInputElement>("imageFileInput"), imageReplaceInput = $<HTMLInputElement>("imageReplaceInput");
 let pendingHd = false;   // 「保留高清」勾（sheet 里选，跟着这一次选择）
@@ -1349,4 +1429,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

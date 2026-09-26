@@ -1,4 +1,4 @@
-// 侧栏（☰ 唯一入口）：顶部两个入口（书库 / 设置）+ 书内导航 = **当前页的邻域**（ADR-0014 §7 反清单化：不铺整棵树、不画第三层）：
+// 侧栏（☰ 唯一入口）：顶部三个入口（书库 / 导出 / 设置；导出 = 当前页全页进剪贴板，v2.1.9 user 2026-09-26「放在三条杠的弹出菜单的书库和设置中间」）+ 书内导航 = **当前页的邻域**（ADR-0014 §7 反清单化：不铺整棵树、不画第三层）：
 //   `..`（父；顶层 = 书，不可点）→ 兄弟（当前页高亮）→ 子节 → 链接（出边，手排）→ 谁指向这里（反链 = 查询）。散页没有 ../兄弟/子节，首行「挪到…」（pick sheet 选锚点；书的末尾 = 空树唯一入口，v2.1.6「归入主干」并入 v2.1.7）+ 链接 + 「+ 子节」（链出去）。
 // created 2026-09-10 by Claude Fable 5.1；同日晚按 user 打回重做（「editor sidebar 只有一个三条杠」「侧栏不应默认开」「检索不限字数」「还是不显示扩展名吧」「分裂选中 连接已有 指向这里这三个先去掉」）；
 //   深夜 v2 树 session 接入邻域（user「树重新变成清单 → 看到的是 sibling 和一个 ..」「上一章下一章就是对主树做 dfs」）。
@@ -17,8 +17,9 @@ export interface EdgeSidebarDeps {
   mode: ProjectMode;
   setStatus: (text: string, opts?: { error?: boolean }) => void;
   focusEditor: () => void;
-  /** 顶部两个入口。 */
+  /** 顶部三个入口（书库 / 导出 / 设置）。导出 = 当前页（txt 稿整篇 / 书的这一页 / 图片页的图）进剪贴板，app 层做。 */
   onLibrary: () => void;
+  onExport: () => void;
   onSettings: () => void;
   /** 「+ 兄弟」「+ 子节」（问名字 → mode.newSibling / newChild；散页上的子节 = 链出去）。返回 true = 已建/已跳。 */
   onAddSibling: () => Promise<boolean>;
@@ -36,7 +37,7 @@ export interface EdgeSidebarDeps {
 type Block = "parent" | "siblings" | "children" | "links" | "incoming" | "results";
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 /** 页时间戳的短显示：今年 → M/D HH:mm；别的年 → YYYY/M/D。0 = 不知道 → 空。 */
-function fmtTime(ms: number): string {
+export function fmtTime(ms: number): string {
   if (!ms) return "";
   const d = new Date(ms), now = new Date(); const p2 = (n: number) => String(n).padStart(2, "0");
   return d.getFullYear() === now.getFullYear() ? `${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}` : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
@@ -49,6 +50,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   el.innerHTML = `
     <div class="edge-entries">
       <button type="button" class="edge-entry" id="edgeLibrary">${icon("bookshelf")}<span>${esc(t("sidebar.library"))}</span></button>
+      <button type="button" class="edge-entry" id="edgeExport" title="${esc(t("sidebar.exportTitle"))}">${icon("export")}<span>${esc(t("sidebar.export"))}</span></button>
       <button type="button" class="edge-entry" id="edgeSettings">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
     </div>
     <div class="edge-txt" id="edgeTxtPane" hidden>
@@ -209,6 +211,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   const emptyRow = (text: string) => { const li = document.createElement("li"); li.className = "edge-row empty"; li.textContent = text; return li; };
 
   $("edgeLibrary").addEventListener("click", () => d.onLibrary());
+  $("edgeExport").addEventListener("click", () => d.onExport());   // 一下 = 复制（不弹菜单：导出分享要顺手，user 2026-09-26「方便的导出分享功能其实很重要」）
   $("edgeLift").addEventListener("click", () => { void d.onLift().then((ok) => { if (ok) render(); }); });
   $("edgeSettings").addEventListener("click", () => d.onSettings());
   $("edgeBack").addEventListener("click", () => { if (d.mode.goBack()) { clearQuery(); render(); d.focusEditor(); } });   // 不自动收（user「点 return back 的时候侧栏不应自动弹回」）

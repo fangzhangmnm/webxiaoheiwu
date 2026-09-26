@@ -1582,6 +1582,28 @@ body:has(.candidates:not(.hidden)) .toast { bottom: 64px; }   /* 候选条已不
 /* 话筒悬浮在纸面右下、不占版面；页脚字数统计露着时往上让一让（user 2026-09-10「麦克风也是悬浮的，如果和字数统计挡了可以稍微往上挪一点」）。#wordCount 在 DOM 里排在话筒前面，兄弟选择器够用 */
 .page-foot:not([hidden]) ~ .mic-button { bottom: 52px; }
 .page-foot:not([hidden]) ~ .mic-side { bottom: 56px; }
+/* ── 纸面亲缘（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表，然后标题栏也有回到上一级的链接，这样导航就舒服」）──
+   回上一级：章节名上方一行 `.. 父页名`（UI 小字；与侧栏 `..` 行同语汇）；顶层页 hidden（顶栏已是书名）。 */
+.parent-link { display: none; align-self: center; align-items: center; gap: 6px; max-width: 100%; margin: 0 0 4px; padding: 2px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); font-family: var(--font-ui); font-size: 12px; line-height: 1.4; cursor: pointer; }
+body[data-project] .parent-link:not([hidden]) { display: inline-flex; }
+.parent-link .edge-dots { flex: none; letter-spacing: 1px; }
+.parent-link-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.parent-link:hover, .parent-link:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); outline: none; }
+/* 子节目录：正文之下、页脚之上。只在正文滚到底 / 装得下时露出（app.ts 迟滞：露出后往上滚超过目录高度才收）；最高占纸面 40%、内部滚动；
+   textarea 的内部滚动模型不动——露出 = 目录占位、正文让出同样高度并保持贴底。话筒随之上让（--child-toc-h 由 app 写在 .page 上）。 */
+.child-toc { flex: none; max-height: 40%; overflow-y: auto; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); font-family: var(--font-editor); scrollbar-width: thin; scrollbar-color: var(--bg-3) transparent; }
+.child-toc[hidden] { display: none; }
+.child-toc-head { font-family: var(--font-ui); font-size: 11px; color: var(--ink-soft); padding: 0 8px 2px; user-select: none; }
+.child-toc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.child-toc-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; font-size: calc(var(--editor-font) * 0.95); line-height: 1.5; text-align: left; cursor: pointer; }
+.child-toc-row:hover, .child-toc-row:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); outline: none; }
+.child-toc-row .ico { flex: none; width: 14px; height: 14px; color: var(--ink-soft); }
+.child-toc-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.child-toc-sub { flex: none; font-family: var(--font-ui); font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.child-toc:not([hidden]) ~ .mic-button { bottom: calc(14px + var(--child-toc-h, 0px)); }
+.child-toc:not([hidden]) ~ .mic-side { bottom: calc(18px + var(--child-toc-h, 0px)); }
+.child-toc:not([hidden]) ~ .page-foot:not([hidden]) ~ .mic-button { bottom: calc(52px + var(--child-toc-h, 0px)); }
+.child-toc:not([hidden]) ~ .page-foot:not([hidden]) ~ .mic-side { bottom: calc(56px + var(--child-toc-h, 0px)); }
 /* 锁卡（0.2 护栏，2026-09-04）：锁着 / 不可用的稿不再假装是编辑器 */
 .lock-card { position: absolute; inset: 0; z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
 .lock-card[hidden] { display: none; }

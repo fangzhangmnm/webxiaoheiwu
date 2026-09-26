@@ -1984,6 +1984,42 @@ export declare const S: {
         readonly zh: "上一页 / 下一页（沿目录顺序）";
         readonly en: "Previous / next page (table-of-contents order)";
     };
+    readonly "sidebar.export": {
+        readonly zh: "导出";
+        readonly en: "Export";
+    };
+    readonly "sidebar.exportTitle": {
+        readonly zh: "把这一页全文复制到剪贴板";
+        readonly en: "Copy this page’s full text to the clipboard";
+    };
+    readonly "copy.done": {
+        readonly zh: "已复制全页：{cjk} 字 {en} 词";
+        readonly en: "Copied the whole page: {cjk} chars · {en} words";
+    };
+    readonly "copy.doneImage": {
+        readonly zh: "已复制这张图";
+        readonly en: "Image copied";
+    };
+    readonly "copy.empty": {
+        readonly zh: "这一页是空的，没什么可复制";
+        readonly en: "This page is empty — nothing to copy";
+    };
+    readonly "copy.locked": {
+        readonly zh: "已锁定，先解锁再复制";
+        readonly en: "Locked — unlock first to copy";
+    };
+    readonly "copy.failed": {
+        readonly zh: "复制失败：{e}";
+        readonly en: "Copy failed: {e}";
+    };
+    readonly "copy.imageUnsupported": {
+        readonly zh: "这个浏览器不支持把图片复制到剪贴板";
+        readonly en: "This browser can’t copy images to the clipboard";
+    };
+    readonly "kin.parentTitle": {
+        readonly zh: "回到上一级：{name}";
+        readonly en: "Up to “{name}”";
+    };
     readonly "gal.aria": {
         readonly zh: "书库";
         readonly en: "Library";

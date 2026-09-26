@@ -530,6 +530,16 @@ export const S = {
   "edge.prev":              { zh: "上一页", en: "Previous page" },
   "edge.next":              { zh: "下一页", en: "Next page" },
   "edge.pageNav":           { zh: "上一页 / 下一页（沿目录顺序）", en: "Previous / next page (table-of-contents order)" },
+  // ── v2.1.9（user 2026-09-26）：侧栏「导出」= 当前页全页进剪贴板；纸面 `..` 回上一级 + 正文之下的子节目录 ──
+  "sidebar.export":         { zh: "导出", en: "Export" },
+  "sidebar.exportTitle":    { zh: "把这一页全文复制到剪贴板", en: "Copy this page’s full text to the clipboard" },
+  "copy.done":              { zh: "已复制全页：{cjk} 字 {en} 词", en: "Copied the whole page: {cjk} chars · {en} words" },
+  "copy.doneImage":         { zh: "已复制这张图", en: "Image copied" },
+  "copy.empty":             { zh: "这一页是空的，没什么可复制", en: "This page is empty — nothing to copy" },
+  "copy.locked":            { zh: "已锁定，先解锁再复制", en: "Locked — unlock first to copy" },
+  "copy.failed":            { zh: "复制失败：{e}", en: "Copy failed: {e}" },
+  "copy.imageUnsupported":  { zh: "这个浏览器不支持把图片复制到剪贴板", en: "This browser can’t copy images to the clipboard" },
+  "kin.parentTitle":        { zh: "回到上一级：{name}", en: "Up to “{name}”" },
 
   // ── 2.0 图库屏（chrome 文案；网格内文案是包的 zh/en 默认）──
   "gal.aria":               { zh: "书库", en: "Library" },
