@@ -146,3 +146,16 @@ user 起手「点左上角标题直觉应该是回书库。然后改名放哪里
 - **子节目录** `#childToc`：正文之下、页脚之上，行 = 子节名（图片页带 image 图标）+ 修改时间小字，点 = 跳。**只在正文滚到底 / 装得下时露出**（写到中段不占地，写到末尾自然看见下一层）；迟滞 = 露出后往上滚超过「目录高度 + 24 px」才收，防边界抖动；露出时正文让出同样高度并保持贴底（`scrollTop = scrollHeight`）。图片页没正文可滚：有子节就露。最高占纸面 40%、内部滚动。话筒随之上让（`.page` 上的 `--child-toc-h` 由 app 写）。**textarea 内部滚动模型不动**（编辑手感不冒险；auto-grow 方案因 iOS 键盘 / caret 跟随 / 写字线对齐无法离线验证而不采）。
 - 没做：目录里不放「+ 子节」（user 只说了目录列表）；不显示兄弟 / 链接；不折叠开关（零态度）。
 - **验证**：tsc 绿；112 测绿；build / smoke 绿；`node tools/ui-audit.mjs` 两尺寸 **286 探针全绿**（1280×800 160 + 400×800 126；每尺寸 +15：侧栏三钮顺序与图标 / 导出 txt 稿 → 剪贴板全文 + toast / 侧栏不自动收 / 短正文目录在正文下 + 顶层无 `..` / 话筒在目录之上 / 长正文顶部目录藏 / 滚到底露出且正文贴底 / 小幅上滚仍留 / 滚回顶收起 / 短正文回来 / 点目录行跳子节 + `.. 作品` 在章节名上方 / 点 `..` 回父页 / 图片页导出 = image/png）；api 重打；**真机零**。
+
+### v2.1.10 同步两案：「新书卡在上传」「旧书卡在下载」（2026-09-26；user iPad 真机 + 黑匣子 log `xiaoheiwu-diag-2026-09-26-04-23-53.txt`；Claude Fable 5.1）
+- **log 里的事实**：iOS 18.7 standalone dev v2.1.8；09-12 refresh token 过期 → 09-26 00:12 静默续签失败（登出态）→ 00:12:55 列表 5→6（新书在**登出态**建成）→ 00:13:08/09 两条「Not signed in」（加密 + 改日期码名的云腿）→ 00:16:35 reload → 00:16:38 手动登录 → 之后**零推云 / 拉取错误**。黑匣子只记列表首帧与 auth，书的推 / 拉是盲区（本版补上 `[book]` / `[sync]` 面包屑）。
+- **「卡在上传」根因链（三层都漏，代码证据）**：① 书 / 稿登出态落盘走 `save({tryPush:false})`，**不进**库的离线上传队列（`create-store.ts` save：`tryPush===false` 早返回，在 `uploadReplay.enqueue` 之前）→ `afterSignIn` 的 `drainOfflineQueue` 排不到它；② 书模式内存里的 `pushPending` 重开后归零、`createInStore` 从不置位，`pushNow → flush(true,{force:pushPending})` 因 session 不脏直接跳过 → 就算 resumeSync 也不推；③ **库推任何加密文件先要内存里的密码解壳**（`pushLocalBytes → seal.unsealForRead`，没密码返 `locked` 算失败留 dirty）——reload 后密码没了，锁着就谁也推不动，UI 又不说原因。
+- **「卡在下载」根因**：`refreshIfCleanAny` 在书模式是 `Promise.resolve()`（只有 txt 稿实现了干净快进）→ 书打开着时永远不从云端快进，书库角标一直「云端更新」；只有重开那一下 `open()` 的新鲜度门会拉。
+- **修法（全 app 层，store 不动）**：
+  - `pushDirtyAll()`（app.ts）= `files.dirty.pushAll()` 单飞 + 黑匣子 `[sync] dirty.pushAll: pushed/failed[...]` + toast「已补传 N 个文件」；挂三处：**afterSignIn**（先 `pushNowAny` 推开着的，再 drain → pushAll）、**resumeSync**（回前台 / 回线 / 闲置解锁；顺序同上，开着的不会推两遍）、**解锁后**（`onLockChange(true)` → verbose：失败也 toast 一句「N 个文件没传上去（加密未解锁 / 冲突 / 网络）」）。库侧契约 = `internal-store/test/store-dispose-dirty.test.ts`「save(tryPush:false) → count=1；pushAll 推上 → count=0」。
+  - `mode.createInStore`：`pushPending = true`（新书 = 云端没有，15 s 后真推；以前要等第一个字）。
+  - `mode.refreshIfClean()`（镜像 txt 编辑器）：干净 ∧ 登录 ∧ 在线 ∧ 无落盘在途 → `pullProjectIfClean` → `fast-forwarded` → `reopenFromStore()`（留在原页、光标滚动放回）+ toast「已加载云端最新」；`cloud-absent` → 红字。`refreshIfCleanAny` 接上 → focus / online / 60 s 轮询 / 登录后都覆盖。
+  - **takeCloud 世界线切换**：session.flush 透传 `reason / resolution`；push 后 `resolution === "takeCloud"` → persist 链外 `reopenFromStore("takeCloud")`（txt 编辑器 2026-08-25 案卷早有，书模式以前吞掉 = 内存旧图下次保存会盖掉云端版本）。
+  - 锁卡多一句「这篇有还没上传的改动，解锁后会自动上传。」（`drawer.findByName(name)?.dirty`，best-effort）。
+  - 黑匣子：`[book] created / open / push (pushed | not pushed(reason)) / refresh(status) / reload(why)`。
+- **验证**：tsc 绿；112 测绿；build / smoke 绿；ui-audit 两尺寸 **320 探针全绿**（1280×800 161 + 400×800 159；+1 每尺寸：锁卡「还没上传」提示）；api 重打。**真机零**——请 user 复现原路径：登出态新建书 → 加密 → 登录 → 解锁：应 toast「已补传 1 个文件」、书库角标转同步；旧书：打开或等 ≤60 s 应 toast「已加载云端最新」。不行就再导一次 log，这次 `[book]` / `[sync]` 行会说话。
