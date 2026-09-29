@@ -15,7 +15,9 @@ export interface ImeState {
     buffer: string;
     candidates: string[];
     engine: string;
-    initializeError: string | null;
+    initializeError: string | null; /** 候选翻到第几页（0 起）；hasMore = 后面还有。软键盘候选条的「更多」用。 */
+    page: number;
+    hasMore: boolean;
 }
 interface Backend {
     engine: string;
@@ -24,6 +26,8 @@ interface Backend {
         buffer: string;
         candidates: string[];
         engine: string;
+        page?: number;
+        hasMore?: boolean;
     };
     resetState(): void;
     typeLetter(letter: string): Promise<ImeResult>;
@@ -64,6 +68,12 @@ export declare class NaturalCodeIME {
     /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
     dispose(): void;
     getState(): ImeState;
+    /** 首选上屏（同空格）；没在组字 → passthrough。 */
+    commitFirst(): Promise<ImeResult>;
+    /** 点第 index 个候选（当前页内，0 起）。 */
+    choose(index: number): Promise<ImeResult>;
+    /** 候选翻页。 */
+    turnPage(prev: boolean): Promise<ImeResult>;
     isComposing(): boolean;
     resetComposition(): void;
     dumpUserDir(): Promise<UserDictDump | null>;

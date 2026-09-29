@@ -405,72 +405,7 @@ body {
 }
 .body::-webkit-scrollbar-thumb:hover { background: var(--ink-muted); }
 
-/* Candidate bar — floats absolutely at the bottom of the page box */
-
-.candidates {
-  position: fixed;   /* 2026-09-10：从 .page 挪到 body 层；贴底 = 纸面底边（bottom-floor − 2 + 10）再跟着软键盘 --kb-offset 抬 */
-  left: 50%;
-  bottom: calc(var(--bottom-floor, 14px) + 8px + var(--kb-offset, 0px));
-  transform: translateX(-50%);
-  display: inline-flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid var(--line-strong);
-  background: rgba(241, 230, 207, 0.96);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  padding: 4px 8px;
-  border-radius: 10px;
-  z-index: var(--z-ime);
-  max-width: calc(100% - 24px);
-  overflow-x: auto;
-  scrollbar-width: none;
-  box-shadow: 0 6px 18px rgba(58, 40, 24, 0.2);
-}
-
-.candidates::-webkit-scrollbar { display: none; }
-.candidates.hidden { display: none; }
-
-.buffer-chip {
-  flex: 0 0 auto;
-  border-radius: 6px;
-  border: 1px solid var(--line-strong);
-  padding: 2px 8px;
-  color: var(--ink-soft);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-}
-
-.candidate-chip {
-  flex: 0 0 auto;
-  border-radius: 6px;
-  padding: 3px 8px;
-  color: var(--ink);
-  font-size: 15px;
-  white-space: nowrap;
-}
-
-.buffer-chip + .candidate-chip {   /* 首选候选（第一个 span 是 buffer-chip，:first-of-type 永远不中——审计 UI-10） */
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-.candidate-chip .index {
-  color: var(--ink-muted);
-  margin-right: 4px;
-  font-size: 10px;
-  font-family: ui-monospace, monospace;
-}
-/* 粗指针（触屏 / Quest 手柄）：候选是要用指头点的——44px 触控高度、字放大；桌面（键盘选数字）保持紧凑（user 2026-09-26 iPad mini「字太小」「触屏没法点输入法候选」） */
-@media (pointer: coarse) {
-  .candidates { gap: 6px; padding: 6px 10px; border-radius: 14px; }
-  .buffer-chip { font-size: 14px; padding: 6px 10px; }
-  .candidate-chip { font-size: 19px; padding: 0 14px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 10px; cursor: pointer; }
-  .candidate-chip .index { font-size: 12px; margin-right: 6px; }
-}
-.candidate-chip { cursor: pointer; user-select: none; -webkit-user-select: none; }
+/* 候选：样式全在文件末尾「输入法附件」一节（v2.1.16；悬浮条 .candidates + 手机式 .ime-dock） */
 
 /* Voice input — floating mic button anchored to the page box */
 
@@ -1716,3 +1651,110 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .gallery-trashbar.hidden { display: none; }
 .gallery-mount { flex: 1 1 auto; overflow: auto; padding: 0 0 12px; }   /* 横向 padding 归包内 .gallery-grid（16px）；宿主再叠 14px 曾让 375px 宽只剩 315px、排不下两列（user 2026-09-10 iPhone SE2 打回） */
 .gallery-mount .sheet-action { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); font: inherit; cursor: pointer; }
+
+/* ═══ 输入法附件（v2.1.16，2026-09-29；src/input/）：app 内软键盘 + 常驻候选（手机式）/ 悬浮候选条（PC 式，实体键盘）═══
+   user 2026-09-29「加软键盘，以后不用触屏手机的自带键盘了」「软键盘的时候候选框和软键盘应该在一起，就和手机一样，然后常驻」「物理键盘的时候是这种 pc 式的悬浮的」。
+   手机式那一块住 body 层贴底、z = --z-ime（sheet / 锁屏之上：sheet 里的输入框也要用它打字）；纸面 / 侧栏 / sheet / 抽屉让出它的高度（:root --dock-h，dock.ts 量了写）。
+   拼音单独一行、候选另起一行：长拼音再也挤不走首选（以前拼音芯片排在候选前面，375 宽的屏上首选只露 30px）。 */
+:root { --dock-h: 0px; --key-bg: color-mix(in srgb, var(--bg) 92%, white); --key-fn-bg: color-mix(in srgb, var(--line) 70%, var(--bg)); --key-pressed: color-mix(in srgb, var(--accent) 22%, var(--bg)); --kb-bg: color-mix(in srgb, var(--void) 78%, var(--line-strong)); }
+.page { height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px - var(--kb-offset, 0px) - var(--dock-h, 0px)); }
+body.ime-docked { --bottom-floor: 6px; }   /* 底部安全区由键盘那一块自己垫；纸面贴着它 */
+body.ime-docked .edge-sidebar { bottom: calc(12px + var(--dock-h, 0px)); }
+.crypto-modal { align-items: flex-start; overflow-y: auto; box-sizing: border-box; }   /* 卡片比可用高度高时能滚（手机横屏 + 键盘只剩 170px）；margin:auto = 放得下就居中、放不下从顶排起 */
+.crypto-card { margin: auto; }
+body.ime-docked .crypto-modal { padding-bottom: calc(var(--dock-h, 0px) + 6px); }
+@media (max-height: 460px) {
+  body.ime-docked .crypto-modal { padding-top: 4px; padding-bottom: calc(var(--dock-h, 0px) + 4px); }
+  body.ime-docked .crypto-card { padding: 8px 14px; gap: 4px; }
+  body.ime-docked .crypto-hint { line-height: 1.35; }
+  body.ime-docked .crypto-input { padding: 5px 10px; }
+  body.ime-docked .crypto-button { padding: 4px 14px; }
+  body.ime-docked .crypto-actions { margin-top: 0; }
+}
+body.ime-docked .drawer { padding-bottom: var(--dock-h, 0px); }
+body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
+
+.ime-dock {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-ime);
+  background: var(--kb-bg); border-top: 1px solid var(--line-strong);
+  padding: 0 max(3px, var(--sa-left)) max(env(safe-area-inset-bottom, 0px), 4px) max(3px, var(--sa-right));
+  font-family: var(--font-ui); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  --key-h: 46px; --strip-cand-h: 40px;
+}
+.ime-dock.hidden { display: none; }
+.ime-strip { display: flex; align-items: stretch; max-width: 1000px; margin: 0 auto; border-bottom: 1px solid color-mix(in srgb, var(--line-strong) 50%, transparent); }
+.ime-strip-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ime-preedit { flex: none; height: 16px; line-height: 16px; padding: 0 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; letter-spacing: 0.04em; color: var(--ink-soft); white-space: nowrap; overflow: hidden; }
+.ime-cands { flex: none; height: var(--strip-cand-h); display: flex; align-items: center; gap: 2px; padding: 0 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; overscroll-behavior: contain; }
+.ime-cands::-webkit-scrollbar { display: none; }
+.cand { flex: 0 0 auto; min-width: 40px; height: calc(var(--strip-cand-h) - 4px); padding: 0 12px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--ink); font-size: 19px; white-space: nowrap; cursor: pointer; }
+.cand.first { background: var(--accent-soft); color: var(--accent-strong); }
+.cand.nav { min-width: 36px; padding: 0 6px; color: var(--ink-soft); }
+.cand .ico { width: 16px; height: 16px; }
+.cand .index { color: var(--ink-muted); margin-right: 5px; font-size: 11px; font-family: ui-monospace, monospace; }
+.ime-hide { flex: none; width: 46px; border: 0; border-left: 1px solid color-mix(in srgb, var(--line-strong) 50%, transparent); background: transparent; color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.ime-hide .ico { width: 20px; height: 20px; }
+
+.ime-keys { max-width: 1000px; margin: 0 auto; padding: 3px 0 2px; touch-action: none; }
+.ime-row { display: flex; justify-content: center; }
+.ime-keys[data-layer="letters"] .ime-row[data-n="9"] { padding: 0 5%; }   /* asdf 行缩半个键 */
+.ime-key {
+  flex: 1 1 0; min-width: 0; height: var(--key-h); margin: 3px 2.5px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: var(--key-bg); color: var(--ink);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 28%, transparent);
+  font-size: 21px; line-height: 1; cursor: pointer; overflow: hidden; white-space: nowrap;
+}
+.ime-key.small { font-size: 14px; }
+.ime-key.space { font-size: 13px; color: var(--ink-muted); }
+.ime-key.fn { background: var(--key-fn-bg); color: var(--ink-soft); }
+.ime-key.accent { background: var(--accent); color: #faf2e2; }
+.ime-key.disabled { opacity: 0.35; }
+.ime-key .ico { width: 22px; height: 22px; pointer-events: none; }
+.ime-key.on { color: var(--accent); }
+.ime-key.locked { color: var(--accent); }
+.ime-key.locked .ico { fill: currentColor; }
+.ime-key.pressed { background: var(--key-pressed); }
+.ime-key.accent.pressed { background: var(--accent-strong); }
+@media (hover: hover) {   /* 鼠标 / VR 手柄射线：hover 高亮帮瞄准 */
+  .ime-key:hover { background: color-mix(in srgb, var(--accent) 10%, var(--key-bg)); }
+  .ime-key.fn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--key-fn-bg)); }
+  .ime-key.accent:hover { background: var(--accent-strong); }
+  .cand:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+}
+.ime-keys[data-form="tablet"] { padding-top: 4px; }
+.ime-dock:has(.ime-keys[data-form="tablet"]) { --key-h: 50px; --strip-cand-h: 42px; }
+@media (max-height: 460px) {   /* 手机横屏：纵向空间最紧，键矮一档 */
+  .ime-dock { --key-h: 33px; --strip-cand-h: 32px; }
+  .ime-key { margin: 2px 2.5px; font-size: 18px; }
+  .cand { font-size: 17px; }
+  .ime-preedit { height: 14px; line-height: 14px; font-size: 11px; }
+}
+
+/* PC 式悬浮候选条（实体键盘）：两行——拼音在上、候选在下；首选永远从最左开始 */
+.candidates {
+  position: fixed; left: 50%; bottom: calc(var(--bottom-floor, 14px) + 8px + var(--kb-offset, 0px)); transform: translateX(-50%); z-index: var(--z-ime);
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px; padding: 3px 6px 4px; box-sizing: border-box;
+  width: max-content; max-width: min(calc(100% - 24px), 640px); overflow: hidden;
+  border: 1px solid var(--line-strong); border-radius: 10px; background: rgba(241, 230, 207, 0.96);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 6px 18px rgba(58, 40, 24, 0.2);
+  user-select: none; -webkit-user-select: none;
+}
+.candidates.hidden { display: none; }
+.candidates .ime-preedit { height: 15px; line-height: 15px; padding: 0 4px; }
+.candidates .ime-cands { height: auto; min-height: 28px; padding: 0; touch-action: pan-x; }
+.candidates .cand { height: 28px; min-width: 0; padding: 0 8px; font-size: 15px; border-radius: 6px; }
+.candidates.lingering { visibility: hidden; }   /* 触屏点过候选：空着多留一拍再收（占着位置、看不见），等手指抬起 */
+@media (pointer: coarse) {
+  .candidates { padding: 5px 8px 6px; border-radius: 14px; }
+  .candidates .cand { height: 44px; padding: 0 14px; font-size: 19px; border-radius: 10px; }
+  .candidates .cand .index { font-size: 12px; }
+}
+
+
+/* 键盘钮：纸面左下角（与右下角的话筒对称） */
+.mic-button.kb-toggle { right: auto; left: 14px; }
+.page-foot:not([hidden]) ~ .kb-toggle { bottom: 52px; }
+.page[data-toc-shown] .kb-toggle { bottom: calc(14px + var(--child-toc-h, 0px)); }
+.page[data-toc-shown] .page-foot:not([hidden]) ~ .kb-toggle { bottom: calc(52px + var(--child-toc-h, 0px)); }
+.kb-toggle .ico { width: 22px; height: 22px; }

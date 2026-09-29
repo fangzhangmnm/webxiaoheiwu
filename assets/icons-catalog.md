@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-40 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+46 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -12,7 +12,7 @@
 <svg width="24" height="24"><use href="#move-to-file"/></svg>
 ```
 
-> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`
+> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`microphone`、`backspace`、`key-shift`、`key-enter`
 > 见库 `index.html` 的「待过目」栏；过目后进库/打回归库 session。
 
 
@@ -60,6 +60,7 @@
 | `forward` 👁待过目 | 前进:back 的精确镜像(右向整箭头带杆;与 chevron-right 裸 chevron 分工)【WebXiaoHeiWu 侧栏页头「回退」右邻的「前进」钮（回退之后再回去）；2026-09-10 fable 自画未过目】 |
 | `chevron-left` 👁待过目 | ‹ 小尺寸优化裸 chevron:描边 2.4、臂短(14px chip 用)；库里带杆的 back 是另一语义【WeebPaint 参考窗多图时窗底翻页 chip；fable 自画未过目】 |
 | `chevron-right` 👁待过目 | › chevron-left 的精确镜像【WeebPaint 参考窗翻页 chip；fable 自画未过目】 |
+| `chevron-down` | 下移:竖线 + 底端 ∨ 箭头 |
 
 ## cloud
 
@@ -85,3 +86,8 @@
 | `wrench` | 扳手:斜置组合扳手轮廓(feather:wrench 衍生), 20260724 候选 1 号入库 |
 | `more` | 溢出菜单:横向三点(原 ⋯ 字符跨平台字形不一) |
 | `database` | — |
+| `microphone` 👁待过目 | 话筒:胶囊头 + 支架弧 + 底座；录音态由 app CSS 变色【WebXiaoHeiWu 编辑区浮动「语音输入」钮；fable 自画未过目】 |
+| `backspace` 👁待过目 | 退格 ⌫:左尖五边形 + 内部 ×【WebXiaoHeiWu 话筒左邻浮动「退格」钮；fable 自画未过目】 |
+| `key-shift` 👁待过目 | 上档键 ⇧:空心上箭头(屋顶形箭头+方柄,一笔闭合)；大写锁定态由 app 侧 CSS 填实【WebXiaoHeiWu app 内软键盘字母层左下「上档」键帽；2026-09-29 fable 自画未过目】 |
+| `key-enter` 👁待过目 | 回车键 ⏎:右上竖线下行、圆角左拐、左端箭头(与 back 同款箭头臂)【WebXiaoHeiWu app 内软键盘右下「换行 / 确定」键帽；2026-09-29 fable 自画未过目】 |
+| `keyboard` | 键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义) |

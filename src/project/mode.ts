@@ -25,6 +25,8 @@ import { S } from "../i18n/strings.ts";
 
 export type ProjectHome = { kind: "store"; name: string } | { kind: "local"; home: LocalHome };
 export interface ProjectModeDeps {
+  /** 云端新版正在换掉本地这一本（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待（user 2026-09-29「快进的时候就 waiting，这样稳一点」）。 */
+  onReplacing?: (on: boolean) => void;
   editorEl: HTMLTextAreaElement;
   /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
   titleEl: HTMLInputElement;
@@ -316,20 +318,21 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (!active() || home!.kind !== "store" || locked || !d.isSignedIn() || isOffline()) return;
     if (refreshInFlight || persistInFlight || localTimer || pushPending || session!.dirty || session!.readOnly || worldReplaced) return;
     const n = name()!; const g = gen; refreshInFlight = true;
+    let froze = false;
     try {
       // 库只认得已经落盘的脏；还停在编辑器 / 内存图里的改动由 localDirty 告诉它。库决定替换的那一刻（onReplaceStart，同步）冻结输入直到新版载入——
       //   下载途中打进去的字会被整本覆盖且不进备份箱（2026-09-29 端到端测试复现；书带图片时下载要好几秒）。
       const editorDiffers = (): boolean => { const c = session?.current(); return !!c && nodeKind(c) !== "image" && d.editorEl.value !== session!.currentText(); };
       const r = await pullProjectIfClean(n, {
         localDirty: () => !!localTimer || !!persistInFlight || pushPending || (session?.dirty ?? false) || editorDiffers(),
-        onReplaceStart: () => { replacing = true; applyReadOnly(); d.setStatus(t("st.replacingFromCloud")); },
+        onReplaceStart: () => { froze = true; replacing = true; applyReadOnly(); d.onReplacing?.(true); },
       });
       if (g !== gen) return;
       if (r.status && !["in-sync", "dirty-skip", "offline"].includes(r.status)) diagNote("book", `refresh "${n}": ${r.status}${r.reason ? ` (${r.reason})` : ""}`);   // 60 s 轮询的常态不刷黑匣子；只记真动了 / 拉失败 / 云端没了
       if (r.status === "fast-forwarded") { await reopenFromStore("fast-forwarded"); d.setStatus(t("st.loadedCloudLatest", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }) })); }
       else if (r.status === "cloud-absent") d.setStatus(t("st.cloudGone"), { error: true });
     } catch (e) { reportError(e, "log"); }
-    finally { refreshInFlight = false; if (replacing) { replacing = false; applyReadOnly(); } }
+    finally { refreshInFlight = false; if (froze) { replacing = false; applyReadOnly(); d.onReplacing?.(false); } }   // 重开（openStore）已把 replacing 归零；没换成时这里解冻
   }
   /** 工程文件在 store 里改了名（顶栏改名）：只换身份，不重开、不重载正文、回退栈不丢。 */
   function adoptName(newName: string): void {

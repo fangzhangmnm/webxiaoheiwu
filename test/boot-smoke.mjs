@@ -201,7 +201,7 @@ try {
     if (!ime.initialized || ime.initializeError) return "init failed: " + ime.initializeError;
     const ed = document.getElementById("editor"); ed.focus();
     const typeKeys = async (keys) => { for (const k of keys) { ed.dispatchEvent(new KeyboardEvent("keydown", { key: k, code: "Key" + k.toUpperCase(), bubbles: true, cancelable: true })); await wait(120); } await wait(400); };
-    const cands = () => [...document.querySelectorAll("#candidateBar .candidate-chip")].map((c) => c.textContent.replace(/^\d/, ""));
+    const cands = () => [...document.querySelectorAll("#candidateBar .cand:not(.nav)")].map((c) => c.textContent.replace(/^\d/, ""));
     const out = {};
     await typeKeys(["n", "i"]); out.luna = cands().slice(0, 5); await ime.resetComposition();
     await ime.setSchema("double_pinyin_mspy"); await typeKeys(["n", "i"]); out.mspy = cands().slice(0, 5); await ime.resetComposition();
@@ -283,7 +283,7 @@ try {
   check("Quest 焦点找回：window blur 不出提示条/不压暗（2026-09-04 撤）；focus → 焦点静默回编辑器", kbBack.noHint && kbBack.c, JSON.stringify(kbBack));
   const typeAnywhere = await page.evaluate(() => { document.activeElement?.blur(); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true })); return document.activeElement === document.getElementById("editor"); });
   check("页内任意处敲键 → 焦点回编辑器", typeAnywhere);
-  const vbs = await page.evaluate(() => { const ed = document.getElementById("editor"), bs = document.getElementById("voiceBackspaceButton"); const x = window.__xhw; ed.focus(); ed.value = "你好😀"; ed.selectionStart = ed.selectionEnd = ed.value.length; x.voiceBackspace(); const a = ed.value; x.voiceBackspace(); const b = ed.value; x.setVoiceMode(true); const shown = !bs.hidden; ed.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true })); const hiddenAfterKey = bs.hidden; x.setVoiceMode(false); return { a, b, shown, hiddenAfterKey }; });
+  const vbs = await page.evaluate(async () => { const ed = document.getElementById("editor"), bs = document.getElementById("voiceBackspaceButton"); const x = window.__xhw; ed.focus(); ed.value = "你好😀"; ed.selectionStart = ed.selectionEnd = ed.value.length; await x.voiceBackspace(); const a = ed.value; await x.voiceBackspace(); const b = ed.value;   /* v2.1.16：退格走输入管线的队列（同软键盘退格键一条路）→ 异步 */ x.setVoiceMode(true); const shown = !bs.hidden; ed.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true })); const hiddenAfterKey = bs.hidden; x.setVoiceMode(false); return { a, b, shown, hiddenAfterKey }; });
   check("语音模式退格钮：emoji 整个删 / 汉字删一个；口述后可见、敲实体键即隐", vbs.a === "你好" && vbs.b === "你" && vbs.shown && vbs.hiddenAfterKey, JSON.stringify(vbs));
   // 锁卡护栏（user 2026-09-04「0.2 先做个护栏」）：加密稿物化 → 立即锁定 → 纸面盖锁卡、textarea readOnly、话筒收起；点「新建稿」→ 卡撤、可编辑
   const lockCard = await page.evaluate(async () => {

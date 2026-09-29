@@ -648,6 +648,22 @@ export declare const S: {
         readonly zh: "此文件在云端已不存在";
         readonly en: "This file no longer exists in the cloud";
     };
+    readonly "st.replacingFromCloud": {
+        readonly zh: "云端有新版本，正在载入…";
+        readonly en: "Loading the newer version from the cloud…";
+    };
+    readonly "rescue.title": {
+        readonly zh: "{name} 冲突留底";
+        readonly en: "{name} (conflict copy)";
+    };
+    readonly "rescue.saved": {
+        readonly zh: "上传途中打的字已另存为「{name}」";
+        readonly en: "What you typed during the upload was saved as “{name}”";
+    };
+    readonly "rescue.failed": {
+        readonly zh: "上传途中打的字没能留底：{e}";
+        readonly en: "Could not keep what you typed during the upload: {e}";
+    };
     readonly "st.pushedAll": {
         readonly zh: "已补传 {n} 个文件";
         readonly en: "Caught up: {n} file(s) uploaded";
@@ -1253,20 +1269,60 @@ export declare const S: {
         readonly en: "Corner brackets 「 」『 』";
     };
     readonly "ui.ime.softKeyboard": {
-        readonly zh: "触屏键盘（无实体键盘时）";
-        readonly en: "Touch keyboard (when there is no physical keyboard)";
+        readonly zh: "内置软键盘（本机）";
+        readonly en: "Built-in on-screen keyboard (this device)";
     };
-    readonly "ui.ime.softKeyboard.system": {
-        readonly zh: "弹系统键盘（iOS / 安卓默认；系统输入法打出的字照收）";
-        readonly en: "Show the system keyboard (default on iOS / Android; text from the system IME is kept)";
+    readonly "ui.ime.softKeyboard.auto": {
+        readonly zh: "自动（触屏设备上露出；敲了实体键盘就让位）";
+        readonly en: "Auto (shown on touch devices; steps aside for a hardware keyboard)";
     };
-    readonly "ui.ime.softKeyboard.none": {
-        readonly zh: "不弹（Quest / 桌面默认；只用内置输入法）";
-        readonly en: "None (default on Quest / desktop; built-in IME only)";
+    readonly "ui.ime.softKeyboard.on": {
+        readonly zh: "总是露出";
+        readonly en: "Always shown";
     };
-    readonly "ui.ime.softKeyboard.ascii": {
-        readonly zh: "弹英文布局键盘（字母进内置输入法；iOS 上可能仍是你当前的键盘）";
-        readonly en: "Show a Latin-layout keyboard (letters go to the built-in IME; on iOS it may still be your current keyboard)";
+    readonly "ui.ime.softKeyboard.off": {
+        readonly zh: "不用（只用实体键盘）";
+        readonly en: "Off (hardware keyboard only)";
+    };
+    readonly "kb.space": {
+        readonly zh: "空格";
+        readonly en: "space";
+    };
+    readonly "kb.symbols": {
+        readonly zh: "123";
+        readonly en: "123";
+    };
+    readonly "kb.more": {
+        readonly zh: "#+=";
+        readonly en: "#+=";
+    };
+    readonly "kb.letters": {
+        readonly zh: "ABC";
+        readonly en: "ABC";
+    };
+    readonly "kb.enter": {
+        readonly zh: "换行 / 确定";
+        readonly en: "Return";
+    };
+    readonly "kb.shift": {
+        readonly zh: "上档";
+        readonly en: "Shift";
+    };
+    readonly "kb.hide": {
+        readonly zh: "收起键盘";
+        readonly en: "Hide keyboard";
+    };
+    readonly "kb.show": {
+        readonly zh: "软键盘";
+        readonly en: "On-screen keyboard";
+    };
+    readonly "kb.prevPage": {
+        readonly zh: "上一页候选";
+        readonly en: "Previous candidates";
+    };
+    readonly "kb.nextPage": {
+        readonly zh: "更多候选";
+        readonly en: "More candidates";
     };
     readonly "ui.ime.useSystem": {
         readonly zh: "改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）";

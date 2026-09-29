@@ -24,7 +24,9 @@ export interface TextField {
   setValue(v: string): void;
 }
 /** 这一击是不是输入法在组字（Enter = 上屏、Escape = 取消组字，都不是 app 的命令）。 */
-export const isCompositionKey = (e: KeyboardEvent): boolean => e.isComposing || e.keyCode === 229;
+// defaultPrevented 也算（v2.1.16）：内置输入法在 window 捕获阶段就把它要的键 preventDefault 了（src/input/pipeline.ts）——组字中的 Enter = 首选上屏、Esc = 取消组字，
+//   和系统输入法的 isComposing 是同一回事；以前只认系统输入法，内置输入法组字时在章节名框按 Enter 会同时「上屏」和「提交改名并跳回正文」。
+export const isCompositionKey = (e: KeyboardEvent): boolean => e.isComposing || e.keyCode === 229 || e.defaultPrevented;
 
 export function bindTextField(el: HTMLInputElement, opts: TextFieldOpts = {}): TextField {
   let composing = false;

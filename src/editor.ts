@@ -32,6 +32,9 @@ export interface EditorDeps {
   ensureFileUnlocked: (name: string) => Promise<boolean>;
   /** 切稿/新建/清空前（语音会话必须先中止——转写结果不能落进别的稿）。 */
   onBeforeLoad?: () => void;
+  /** 云端新版正在换掉本地这一篇（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待
+   *  （user 2026-09-29「wxhw 要不要快进的时候就 waiting，这样稳一点。写书本来就没有画画那么短平快」）。 */
+  onReplacing?: (on: boolean) => void;
 }
 
 const KV_LAST_OPEN = "last-open";
@@ -349,12 +352,13 @@ export function createEditor(d: EditorDeps) {
     if (localTimer || renameInFlight || pushPending || persistInFlight || worldReplaced) return;
     refreshInFlight = true;
     const gen = loadGen;
+    let froze = false;
     try {
       // 库只认得已经落盘的脏；还停在编辑器里的字由 localDirty 告诉它（查云端那一下网络往返里用户可能刚好开始打字）。
       // 一旦库决定替换（onReplaceStart，同步回调）：冻结输入直到新版载入——下载途中打进去的字会被整篇覆盖且不进备份箱（2026-09-29 端到端测试复现）。
       const r = await pullDocIfClean(name, {
         localDirty: () => !!localTimer || !!persistInFlight || pushPending || d.editor.value !== savedText,
-        onReplaceStart: () => { replacing = true; applyGuards(); d.setStatus(t("st.replacingFromCloud")); },
+        onReplaceStart: () => { froze = true; replacing = true; applyGuards(); d.onReplacing?.(true); },
       });
       if (gen !== loadGen) return;
       if (r.status === "fast-forwarded") {
@@ -364,7 +368,7 @@ export function createEditor(d: EditorDeps) {
         d.setStatus(t("st.cloudGone"), { error: true });
       }
     } catch (e) { reportError(e, "log"); }
-    finally { refreshInFlight = false; if (replacing) { replacing = false; applyGuards(); } }
+    finally { refreshInFlight = false; if (froze) { replacing = false; applyGuards(); d.onReplacing?.(false); } }   // 重载（open）已把 replacing 归零；没换成（ff-failed）时这里解冻
   }
 
   // ── 只读保护（per-device）──

@@ -10,6 +10,8 @@ export type ProjectHome = {
     home: LocalHome;
 };
 export interface ProjectModeDeps {
+    /** 云端新版正在换掉本地这一本（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待（user 2026-09-29「快进的时候就 waiting，这样稳一点」）。 */
+    onReplacing?: (on: boolean) => void;
     editorEl: HTMLTextAreaElement;
     /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
     titleEl: HTMLInputElement;

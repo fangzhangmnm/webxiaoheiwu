@@ -47,10 +47,8 @@ def text_path(text, box, font='cjk'):
 
 # (id, 文字, 盒, 语义 note)
 SPECS = [
-    # WebXiaoHeiWu 2026-09-03（登记见 ../20260708 SVG Icons/TODO.md 待画）：库里没有 → 字形顶位。
-    ("microphone", "麦", (3, 3, 18, 18), "编辑区浮动「语音输入」钮（stopgap 字形；待话筒真图）"),
-    # 2026-09-04：语音模式退格钮（登记见 TODO.md）
-    ("backspace", "退", (3, 3, 18, 18), "语音模式浮动「退格」钮（stopgap 字形；待退格键真图）"),
+    # 2026-09-29（Claude Fable 5.1）：microphone / backspace 两枚真图标已从图标库收货（PENDING，待过目），stopgap 清零。
+    # 新缺口照旧在这里加一行 (id, 字, (x, y, w, h), 说明) 再重烤，并去图标库 TODO.md 登记。
 ]
 syms = []
 for sid, text, box, note in SPECS:

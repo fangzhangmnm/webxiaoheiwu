@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  40 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  46 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
@@ -61,6 +61,8 @@
   <symbol id="chevron-left" data-cat="common" data-src="own" data-note="‹ 小尺寸优化裸 chevron:描边 2.4、臂短(14px chip 用)；库里带杆的 back 是另一语义【WeebPaint 参考窗多图时窗底翻页 chip；fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 6 9 12 14.5 18" stroke-width="2.4"/></symbol>
   <!-- chevron-right — › chevron-left 的精确镜像【WeebPaint 参考窗翻页 chip；fable 自画未过目】 -->
   <symbol id="chevron-right" data-cat="common" data-src="own" data-note="› chevron-left 的精确镜像【WeebPaint 参考窗翻页 chip；fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="9.5 6 15 12 9.5 18" stroke-width="2.4"/></symbol>
+  <!-- chevron-down — 下移:竖线 + 底端 ∨ 箭头 -->
+  <symbol id="chevron-down" data-cat="common" data-src="own" data-note="下移:竖线 + 底端 ∨ 箭头" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/> <polyline points="6 13 12 19 18 13"/></symbol>
   <!-- cloud -->
   <!-- refresh — 刷新:顺时针 3/4 圆 + 箭头(从 12 点绕到 9 点, 箭头尖在右上) -->
   <symbol id="refresh" data-cat="cloud" data-src="own" data-note="刷新:顺时针 3/4 圆 + 箭头(从 12 点绕到 9 点, 箭头尖在右上)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><!-- 顺时针 3/4 圆 + 箭头：从 12 点出发顺时针绕到 9 点；箭头尖在右上 --> <path d="M21 12a9 9 0 1 1-3.5-7.1"/> <polyline points="21 4 21 9 16 9"/></symbol>
@@ -91,4 +93,14 @@
   <!-- more — 溢出菜单:横向三点(原 ⋯ 字符跨平台字形不一) -->
   <symbol id="more" data-cat="ui" data-src="own" data-note="溢出菜单:横向三点(原 ⋯ 字符跨平台字形不一)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
   <symbol id="database" data-cat="ui" data-src="own" data-note="" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+  <!-- microphone — 话筒:胶囊头 + 支架弧 + 底座；录音态由 app CSS 变色【WebXiaoHeiWu 编辑区浮动「语音输入」钮；fable 自画未过目】 -->
+  <symbol id="microphone" data-cat="ui" data-src="own" data-note="话筒:胶囊头 + 支架弧 + 底座；录音态由 app CSS 变色【WebXiaoHeiWu 编辑区浮动「语音输入」钮；fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11.5 a6 6 0 0 0 12 0"/><path d="M12 17.5 V21"/><path d="M9 21 H15"/></symbol>
+  <!-- backspace — 退格 ⌫:左尖五边形 + 内部 ×【WebXiaoHeiWu 话筒左邻浮动「退格」钮；fable 自画未过目】 -->
+  <symbol id="backspace" data-cat="ui" data-src="own" data-note="退格 ⌫:左尖五边形 + 内部 ×【WebXiaoHeiWu 话筒左邻浮动「退格」钮；fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5 H19.5 a1.5 1.5 0 0 1 1.5 1.5 v11 a1.5 1.5 0 0 1 -1.5 1.5 H9 L3 12 Z"/><path d="M11.5 9.5 L17 14.5 M17 9.5 L11.5 14.5"/></symbol>
+  <!-- key-shift — 上档键 ⇧:空心上箭头(屋顶形箭头+方柄,一笔闭合)；大写锁定态由 app 侧 CSS 填实【WebXiaoHeiWu app 内软键盘字母层左下「上档」键帽；2026-09-29 fable 自画未过目】 -->
+  <symbol id="key-shift" data-cat="ui" data-src="own" data-note="上档键 ⇧:空心上箭头(屋顶形箭头+方柄,一笔闭合)；大写锁定态由 app 侧 CSS 填实【WebXiaoHeiWu app 内软键盘字母层左下「上档」键帽；2026-09-29 fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6 L20.2 12.2 H15.6 V19.6 H8.4 V12.2 H3.8 Z"/></symbol>
+  <!-- key-enter — 回车键 ⏎:右上竖线下行、圆角左拐、左端箭头(与 back 同款箭头臂)【WebXiaoHeiWu app 内软键盘右下「换行 / 确定」键帽；2026-09-29 fable 自画未过目】 -->
+  <symbol id="key-enter" data-cat="ui" data-src="own" data-note="回车键 ⏎:右上竖线下行、圆角左拐、左端箭头(与 back 同款箭头臂)【WebXiaoHeiWu app 内软键盘右下「换行 / 确定」键帽；2026-09-29 fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 5 V11.5 a2.5 2.5 0 0 1 -2.5 2.5 H5"/><polyline points="9.5 9.5 5 14 9.5 18.5"/></symbol>
+  <!-- keyboard — 键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义) -->
+  <symbol id="keyboard" data-cat="ui" data-src="own" data-note="键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="7.2" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="10.4" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="13.6" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="16.8" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="7.2" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="10.4" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="13.6" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="16.8" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><path d="M8.6 15.6 H15.4"/></symbol>
 </svg>

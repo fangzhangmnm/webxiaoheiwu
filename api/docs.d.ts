@@ -22,7 +22,13 @@ export interface DocListFrame {
     stale: boolean;
 }
 export declare function readProjectBlob(name: string): Promise<Blob | null>;
-export declare function pullProjectIfClean(name: string): Promise<FreshResult>;
+/** 干净快进的可选项：localDirty = 还停在编辑器里没落盘的改动（库只认得已落盘的脏）；onReplaceStart = 库决定替换的那一刻（同步），调用方冻结输入。 */
+export interface PullIfCleanOpts {
+    localDirty?: () => boolean;
+    onReplaceStart?: () => void;
+    probe?: Promise<unknown>;
+}
+export declare function pullProjectIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult>;
 /** 本地字节是不是加密容器（两档：txt 走 RawFile、工程走 ZipFile）。 */
 export declare function isDocEncrypted(name: string): Promise<boolean>;
 export declare function saveProjectBlob(name: string, blob: Blob, opts: {
@@ -73,10 +79,7 @@ export declare function renameDoc(name: string, newTitle: string): Promise<Renam
 export declare function moveDoc(name: string, toDir: string): Promise<RenameResult | null>;
 export declare function trashDoc(name: string): Promise<DelResult>;
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
-export declare function pullDocIfClean(name: string, opts?: {
-    onReplaceStart?: () => void;
-    probe?: Promise<unknown>;
-}): Promise<FreshResult>;
+export declare function pullDocIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult>;
 export declare function setActiveDoc(name: string | null): void;
 export declare function encryptDoc(name: string): Promise<{
     status: string;

@@ -16,6 +16,9 @@ export interface EditorDeps {
     ensureFileUnlocked: (name: string) => Promise<boolean>;
     /** 切稿/新建/清空前（语音会话必须先中止——转写结果不能落进别的稿）。 */
     onBeforeLoad?: () => void;
+    /** 云端新版正在换掉本地这一篇（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待
+     *  （user 2026-09-29「wxhw 要不要快进的时候就 waiting，这样稳一点。写书本来就没有画画那么短平快」）。 */
+    onReplacing?: (on: boolean) => void;
 }
 export interface EditorState {
     name: string | null;

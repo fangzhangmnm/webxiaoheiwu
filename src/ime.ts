@@ -19,12 +19,12 @@ export const isImeSchema = (v: unknown): v is ImeSchema => (IME_SCHEMAS as reado
 const PUNCTUATION_KEYS = new Set([",", ".", ";", ":", "?", "!", '"', "'", "(", ")", "<", ">", "{", "}", "[", "]", "\\", "~", "@", "#", "$", "&", "*", "|"]);
 
 export type ImeResult = { type: "passthrough" | "composing" | "clear" | "toggle" } | { type: "commit"; text: string; consumedBuffer: string };
-export interface ImeState { enabled: boolean; asciiMode: boolean; buffer: string; candidates: string[]; engine: string; initializeError: string | null }
+export interface ImeState { enabled: boolean; asciiMode: boolean; buffer: string; candidates: string[]; engine: string; initializeError: string | null; /** 候选翻到第几页（0 起）；hasMore = 后面还有。软键盘候选条的「更多」用。 */ page: number; hasMore: boolean }
 
 interface Backend {
   engine: string;
   readonly busy?: boolean;
-  getState(): { buffer: string; candidates: string[]; engine: string };
+  getState(): { buffer: string; candidates: string[]; engine: string; page?: number; hasMore?: boolean };
   resetState(): void;
   typeLetter(letter: string): Promise<ImeResult>;
   typePunctuation(key: string): Promise<ImeResult>;
@@ -80,6 +80,8 @@ class RimeWorkerBackend implements Backend {
   queue: Promise<unknown> = Promise.resolve();
   buffer = "";
   candidates: string[] = [];
+  page = 0;
+  hasMore = false;
 
   async initialize(schema: ImeSchema): Promise<void> {
     this.worker = new Worker(RIME_WORKER_URL);
@@ -98,8 +100,8 @@ class RimeWorkerBackend implements Backend {
     return this.enqueue(async () => { await this.call("setIME", schema); await this.applyOptions(); this.resetState(); });
   }
   setSimplified(v: boolean): Promise<void> { this.simplified = v; return this.enqueue(() => this.applyOptions()); }
-  getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine }; }
-  resetState() { this.buffer = ""; this.candidates = []; }
+  getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine, page: this.page, hasMore: this.hasMore }; }
+  resetState() { this.buffer = ""; this.candidates = []; this.page = 0; this.hasMore = false; }
   private pending = 0;
   get busy(): boolean { return this.pending > 0; }   // 任务在飞：首字回包前空格/退格/数字要排在它后面，不能按「缓冲为空」直通
   enqueue<T>(task: () => Promise<T>): Promise<T> {
@@ -138,6 +140,8 @@ class RimeWorkerBackend implements Backend {
     if (result.state === 1) {
       this.buffer = result.body ?? "";
       this.candidates = Array.isArray(result.candidates) ? result.candidates.map((c: { text?: string }) => c.text ?? "") : [];
+      this.page = typeof result.page === "number" ? result.page : 0;
+      this.hasMore = result.isLastPage === false;
       return { type: "composing" };
     }
     this.resetState(); return { type: "clear" };
@@ -240,8 +244,15 @@ export class NaturalCodeIME {
   }
   getState(): ImeState {
     const s = this.backend.getState();
-    return { enabled: this.enabled, asciiMode: this.asciiMode, buffer: s.buffer, candidates: s.candidates, engine: s.engine, initializeError: this.initializeError };
+    return { enabled: this.enabled, asciiMode: this.asciiMode, buffer: s.buffer, candidates: s.candidates, engine: s.engine, initializeError: this.initializeError, page: s.page ?? 0, hasMore: !!s.hasMore };
   }
+  // ── 不经按键的动词（软键盘 / 候选条点选；src/input/pipeline.ts 用）──
+  /** 首选上屏（同空格）；没在组字 → passthrough。 */
+  async commitFirst(): Promise<ImeResult> { if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.commitDefault(false); }
+  /** 点第 index 个候选（当前页内，0 起）。 */
+  async choose(index: number): Promise<ImeResult> { if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.chooseCandidate(index); }
+  /** 候选翻页。 */
+  async turnPage(prev: boolean): Promise<ImeResult> { if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.changePage(prev); }
   isComposing(): boolean { return this.enabled && !this.asciiMode && (this.backend.getState().buffer.length > 0 || !!this.backend.busy); }
   resetComposition(): void { this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
   async dumpUserDir(): Promise<UserDictDump | null> { if (!this.backend.dumpUserDir) return null; try { return await this.backend.dumpUserDir(); } catch (e) { console.warn("[ime] dumpUserDir failed", e); return null; } }

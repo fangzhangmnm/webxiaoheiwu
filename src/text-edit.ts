@@ -15,6 +15,10 @@ export function replaceRange(el: HTMLTextAreaElement | HTMLInputElement, start: 
   start = Math.max(0, Math.min(start, len)); end = Math.max(start, Math.min(end, len));
   if (start === end && !text) return;
   const expected = el.value.slice(0, start) + text + el.value.slice(end);
+  // input 事件一定有（2026-09-29）：execCommand 自己会发；回退的 setRangeText 不发 → 这里补一个。以前靠每个调用方事后各自「记一笔」，
+  //   漏一处就是一条不落盘 / 不重排版的路——现在落字的人只管落字，监听 input 的（落盘节律、嵌入态高度、章节名框）自然都收到。
+  let sawInput = false; const onInput = (): void => { sawInput = true; };
+  el.addEventListener("input", onInput);
   programmatic++;
   try {
     let ok = false;
@@ -24,6 +28,7 @@ export function replaceRange(el: HTMLTextAreaElement | HTMLInputElement, start: 
       if (ok && el.value !== expected) { el.value = expected; }   // 浏览器改成了别的（极少见）：确定性兜底，宁丢 undo 不丢字
     }
     if (!ok) el.setRangeText(text, start, end, "end");
-  } finally { programmatic--; }
-  try { el.selectionStart = el.selectionEnd = start + text.length; } catch { /* ignore */ }
+    try { el.selectionStart = el.selectionEnd = start + text.length; } catch { /* ignore */ }
+    if (!sawInput) el.dispatchEvent(new Event("input", { bubbles: true }));
+  } finally { programmatic--; el.removeEventListener("input", onInput); }
 }

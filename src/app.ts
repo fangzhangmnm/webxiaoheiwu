@@ -41,7 +41,9 @@ import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
 import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
 import { setQuoteStyle } from "./zh-punct.ts";
-import { replaceRange, isProgrammaticEdit } from "./text-edit.ts";
+import { createInputPipeline } from "./input/pipeline.ts";
+import { createImeDock } from "./input/dock.ts";
+import { asTextField, type TextField } from "./input/field.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -117,20 +119,27 @@ console.log("[xhw] build:", APP_VERSION);
 $("settingsBuild").textContent = APP_VERSION;
 
 const editorEl = $<HTMLTextAreaElement>("editor");
-// 内置 IME 开着时全平台 inputmode=none：不弹系统软键盘、系统输入法不碰字节（2026-09-03 user「直接不用系统输入法」；Quest 一直如此，见 20260524-quest-ime.md）。
-// 触屏键盘（per-device）：none = 不弹（Quest/桌面实体键盘）；ascii = inputmode="email" → 弹系统键盘、字母仍进内置 IME
-//   （user 2026-09-03「不改用系统输入法只是出软键盘行吗」）。⚠ iOS 实测（user 2026-09-04）：inputmode 只改布局不改语言，
-//   弹出的仍是用户当前的中文键盘——iOS 上唯一能强制英文键盘的是密码框（secure text entry），那是「输入代理」一整刀，待拍板。软键盘不一定发 keydown（Android 发 229/Unidentified）→ beforeinput 路由见 setupImeOn。
-type SoftKeyboard = "none" | "ascii" | "system";
-const COARSE_POINTER = matchMedia("(hover: none) and (pointer: coarse)").matches;
-// 默认：Quest / 桌面 = 不弹（inputmode=none）；iOS / 安卓等触屏 = 弹系统键盘（不设 inputmode；user 2026-09-10「ios 不弹输入法键盘」+「支持系统输入法就行」）
-const softKeyboardDefault = (): SoftKeyboard => (IS_QUEST_BROWSER ? "none" : COARSE_POINTER ? "system" : "none");
-const softKeyboardPref = (): SoftKeyboard => { const v = deviceKvGet("softKeyboard"); return v === "ascii" || v === "system" || v === "none" ? v : softKeyboardDefault(); };
-function applyInputMode(builtinIme: boolean): void {
+// 系统软键盘全量禁用（user 2026-09-29「加软键盘，以后不用触屏手机的自带键盘了。全量禁用」）：内置输入法开着时，**所有**文本框 inputmode=none——
+//   系统键盘不弹、系统输入法不碰字节；触屏设备改由 app 内软键盘打字（src/input/）。唯一还会弹系统键盘的路 = 设置里的逃生开关「改用系统输入法」。
+// 软键盘露不露（per-device，device-kv `softKeyboard`）：auto（默认）= 触屏为主的设备上文本框一聚焦就露，见到实体键盘敲键就让位；
+//   on = 总是露（Quest 纯手柄 / 触屏笔记本想用时）；off = 不用。旧值 none → off；旧值 system / ascii（弹系统键盘）已无此路 → auto。
+type SoftKeyboardPref = "auto" | "on" | "off";
+const TOUCH_PRIMARY = matchMedia("(hover: none) and (pointer: coarse)").matches && !IS_QUEST_BROWSER;   // Quest 默认当「有实体键盘」（一直如此）：软键盘靠钮召出来
+const softKeyboardPref = (): SoftKeyboardPref => { const v = deviceKvGet("softKeyboard"); return v === "on" ? "on" : v === "off" || v === "none" ? "off" : "auto"; };
+// 软键盘收起的原因（运行时）：user = 按了「收起」→ 再点文本框就回来；hardware = 见过实体键盘敲键 → 点文本框不回来（iPad 接着键盘时点一下挪光标不该弹键盘），
+//   要用得按纸面左下角的键盘钮。hardware 跨启动记着（device-kv `softKeyboardHidden`）；summoned = 非触屏设备（Quest / 桌面）用钮召出来的。
+let kbHiddenBy: "user" | "hardware" | null = deviceKvGet("softKeyboardHidden") === "hw" ? "hardware" : null;
+let kbSummoned = false;
+function keyboardWanted(): boolean {
   const pref = softKeyboardPref();
-  const mode = builtinIme ? (pref === "ascii" ? "email" : pref === "none" ? "none" : null) : null;
-  if (mode) editorEl.setAttribute("inputmode", mode); else editorEl.removeAttribute("inputmode");
+  if (pref === "off") return false;
+  if (pref === "on") return kbHiddenBy !== "user";
+  return TOUCH_PRIMARY ? kbHiddenBy == null : kbSummoned;
 }
+function applyInputModeTo(el: TextField): void { if (ime.enabled) el.setAttribute("inputmode", "none"); else el.removeAttribute("inputmode"); }
+function applyInputModeAll(): void { for (const n of document.querySelectorAll("textarea, input")) { const f = asTextField(n); if (f) applyInputModeTo(f); } }
+document.addEventListener("pointerdown", (e) => { const f = asTextField(e.target); if (f) applyInputModeTo(f); }, true);   // 后来才生出来的框：赶在聚焦之前
+document.addEventListener("focusin", (e) => { const f = asTextField(e.target); if (f) applyInputModeTo(f); }, true);
 if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset，纸面整体缩到键盘上方（styles .page height）；iOS 若把视口顶上去，拉回 0 让固定顶栏别被推出屏
   const vv = window.visualViewport;
   const upd = () => {
@@ -163,6 +172,13 @@ const labelsForUnlock = () => ({
 
 // ── 编辑器 / 抽屉 ──
 const ime = new NaturalCodeIME();
+// 快进等待（user 2026-09-29「wxhw 要不要快进的时候就 waiting，这样稳一点。写书本来就没有画画那么短平快」）：云端新版开始换掉本地的那一刻升整屏等待，
+//   新版载入完（或没换成）才收。每分钟例行的「查一下云端」不升——只有真要换的时候才等。
+let replacingDone: (() => void) | null = null;
+function setReplacing(on: boolean): void {
+  if (on) { if (!replacingDone) void withBusy(t("st.replacingFromCloud"), () => new Promise<void>((res) => { replacingDone = res; })); }
+  else { const done = replacingDone; replacingDone = null; done?.(); }
+}
 const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
   { title: t("fp.title"), hint: t("fp.hint", { name: parseDocName(name).title }), wrong: t("pw.wrong"), ok: t("pw.unlock") },
   (pw) => verifyDocPassword(name, pw));
@@ -172,6 +188,7 @@ const editor = createEditor({
   onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
+  onReplacing: (on) => setReplacing(on),
 });
 let voiceAbortHook: (() => void) | null = null;
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
@@ -182,6 +199,7 @@ const project = createProjectMode({
   isSignedIn: () => auth.isSignedIn(),
   onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
+  onReplacing: (on) => setReplacing(on),
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
 });
@@ -733,10 +751,9 @@ function deviceLabel(): string {
   return "PC";
 }
 
-// ── IME 接线 ──
+// ── 输入法接线（输入管线 / 软键盘 / 候选 = src/input/；这里只有 app 的策略）──
 const imeStatus = $("imeStatus");
-const candidateBar = $("candidateBar");
-let shiftCleanPress = false;
+const kbToggle = $<HTMLButtonElement>("kbToggle");
 // 方案跟人走（synced prefs：肌肉记忆换设备不该变）；逃生开关跟设备走（device-kv：取决于这台机器有没有实体键盘）。user 2026-09-03 问「持久化跟谁走」→ 此定。
 const imeSchemaPref = (): ImeSchema => { const v = prefs.getItem<string>("imeSchema"); return isImeSchema(v) ? v : DEFAULT_SCHEMA; };
 const SCHEMA_NAME_KEY = { luna_pinyin: "ime.schema.luna", luna_pinyin_fluency: "ime.schema.fluency", double_pinyin_mspy: "ime.schema.mspy", double_pinyin: "ime.schema.ziranma", double_pinyin_flypy: "ime.schema.flypy", double_pinyin_abc: "ime.schema.abc", double_pinyin_pyjj: "ime.schema.pyjj", wubi86: "ime.schema.wubi" } as const;
@@ -744,146 +761,64 @@ const schemaName = (s: ImeSchema) => t(SCHEMA_NAME_KEY[s]);
 const imeSimplifiedPref = (): boolean => prefs.getItem<boolean>("imeSimplified") !== false;   // 简/繁跟人走（synced prefs）；缺省简体
 const quoteStylePref = (): "curly" | "corner" => (prefs.getItem<string>("quoteStyle") === "corner" ? "corner" : "curly");   // 引号样式跟人走
 function applyQuoteStyle(v: "curly" | "corner"): void { ime.quoteStyle = v; setQuoteStyle(v); }
+let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
+const input = createInputPipeline({
+  ime,
+  canEdit: (el) => (el === editorEl ? canEditNow() : true),
+  onActivity: () => idlePoke(),
+  onCommit: () => { void maybePushUserDict(); },
+  onChange: () => renderImeState(),
+  onKeydown: (el, e) => {
+    if (voiceMode && el === editorEl && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key === "Backspace" || e.key === "Enter")) { voiceMode = false; renderMicVisibility(); }   // 敲了实体键 = 不是纯口述
+    if (!e.isTrusted || softKeyboardPref() !== "auto") return;   // 只有真的实体键盘才让软键盘让位（探针 / 合成事件不算）
+    if (TOUCH_PRIMARY) { if (kbHiddenBy !== "hardware") { kbHiddenBy = "hardware"; deviceKvSet("softKeyboardHidden", "hw"); renderImeState(); } }   // 实体键盘在：软键盘让位，候选回到 PC 式悬浮
+    else if (kbSummoned) { kbSummoned = false; renderImeState(); }
+  },
+});
+const imeDock = createImeDock({
+  ime, pipeline: input, dock: $("imeDock"), floating: $("candidateBar"),
+  labels: { space: t("kb.space"), symbols: t("kb.symbols"), letters: t("kb.letters"), more: t("kb.more"), zh: t("ime.modeZh"), en: t("ime.modeEn"), enter: t("kb.enter"), backspace: t("ui.voiceBackspace"), shift: t("kb.shift"), hide: t("kb.hide"), prevPage: t("kb.prevPage"), nextPage: t("kb.nextPage") },
+  keyboardWanted,
+  onHideRequest: () => { kbHiddenBy = "user"; kbSummoned = false; },
+  onLayout: () => {
+    syncBodyHeight(); updateChildToc(); renderKbToggle();
+    const f = input.focused(); if (f && f !== editorEl && f.closest(".crypto-modal")) f.scrollIntoView({ block: "nearest" });   // sheet 里的框：键盘露出来之后别被它挡住
+  },
+});
+// 触屏点文本框：按「收起」收掉的键盘回来（实体键盘让位的不回来，见 kbHiddenBy）
+document.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse" && kbHiddenBy === "user" && asTextField(e.target)) { kbHiddenBy = null; setTimeout(renderImeState, 0); } }, true);
+/** 纸面左下角的键盘钮：软键盘没露着、而这台设备可能用得上（触屏为主 / Quest）时才在。点 = 召出软键盘并把焦点放回文本框。 */
+function renderKbToggle(): void {
+  const usable = ime.enabled && softKeyboardPref() !== "off" && (TOUCH_PRIMARY || IS_QUEST_BROWSER) && !imeDock.keyboardShown();
+  kbToggle.hidden = !usable || micButton.hidden;   // 纸面上没法打字的时候（锁着 / 图片页 / 没有稿）话筒不在，键盘钮也不在
+}
+kbToggle.addEventListener("mousedown", (e) => e.preventDefault());
+kbToggle.addEventListener("click", () => {
+  kbHiddenBy = null; kbSummoned = true; deviceKvSet("softKeyboardHidden", null);
+  if (!input.target()) editorEl.focus();
+  renderImeState();
+});
 function renderImeState(): void {
   const s = ime.getState();
   // zen：顶栏只剩「中/英」一字（方案名进 title 悬停 + 设置页；系统输入法时整个不显示）。点它 = 切中/英（同 Shift）；改用系统输入法只在设置页。
   imeStatus.textContent = !s.enabled ? "" : s.asciiMode ? t("ime.modeEn") : t("ime.modeZh");
   imeStatus.title = s.enabled ? `${s.engine === "rime" ? schemaName(ime.schema) : t("ime.nameFallback")} · ${t("ime.clickToToggle")}` : "";
-  applyInputMode(s.enabled);
-  // 输入法附件（候选条；将来的软键盘同一条规则）**跟着焦点所在的文本框走**：只有绑了内置输入法的文本框（data-ime）聚焦、且不是密码框时才显示。
-  //   层级 --z-ime 在 sheet / 锁屏之上是对的——锁屏之上允许有 sheet、sheet 里有输入框，候选条得在它上面；锁屏时候选条消失靠的是 idle-gate 失焦，不是锁屏本身
-  //   （v2.1.14，user 2026-09-26「你弄反了，锁屏的时候也可能有文本框的。未来的软键盘也需要这么处理」）。组字状态不动：焦点回来候选原样回来。
-  const a = document.activeElement;
-  const fieldFocused = a instanceof HTMLElement && a.dataset.ime === "1" && !isMaskedInput(a as HTMLTextAreaElement | HTMLInputElement);
-  if (!s.enabled || !s.buffer || !fieldFocused) { candidateBar.classList.add("hidden"); candidateBar.innerHTML = ""; return; }
-  candidateBar.classList.remove("hidden");
-  const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
-  candidateBar.innerHTML = `<span class="buffer-chip">${esc(s.buffer)}</span>` + s.candidates.slice(0, 9).map((w, i) => `<span class="candidate-chip"><span class="index">${i + 1}</span>${esc(w)}</span>`).join("");
+  imeDock.keyboard.setExtraLetters(ime.schema === "double_pinyin_mspy" ? [";"] : []);   // 微软双拼把 ; 当韵母键
+  imeDock.render();
+  renderKbToggle();
 }
-// 候选条触屏可点（v2.1.13，user 2026-09-26「ios 触屏没法点输入法候选」「ipad mini 上字太小」）：候选一直只有数字键 / 空格能选，触屏从没接过——
-//   点第 i 个 = 当数字键 i 喂 IME（同一条提交路，用户词频照学）；点拼音芯片 = 首选上屏（同空格）。pointerdown 里 preventDefault：别把焦点从正在打字的框抢走
-//   （软键盘一收、组字就散）；目标 = activeElement 那个框，不是文本框就退回主编辑区。字号 / 触控高度在 styles.css `@media (pointer: coarse)`。
-const imeTargetEl = (): HTMLTextAreaElement | HTMLInputElement => { const a = document.activeElement; return a instanceof HTMLTextAreaElement || a instanceof HTMLInputElement ? a : editorEl; };
-candidateBar.addEventListener("mousedown", (e) => e.preventDefault());   // 桌面：别抢焦点
-candidateBar.addEventListener("pointerdown", (e) => {
-  const chip = (e.target as HTMLElement).closest<HTMLElement>(".candidate-chip, .buffer-chip");
-  if (!chip) return;
-  e.preventDefault();
-  const chips = [...candidateBar.querySelectorAll<HTMLElement>(".candidate-chip")];
-  const i = chip.classList.contains("buffer-chip") ? -1 : chips.indexOf(chip);
-  routeSyntheticKey(imeTargetEl(), i < 0 ? " " : String(i + 1));
-});
 async function setImeEnabled(on: boolean): Promise<void> {
   if (on) {
     if (!ime.initialized) { imeStatus.textContent = t("ime.loading"); ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
     ime.enabled = true;
   } else { ime.enabled = false; ime.resetComposition(); }
   deviceKvSet("imeEnabled", ime.enabled ? "1" : "0");   // 默认开：键缺省 = 开；"0" = 逃生开关「用系统输入法」
+  applyInputModeAll();
   renderImeState();
 }
 async function toggleIme(): Promise<void> { await setImeEnabled(!ime.enabled); }
 imeStatus.addEventListener("mousedown", (e) => e.preventDefault());   // 别抢编辑器焦点
-imeStatus.addEventListener("click", () => {
-  void ime.toggleAsciiMode().then((r) => {
-    if (r.type === "commit") { commitText(editorEl, r.consumedBuffer, r.text); noteExternalEditAny(); }
-    renderImeState();
-  });
-});
-
-/** IME 提交落字：幽灵拼音（软键盘 / 系统组字残留的裸字母）一并替换；走 text-edit 保 undo 栈。 */
-function commitText(target: HTMLTextAreaElement | HTMLInputElement, consumedBuffer: string, text: string): void {
-  let start = target.selectionStart ?? target.value.length; const end = target.selectionEnd ?? start;
-  if (consumedBuffer && start === end && start >= consumedBuffer.length && target.value.slice(start - consumedBuffer.length, start) === consumedBuffer) start -= consumedBuffer.length;
-  replaceRange(target, start, end, text);
-}
-let lastRealKeydownAt = 0;   // 软键盘路由判据：80ms 内见过真 keydown（key 可辨）= 实体键盘路径已处理，beforeinput 不再重复路由
-async function imeKeydown(el: HTMLTextAreaElement | HTMLInputElement, event: KeyboardEvent): Promise<void> {
-  if (isMaskedInput(el)) return;   // 密码框（-webkit-text-security 打码）不走内置输入法：密码是 ASCII，拼音组字会把它吃掉
-  if (event.key !== "Unidentified" && event.key !== "Process") lastRealKeydownAt = Date.now();
-  if (event.key === "Shift") {
-    if (!event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && ime.enabled) shiftCleanPress = true;
-    return;
-  }
-  shiftCleanPress = false;
-  if (voiceMode && el === editorEl && !event.ctrlKey && !event.metaKey && !event.altKey && (event.key.length === 1 || event.key === "Backspace" || event.key === "Enter")) { voiceMode = false; renderMicVisibility(); }   // 敲了实体键 = 不是纯口述
-  if (!canEditNow()) return;
-  const r = await ime.onKeydown(event);
-  if (r.type === "commit") {
-    commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
-    if (el === editorEl) noteExternalEditAny(); else el.dispatchEvent(new Event("input"));
-    void maybePushUserDict();
-  }
-  renderImeState();
-}
-/** 合成按键喂 IME（软键盘 beforeinput / 语音模式退格钮）：IME 拦了返回 true（提交由这里落字），放行返回 false。 */
-const isMaskedInput = (el: HTMLElement) => el instanceof HTMLInputElement && !!el.style.getPropertyValue("-webkit-text-security");
-function routeSyntheticKey(el: HTMLTextAreaElement | HTMLInputElement, key: string): boolean {
-  if (isMaskedInput(el)) return false;
-  const fake = new KeyboardEvent("keydown", { key, cancelable: true });
-  const pending = ime.onKeydown(fake);
-  if (!fake.defaultPrevented) return false;
-  void pending.then((r) => {
-    if (r.type === "commit") {
-      commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
-      if (el === editorEl) noteExternalEditAny(); else el.dispatchEvent(new Event("input"));
-      void maybePushUserDict();
-    }
-    renderImeState();
-  });
-  return true;
-}
-function setupImeOn(el: HTMLTextAreaElement | HTMLInputElement): void {
-  const node: HTMLElement = el;   // 联合类型上 addEventListener 的重载退化成 Event；收窄到 HTMLElement 拿回 KeyboardEvent
-  node.dataset.ime = "1";   // 候选条只跟这些框的焦点走（renderImeState）
-  node.addEventListener("keydown", (event: KeyboardEvent) => { void imeKeydown(el, event); });
-  node.addEventListener("keyup", async (event: KeyboardEvent) => {
-    if (event.key !== "Shift" || !shiftCleanPress) return;
-    shiftCleanPress = false;
-    const r = await ime.toggleAsciiMode();
-    if (r.type === "commit") {
-      commitText(el, r.consumedBuffer, el instanceof HTMLInputElement ? r.text.replace(/[\r\n]+/g, " ") : r.text);
-      if (el === editorEl) noteExternalEditAny(); else el.dispatchEvent(new Event("input"));
-    }
-    renderImeState();
-  });
-  node.addEventListener("blur", () => { shiftCleanPress = false; });
-  // 系统层组字（Quest/安卓把实体键盘的字母也过一遍系统输入法；桌面系统输入法在中文态）——**不再撤字**（撤字 = 「无法输入」，
-  //   user 2026-09-04 Quest 回归）：纯 ASCII 组字 = 系统替我们攒的拼音 → 结束时删掉系统留下的裸字母、逐字喂给内置 IME
-  //   （之后的空格/数字走 beforeinput 合成路径进 RIME：拼音+空格 = 首选）；含非 ASCII（系统输入法已出汉字）→ 原样保留 + 提示一次。
-  //   insertCompositionText 不可 preventDefault（PTT doc 血泪），只能事后处理。
-  node.addEventListener("compositionend", (event: Event) => {
-    if (!ime.enabled || isProgrammaticEdit()) return;
-    const data = (event as CompositionEvent).data ?? "";
-    if (!data) return;
-    if (!/^[a-zA-Z0-9;]+$/.test(data)) return;   // 系统输入法出了汉字：照收、不提示（user 2026-09-10「使用系统输入法时不要弹窗 nudge，支持系统输入法就行」）
-    const end = el.selectionEnd ?? el.value.length, start = Math.max(0, end - data.length);
-    if (el.value.slice(start, end) !== data) return;
-    replaceRange(el, start, end, "");
-    for (const ch of data) routeSyntheticKey(el, ch.toLowerCase());
-  });
-  node.addEventListener("beforeinput", (event: Event) => {
-    const ie = event as InputEvent;
-    if (!ime.enabled || isProgrammaticEdit()) return;   // 自己 execCommand 落的字别再路由一遍
-    if (Date.now() - lastRealKeydownAt < 80) {   // 实体键盘：keydown 已路由；这里只挡组合中的裸字符
-      if (!ime.isComposing()) return;
-      if (ie.inputType !== "insertText" || !ie.data) return;
-      if (/^[a-z0-9 ]$/i.test(ie.data)) event.preventDefault();
-      return;
-    }
-    // 软键盘（无可辨 keydown）：把 insertText / 删除 / 换行翻成合成按键喂 IME；IME 决定拦不拦（preventDefault 在其第一个 await 前，同步生效）
-    let key: string | null = null;
-    if (ie.inputType === "insertText" && ie.data && ie.data.length === 1) key = ie.data;
-    else if (ie.inputType === "deleteContentBackward") key = "Backspace";
-    else if (ie.inputType === "insertLineBreak" || ie.inputType === "insertParagraph") key = "Enter";
-    if (!key) return;
-    if (routeSyntheticKey(el, key)) event.preventDefault();   // IME 放行 → 让浏览器正常插入
-  });
-}
-setupImeOn(editorEl);
-document.addEventListener("focusin", () => renderImeState());   // 焦点进了哪个框 → 候选条跟过去 / 进了非文本框 → 收起
-document.addEventListener("focusout", () => { setTimeout(renderImeState, 0); });   // focusout 时 activeElement 还没换，下一拍再看
-// 2.0（user 2026-09-10「别的文本框输入法没接」）：文件名/节点名 sheet、边栏检索与连边输入框也走内置输入法（Quest 没系统 IME）；密码态由 isMaskedInput 挡。
-for (const id of ["nodeTitle", "sheetInput", "sheetInput2", "edgeSearch"]) { const el = document.getElementById(id); if (el) setupImeOn(el as HTMLInputElement); }
+imeStatus.addEventListener("click", () => { void input.toggleMode(); });
 
 // RIME 用户词库 ↔ collection（事件驱动节流；idle/unload 无条件 flush）
 let lastDictPushAt = 0, dictPushInFlight = false;
@@ -909,10 +844,10 @@ rimeDict.onChange("dump", () => { void pullUserDict(); });
 //   按 Ctrl 只在状态栏提一句、绝不碰 getUserMedia（Ctrl+S 永远安静）。有包：第一次真用才弹麦克风权限。
 const micButton = $<HTMLButtonElement>("micButton");
 const voiceBackspaceButton = $<HTMLButtonElement>("voiceBackspaceButton");
-let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
 const voiceModel = (): ModelKey => modelKeyFrom(prefs.getItem<string>("voiceProvider"));   // 旧值 webspeech/groq/openai → 默认 SenseVoice
 const voiceSource = (): string => (deviceKvGet("voiceModelSource") || MODEL_SOURCE_DEFAULT).replace(/\/+$/, "");
 const onVoiceInsert = () => { noteExternalEditAny(); idle.poke(); if (!voiceMode) { voiceMode = true; renderMicVisibility(); } };
+function idlePoke(): void { idle.poke(); }   // 输入管线在 idle 之前创建：晚绑定
 const voiceErrorText = (error: unknown): string => {
   const raw = error instanceof Error ? error.message : String(error);
   if (raw === "pack-missing") return t("voice.pack.missing");
@@ -947,25 +882,20 @@ function renderMicVisibility(): void {
   micButton.classList.toggle("disabled", blocked);
   micButton.title = blocked ? t("voice.blockedReadOnly") : t("voice.mic");
   voiceBackspaceButton.hidden = absent || blocked || !voiceMode;
+  renderKbToggle();
 }
-/** 语音模式退格：删光标前一个字（整个 emoji 算一个）/ 选区；组字中则喂 IME。按住连删。 */
-function deleteBeforeCaret(): void {
-  if (!canEditNow()) return;
-  if (ime.isComposing()) { routeSyntheticKey(editorEl, "Backspace"); return; }
-  const s = editorEl.selectionStart, e = editorEl.selectionEnd;
-  if (s == null || e == null) return;
-  if (s !== e) replaceRange(editorEl, s, e, "");
-  else if (s > 0) { const n = /[\uDC00-\uDFFF]$/.test(editorEl.value.slice(0, s)) ? 2 : 1; replaceRange(editorEl, s - n, s, ""); }
-  else return;
-  localSession?.notifyExternalInput();
-  noteExternalEditAny();
+/** 语音模式退格：删光标前一个字（整个 emoji 算一个）/ 选区；组字中则删拼音。按住连删。走输入管线（同软键盘的退格键一条路）。 */
+function deleteBeforeCaret(): Promise<void> {
+  if (!canEditNow()) return Promise.resolve();
+  if (document.activeElement !== editorEl) editorEl.focus();
+  return input.press("Backspace").then(() => { localSession?.notifyExternalInput(); });
 }
 let bsRepeat: ReturnType<typeof setTimeout> | null = null;
 const stopBsRepeat = () => { if (bsRepeat) { clearTimeout(bsRepeat); bsRepeat = null; } };
 voiceBackspaceButton.addEventListener("pointerdown", (e) => {
   e.preventDefault();   // 别抢编辑器焦点
-  deleteBeforeCaret(); stopBsRepeat();
-  const tick = () => { deleteBeforeCaret(); bsRepeat = setTimeout(tick, 60); };
+  void deleteBeforeCaret(); stopBsRepeat();
+  const tick = () => { void deleteBeforeCaret(); bsRepeat = setTimeout(tick, 60); };
   bsRepeat = setTimeout(tick, 450);
 });
 for (const ev of ["pointerup", "pointercancel", "pointerleave"]) voiceBackspaceButton.addEventListener(ev, stopBsRepeat);
@@ -1253,7 +1183,12 @@ quoteStyleSelect.addEventListener("change", () => { const v = quoteStyleSelect.v
 prefs.onChange("quoteStyle", () => { applyQuoteStyle(quoteStylePref()); if (drawer.currentView() === "settings") renderImeSection(); });
 imeScriptSelect.addEventListener("change", () => { const v = imeScriptSelect.value === "simp"; prefs.setItem("imeSimplified", v); void ime.setSimplified(v); });
 prefs.onChange("imeSimplified", () => { void ime.setSimplified(imeSimplifiedPref()); if (drawer.currentView() === "settings") renderImeSection(); });
-softKeyboardSelect.addEventListener("change", () => { const v = softKeyboardSelect.value; deviceKvSet("softKeyboard", v === "ascii" || v === "system" || v === "none" ? (v === softKeyboardDefault() ? null : v) : null); applyInputMode(ime.enabled); });
+softKeyboardSelect.addEventListener("change", () => {
+  const v = softKeyboardSelect.value;
+  deviceKvSet("softKeyboard", v === "on" || v === "off" ? v : null);
+  kbHiddenBy = null; kbSummoned = false; deviceKvSet("softKeyboardHidden", null);   // 改了设置 = 从头算
+  renderImeState();
+});
 imeSchemaSelect.addEventListener("change", () => {
   const v = imeSchemaSelect.value; if (!isImeSchema(v)) return;
   prefs.setItem("imeSchema", v);
@@ -1378,7 +1313,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.key.length !== 1 && event.key !== "Backspace" && event.key !== "Enter") return;
   if (!recoverEditorFocus()) return;
-  void imeKeydown(editorEl, event);   // 这一击不丢：直接走编辑器的 IME 路径（放行键的默认动作会落进刚聚焦的编辑器）
+  void input.routeHardwareKey(editorEl, event);   // 这一击不丢：直接走编辑器的输入法路径（放行键的默认动作会落进刚聚焦的编辑器）
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") { void flushLocalAny().then(() => { if (auth.isSignedIn()) return pushNowAny(); }); void pushUserDict(); void flushCollections(); }
