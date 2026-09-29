@@ -2,7 +2,7 @@
 // created 2026-09-10 by Claude Fable 5.1。包出屏幕 + 动词 + 数据面；本文件只出：Vue 注入、DocHost（编辑器端口）、policy（两档扩展名、身份=全名、缩略图 = 书的 Thumbnails/thumbnail.png 尾读，2.1）、
 //   加密适配（crypto-state）、chrome 按钮（返回 / 新建 / 回收站 / 设置）。文案 = 包内 zh/en 默认（按 lang 切）。
 import { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } from "../vendor/vue/vue.esm-browser.prod.js";
-import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type VerbStore, type DataFaceStore, type Gallery } from "@internal/gallery";
+import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type VerbStore, type DataFaceStore, type Gallery, type GalleryView, type AsideKind, type AsideScope } from "@internal/gallery";
 import { requireStore, auth } from "./app-store.ts";
 import { appEncryption } from "./encryption.ts";
 import { THUMBNAIL_ENTRY } from "./project/format.ts";
@@ -143,9 +143,10 @@ export function initGalleryHost(d: GalleryHostDeps) {
     /** boot 用：上次是在书库里离开的（刷新 / 关标签 / SW 更新重载）。 */
     wasInGallery: () => deviceKvGet(KV_SCENE) === "gallery",
     refresh: () => gallery?.handle.refresh(),
-    setView: (v: "files" | "trash") => ensureMounted().handle.setView(v),
-    getView: () => gallery?.handle.getView() ?? "files",
-    emptyTrash: (scope: "local" | "cloud" | "both") => ensureMounted().handle.emptyTrash(scope),
+    setView: (v: GalleryView) => ensureMounted().handle.setView(v),
+    getView: (): GalleryView => gallery?.handle.getView() ?? "files",
+    /** 清空回收站 / 备份箱（各清各的；确认框和结果提示是图库包的）。 */
+    emptyAside: (kind: AsideKind, scope: AsideScope) => { const h = ensureMounted().handle; if (kind === "trash") h.emptyTrash(scope); else h.emptyBackup(scope); },
     currentFolder: () => gallery?.handle.getFolder() ?? (deviceKvGet(KV_FOLDER) ?? ""),
     invalidateEncrypted: (name: string) => gallery?.handle.invalidateEncrypted(name),
     /** 封面变了（设为封面 / 替换图片）：丢掉这本书的缩略图缓存，下次露面重取。 */

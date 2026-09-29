@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-46 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+47 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -91,3 +91,4 @@
 | `key-shift` 👁待过目 | 上档键 ⇧:空心上箭头(屋顶形箭头+方柄,一笔闭合)；大写锁定态由 app 侧 CSS 填实【WebXiaoHeiWu app 内软键盘字母层左下「上档」键帽；2026-09-29 fable 自画未过目】 |
 | `key-enter` 👁待过目 | 回车键 ⏎:右上竖线下行、圆角左拐、左端箭头(与 back 同款箭头臂)【WebXiaoHeiWu app 内软键盘右下「换行 / 确定」键帽；2026-09-29 fable 自画未过目】 |
 | `keyboard` | 键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义) |
+| `archive-box` | 归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive) |

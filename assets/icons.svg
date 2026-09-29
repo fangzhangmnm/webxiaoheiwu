@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  46 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  47 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
@@ -103,4 +103,6 @@
   <symbol id="key-enter" data-cat="ui" data-src="own" data-note="回车键 ⏎:右上竖线下行、圆角左拐、左端箭头(与 back 同款箭头臂)【WebXiaoHeiWu app 内软键盘右下「换行 / 确定」键帽；2026-09-29 fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 5 V11.5 a2.5 2.5 0 0 1 -2.5 2.5 H5"/><polyline points="9.5 9.5 5 14 9.5 18.5"/></symbol>
   <!-- keyboard — 键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义) -->
   <symbol id="keyboard" data-cat="ui" data-src="own" data-note="键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="7.2" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="10.4" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="13.6" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="16.8" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="7.2" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="10.4" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="13.6" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="16.8" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><path d="M8.6 15.6 H15.4"/></symbol>
+  <!-- archive-box — 归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive) -->
+  <symbol id="archive-box" data-cat="ui" data-src="lucide:archive" data-note="归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v4H3z"/> <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/> <path d="M10 13h4"/></symbol>
 </svg>

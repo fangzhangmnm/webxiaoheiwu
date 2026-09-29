@@ -443,7 +443,8 @@ for (const [w, h] of sizes) {
   await page.click(".gallery-tile:not(.folder) .gallery-tile-menu-btn"); await wait(300); await shot("16-tile-menu");
   await page.mouse.click(w - 40, h - 40); await wait(200);
   await page.click("#galleryTrashBtn"); await wait(800); await shot("17-trash-view");
-  await page.click("#galleryTrashBack"); await wait(500);
+  await page.click("#galleryTabBackup"); await wait(800); await shot("17b-backup-view");
+  await page.click("#galleryAsideBack"); await wait(500);
   await page.click("#gallerySettingsBtn"); await wait(500); await shot("18-settings-over-library");
   probe(tag, "settings drawer slides in from the RIGHT", await page.evaluate(() => { const r = document.getElementById("drawer").getBoundingClientRect(); return Math.abs(r.right - innerWidth) < 2 && r.left > 0; }));
   await page.click("#drawerCloseButton"); await wait(300);

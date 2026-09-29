@@ -198,6 +198,104 @@ scenario("书 · 干净快进的下载途中打字：字不被静默吞掉，云
   await A.close(); await B.close();
 });
 
+// ── 备份箱界面（图库包的搁置区视图）：冲突里输掉的那一版，用户自己在书库里找得到、取得回来 ──
+const STAMPED = (stem, ext) => new RegExp("^" + stem.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&") + " \\[\\d{8}-\\d{6}(?:-\\d+)?\\]" + ext.replace(/\./g, "\\.") + "$");
+/** 打开书库 → 回收站 / 备份箱 → 备份箱页签。返回备份箱里的卡片（名字 + 副行文字）。 */
+async function openBackupBox(D) {
+  if (!(await D.eval(() => document.body.dataset.mode === "gallery"))) { await D.page.click("#libraryButton"); await D.wait(900); }
+  await D.page.click("#galleryTrashBtn"); await D.wait(400);
+  await D.page.click("#galleryTabBackup"); await D.wait(900);
+  return D.eval(() => [...document.querySelectorAll("#galleryMount .gallery-tile.aside-backup")].map((el) => ({ name: el.querySelector(".gallery-tile-name")?.getAttribute("title") ?? "", meta: el.querySelector(".gallery-tile-meta")?.textContent ?? "", printed: el.querySelector(".gallery-tile-overlay .xhw-cover-title")?.textContent ?? "" })));
+}
+/** 在备份箱第 i 张卡片上点 ⋯ → 恢复。 */
+async function restoreFromBackupBox(D, i = 0) {
+  await D.eval((k) => { const tile = document.querySelectorAll("#galleryMount .gallery-tile.aside-backup")[k]; tile.querySelector(".gallery-tile-menu-btn").click(); }, i); await D.wait(250);
+  await D.eval(() => { const pop = document.querySelector("#galleryMount .gallery-tile-menu-popup:not(.hidden)"); pop.querySelector("button:not(.danger)").click(); }); await D.wait(1500);
+}
+const libraryNames = (D) => D.eval(async () => { const out = []; const s = window.__xhw.store(); await new Promise((res) => { const un = s.files.watchFolder("", (snap) => { out.length = 0; out.push(...snap.items.map((i) => i.path)); setTimeout(() => { un(); res(); }, 50); }); }); return out; });
+
+scenario("备份箱 · txt 冲突选了云端 → 书库的备份箱里看得到输家，取回来是一篇认得出的稿", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  await B.type("B也改了。"); await B.wait(500);
+  const push = B.pushNow();
+  await B.resolveGate(TAKE_CLOUD); await push.catch(() => {}); await B.wait(1200);
+  const tiles = await openBackupBox(B);
+  check("备份箱里有一张卡片，就是这篇稿", tiles.length === 1 && tiles[0].name === name, JSON.stringify(tiles));
+  check("副行说的是什么时候留的底（不是未知时间）", tiles.length === 1 && /留底/.test(tiles[0].meta) && !/未知/.test(tiles[0].meta), JSON.stringify(tiles));
+  check("栏上亮着的页签是备份箱", await B.eval(() => document.getElementById("galleryTabBackup").classList.contains("is-on") && !document.getElementById("galleryTabTrash").classList.contains("is-on")));
+  await restoreFromBackupBox(B);
+  const names = await libraryNames(B);
+  const stem = name.replace(/\.txt$/, "");
+  const back = names.find((n) => n !== name && STAMPED(stem, ".txt").test(n));
+  check("取回来的稿名 = 原名 + 时间戳，扩展名还是 .txt", !!back, JSON.stringify(names));
+  if (back) {
+    const txt = await B.eval(async (n) => { const b = await window.__xhw.store().file(n, { isZip: false, mode: "existing" }).open(); return b ? await b.text() : null; }, back);
+    check("取回来的内容 = B 输掉的那一版", txt === "原文。B也改了。", String(txt));
+  }
+  check("原稿没被动（仍是云端赢家）", (await B.eval(async (n) => { const b = await window.__xhw.store().file(n, { isZip: false, mode: "existing" }).open(); return b ? await b.text() : null; }, name)) === "原文。A改了。");
+  check("取走之后备份箱空了", (await B.eval(() => document.querySelectorAll("#galleryMount .gallery-tile.aside-backup").length)) === 0 && (await B.listBackup()).length === 0, JSON.stringify(await B.listBackup()));
+  await B.page.click("#galleryAsideBack"); await B.wait(600);
+  check("回到文件：栏收起，取回来的稿在书库里", await B.eval((n) => document.getElementById("galleryAsideBar").classList.contains("hidden") && [...document.querySelectorAll("#galleryMount .gallery-tile-name")].some((e) => e.getAttribute("title") === n), back ?? ""));
+  check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
+scenario("备份箱 · 书冲突选了云端 → 取回来仍是一本书（时间戳插在扩展名前），里面是输掉的那一版", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const { name, ch1, ch2 } = await seedBook(w, A, B);
+  await jumpAndType(A, ch1, "A改第一章。"); await A.pushNow(); await A.wait(500);
+  await jumpAndType(B, ch2, "B改第二章。");
+  const push = B.pushNow();
+  await B.resolveGate(TAKE_CLOUD); await push.catch(() => {}); await B.wait(1500);
+  const tiles = await openBackupBox(B);
+  check("备份箱里有这本书", tiles.length === 1 && tiles[0].name === name, JSON.stringify(tiles));
+  check("卡片封面上印着书名（和书库里同一套排版）", tiles.length === 1 && tiles[0].printed.length > 0, JSON.stringify(tiles));
+  await restoreFromBackupBox(B);
+  const names = await libraryNames(B);
+  const stem = name.replace(/\.webxiaoheiwu\.zip$/, "");
+  const back = names.find((n) => n !== name && STAMPED(stem, ".webxiaoheiwu.zip").test(n));
+  check("取回来的名字 = 书名 + 时间戳 + .webxiaoheiwu.zip", !!back, JSON.stringify(names));
+  if (back) {
+    const bytes = await B.eval(async (n) => { const b = await window.__xhw.store().file(n, { isZip: true, mode: "existing" }).open(); return b ? Array.from(new Uint8Array(await b.arrayBuffer())) : null; }, back);
+    const pages = await bookPages(bytes ? new Uint8Array(bytes) : null);
+    check("取回来的书里第二章是 B 改过的那一版", pages[ch2] === "第二章原文。B改第二章。", JSON.stringify(pages));
+    check("取回来的书里第一章是 B 当时看到的那一版（没有 A 的修改）", pages[ch1] === "第一章原文。", JSON.stringify(pages));
+    await B.page.click("#galleryAsideBack"); await B.wait(600);
+    const opened = await B.eval(async (n) => { const ok = await window.__xhw.openAny(n); return ok && window.__xhw.project.active() && window.__xhw.project.name() === n; }, back); await B.wait(600);
+    check("取回来的书能当书打开", opened === true, String(opened));
+  }
+  const cloud = await bookPages(await w.cloudBytes(name));
+  check("云端原书没被动（A 的第一章还在）", cloud[ch1] === "第一章原文。A改第一章。", JSON.stringify(cloud));
+  check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
+scenario("备份箱 · 书冲突选了本地 → 云端输家在备份箱（云端那一端），从云端取回来仍是一本书", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const { name, ch1, ch2 } = await seedBook(w, A, B);
+  await jumpAndType(A, ch1, "A改第一章。"); await A.pushNow(); await A.wait(500);
+  await jumpAndType(B, ch2, "B改第二章。");
+  const push = B.pushNow();
+  await B.resolveGate(KEEP_MINE); await push.catch(() => {}); await B.wait(1500);
+  const tiles = await openBackupBox(B);
+  check("备份箱里有这本书，标的是云端", tiles.length === 1 && tiles[0].name === name && /云端/.test(tiles[0].meta), JSON.stringify(tiles));
+  await restoreFromBackupBox(B);
+  const cloudNames = (await w.cloudList("")).map((i) => i.name);
+  const stem = name.replace(/\.webxiaoheiwu\.zip$/, "");
+  const back = cloudNames.find((n) => n !== name && STAMPED(stem, ".webxiaoheiwu.zip").test(n));
+  check("云端多了一本：书名 + 时间戳 + .webxiaoheiwu.zip", !!back, JSON.stringify(cloudNames));
+  if (back) {
+    const pages = await bookPages(await w.cloudBytes(back));
+    check("它是 A 输掉的那一版（第一章有 A 的修改）", pages[ch1] === "第一章原文。A改第一章。" && pages[ch2] === "第二章原文。", JSON.stringify(pages));
+  }
+  const cloud = await bookPages(await w.cloudBytes(name));
+  check("云端原书 = B 的版本", cloud[ch2] === "第二章原文。B改第二章。", JSON.stringify(cloud));
+  check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
 for (const s of scenarios) {
   if (only && !s.name.includes(only)) continue;
   console.log(`\n── ${s.name}`);

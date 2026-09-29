@@ -1628,9 +1628,15 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .gallery-full.hidden { display: none; }
 .gallery-chrome { display: flex; align-items: center; gap: 8px; padding: max(env(safe-area-inset-top, 0px), 8px) 14px 8px; border-bottom: 1px solid var(--line); }
 .gallery-chrome-title { font-weight: 600; }
-.gallery-chrome .auth-action .ico, .gallery-trashbar .auth-action .ico { width: 14px; height: 14px; margin-right: 4px; }
-.gallery-trashbar { display: flex; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
-.gallery-trashbar.hidden { display: none; }
+.gallery-chrome .auth-action .ico, .gallery-asidebar .auth-action .ico { width: 14px; height: 14px; margin-right: 4px; }
+/* 回收站 / 备份箱共用的一条栏：回到文件 · 两个页签 · 清空 */
+.gallery-asidebar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.gallery-asidebar.hidden { display: none; }
+.gallery-aside-tabs { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.gallery-aside-tab { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 11px; border: 0; background: transparent; color: var(--ink-soft); font: inherit; font-size: 13px; cursor: pointer; }
+.gallery-aside-tab + .gallery-aside-tab { border-left: 1px solid var(--line-strong); }
+.gallery-aside-tab .ico { width: 15px; height: 15px; }
+.gallery-aside-tab.is-on { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); font-weight: 600; }
 .gallery-mount { flex: 1 1 auto; overflow: auto; padding: 0 0 12px; }   /* 横向 padding 归包内 .gallery-grid（16px）；宿主再叠 14px 曾让 375px 宽只剩 315px、排不下两列（user 2026-09-10 iPhone SE2 打回） */
 .gallery-mount .sheet-action { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); font: inherit; cursor: pointer; }
 

@@ -12,7 +12,7 @@
 
 import { createStore, createOneDriveProvider, requestStoragePersistence, isCached, isDirty } from "@internal/store";
 import type { Store, Collection, OneDriveAuth, CloudProvider } from "@internal/store";
-import { APP_ID, CLIENT_ID, AUTHORITY, SCOPES, MSAL_URL, COLLECTIONS } from "./config.ts";
+import { APP_ID, CLIENT_ID, AUTHORITY, SCOPES, MSAL_URL, COLLECTIONS, DOC_EXT, PROJECT_EXT } from "./config.ts";
 import { storeUI } from "./store-ui.ts";
 import { appEncryption } from "./encryption.ts";
 import { getPassword } from "./crypto-state.ts";
@@ -42,6 +42,9 @@ const store: Store = createStore({
   // store 0.13.0（ADR-0008 §7 前置）：云端名 → 身份。默认只去尾一个 .zip 会把明文工程 `X.webxiaoheiwu.zip` 当加密容器；
   //   本 app 规则 = 去掉 .zip 后剩下的仍是本 app 合法身份（.txt / .webxiaoheiwu.zip）才算加密件。
   toName: (cloudName) => (cloudName.endsWith(".zip") && /(\.txt|\.webxiaoheiwu\.zip)$/i.test(cloudName.slice(0, -4))) ? cloudName.slice(0, -4) : cloudName,
+  // 从回收站 / 备份箱恢复时原名被占，库要往名字里插时间戳：插在这两个扩展名之前（`书 [20260929-143200].webxiaoheiwu.zip`）。
+  //   不报的话库按「最后一个点」切，恢复出来是 `书.webxiaoheiwu [戳].zip`——本 app 认不出那是一本书。
+  docExts: [PROJECT_EXT, DOC_EXT],
   autoCacheOpenedFile: true,
   offlineUploadReplay: "auto",
   signedIn: () => od.auth.isSignedIn(),

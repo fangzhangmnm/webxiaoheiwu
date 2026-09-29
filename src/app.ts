@@ -12,7 +12,7 @@ import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteF
 import { docKind, formatDate, statsForText, decodeTextBytes, hex4 } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
 import { importPageName } from "./image/policy.ts";
-import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD } from "@internal/gallery";
+import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD, type GalleryView } from "@internal/gallery";
 import { createProjectMode } from "./project/mode.ts";
 import { createEdgeSidebar, fmtTime } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
@@ -578,17 +578,29 @@ const galleryHost = initGalleryHost({
   activeName: () => activeName(), isDirty: () => isDirtyAny(),
   openAny, renameActive: () => renameCurrentDoc(), pushNow: () => pushNowAny(), flushLocal: () => flushLocalAny(),
   ensureUnlocked, setStatus, currentDir: () => (project.active() ? parseDocName(project.name() ?? "").dir : editor.currentDir()),
-  onOpened: () => { $("galleryTrashBar").classList.add("hidden"); },
+  onOpened: () => { showLibraryView("files"); },
   onClosed: () => { editorEl.focus(); },
 });
 $("galleryBack").addEventListener("click", () => galleryHost.close());
 $("gallerySettingsBtn").addEventListener("click", () => openDrawerSettings());
-$("galleryTrashBtn").addEventListener("click", () => { galleryHost.setView("trash"); $("galleryTrashBar").classList.remove("hidden"); });
-$("galleryTrashBack").addEventListener("click", () => { galleryHost.setView("files"); $("galleryTrashBar").classList.add("hidden"); });
-$("galleryEmptyTrash").addEventListener("click", () => {
-  void openChoiceSheet<"local" | "cloud" | "both">(t("gal.emptyTrash"), t("gal.emptyTrashWhich"), [
-    { label: t("gal.emptyTrashLocal"), value: "local" }, { label: t("gal.emptyTrashCloud"), value: "cloud" }, { label: t("gal.emptyTrashBoth"), value: "both" },
-  ]).then((v) => { if (v) galleryHost.emptyTrash(v); });
+// 书库的回收站 / 备份箱：同一条栏上的两个页签（图库包里它们是同一种视图的两个 kind）。列表、恢复、彻底删、清空全是图库包的；
+//   这里只有外壳：哪个页签亮着、清空钮上写什么。备份箱 = 同步冲突里被换下的那一版（store 留的底）。
+function showLibraryView(v: GalleryView): void {
+  const bar = $("galleryAsideBar");
+  bar.classList.toggle("hidden", v === "files");
+  for (const tab of bar.querySelectorAll<HTMLElement>(".gallery-aside-tab")) { const on = tab.dataset.aside === v; tab.classList.toggle("is-on", on); tab.setAttribute("aria-selected", on ? "true" : "false"); }
+}
+function openLibraryView(v: GalleryView): void { galleryHost.setView(v); showLibraryView(v); }
+$("galleryTrashBtn").addEventListener("click", () => openLibraryView("trash"));
+$("galleryTabTrash").addEventListener("click", () => openLibraryView("trash"));
+$("galleryTabBackup").addEventListener("click", () => openLibraryView("backup"));
+$("galleryAsideBack").addEventListener("click", () => openLibraryView("files"));
+$("galleryAsideEmpty").addEventListener("click", () => {
+  const v = galleryHost.getView();
+  if (v === "files") return;
+  void openChoiceSheet<"local" | "cloud" | "both">(t(v === "trash" ? "gal.emptyTrash" : "gal.emptyBackup"), t("gal.emptyWhich"), [
+    { label: t("gal.emptyLocal"), value: "local" }, { label: t("gal.emptyCloud"), value: "cloud" }, { label: t("gal.emptyBoth"), value: "both" },
+  ]).then((scope) => { if (scope) galleryHost.emptyAside(v, scope); });
 });
 const drawer = createDrawer({
   drawer: $("drawer"), backdrop: $("drawerBackdrop"), title: $("drawerTitle"), backButton: $("drawerBackButton"),
