@@ -208,7 +208,8 @@ const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
   onLibrary: () => { void galleryHost.open(); },
   onExport: () => { void copyCurrentPage(); },
-  onSettings: () => { drawer.open("settings"); },
+  onSettings: () => showSidebarSettings(),
+  onSettingsBack: () => hideSidebarSettings(),
   onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"), onMove: (name) => movePageFlow(name),
   onExportBranch: (name) => exportBranchFlow(name),
   onLift: () => liftDraftToBook(), canLift: () => !project.active() && editor.canEdit() && editorEl.value.trim().length > 0,
@@ -581,7 +582,7 @@ const galleryHost = initGalleryHost({
   onClosed: () => { editorEl.focus(); },
 });
 $("galleryBack").addEventListener("click", () => galleryHost.close());
-$("gallerySettingsBtn").addEventListener("click", () => drawer.open("settings"));
+$("gallerySettingsBtn").addEventListener("click", () => openDrawerSettings());
 $("galleryTrashBtn").addEventListener("click", () => { galleryHost.setView("trash"); $("galleryTrashBar").classList.remove("hidden"); });
 $("galleryTrashBack").addEventListener("click", () => { galleryHost.setView("files"); $("galleryTrashBar").classList.add("hidden"); });
 $("galleryEmptyTrash").addEventListener("click", () => {
@@ -655,7 +656,28 @@ const keyBanner = $("keyBanner");
 const NARROW_MQ = matchMedia("(max-width: 900px)");
 const menuButton = $<HTMLButtonElement>("menuButton");
 const sidebarOpen = () => document.body.dataset.edges === "1";
+// 设置住在侧栏里（v2.1.18，user 2026-09-29「进设置的时候，关闭设置，还要关一次侧条，麻烦。不如设置和侧条都是同一个侧条里面？」）：
+//   侧栏里点「设置」= 侧栏这块面板自己换成设置（#settingsView 整个挪进来，面板加宽）；☰ / 遮罩 / Esc 关一次就全关了；面板头的返回 = 回到导航。
+//   书库那一屏的扳手仍然开抽屉（书库盖在侧栏上面，侧栏够不着）；#settingsView 只有一份，谁要用挪到谁那里。
+const settingsView = $("settingsView"), drawerEl = $("drawer"), edgeSidebarEl = $("edgeSidebar");
+const sidebarSettingsShown = (): boolean => edgeSidebarEl.dataset.view === "settings";
+const settingsShown = (): boolean => sidebarSettingsShown() || drawer.currentView() === "settings";
+function showSidebarSettings(): void {
+  if (drawer.currentView() !== "closed") drawer.close();
+  $("edgeSettingsMount").appendChild(settingsView);
+  settingsView.hidden = false;
+  edgeSidebarEl.dataset.view = "settings";
+  renderSettings();
+}
+function hideSidebarSettings(): void {
+  if (!sidebarSettingsShown()) return;
+  delete edgeSidebarEl.dataset.view;
+  settingsView.hidden = true;
+  drawerEl.insertBefore(settingsView, $("drawerActions"));   // 放回抽屉里原来的位置（书库的扳手还要用）
+}
+function openDrawerSettings(): void { hideSidebarSettings(); drawer.open("settings"); }
 function setSidebar(on: boolean): void {
+  if (!on) hideSidebarSettings();
   document.body.dataset.edges = on ? "1" : "0";
   menuButton.setAttribute("aria-expanded", on ? "true" : "false");
   if (on) edgeSidebar.render();
@@ -1125,7 +1147,7 @@ async function runPackJob(job: (onProgress: (p: { done: number; total: number })
   } catch (e) { reportError(e, "warning"); voicePackStatus.textContent = t("voice.pack.failed", { e: e instanceof Error ? e.message : String(e) }); }
   finally { packBusy = false; void renderPackStatus(); }
 }
-prefs.onChange("voiceProvider", () => { if (drawer.currentView() === "settings") renderVoiceConfig(); });
+prefs.onChange("voiceProvider", () => { if (settingsShown()) renderVoiceConfig(); });
 voiceModelSelect.addEventListener("change", () => { prefs.setItem("voiceProvider", modelKeyFrom(voiceModelSelect.value)); void asr.unload().catch(() => {}); renderVoiceConfig(); });
 voiceSourceInput.addEventListener("change", () => { const v = voiceSourceInput.value.trim(); deviceKvSet("voiceModelSource", v && v !== MODEL_SOURCE_DEFAULT ? v : null); voiceSourceInput.value = voiceSource(); });
 voicePackDownload.addEventListener("click", () => { const m = MODELS[voiceModel()]; void runPackJob((p) => asr.download(m.slug, voiceSource(), p)); });
@@ -1194,9 +1216,9 @@ const imeScriptSelect = $<HTMLSelectElement>("imeScriptSelect");
 const quoteStyleSelect = $<HTMLSelectElement>("quoteStyleSelect");
 function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; softKeyboardSelect.value = softKeyboardPref(); imeScriptSelect.value = imeSimplifiedPref() ? "simp" : "trad"; quoteStyleSelect.value = quoteStylePref(); }
 quoteStyleSelect.addEventListener("change", () => { const v = quoteStyleSelect.value === "corner" ? "corner" : "curly"; prefs.setItem("quoteStyle", v); applyQuoteStyle(v); });
-prefs.onChange("quoteStyle", () => { applyQuoteStyle(quoteStylePref()); if (drawer.currentView() === "settings") renderImeSection(); });
+prefs.onChange("quoteStyle", () => { applyQuoteStyle(quoteStylePref()); if (settingsShown()) renderImeSection(); });
 imeScriptSelect.addEventListener("change", () => { const v = imeScriptSelect.value === "simp"; prefs.setItem("imeSimplified", v); void ime.setSimplified(v); });
-prefs.onChange("imeSimplified", () => { void ime.setSimplified(imeSimplifiedPref()); if (drawer.currentView() === "settings") renderImeSection(); });
+prefs.onChange("imeSimplified", () => { void ime.setSimplified(imeSimplifiedPref()); if (settingsShown()) renderImeSection(); });
 softKeyboardSelect.addEventListener("change", () => {
   const v = softKeyboardSelect.value;
   deviceKvSet("softKeyboard", v === "on" || v === "off" ? v : null);
@@ -1210,7 +1232,7 @@ imeSchemaSelect.addEventListener("change", () => {
 });
 prefs.onChange("imeSchema", () => {   // 别的设备改了方案 → 本机跟上
   const v = imeSchemaPref();
-  if (ime.schema !== v) void ime.setSchema(v).then(() => { renderImeState(); if (drawer.currentView() === "settings") renderImeSection(); });
+  if (ime.schema !== v) void ime.setSchema(v).then(() => { renderImeState(); if (settingsShown()) renderImeSection(); });
 });
 systemImeToggle.addEventListener("change", () => { void setImeEnabled(!systemImeToggle.checked).then(renderImeSection); });
 $("changePasswordButton").addEventListener("click", () => { void changePasswordFlow(); });
@@ -1261,12 +1283,13 @@ function openNewMenu(anchor: HTMLElement, currentFolder: () => string, afterNew:
 newDocButton.addEventListener("click", (e) => { e.stopPropagation(); openNewMenu(newDocButton, () => drawer.currentFolder(), () => drawer.close()); });
 $("galleryNewBtn").addEventListener("click", (e) => { e.stopPropagation(); openNewMenu($("galleryNewBtn"), () => galleryHost.currentFolder(), () => galleryHost.close()); });
 $("openTrashButton").addEventListener("click", () => drawer.open("trash"));
-$("settingsButton").addEventListener("click", () => drawer.open("settings"));   // 设置入口在抽屉头云图标旁（user 2026-09-04「扳手还是收到 gallery 里面吧…看看 weebpaint 的布局」）
+$("settingsButton").addEventListener("click", () => openDrawerSettings());   // 设置入口在抽屉头云图标旁（user 2026-09-04「扳手还是收到 gallery 里面吧…看看 weebpaint 的布局」）
 $("emptyTrashButton").addEventListener("click", () => { void drawer.onEmptyTrash(); });
 $("reloadButton").addEventListener("click", () => { void (async () => { await flushLocalAny(); await flushCollections(); setStatus(t("st.reloading")); location.reload(); })(); });
 document.addEventListener("keydown", (event) => {
   if (event.isComposing) return;   // 系统输入法组字中的按键归输入法（v2.1.13；检索框 / sheet 里组字按 Esc 不该顺手把侧栏关了）
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
+  if (event.key === "Escape" && !event.defaultPrevented && sidebarSettingsShown() && !galleryHost.isOpen()) { hideSidebarSettings(); return; }   // 设置面板里按 Esc = 回到侧栏导航
   if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); editorEl.focus(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }

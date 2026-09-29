@@ -22,6 +22,8 @@ export interface EdgeSidebarDeps {
   onLibrary: () => void;
   onExport: () => void;
   onSettings: () => void;
+  /** 设置面板里的「返回」：回到侧栏的导航。 */
+  onSettingsBack: () => void;
   /** 「+ 兄弟」「+ 子节」（问名字 → mode.newSibling / newChild；散页上的子节 = 链出去）。返回 true = 已建/已跳。 */
   onAddSibling: () => Promise<boolean>;
   onAddChild: () => Promise<boolean>;
@@ -53,6 +55,13 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
       <button type="button" class="edge-entry" id="edgeLibrary">${icon("bookshelf")}<span>${esc(t("sidebar.library"))}</span></button>
       <button type="button" class="edge-entry" id="edgeExport" title="${esc(t("sidebar.exportTitle"))}">${icon("export")}<span>${esc(t("sidebar.export"))}</span></button>
       <button type="button" class="edge-entry" id="edgeSettings">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
+    </div>
+    <div class="edge-settings" id="edgeSettingsPane">
+      <div class="edge-settings-head">
+        <button type="button" class="row-icon-button" id="edgeSettingsBack" title="${esc(t("edge.settingsBack"))}" aria-label="${esc(t("edge.settingsBack"))}">${icon("back")}</button>
+        <span class="edge-settings-title">${esc(t("ui.settings"))}</span>
+      </div>
+      <div class="edge-settings-mount" id="edgeSettingsMount"></div>
     </div>
     <div class="edge-txt" id="edgeTxtPane" hidden>
       <button type="button" class="edge-entry edge-lift" id="edgeLift">${icon("book")}<span>${esc(t("lift.entry"))}</span></button>
@@ -215,6 +224,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   $("edgeExport").addEventListener("click", () => d.onExport());   // 一下 = 复制（不弹菜单：导出分享要顺手，user 2026-09-26「方便的导出分享功能其实很重要」）
   $("edgeLift").addEventListener("click", () => { void d.onLift().then((ok) => { if (ok) render(); }); });
   $("edgeSettings").addEventListener("click", () => d.onSettings());
+  $("edgeSettingsBack").addEventListener("click", () => d.onSettingsBack());
   $("edgeBack").addEventListener("click", () => { if (d.mode.goBack()) { clearQuery(); render(); d.focusEditor(); } });   // 不自动收（user「点 return back 的时候侧栏不应自动弹回」）
   $("edgeForward").addEventListener("click", () => { if (d.mode.goForward()) { clearQuery(); render(); d.focusEditor(); } });   // 前进 = 回退的逆（user 2026-09-10「既然有 back 了也加一个右箭头」）
   search.addEventListener("input", () => { query = search.value.trim(); render(); });

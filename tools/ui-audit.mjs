@@ -72,6 +72,18 @@ for (const [w, h] of sizes) {
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => "ERR:" + e.message));
     probe(tag, "导出 (txt draft) → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
     probe(tag, "sidebar stays open after 导出 (no auto-close)", await sidebarShown()); }
+  // v2.1.18 设置住在侧栏里（user 2026-09-29「进设置的时候，关闭设置，还要关一次侧条，麻烦。不如设置和侧条都是同一个侧条里面？」）
+  { await page.click("#edgeSettings"); await wait(300); await shot("02b-sidebar-settings");
+    probe(tag, "侧栏里点设置 → the sidebar panel itself shows settings (no drawer, no second layer); sign-in button is there", await page.evaluate(() => { const sv = document.getElementById("settingsView"), sb = document.getElementById("edgeSidebar"); const r = sv.getBoundingClientRect(), b = sb.getBoundingClientRect(); return sb.contains(sv) && !sv.hidden && r.height > 100 && r.left >= b.left - 1 && r.right <= b.right + 1 && document.getElementById("drawer").classList.contains("hidden") && document.getElementById("drawerBackdrop").classList.contains("hidden") && !!document.querySelector("#authRow button") && getComputedStyle(document.querySelector(".edge-entries")).display === "none"; }));
+    probe(tag, "the back arrow of the settings panel is visible without hovering", await page.evaluate(() => { const b = document.getElementById("edgeSettingsBack"); const r = b.getBoundingClientRect(); return parseFloat(getComputedStyle(b).opacity) === 1 && r.width >= 24 && !!b.querySelector("use"); }));
+    probe(tag, "settings inside the sidebar are usable: changing 字号 there applies", await page.evaluate(() => { const sel = document.getElementById("fontScaleSelect"), ed = document.getElementById("editor"); const f0 = parseFloat(getComputedStyle(ed).fontSize); sel.value = "1.15"; sel.dispatchEvent(new Event("change")); const f1 = parseFloat(getComputedStyle(ed).fontSize); sel.value = "1"; sel.dispatchEvent(new Event("change")); return f1 > f0 * 1.1; }));
+    await page.click("#edgeSettingsBack"); await wait(200);
+    probe(tag, "back arrow in the settings panel → sidebar navigation again (still open)", await sidebarShown() && await page.evaluate(() => getComputedStyle(document.querySelector(".edge-entries")).display !== "none" && document.getElementById("settingsView").hidden));
+    await page.click("#edgeSettings"); await wait(200);
+    await page.click("#menuButton"); await wait(300);
+    probe(tag, "ONE close: ☰ while settings are showing closes the whole thing (sidebar gone, nothing left to close)", !(await sidebarShown()) && await page.evaluate(() => document.getElementById("drawer").classList.contains("hidden") && document.getElementById("settingsView").hidden && !document.querySelector('[role="dialog"]:not(.hidden)')));
+    await page.click("#menuButton"); await wait(300);
+    probe(tag, "reopen the sidebar → it starts at navigation, not at settings", await sidebarShown() && await page.evaluate(() => document.getElementById("edgeSidebar").dataset.view !== "settings" && getComputedStyle(document.querySelector(".edge-entries")).display !== "none")); }
   probe(tag, "txt mode: project pane hidden, lift entry visible", await page.evaluate(() => document.getElementById("edgePane").hidden && !document.getElementById("edgeTxtPane").hidden));
   { const draftName = await page.evaluate(() => window.__xhw.editor.state.name); const draftText = await page.inputValue("#editor");
     await page.click("#edgeLift"); await wait(300);

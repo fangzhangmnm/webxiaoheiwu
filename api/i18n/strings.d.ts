@@ -1896,6 +1896,10 @@ export declare const S: {
         readonly zh: "书库";
         readonly en: "Library";
     };
+    readonly "edge.settingsBack": {
+        readonly zh: "回到侧栏";
+        readonly en: "Back to the sidebar";
+    };
     readonly "edge.times": {
         readonly zh: "创建 {created} · 修改 {modified}";
         readonly en: "Created {created} · modified {modified}";

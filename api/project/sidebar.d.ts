@@ -10,6 +10,8 @@ export interface EdgeSidebarDeps {
     onLibrary: () => void;
     onExport: () => void;
     onSettings: () => void;
+    /** 设置面板里的「返回」：回到侧栏的导航。 */
+    onSettingsBack: () => void;
     /** 「+ 兄弟」「+ 子节」（问名字 → mode.newSibling / newChild；散页上的子节 = 链出去）。返回 true = 已建/已跳。 */
     onAddSibling: () => Promise<boolean>;
     onAddChild: () => Promise<boolean>;

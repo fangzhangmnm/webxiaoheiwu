@@ -507,6 +507,7 @@ export const S = {
   "edge.title.ph":          { zh: "页名", en: "Page name" },
   "edge.title.aria":        { zh: "页名（改了就是改名）", en: "Page name (edit to rename)" },
   "sidebar.library":        { zh: "书库", en: "Library" },
+  "edge.settingsBack":   { zh: "回到侧栏", en: "Back to the sidebar" },
   "edge.times":             { zh: "创建 {created} · 修改 {modified}", en: "Created {created} · modified {modified}" },
   // ── 主干树（ADR-0014，2026-09-10 树 session）：侧栏 = ..（父）/ 兄弟 / 子节 / 链接 / 谁指向这里；树移动六件；导出这一支；上一页/下一页 ──
   "edge.parentTitle":       { zh: "父页：{name}", en: "Parent: {name}" },

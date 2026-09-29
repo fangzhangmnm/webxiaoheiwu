@@ -1792,3 +1792,26 @@ body.paper-short .page-foot { display: none; }
 body.paper-short .page-foot:not([hidden]) ~ .mic-button, body.paper-short .page-foot:not([hidden]) ~ .kb-toggle { bottom: 8px; }
 body.paper-short .page-foot:not([hidden]) ~ .mic-side { bottom: 12px; }
 body.paper-short .mic-button { width: 40px; height: 40px; bottom: 8px; }
+
+/* ═══ 设置住在侧栏里（v2.1.18，user 2026-09-29「不如设置和侧条都是同一个侧条里面？」）═══
+   侧栏 data-view="settings"：导航各块让位，设置面板占满；面板加宽到抽屉那么宽（设置里的下拉和说明文字是按 320 排的）。 */
+.edge-settings { display: none; flex-direction: column; min-height: 0; flex: 1 1 auto; margin: -10px; }   /* 吃掉侧栏的内边距：设置各节自己有分隔线和留白 */
+.edge-sidebar[data-view="settings"] { width: min(320px, 86vw); }
+.edge-sidebar[data-view="settings"] > * { display: none; }
+.edge-sidebar[data-view="settings"] > .edge-settings { display: flex; }
+.edge-settings-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.edge-settings-title { font-size: 13px; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.06em; }
+.edge-settings-head .row-icon-button { opacity: 1; color: var(--ink-soft); }   /* 这颗返回钮是导航，不是「悬停才露的行内钮」 */
+.edge-settings-head .row-icon-button .ico { width: 18px; height: 18px; }
+.edge-settings-mount { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-radius: 0 0 12px 12px; overflow: hidden; }
+.edge-settings-mount > .settings-view { flex: 1 1 auto; min-height: 0; }
+
+/* ═══ 书库卡片的名字（v2.1.18，user 2026-09-29「书名显示的问题也要处理，现在很窄只能看见 yyyymmdd」）═══
+   卡片视图里名字原来单行省略：窄屏三列时一张卡只有 100 来像素宽，`20250127 樱川中学科学部` 只露出日期。改成最多三行、逐字可断、三行的高度先占着（一排卡片底边齐）。
+   只是宿主侧的排版覆盖（包的 gallery.css 不动）；封面上要不要印书名是另一回事，样张等 user 挑。 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile-name {
+  white-space: normal; overflow: hidden; text-overflow: clip; overflow-wrap: anywhere; word-break: break-all;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+  min-height: calc(1.32em * 3);
+}
+#galleryMount .gallery-grid:not(.list) .gallery-tile.folder .gallery-tile-name { min-height: 0; -webkit-line-clamp: 2; line-clamp: 2; }
