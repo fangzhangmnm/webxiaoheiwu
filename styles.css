@@ -1806,12 +1806,77 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: 8px; }
 .edge-settings-mount { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-radius: 0 0 12px 12px; overflow: hidden; }
 .edge-settings-mount > .settings-view { flex: 1 1 auto; min-height: 0; }
 
-/* ═══ 书库卡片的名字（v2.1.18，user 2026-09-29「书名显示的问题也要处理，现在很窄只能看见 yyyymmdd」）═══
-   卡片视图里名字原来单行省略：窄屏三列时一张卡只有 100 来像素宽，`20250127 樱川中学科学部` 只露出日期。改成最多三行、逐字可断、三行的高度先占着（一排卡片底边齐）。
-   只是宿主侧的排版覆盖（包的 gallery.css 不动）；封面上要不要印书名是另一回事，样张等 user 挑。 */
-#galleryMount .gallery-grid:not(.list) .gallery-tile-name {
-  white-space: normal; overflow: hidden; text-overflow: clip; overflow-wrap: anywhere; word-break: break-all;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
-  min-height: calc(1.32em * 3);
+/* ═══ 书库封面（v2.1.19，2026-09-29；排版规则在 src/ui/book-cover.ts）═══
+   user 2026-09-29「封面上印书名…配色用花璃同人的那个。但是更加哑一点，不要渐变，扁平，不过花璃那本旁边的装订线很漂亮，保留。然后最好下面的日期 大小也收上来？」
+   卡片 = 一本书的封面，下面不再挂一条名字行：图库包画的名字行（名字 + 同步徽章 + 时间 · 大小）整条挪到封面下沿。
+     · 没有封面图 → 封面印书名（本节 .xhw-cover），名字行里的名字藏起来（已经印在封面上了），只留徽章和时间大小。
+     · 有封面图 / 锁着 / 还在云端 → 封面下沿一条扁平的纸色带子，上面是名字（最多两行）和时间大小。
+   全是宿主侧的排版覆盖，图库包（vendor/internal-css/gallery.css）一个字不动。只管卡片视图（.gallery-grid:not(.list)）。 */
+:root {
+  --cover-paper: #e9e3d5; --cover-spine: #d2c9b5; --cover-spine-edge: #c2b8a2; --cover-ink: #43382c; --cover-ink-soft: #857b6a;
+  --cover-sheet: #f4f2ec; --cover-sheet-ink: #4d4a44;
 }
-#galleryMount .gallery-grid:not(.list) .gallery-tile.folder .gallery-tile-name { min-height: 0; -webkit-line-clamp: 2; line-clamp: 2; }
+:root[data-theme="night"] {
+  --cover-paper: #3b372f; --cover-spine: #2f2c26; --cover-spine-edge: #26231f; --cover-ink: #e4dccb; --cover-ink-soft: #a0968a;
+  --cover-sheet: #2b2a27; --cover-sheet-ink: #cfc9bc;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --cover-paper: #3b372f; --cover-spine: #2f2c26; --cover-spine-edge: #26231f; --cover-ink: #e4dccb; --cover-ink-soft: #a0968a;
+    --cover-sheet: #2b2a27; --cover-sheet-ink: #cfc9bc;
+  }
+}
+#galleryMount .gallery-grid:not(.list) .gallery-tile { background: transparent; border-color: var(--line-strong); border-radius: 4px 7px 7px 4px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb { border-radius: 3px 6px 6px 3px; container-type: inline-size; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder { align-items: stretch; justify-content: stretch; background: var(--cover-paper); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder.locked { align-items: center; justify-content: center; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder > span:not(.gallery-tile-ph-icon) { margin: auto; }   /* 「还在云端」的云图标：居中 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile-ph-icon { display: block; width: 100%; height: 100%; color: inherit; }
+
+/* 印着书名的封面 */
+.xhw-cover {
+  --spine-w: 7px;
+  position: relative; display: block; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden;
+  padding: 34px 9px 40px calc(var(--spine-w) + 9px);   /* 上：让开右上角的 ⋯ 钮；下：让开日期与名字行 */
+  border-radius: 3px 6px 6px 3px;
+  background: var(--cover-paper); color: var(--cover-ink); text-align: left; font-size: 15px; line-height: 1.25; cursor: pointer;
+}
+.xhw-cover.book::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--spine-w); background: var(--cover-spine); border-right: 1px solid var(--cover-spine-edge); }   /* 装订线 */
+.xhw-cover.draft { --spine-w: 0px; background: var(--cover-sheet); color: var(--cover-sheet-ink); }
+.xhw-cover-title { display: block; max-width: 100%; max-height: 100%; overflow: hidden; font-weight: 700; letter-spacing: 0.04em; font-family: "Songti SC", "STSongti-SC-Bold", "Noto Serif CJK SC", "Source Han Serif SC", "Noto Serif SC", var(--font-editor); }
+.xhw-cover.v .xhw-cover-title { writing-mode: vertical-rl; text-orientation: mixed; height: 100%; margin-left: auto; letter-spacing: 0.08em; }
+.xhw-cover.v .tcy { text-combine-upright: all; -webkit-text-combine: horizontal; letter-spacing: 0; }
+.xhw-cover.h .xhw-cover-title { font-family: "Iowan Old Style", Georgia, "Times New Roman", serif; letter-spacing: 0.01em; overflow-wrap: anywhere; hyphens: auto; -webkit-hyphens: auto; line-height: 1.18; }
+.xhw-cover.draft .xhw-cover-title { font-weight: 400; }
+.xhw-cover.coded .xhw-cover-title { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 400; letter-spacing: 0; color: var(--cover-ink-soft); }
+/* 字号四档：卡片宽度的百分比（cqw），两头夹住 */
+.xhw-cover.v.sz-xl .xhw-cover-title { font-size: clamp(15px, 17cqw, 30px); }
+.xhw-cover.v.sz-l  .xhw-cover-title { font-size: clamp(14px, 14cqw, 25px); }
+.xhw-cover.v.sz-m  .xhw-cover-title { font-size: clamp(13px, 12cqw, 21px); }
+.xhw-cover.v.sz-s  .xhw-cover-title { font-size: clamp(12px, 10cqw, 17px); }
+.xhw-cover.h.sz-xl .xhw-cover-title { font-size: clamp(15px, 16cqw, 28px); }
+.xhw-cover.h.sz-l  .xhw-cover-title { font-size: clamp(13px, 13cqw, 23px); }
+.xhw-cover.h.sz-m  .xhw-cover-title { font-size: clamp(12px, 11cqw, 19px); }
+.xhw-cover.h.sz-s  .xhw-cover-title { font-size: clamp(11px, 9.5cqw, 16px); }
+.xhw-cover.coded .xhw-cover-title { font-size: clamp(11px, 10cqw, 16px); }
+.xhw-cover-date { position: absolute; left: calc(var(--spine-w) + 9px); bottom: 24px; font-family: var(--font-ui); font-size: 10px; line-height: 1.2; letter-spacing: 0.05em; color: var(--cover-ink-soft); font-variant-numeric: tabular-nums; }
+
+/* 图库包的名字行：挪到封面下沿 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile-name-row {
+  position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding: 4px 8px 5px 9px;
+  background: var(--cover-paper); color: var(--cover-ink); border-radius: 0 0 6px 3px; border-top: 1px solid var(--cover-spine-edge);
+}
+#galleryMount .gallery-grid:not(.list) .gallery-tile-name { font-size: 12.5px; line-height: 1.3; color: inherit; white-space: normal; overflow: hidden; text-overflow: clip; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-meta { font-size: 10px; color: var(--cover-ink-soft); margin-top: 1px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-meta .gallery-tile-state-icon svg { width: 12px; height: 12px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-active-tag { position: absolute; left: auto; right: 6px; top: auto; bottom: 100%; margin: 0 0 5px; background: var(--cover-paper); border: 1px solid var(--cover-spine-edge); }   /* 「打开中」：贴在带子上方的封面右下角，不和名字抢行宽 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover) .gallery-tile-active-tag { bottom: 4px; margin: 0; }   /* 印书名的封面：和时间大小同一行的右端 */
+/* 封面上已经印了书名：名字行只剩徽章 + 时间大小，带子透明（字直接落在封面的纸上），让开装订线 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover) .gallery-tile-name-row { background: transparent; border-top: 0; padding-left: 16px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover.draft) .gallery-tile-name-row { padding-left: 9px; color: var(--cover-sheet-ink); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover) .gallery-tile-name { display: none; }
+/* 文件夹：不是书，保持图标；名字行同样收到下沿 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile.folder .gallery-tile-name-row { background: transparent; border-top: 0; color: var(--ink); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile.folder .gallery-tile-meta { color: var(--ink-soft); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile.folder .gallery-tile-thumb svg { width: 46%; height: auto; margin-bottom: 18%; }
+

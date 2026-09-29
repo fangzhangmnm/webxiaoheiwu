@@ -81,6 +81,19 @@ export function makeDocName(date: string, title: string, dir = "", suffix = hex4
 /** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
 export function isOpaqueStem(stem: string): boolean { return /^\d{8}-[0-9a-f]{4}( \d+)?$/i.test(stem); }
 
+/** 名字拆成「日期前缀 + 其余」（书库封面印书名用；user 2026-09-29「对 yyyymmdd-name 和 yyyymmdd name 都识别」）。
+ *  认的分隔：空格 / 连字符 / 下划线 / 全角空格。日期要像个日期（月 01–12、日 01–31）。
+ *  日期码名（`yyyymmdd-hex4`，没起名的稿）整个算名字，不拆——那四位是消歧码不是书名。拆不出 → date = null、title = 原样。只管显示，身份仍是完整文件名。 */
+export function splitDatedName(stem: string): { date: string | null; title: string } {
+  const s = String(stem ?? "");
+  if (/^\d{8}-[0-9a-f]{4}(?:[ -][0-9a-f]{1,4})*$/i.test(s)) return { date: null, title: s };
+  const m = s.match(/^(\d{4})(\d{2})(\d{2})[ \u3000_-]+(\S.*)$/);
+  if (!m) return { date: null, title: s };
+  const month = Number(m[2]), day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return { date: null, title: s };
+  return { date: `${m[1]}${m[2]}${m[3]}`, title: m[4]!.trim() };
+}
+
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export function sanitizeFolderName(s: string): string {
   return String(s ?? "").replace(/[\r\n]+/g, " ").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").replace(/^\.+/, "").trim().slice(0, 80);

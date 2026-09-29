@@ -11,6 +11,7 @@ import { isDocEncrypted } from "./docs.ts";
 import { isUnlocked, onLockChange, currentPassword, setCurrentPassword, hasVerifier, resetVerifier } from "./crypto-state.ts";
 import { openConfirmSheet, openInputSheet, openChoiceSheet, withBusy } from "./sheets.ts";
 import { iconHtml } from "./ui/icon.ts";
+import { coverHtml } from "./ui/book-cover.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { lang, t } from "./i18n/index.ts";
@@ -90,7 +91,8 @@ export function initGalleryHost(d: GalleryHostDeps) {
       status: (msg, isError) => d.setStatus(msg, { error: !!isError }),
       busy: (label, fn) => withBusy(label, fn),
     },
-    ui: { iconHtml: (name, opts) => iconHtml(name, opts), tilePlaceholderHtml: (name) => iconHtml(isProjectName(name) ? "book" : "file") },   // 0.1.2：占位图 = 图标，不再取名字首字（user 2026-09-10「所有的预览图都是 2」）
+    // 占位封面 = 把名字印在封面上（v2.1.19，user 2026-09-29「封面上印书名」；排版在 ui/book-cover.ts）。此前（0.1.2 起）占位是一枚书 / 纸的图标
+    ui: { iconHtml: (name, opts) => iconHtml(name, opts), tilePlaceholderHtml: (name) => coverHtml(parseDocName(name).stem, isProjectName(name) ? "book" : "draft") },
     naming: NAMING,
     isZipDoc: (n) => isProjectName(n),
     policy: {

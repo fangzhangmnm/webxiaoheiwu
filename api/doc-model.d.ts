@@ -30,6 +30,13 @@ export declare function hex4(): string;
 export declare function makeDocName(date: string, title: string, dir?: string, suffix?: string, kind?: DocKind): string;
 /** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
 export declare function isOpaqueStem(stem: string): boolean;
+/** 名字拆成「日期前缀 + 其余」（书库封面印书名用；user 2026-09-29「对 yyyymmdd-name 和 yyyymmdd name 都识别」）。
+ *  认的分隔：空格 / 连字符 / 下划线 / 全角空格。日期要像个日期（月 01–12、日 01–31）。
+ *  日期码名（`yyyymmdd-hex4`，没起名的稿）整个算名字，不拆——那四位是消歧码不是书名。拆不出 → date = null、title = 原样。只管显示，身份仍是完整文件名。 */
+export declare function splitDatedName(stem: string): {
+    date: string | null;
+    title: string;
+};
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export declare function sanitizeFolderName(s: string): string;
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 `-hex4`（2.1 起；user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑。如果是四位数 hash 就不会 pile of shame」，取代 WeebPaint 式 " 1" " 2"）。 */
