@@ -270,9 +270,10 @@ try {
     const ed = document.getElementById("editor"); const sel = document.getElementById("fontScaleSelect");
     const f0 = parseFloat(getComputedStyle(ed).fontSize); sel.value = "1.3"; sel.dispatchEvent(new Event("change")); const f1 = parseFloat(getComputedStyle(ed).fontSize);
     const kv = localStorage.getItem("webxiaoheiwu-7c2e9a41b3d05f68:fontScale"); sel.value = "1"; sel.dispatchEvent(new Event("change"));
-    return { f0, f1, kv, bgPos: getComputedStyle(ed).backgroundPosition };
+    const pg = document.querySelector(".page"); const lh = parseFloat(getComputedStyle(ed).lineHeight), ry = parseFloat(pg.style.getPropertyValue("--rule-y")), dpr = devicePixelRatio;
+    return { f0, f1, kv, lh, ry, lhWhole: Math.abs(lh - Math.round(lh)) < 0.01, ruleInside: ry > lh * 0.5 && ry < lh, img: getComputedStyle(ed).backgroundImage.slice(0, 40), dpr };
   });
-  check("字号档位：1.3 档字号 ×1.3、落 device-kv；写字线挪到字底", Math.abs(fs.f1 - fs.f0 * 1.3) < 0.6 && fs.kv === "1.3" && /-0\.4em|-\d+(\.\d+)?px/.test(fs.bgPos), JSON.stringify(fs));
+  check("字号档位：1.3 档字号 ×1.3、落 device-kv；行高是整数像素、写字线在行的下半截（基线之下）、线是一张重复渐变", Math.abs(fs.f1 - fs.f0 * 1.3) < 0.6 && fs.kv === "1.3" && fs.lhWhole && fs.ruleInside && fs.img.startsWith("repeating-linear-gradient"), JSON.stringify(fs));
   const resetPage = await browser.newPage();
   await resetPage.goto(`http://127.0.0.1:${port}/index.html?reset=1`, { waitUntil: "load" }); await resetPage.waitForFunction(() => !!window.__xhw); await resetPage.waitForTimeout(1200);
   const resetInfo = await resetPage.evaluate(() => ({ toast: document.getElementById("toast").textContent, search: location.search, v: window.__xhw.version }));

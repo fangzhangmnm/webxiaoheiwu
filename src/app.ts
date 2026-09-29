@@ -44,6 +44,7 @@ import { setQuoteStyle } from "./zh-punct.ts";
 import { createInputPipeline } from "./input/pipeline.ts";
 import { createImeDock } from "./input/dock.ts";
 import { asTextField, type TextField } from "./input/field.ts";
+import { createPaper, type PaperWidthPref } from "./ui/paper.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -278,30 +279,39 @@ pageNext.addEventListener("click", () => { if (project.nextPage()) edgeSidebar.r
 const parentLink = $<HTMLButtonElement>("parentLink"), parentLinkName = $("parentLinkName");
 const childToc = $("childToc"), childTocList = $("childTocList"), pageEl = document.querySelector<HTMLElement>(".page")!, pageBody = $("pageBody");
 let tocChildren: string[] = [];
-const TOC_SHOW_EPS_PX = 2, TOC_HIDE_SLACK_PX = 24, TOC_GAP_PX = 8;
+const TOC_SHOW_EPS_PX = 2, TOC_HIDE_SLACK_PX = 24;
+// 稿纸几何（行高 / 写字线 / 宽窄档）：src/ui/paper.ts。稿纸宽度偏好跟设备走（device-kv `paperWidth`）：同一个人的 iPad 要窄稿纸、Win Mini 要宽的。
+const paperWidthPref = (): PaperWidthPref => { const v = deviceKvGet("paperWidth"); return v === "mode" || v === "wide" ? v : "auto"; };
+const dockHeightNow = (): number => parseFloat(document.documentElement.style.getPropertyValue("--dock-h")) || 0;
+const paper = createPaper({ page: pageEl, editor: editorEl, widthPref: paperWidthPref, dockHeight: dockHeightNow, onChanged: () => { syncBodyHeight(); updateChildToc(); } });
 const tocDistance = (): number => editorEl.scrollHeight - editorEl.clientHeight - editorEl.scrollTop;   // 正文离底还有几像素（≤0 = 贴底 / 装得下）
 const embedMode = (): boolean => tocChildren.length > 0 && project.active() && project.currentKind() !== "image";
 /** 嵌入态（v2.1.11，user 2026-09-26「如果父节点没有输入很多段的话子节不应该在最下面，而是取决于父节点输入了多少行…相当于嵌入了」）：有子节的页里 textarea 按内容高度伸缩，
- *  上限 = 容器高度 − 露着的目录 → 正文短时目录紧跟最后一行；正文长过上限退回内部滚动（v2.1.9 的滚到底才露 / 迟滞照旧）。没子节的页 = 恢复 flex 填满，零变化。
- *  量法：`height:0` → scrollHeight = 内容高（两次布局，只在正文装得下时做）；长正文稳态（顶到上限还在溢出）不量。话筒只在目录贴着纸底（正文顶到上限）时上让。 */
+ *  目录紧跟正文最后一行（中间空一行）；正文长过上限退回内部滚动（滚到底才露 / 迟滞照旧）。没子节的页 = 恢复 flex 填满，零变化。
+ *  v2.1.17（user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）：一切高度都是**整行**——正文框 = 行数 × 行高，目录 = (1 + 子节数) × 行高，
+ *  所以目录的每一行都坐在稿纸的线上。内容高度量的是一个看不见的孪生框（paper.contentHeight），不再把正文框自己先压成 0 再量（那会让版面跳一下）。 */
 function syncBodyHeight(): void {
+  paper.alignTop(pageBody);
   if (!embedMode()) {
-    if (pageEl.hasAttribute("data-toc-embed")) { pageEl.removeAttribute("data-toc-embed"); editorEl.style.height = ""; }
+    if (pageEl.hasAttribute("data-toc-embed")) { pageEl.removeAttribute("data-toc-embed"); editorEl.style.height = ""; childToc.style.height = ""; }
     delete pageEl.dataset.tocShown; setTocVar(); return;
   }
   pageEl.setAttribute("data-toc-embed", "");
-  const maxH = Math.max(0, pageBody.clientHeight - (childToc.hidden ? 0 : childToc.offsetHeight + TOC_GAP_PX));
+  const lh = paper.lineHeight(), boxH = pageBody.clientHeight;
+  const boxLines = Math.max(1, Math.floor(boxH / lh));
+  const tocLines = childToc.hidden ? 0 : Math.min(tocChildren.length + 1, Math.max(3, Math.floor(boxLines * 0.4)));   // 目录最多占四成；再多它自己滚
+  childToc.style.height = tocLines ? `${tocLines * lh}px` : "";
+  const maxLines = Math.max(1, boxLines - tocLines);
   const cur = editorEl.clientHeight;
-  if (!(editorEl.scrollHeight > cur + 1 && cur >= maxH - 1)) {
-    editorEl.style.height = "0px";
-    const lineH = parseFloat(getComputedStyle(editorEl).lineHeight) || 24;
-    const contentH = Math.max(editorEl.scrollHeight, lineH);
-    editorEl.style.height = `${Math.min(contentH, maxH)}px`;
-  } else if (cur !== maxH) editorEl.style.height = `${maxH}px`;
-  if (!childToc.hidden && editorEl.clientHeight >= maxH - 1) pageEl.dataset.tocShown = "1"; else delete pageEl.dataset.tocShown;
+  const steady = editorEl.scrollHeight > cur + 1 && Math.abs(cur - maxLines * lh) < 1;   // 长正文稳态：已经顶到上限还在溢出，不用量
+  if (!steady) {
+    const contentLines = Math.max(1, Math.round(paper.contentHeight() / lh));
+    editorEl.style.height = `${Math.min(contentLines, maxLines) * lh}px`;
+  }
+  if (!childToc.hidden && editorEl.clientHeight >= maxLines * lh - 1) pageEl.dataset.tocShown = "1"; else delete pageEl.dataset.tocShown;
   setTocVar();
 }
-function setTocVar(): void { pageEl.style.setProperty("--child-toc-h", pageEl.dataset.tocShown ? `${childToc.offsetHeight + TOC_GAP_PX}px` : "0px"); }   // 话筒上让
+function setTocVar(): void { pageEl.style.setProperty("--child-toc-h", pageEl.dataset.tocShown ? `${childToc.offsetHeight}px` : "0px"); }   // 话筒上让
 function showToc(): void { if (!childToc.hidden) return; childToc.hidden = false; syncBodyHeight(); editorEl.scrollTop = editorEl.scrollHeight; }   // 让出高度后正文仍贴底（否则下一个 scroll 事件判「没到底」→ 收 → 抖）
 function hideToc(): void { if (childToc.hidden) return; childToc.hidden = true; syncBodyHeight(); }
 function updateChildToc(): void {
@@ -326,7 +336,7 @@ function renderPageKin(): void {
     const meta = s?.project.nodes.get(n);
     b.title = meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : nodeDisplayName(n);
     const kindIcon = nodeKind(n) === "image" ? `<svg class="ico" aria-hidden="true"><use href="#image"/></svg>` : "";
-    b.innerHTML = kindIcon + `<span class="child-toc-name"></span>` + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
+    b.innerHTML = (kindIcon || `<svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg>`) + `<span class="child-toc-name"></span>` + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
     b.querySelector(".child-toc-name")!.textContent = nodeDisplayName(n);
     b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); editorEl.focus(); });
     li.appendChild(b); childTocList.appendChild(li);
@@ -336,7 +346,7 @@ function renderPageKin(): void {
 parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); editorEl.focus(); } });
 editorEl.addEventListener("scroll", updateChildToc, { passive: true });
 editorEl.addEventListener("input", () => { syncBodyHeight(); updateChildToc(); });   // 末尾续写：正文长一行目录跟着下一行；顶到上限后仍贴底 → 目录留着
-window.addEventListener("resize", () => { syncBodyHeight(); updateChildToc(); });   // 键盘 / 转屏改了容器高度
+window.addEventListener("resize", () => { paper.refresh(); syncBodyHeight(); updateChildToc(); });   // 键盘 / 转屏 / 缩放改了容器高度与设备像素比
 pageBody.addEventListener("pointerdown", (e) => { if (e.target !== pageBody) return; e.preventDefault(); editorEl.focus(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });   // 嵌入态正文下方的空白纸面：点了照样能写（光标到末尾），别让人以为纸「断」了
 // ── 导出 = 当前页全页进剪贴板（v2.1.9，user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮…方便的导出分享功能其实很重要」）：
 //   txt 稿 = 整篇；书的文字页 = 这一页（textarea 里的活字，所见即所得）；图片页 = 图片本身（PNG 直给，其余经 codec 转 PNG——系统剪贴板只认 PNG；ClipboardItem 里塞 Promise 保住 Safari 的用户手势）。
@@ -781,7 +791,7 @@ const imeDock = createImeDock({
   keyboardWanted,
   onHideRequest: () => { kbHiddenBy = "user"; kbSummoned = false; },
   onLayout: () => {
-    syncBodyHeight(); updateChildToc(); renderKbToggle();
+    paper.refresh(); syncBodyHeight(); updateChildToc(); renderKbToggle();
     const f = input.focused(); if (f && f !== editorEl && f.closest(".crypto-modal")) f.scrollIntoView({ block: "nearest" });   // sheet 里的框：键盘露出来之后别被它挡住
   },
 });
@@ -941,6 +951,7 @@ document.addEventListener("keyup", (event) => {
 function applyReadingMode(mode: string | undefined): void {
   const next = mode === "classic" ? "classic" : "novel";
   document.body.classList.toggle("reading-classic", next === "classic");
+  paper.refresh();
   for (const opt of document.querySelectorAll<HTMLElement>("#readingModePicker .reading-mode-option")) {
     const sel = opt.dataset.mode === next; opt.classList.toggle("is-selected", sel);
     const input = opt.querySelector("input"); if (input) input.checked = sel;
@@ -955,8 +966,11 @@ prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("read
 // 字号档位（device-kv：跟屏幕走，手机上按「每行字数」规范算出来只有 16px——user 2026-09-04 iPhone「字好小啊」；规范继续管行宽，档位只乘字号）
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
+const paperWidthSelect = $<HTMLSelectElement>("paperWidthSelect");
+paperWidthSelect.value = paperWidthPref();
+paperWidthSelect.addEventListener("change", () => { const v = paperWidthSelect.value; deviceKvSet("paperWidth", v === "mode" || v === "wide" ? v : null); paper.refresh(); syncBodyHeight(); updateChildToc(); });
 const fontScalePref = (): string => { const v = deviceKvGet("fontScale"); return v && FONT_SCALES.includes(v) ? v : "1"; };
-function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; syncBodyHeight(); updateChildToc(); }   // 嵌入态的正文高度随字号变
+function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; paper.refresh(); syncBodyHeight(); updateChildToc(); }   // 嵌入态的正文高度随字号变
 fontScaleSelect.addEventListener("change", () => { const v = FONT_SCALES.includes(fontScaleSelect.value) ? fontScaleSelect.value : "1"; deviceKvSet("fontScale", v === "1" ? null : v); applyFontScale(v); });
 // 写字线（synced prefs，与阅读节奏同席：视觉偏好跟人走；缺省开）
 const ruledLinesToggle = $<HTMLInputElement>("ruledLinesToggle");
