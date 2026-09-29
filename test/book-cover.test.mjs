@@ -2,7 +2,7 @@
 //   user 2026-09-29「封面上印书名，想一想英文怎么办，以及对 yyyymmdd-name 和 yyyymmdd name 都识别」
 import { describe, it, eq, assert } from "./runner.mjs";
 const { splitDatedName } = await import("../src/doc-model.ts");
-const { planCover, coverHtml } = await import("../src/ui/book-cover.ts");
+const { planCover, coverHtml, paperHtml } = await import("../src/ui/book-cover.ts");
 
 describe("doc-model · splitDatedName（名字里的日期前缀）", () => {
   it("空格和连字符两种写法都认；下划线、全角空格也认", () => {
@@ -49,5 +49,16 @@ describe("ui/book-cover · 竖排还是横排、字号档、纵中横", () => {
     assert(/class="xhw-cover book v /.test(b), b); assert(/class="xhw-cover draft v /.test(d), d);
     assert(b.includes('<span class="xhw-cover-date">20240718</span>')); assert(d.includes('<span class="xhw-cover-date">20251224</span>'));
     const x = coverHtml('a<b>"c"&d', "draft"); assert(x.includes("a&lt;b&gt;&quot;c&quot;&amp;d"), x);
+  });
+});
+
+describe("ui/book-cover · 两层：纸只有颜色，字在上面那一层", () => {
+  it("纸（占位）不印字，只分书 / 稿两种颜色", () => {
+    eq(paperHtml("book"), '<span class="xhw-paper book"></span>');
+    eq(paperHtml("draft"), '<span class="xhw-paper draft"></span>');
+  });
+  it("印字那一层和底下有没有封面图无关：同一个名字永远出同一段 HTML", () => {
+    eq(coverHtml("20250127 樱川中学科学部", "book"), coverHtml("20250127 樱川中学科学部", "book"));
+    assert(!/xhw-paper/.test(coverHtml("樱川", "book")), "印字层里不带纸");
   });
 });

@@ -1,7 +1,9 @@
-// 书库卡片的封面：没有封面图的书 / 稿，把名字印在封面上。created 2026-09-29 by Claude Fable 5.1
+// 书库卡片的封面：把名字印在封面上；封面图只是背景。created 2026-09-29 by Claude Fable 5.1
 //   user 2026-09-29「封面上印书名，想一想英文怎么办，以及对 yyyymmdd-name 和 yyyymmdd name 都识别。然后配色用花璃同人的那个。但是更加哑一点，
 //   不要渐变，扁平，不过花璃那本旁边的装订线很漂亮，保留。然后最好下面的日期 大小也收上来？」
-//   落在哪一层：图库包早就留了「宿主自己画占位封面」的口子（ui.tilePlaceholderHtml）——印书名是宿主的排版，不进包。本文件只出一段 HTML（纯函数，无 DOM）；
+//   user 2026-09-29（同日稍后）「带图的能不能不要做底栏而就是图是fit all然后字还是一样的，就是字的逻辑一样，无视是否有图，图只是背景」
+//   落在哪一层：印书名是宿主的排版，不进图库包。包给两个槽——占位（ui.tilePlaceholderHtml，没有封面图时垫的那张纸）和覆盖层
+//   （ui.tileOverlayHtml，有没有图都盖在封面上）。本文件只出两段 HTML（纯函数，无 DOM）；
 //   颜色 / 字号 / 装订线 / 把包里的名字行挪到封面下沿，全在 styles.css「书库封面」一节。
 // 排版规则：
 //   · 名字先拆日期前缀（doc-model splitDatedName）：书名印大字，日期印小字。
@@ -29,7 +31,11 @@ export function planCover(stem: string): CoverPlan {
 function verticalRuns(title: string): string {
   return title.split(/([A-Za-z0-9]+)/).map((run, i) => (i % 2 === 1 && run.length <= 2 ? `<span class="tcy">${esc(run)}</span>` : esc(run))).join("");
 }
-/** 占位封面的 HTML。kind: book = 书（有装订线）；draft = txt 稿（一张纸）。 */
+/** 没有封面图时垫在下面的那张纸（图库包的占位槽）：只有颜色，不印字——字在上面那一层。 */
+export function paperHtml(kind: "book" | "draft"): string {
+  return `<span class="xhw-paper ${kind}"></span>`;
+}
+/** 印在封面上的那一层（图库包的覆盖层槽）：书名 / 日期 / 装订线。底下是封面图还是纸，印法都一样。kind: book = 书（有装订线）；draft = txt 稿（一张纸）。 */
 export function coverHtml(stem: string, kind: "book" | "draft"): string {
   const p = planCover(stem);
   const cls = `xhw-cover ${kind} ${p.vertical ? "v" : "h"} sz-${p.size}${p.coded ? " coded" : ""}`;

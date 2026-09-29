@@ -11,7 +11,7 @@ import { isDocEncrypted } from "./docs.ts";
 import { isUnlocked, onLockChange, currentPassword, setCurrentPassword, hasVerifier, resetVerifier } from "./crypto-state.ts";
 import { openConfirmSheet, openInputSheet, openChoiceSheet, withBusy } from "./sheets.ts";
 import { iconHtml } from "./ui/icon.ts";
-import { coverHtml } from "./ui/book-cover.ts";
+import { coverHtml, paperHtml } from "./ui/book-cover.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { lang, t } from "./i18n/index.ts";
@@ -91,8 +91,13 @@ export function initGalleryHost(d: GalleryHostDeps) {
       status: (msg, isError) => d.setStatus(msg, { error: !!isError }),
       busy: (label, fn) => withBusy(label, fn),
     },
-    // 占位封面 = 把名字印在封面上（v2.1.19，user 2026-09-29「封面上印书名」；排版在 ui/book-cover.ts）。此前（0.1.2 起）占位是一枚书 / 纸的图标
-    ui: { iconHtml: (name, opts) => iconHtml(name, opts), tilePlaceholderHtml: (name) => coverHtml(parseDocName(name).stem, isProjectName(name) ? "book" : "draft") },
+    // 封面 = 两层（v2.1.21；排版在 ui/book-cover.ts）：底下一层是封面图，没有图就是一张纸（占位）；上面一层印书名 / 日期 / 装订线，**有没有图都一样印**
+    //   （user 2026-09-29「封面上印书名」+「字的逻辑一样，无视是否有图，图只是背景」）。
+    ui: {
+      iconHtml: (name, opts) => iconHtml(name, opts),
+      tilePlaceholderHtml: (name) => paperHtml(isProjectName(name) ? "book" : "draft"),
+      tileOverlayHtml: (name) => coverHtml(parseDocName(name).stem, isProjectName(name) ? "book" : "draft"),
+    },
     naming: NAMING,
     isZipDoc: (n) => isProjectName(n),
     policy: {

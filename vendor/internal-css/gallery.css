@@ -124,6 +124,16 @@
 /* 0.1.2：宿主给的占位图标（ui.tilePlaceholderHtml），替代名字首字 */
 .gallery-tile-ph-icon { display: inline-flex; width: 40%; height: 40%; color: var(--ink-soft, rgba(0,0,0,0.45)); }
 .gallery-tile-ph-icon svg { width: 100%; height: 100%; }
+/* 0.5.0：宿主盖在封面上的一层（ui.tileOverlayHtml）。铺满封面那一块（和缩略图同宽同比例），不吃指针事件；
+   里面画什么归宿主。紧跟在缩略图元素后面 → 宿主可用 `img.gallery-tile-thumb + .gallery-tile-overlay` 区分底下是图还是占位。 */
+.gallery-tile-overlay {
+  position: absolute; top: 0; left: 0;
+  width: 100%; aspect-ratio: var(--tile-aspect, 1 / 1);
+  display: block; overflow: hidden;
+  border-radius: 7px 7px 0 0;
+  pointer-events: none;
+}
+.gallery-grid.list .gallery-tile-overlay { display: none; }
 /* 加密作品锁定态：点锁可解锁预览（ADR-0012） */
 .gallery-tile-thumb.placeholder.locked {
   cursor: pointer;

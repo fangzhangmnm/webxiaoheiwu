@@ -1,6 +1,6 @@
 # 2026-09-29 轮：同步安全 / 输入深模块与软键盘 / 稿纸与小横屏 / 书的冲突模型
 
-> created 2026-09-29 by Claude Fable 5.1 · as-of v2.1.20 / 2026-09-29（随本轮各批落地续写，末尾「状态」为准）
+> created 2026-09-29 by Claude Fable 5.1 · as-of v2.1.21 / 2026-09-29（随本轮各批落地续写，末尾「状态」为准）
 >
 > 本文是这一轮的总账。读者 = 下一个接手的 session 或回头查账的 user。每一节先说**这件事为什么要紧**，再说做了什么、怎么验的、还差什么。
 
@@ -142,6 +142,7 @@ user 第二条消息分了三档：这一轮做封面印书名、修同步库的
 |---|---|
 | v2.1.19 | 封面印书名：汉字为主竖排、拉丁字母为主横排、日期前缀 `yyyymmdd-名` 和 `yyyymmdd 名` 都认、配色扁平无渐变、保留装订线、日期与大小收到封面上。排版在 `src/ui/book-cover.ts` |
 | v2.1.20 | 收货 `@internal/store` 0.15.2：保存和推 / 拉撞在一起时库自己守得住（详库仓 `ai-docs/20260929-0.15.2-edit-race-guard.md`） |
+| v2.1.21 | 收货 `@internal/gallery` 0.5.0（user「gammery当然要升」，说的是 gallery）；封面改成两层：封面图只当背景、铺满整张封面，书名 / 日期 / 装订线有没有图都一样印，不加底栏 |
 
 ### 7.2 写好验过、等 user 批库的版本号才能落 main
 
@@ -150,17 +151,17 @@ user 三句话定了形状：「备份箱应该是gallery的功能」「不要�
 
 | 仓 | 分支 | 提案文档 | 要 user 批什么 |
 |---|---|---|---|
-| `20260909 internal-gallery` | `wip/0.5-backup-box` | `ai-docs/20260929-proposal-aside-and-overlay.md` | minor：0.4.1 → 0.5.0 |
+| `20260909 internal-gallery` | 已并回 main，**0.5.0 已发版** | `ai-docs/20260929-proposal-aside-and-overlay.md` | 已批 |
 | `20260813 internal-store` | `wip/0.16-doc-exts` | `ai-docs/20260929-proposal-doc-exts.md` | 引擎改动本身；版本号 0.16.0 或 0.15.3 由 user 定 |
 | 本仓 | `wip/backup-box` | 本节 | 无（等上面两个发版后收货） |
 
-三个分支都只在本地，没有推远端，也没有并入 main。三个仓的 main 都停在已发版状态。
+store 和本仓的分支都只在本地，没有推远端，也没有并入 main。user 要 `docExts` 的解释，还没批。
 
-本仓分支里有什么：书库的回收站钮进去是一条栏（回收站 / 备份箱两个页签 + 清空）；封面改成两层（底是封面图或一张纸，面是书名 / 日期 / 装订线，有没有图都一样印）；`createStore` 配 `docExts`。
+本仓分支里还剩什么（封面两层已随 v2.1.21 进 main）：书库的回收站钮进去是一条栏（回收站 / 备份箱两个页签 + 清空）；`createStore` 配 `docExts`；端到端多 3 个备份箱场景。为什么备份箱入口不能先上：没有 `docExts`，备份箱里的书取回来名字是 `书.webxiaoheiwu [戳].zip`，本 app 认不出，等于恢复钮报了成功却拿不到书。
 
 **续做起手**（user 批了之后）：
-1. 两个库各自：分支并回 main → 写版本号 → `npm run release` → tag → gh release。
-2. 本仓：`git checkout wip/backup-box` → 两个 `pull-package.sh <版本>` 收货 → `cp node_modules/@internal/gallery/src/gallery.css vendor/internal-css/` → 写版本号 v2.1.21 → `bash scripts/build.sh` → 全套验证 → 并回 main → 推 dev。
+1. store：分支并回 main → 写版本号 → `npm run release` → tag → gh release。
+2. 本仓：`git checkout wip/backup-box` → store 的 `pull-package.sh <版本>` 收货 → 写版本号 v2.1.22 → `bash scripts/build.sh` → 全套验证 → 并回 main → 推 dev。
 3. 分支提交里的 dist 和 vendored CSS 是拿未发版构建出的，第 2 步会重出，不要直接拿来用。
 
 ### 7.3 没做
@@ -177,7 +178,8 @@ user 三句话定了形状：「备份箱应该是gallery的功能」「不要�
 | 设置并入侧栏、书名折行 | v2.1.18 | 已推 dev，真机零 |
 | 封面印书名 | v2.1.19 | 已推 dev，真机零 |
 | 收货 store 0.15.2 | v2.1.20 | 已推 dev，真机零 |
-| 备份箱界面、封面图只当背景 | — | 写好验过，在分支上，等 user 批两个库的版本号（§7.2） |
+| 封面图只当背景，收货 gallery 0.5.0 | v2.1.21 | 已推 dev，真机零 |
+| 备份箱入口 | — | 写好验过，在分支上，等 user 定 store 的 `docExts`（§7.2） |
 | 手感调整 | — | 等 user 真机反馈（§7.3） |
 | 书的冲突模型（按页合并） | — | 提案已写，user 说慢慢想 |
 | 日文输入法 | — | 评估已写，user 说不急 |
