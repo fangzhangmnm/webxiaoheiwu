@@ -270,7 +270,11 @@ export function openPickSheet<T, A extends string>(title: string, opts: PickOpts
 interface GateAction<T> { label: string; value: T; primary?: boolean }
 interface GateOpts<T> { title: string; message: string; note?: string; showSpinner?: boolean; actions: GateAction<T>[] }
 let _gatePending: ((v: unknown) => void) | null = null;
+let _gateFocusBack: HTMLElement | null = null;
 export function lockSyncGate<T = string>({ title, message, note, showSpinner, actions }: GateOpts<T>): Promise<T> {
+  // 冲突面是不可 dismiss 的锁屏：焦点还留在正文里的话，键盘会隔着遮罩继续往里打字（推云是 30 s 心跳，弹出来时常常正在打字）——先把焦点拿走，关了再还（2026-09-29）。
+  const a = document.activeElement;
+  if (a instanceof HTMLElement && a !== document.body && !$("gateSheet").contains(a)) { _gateFocusBack = a; a.blur(); }
   $("gateTitle").textContent = title;
   $("gateMessage").textContent = message;
   $("gateNote").textContent = note ?? ""; $("gateNote").classList.toggle("hidden", !note);
@@ -287,7 +291,11 @@ export function lockSyncGate<T = string>({ title, message, note, showSpinner, ac
     _gatePending = resolve as (v: unknown) => void;
   });
 }
-export function unlockSyncGate(): void { $("gateSheet").classList.add("hidden"); _gatePending = null; }
+export function unlockSyncGate(): void {
+  $("gateSheet").classList.add("hidden"); _gatePending = null;
+  const back = _gateFocusBack; _gateFocusBack = null;
+  if (back && back.isConnected && (document.activeElement === document.body || document.activeElement == null)) { try { back.focus({ preventScroll: true }); } catch { /* ignore */ } }
+}
 export function settleSyncGate(value: unknown): void {
   if (_gatePending) { const r = _gatePending; unlockSyncGate(); r(value); }
 }

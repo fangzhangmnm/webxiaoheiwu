@@ -10,7 +10,8 @@
     "smoke": "node test/boot-smoke.mjs",
     "api": "bash scripts/gen-api.sh",
     "probe:asr": "node probe/asr/headless.mjs",
-    "e2e:asr": "node test/asr-e2e.mjs"
+    "e2e:asr": "node test/asr-e2e.mjs",
+    "e2e:sync": "node test/e2e-sync/run.mjs"
   },
   "devDependencies": {
     "typescript": "5.7.3"

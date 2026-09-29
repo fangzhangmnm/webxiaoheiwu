@@ -21,11 +21,12 @@ export function createProjectSession(d: ProjectSessionDeps) {
   let name: string | null = null;
   let project: Project = emptyProject();
   let dirty = false;
+  let editEpoch = 0;             // 每次改动 +1：落盘期间又有改动 → 写完不许清 dirty（2026-09-29；以前 flush 写完无条件清，上传那一两秒里切页收进来的字就成了「没标脏的改动」，不再落盘）
   let readOnly = false;          // too-new 只读、禁覆盖（ADR-0009 §9）
   let gen = 0;
 
   const requireCurrent = (): string => { const c = project.editorState.last; if (!c) throw new Error("project session: no current page"); return c; };
-  const touch = () => { dirty = true; };
+  const touch = () => { dirty = true; editEpoch++; };
   /** 能不能改：太新（格式）或作品自己上了修改锁 → 一律不能。**所有**改动动词都经这一道；UI 只是读它画灰，不再各处自己判。无头 / 无地同一份 session，天然同守。 */
   const canMutate = (): boolean => !readOnly && !project.readOnly;
   const assertMutable = (): void => { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly) throw new LockedBookError(); };
@@ -144,11 +145,11 @@ export function createProjectSession(d: ProjectSessionDeps) {
   /** opts.force：不脏也写（推云节律用——本地 200ms 落盘已清 dirty，15s 后推云还得把同一份字节以 tryPush 再交给库，否则永远推不出去）。 */
   async function flush(push: boolean, opts: { force?: boolean } = {}): Promise<{ wrote: boolean; pushed?: boolean; reason?: string; resolution?: "keepMine" | "takeCloud" }> {
     if (!name || readOnly || (!dirty && !opts.force)) return { wrote: false };
-    const g = gen, n = name;
+    const g = gen, n = name, e = editEpoch;
     const blob = await packProject(project);
     if (g !== gen) return { wrote: false };
     const r = await d.write(n, blob, { push });
-    if (g === gen) dirty = false;
+    if (g === gen && e === editEpoch) dirty = false;   // 打包 / 写盘 / 上传期间又改过 → 这一版里没有那些改动，dirty 留着
     return { wrote: true, pushed: r.pushed, reason: r.reason, resolution: r.resolution };
   }
   /** 回退栈（UI 的内存态镜像进 editor-state；不标脏，随下次保存写——ADR-0010 口径）。 */

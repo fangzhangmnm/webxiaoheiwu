@@ -30,7 +30,9 @@ const zipFile = (name: string, mode: "new" | "existing" = "existing") => require
 /** 按身份分派句柄（2.0 两档：txt = RawFile、工程 = ZipFile）。身份动词（改名/移动/回收站/判加密）一律走这里，别裸用 file()。 */
 const anyFile = (name: string) => (docKind(name) === "project" ? zipFile(name) : file(name));
 export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
-export function pullProjectIfClean(name: string): Promise<FreshResult> { return zipFile(name).pullIfClean(); }
+/** 干净快进的可选项：localDirty = 还停在编辑器里没落盘的改动（库只认得已落盘的脏）；onReplaceStart = 库决定替换的那一刻（同步），调用方冻结输入。 */
+export interface PullIfCleanOpts { localDirty?: () => boolean; onReplaceStart?: () => void; probe?: Promise<unknown> }
+export function pullProjectIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult> { return zipFile(name).pullIfClean(opts); }
 /** 本地字节是不是加密容器（两档：txt 走 RawFile、工程走 ZipFile）。 */
 export function isDocEncrypted(name: string): Promise<boolean> { return (docKind(name) === "project" ? zipFile(name) : file(name)).isEncrypted(); }
 export async function saveProjectBlob(name: string, blob: Blob, opts: { push: boolean }): Promise<SaveResult> { return await zipFile(name).save(blob, { tryPush: opts.push }); }
@@ -170,7 +172,7 @@ async function tryMoveWithCollision(name: string, target: string): Promise<Renam
 export function trashDoc(name: string): Promise<DelResult> { return anyFile(name).delete(); }
 
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
-export function pullDocIfClean(name: string, opts?: { onReplaceStart?: () => void; probe?: Promise<unknown> }): Promise<FreshResult> {
+export function pullDocIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult> {
   return file(name).pullIfClean(opts);
 }
 

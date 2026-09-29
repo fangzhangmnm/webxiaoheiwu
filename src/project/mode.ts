@@ -9,6 +9,7 @@ import { PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { bookLocalDebounceMs } from "./cadence.ts";
 import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc } from "../docs.ts";
+import { rescueBook } from "../rescue.ts";
 import { note as diagNote } from "../diag-log.ts";
 import { bindTextField } from "../ui/text-field.ts";   // v2.1.13：章节名框的合成态 / 受控回写窄接口（user 2026-09-26「能否抽一个窄接口」）   // 2026-09-26 黑匣子：书的推 / 拉结果（user 真机「卡在上传 / 下载」时 log 里是盲区）
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
@@ -59,6 +60,10 @@ export function createProjectMode(d: ProjectModeDeps) {
   let firstDirtyAt = 0, pushPending = false, pushFailures = 0, gen = 0;
   let persistInFlight: Promise<void> | null = null;
   let reloadAfterPersist = false;   // takeCloud 之后要整体重开（不能在 persist 链里做：openStore 会 await persistInFlight = 自己）
+  // 世界线守卫（2026-09-29；与 txt 编辑器同款，说明见 rescue.ts）：worldReplaced = 本地那一本刚被云端版本换掉、内存图还是旧世界 → 旧世界绝不再写回原名；
+  //   replacing = 库正在用云端新版覆盖本地（干净快进下载中）→ 冻结输入。两个都在下一次 open / create / close 归零。
+  let worldReplaced = false, replacing = false;
+  const resetWorld = (): void => { worldReplaced = false; replacing = false; reloadAfterPersist = false; };
   let refreshInFlight = false;
   let lastPersistMs = 0;   // 上次整包落盘（打包 + 写）耗时 → 本地防抖随体重放缓（ADR-0015 b）
   let encrypted = false, locked = false;   // 工程整包加密（store 透明层）：locked = 加密且未解锁 → 空白只读，锁图标 = 手势才弹密码
@@ -69,7 +74,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   const popBack = (): string | undefined => { const v = back.pop(); syncBack(); return v; };
   const renameInBack = (from: string, to: string) => { let hit = false; back = back.map((n) => (n === from ? (hit = true, to) : n)); if (hit) syncBack(); forward = forward.map((n) => (n === from ? to : n)); };
   const active = () => !!session && !!home;
-  const canEdit = () => active() && !locked && session!.canMutate();   // 改动能不能做 = session 说了算（锁在工件层）；locked = 加密未解锁
+  const canEdit = () => active() && !locked && !worldReplaced && !replacing && session!.canMutate();   // 改动能不能做 = session 说了算（锁在工件层）；locked = 加密未解锁
   const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
   const displayName = (): string | null => (home ? (home.kind === "store" ? parseDocName(home.name).stem : home.home.fileName.replace(/\.webxiaoheiwu\.zip$/i, "")) : null);
   const name = (): string | null => (home?.kind === "store" ? home.name : null);
@@ -124,6 +129,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     const g = gen;
     const run = (async () => {
       if (g !== gen || !active() || session!.readOnly) return;
+      if (worldReplaced || replacing) return;   // 旧世界不写回（见上「世界线守卫」）：takeCloud 之后排着队的本地落盘一旦写下去，本地就又变回旧版本、下次推送静默盖掉云端赢家
       commitEditor(false);   // 节律落盘：不打断正在编辑的章节名
       if (home!.kind === "local") {
         if (!session!.dirty) return;
@@ -138,10 +144,22 @@ export function createProjectMode(d: ProjectModeDeps) {
       if (g !== gen) return;
       if (r.wrote && push) diagNote("book", `push "${home!.name}": ${r.pushed ? "pushed" : `not pushed (${r.reason ?? "?"})`}${r.resolution ? ` resolution=${r.resolution}` : ""} in ${Math.round(performance.now() - t0)}ms`);
       if (r.wrote) { if (push) { if (r.pushed) { pushPending = false; pushFailures = 0; } else pushPending = true; } else pushPending = true; }
-      if (r.wrote && r.resolution === "takeCloud") reloadAfterPersist = true;   // 世界线换了（冲突面选了云端）：本地 IDB 已是云端版本，内存图还是旧的 → persist 链外整体重开（2026-08-25 案卷同款，txt 编辑器早有，书模式以前吞掉）
+      if (r.wrote && r.resolution === "takeCloud") await worldWasReplaced();   // 世界线换了（冲突面选了云端）：本地 IDB 已是云端版本，内存图还是旧的 → persist 链外整体重开（2026-08-25 案卷同款，txt 编辑器早有，书模式以前吞掉）
     })();
     persistInFlight = run;
     try { await run; } finally { if (persistInFlight === run) persistInFlight = null; }
+  }
+  /** 本地那一本刚被云端版本换掉（冲突面选了云端）。库备份进备份箱的是上一次落盘的那一版；那之后内存图里又有的改动（上传途中打的字 / 切页时收进去的字 / 加的页）
+   *  不在里面 → 把屏上这一整本另存成一本新书留底，然后封住旧世界、等 persist 链外整体重开。 */
+  async function worldWasReplaced(): Promise<void> {
+    const n = name(), s = session;
+    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
+    try { commitEditor(false); } catch (e) { reportError(e, "log"); }   // 屏上的字先收进内存图（此刻还能改）
+    worldReplaced = true; reloadAfterPersist = true;
+    applyReadOnly();
+    if (!n || !s || !s.dirty) return;
+    try { const saved = await rescueBook(n, await s.toBlob(), { encrypted }); d.setStatus(t("rescue.saved", { name: parseDocName(saved).stem })); d.onChanged(); }
+    catch (e) { reportError(e); d.setStatus(t("rescue.failed", { e: errMsg(e) }), { error: true }); }
   }
   /** 本地落盘（不等防抖）：切页 / 防抖到点 共用。落完照旧排推云（推云节律不变——切页只是把本地那一步提前，不额外推云；ADR-0015 d）。 */
   function saveLocalNow(): void {
@@ -223,7 +241,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.editorEl.scrollTop = 0;
   }
   function applyReadOnly(): void {
-    const ro = (session?.readOnly ?? false) || userReadOnly();
+    const ro = (session?.readOnly ?? false) || userReadOnly() || worldReplaced || replacing;
     d.editorEl.readOnly = ro; d.editorEl.classList.toggle("locked", ro);
     d.titleEl.readOnly = ro; d.titleEl.classList.toggle("locked", ro);
   }
@@ -235,6 +253,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     applyReadOnly(); d.setState(stateText()); d.onChanged();
     try { await persist(home!.kind === "store" && d.isSignedIn() && !isOffline()); }
     catch (e) { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); }
+    if (reloadAfterPersist) { reloadAfterPersist = false; await reopenFromStore("takeCloud"); return; }   // 这一推也可能撞冲突面
     d.setState(stateText(), { unsynced: pushPending && d.isSignedIn() }); d.onChanged();
   }
   function reportOpen(r: OpenResult): boolean {
@@ -255,7 +274,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** promptUnlock：只有用户手势（图库点开 / 锁图标）才弹密码框——「加密永不自动弹框」。 */
   async function openStore(projectName: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
     d.onBeforeLoad?.(); await flushLocal();
-    const g = ++gen;
+    const g = ++gen; resetWorld();
     encrypted = false; locked = false;
     try { encrypted = await isDocEncrypted(projectName); } catch { encrypted = false; }
     if (g !== gen) return true;   // 被更新的 open 抢先：不是失败，调用方别退回新稿
@@ -295,16 +314,22 @@ export function createProjectMode(d: ProjectModeDeps) {
    *  别的设备改了书，这台打开着就永远看不到，书库角标一直「云端更新」（user 真机「旧书卡在下载」）。 */
   async function refreshIfClean(): Promise<void> {
     if (!active() || home!.kind !== "store" || locked || !d.isSignedIn() || isOffline()) return;
-    if (refreshInFlight || persistInFlight || localTimer || pushPending || session!.dirty || session!.readOnly) return;
+    if (refreshInFlight || persistInFlight || localTimer || pushPending || session!.dirty || session!.readOnly || worldReplaced) return;
     const n = name()!; const g = gen; refreshInFlight = true;
     try {
-      const r = await pullProjectIfClean(n);
+      // 库只认得已经落盘的脏；还停在编辑器 / 内存图里的改动由 localDirty 告诉它。库决定替换的那一刻（onReplaceStart，同步）冻结输入直到新版载入——
+      //   下载途中打进去的字会被整本覆盖且不进备份箱（2026-09-29 端到端测试复现；书带图片时下载要好几秒）。
+      const editorDiffers = (): boolean => { const c = session?.current(); return !!c && nodeKind(c) !== "image" && d.editorEl.value !== session!.currentText(); };
+      const r = await pullProjectIfClean(n, {
+        localDirty: () => !!localTimer || !!persistInFlight || pushPending || (session?.dirty ?? false) || editorDiffers(),
+        onReplaceStart: () => { replacing = true; applyReadOnly(); d.setStatus(t("st.replacingFromCloud")); },
+      });
       if (g !== gen) return;
       if (r.status && !["in-sync", "dirty-skip", "offline"].includes(r.status)) diagNote("book", `refresh "${n}": ${r.status}${r.reason ? ` (${r.reason})` : ""}`);   // 60 s 轮询的常态不刷黑匣子；只记真动了 / 拉失败 / 云端没了
       if (r.status === "fast-forwarded") { await reopenFromStore("fast-forwarded"); d.setStatus(t("st.loadedCloudLatest", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }) })); }
       else if (r.status === "cloud-absent") d.setStatus(t("st.cloudGone"), { error: true });
     } catch (e) { reportError(e, "log"); }
-    finally { refreshInFlight = false; }
+    finally { refreshInFlight = false; if (replacing) { replacing = false; applyReadOnly(); } }
   }
   /** 工程文件在 store 里改了名（顶栏改名）：只换身份，不重开、不重载正文、回退栈不丢。 */
   function adoptName(newName: string): void {
@@ -337,7 +362,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   d.onLockChange((unlocked) => { if (!unlocked && active() && encrypted && home?.kind === "store") { const n = name()!; void flushLocal().then(() => { if (name() === n) enterLocked(n); }); } });
   async function openLocal(lh: LocalHome): Promise<boolean> {
     d.onBeforeLoad?.(); await flushLocal();
-    const g = ++gen;
+    const g = ++gen; resetWorld();
     const s = createProjectSession({ read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
     if (g !== gen) return true;
@@ -350,7 +375,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 新建（store）：调用方已 createProjectDoc 得到身份；这里开一个空工程带首节点。 */
   async function createInStore(projectName: string, firstNode: string): Promise<void> {
     d.onBeforeLoad?.(); await flushLocal();
-    gen++;
+    gen++; resetWorld();
     const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
     home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
@@ -364,7 +389,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   async function close(): Promise<void> {
     if (!active()) return;
     await flushLocal();
-    gen++;
+    gen++; resetWorld();
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     home = null; session = null; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
     hideImage();

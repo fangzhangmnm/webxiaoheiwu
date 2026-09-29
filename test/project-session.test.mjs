@@ -179,3 +179,27 @@ describe("project/session · 删除模型三动词（ADR-0014 §8 改写）", ()
     await ps.flush(false); const ps2 = createProjectSession(s.deps); eq((await ps2.open("p.webxiaoheiwu.zip")).warnings.length, 0);
   });
 });
+
+// 2026-09-29（Claude Fable 5.1）：落盘途中又有改动 → 写完不许清 dirty（否则那些改动成了「没标脏的改动」，不再落盘，关掉就丢）
+describe("project/session · 落盘途中的改动不被清脏", () => {
+  it("flush 写盘期间 setCurrentText → flush 返回后仍 dirty；再 flush 才把新字写下去", async () => {
+    const files = new Map(); let release; const gate = new Promise((r) => (release = r));
+    let slow = true;
+    const ps = createProjectSession({ read: async (n) => files.get(n) ?? null, write: async (n, blob) => { if (slow) await gate; files.set(n, blob); return { pushed: false }; } });
+    ps.create("p.webxiaoheiwu.zip", "a.txt"); ps.setCurrentText("第一版");
+    const f = ps.flush(false);
+    await new Promise((r) => setTimeout(r, 20));
+    ps.setCurrentText("第一版，途中又写了");
+    release(); const r = await f; eq(r.wrote, true);
+    assert(ps.dirty, "途中的改动不在写下去的那一版里，dirty 必须留着");
+    slow = false; const r2 = await ps.flush(false); eq(r2.wrote, true); assert(!ps.dirty);
+    const ps2 = createProjectSession({ read: async (n) => files.get(n) ?? null, write: async () => ({ pushed: false }) });
+    await ps2.open("p.webxiaoheiwu.zip"); eq(ps2.currentText(), "第一版，途中又写了");
+  });
+  it("落盘期间没有改动 → 照旧清 dirty", async () => {
+    const files = new Map();
+    const ps = createProjectSession({ read: async (n) => files.get(n) ?? null, write: async (n, blob) => { files.set(n, blob); return { pushed: false }; } });
+    ps.create("p.webxiaoheiwu.zip", "a.txt"); ps.setCurrentText("x");
+    await ps.flush(false); assert(!ps.dirty);
+  });
+});

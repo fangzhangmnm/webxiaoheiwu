@@ -14,6 +14,7 @@ import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, e
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword, currentPassword } from "./crypto-state.ts";
 import { deviceKvGet, deviceKvGetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
+import { rescueText } from "./rescue.ts";
 import { t } from "./i18n/index.ts";
 
 export interface StatusOpts { error?: boolean; unsynced?: boolean }
@@ -64,7 +65,7 @@ export function createEditor(d: EditorDeps) {
   }
   function applyGuards(): void {
     if (parked) return;
-    const blocked = st.readOnly || st.locked || st.unavailable;
+    const blocked = st.readOnly || st.locked || st.unavailable || replacing || worldReplaced;
     d.editor.classList.toggle("locked", blocked);
     d.editor.readOnly = blocked;   // 锁/只读 = 真 readOnly：敲进去的字不再被悄悄吞掉（user 2026-09-04「没解锁密码导致的煤气灯」；根治=0.3 懒空白稿）
   }
@@ -86,7 +87,12 @@ export function createEditor(d: EditorDeps) {
     return dirty ? (isOffline() ? "offline" : "unsynced") : "clean";
   }
   let parked = false;   // 2.0：工程模式接管 textarea 时 txt 编辑器静默（不收 input、不写盘、不改 readOnly）
-  const canEdit = () => !parked && !st.readOnly && !st.locked && !st.unavailable;
+  // 世界线守卫（2026-09-29，test/e2e-sync/ 两台设备端到端测试抓到的三条丢字路径；说明见 rescue.ts）：
+  //   worldReplaced = 本地字节刚被云端那一版换掉（冲突面选了云端），编辑器里还是旧世界 → 旧世界**绝不再写回原名**，persist 链外整体重载；
+  //   replacing     = 库正在用云端新版覆盖本地（干净快进下载中）→ 冻结输入，别让字打进一个马上被换掉的世界。
+  let worldReplaced = false, replacing = false;
+  let reloadAfterPersist: string | null = null;   // 重载不能在 persist 链里做：open → flushLocal 会 await persistInFlight = 自己（2026-09-29 之前就是这么死锁的：选了「云端覆盖本地」之后保存链永远卡住，之后打的字再也不落盘）
+  const canEdit = () => !parked && !st.readOnly && !st.locked && !st.unavailable && !replacing && !worldReplaced;
 
   // ── 落盘 / 推云 ──
   let persistInFlight: Promise<void> | null = null;   // 串行：两个 persist 同飞 = 双建稿（审计 L3）
@@ -98,6 +104,7 @@ export function createEditor(d: EditorDeps) {
     const gen = loadGen;
     const run = (async () => {
       if (gen !== loadGen) return;
+      if (worldReplaced || replacing) return;   // 旧世界不写回（见上「世界线守卫」）
       if (st.locked || st.unavailable || st.readOnly) return;   // 锁定/不可用/只读稿绝不写（other-password 态尤其：否则用当前密码封空容器覆盖，审计 UI-3）
       if (renameInFlight) { scheduleLocalSave(); return; }
       const text = d.editor.value;
@@ -129,13 +136,23 @@ export function createEditor(d: EditorDeps) {
       if (effPush) {
         if (r.pushed) { pushPending = false; pushFailures = 0; }
         else pushPending = true;
-        if (r.resolution === "takeCloud" && st.name === name) await reload(name);   // 世界线换了：整体重载（2026-08-25 案卷）
+        if (r.resolution === "takeCloud" && st.name === name) await worldWasReplaced(name, text);   // 世界线换了：封住旧世界 + 途中打的字留底；整体重载挪到 persist 链外（pushNow）
       } else {
         pushPending = true;
       }
     })();
     persistInFlight = run;
     try { await run; } finally { if (persistInFlight === run) persistInFlight = null; }
+  }
+  /** 本地字节刚被云端那一版换掉。snapshot = 库备份进备份箱的那一版正文；编辑器里比它多出来的字 = 上传途中才打的，另存留底。 */
+  async function worldWasReplaced(name: string, snapshot: string): Promise<void> {
+    worldReplaced = true; reloadAfterPersist = name;
+    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
+    applyGuards();
+    const now = d.editor.value;
+    if (now === snapshot) return;
+    try { const saved = await rescueText(name, now, { encrypted: st.encrypted }); d.setStatus(t("rescue.saved", { name: parseDocName(saved).stem })); d.onDocChanged(); }
+    catch (e) { reportError(e); d.setStatus(t("rescue.failed", { e: errMsg(e) }), { error: true }); }
   }
   function scheduleLocalSave(): void {
     if (localTimer) clearTimeout(localTimer);
@@ -172,6 +189,7 @@ export function createEditor(d: EditorDeps) {
     try {
       await persist(true);
       if (gen !== loadGen) return;
+      if (reloadAfterPersist) { const n = reloadAfterPersist; reloadAfterPersist = null; await reload(n); return; }   // 冲突面选了云端：persist 链已经放开，这里才重载
       d.setState(statusForDoc(), { unsynced: pushPending });
       if (pushPending) schedulePush();   // 冲突未解 / 库判未推 → 下个周期再试
     } catch (e) {
@@ -236,6 +254,7 @@ export function createEditor(d: EditorDeps) {
     d.onBeforeLoad?.();
     await flushLocal();
     encryptPending = false; pushFailures = 0;
+    worldReplaced = false; replacing = false; reloadAfterPersist = null;
     const gen = ++loadGen;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false;
@@ -273,7 +292,7 @@ export function createEditor(d: EditorDeps) {
       d.setState(statusForDoc());
       d.onDocChanged();
       if (r.encoding !== "utf-8" && r.encoding !== "utf-8-bom" && canEdit()) {   // 旧编码 → 以 UTF-8 写回（v1 同款规范化）
-        void saveDoc(name, r.text, { push: d.isSignedIn() }).catch((e) => reportError(e, "log"));
+        void saveDoc(name, r.text, { push: d.isSignedIn() }).then((w) => { if (w.resolution === "takeCloud" && st.name === name && gen === loadGen) void reload(name); }).catch((e) => reportError(e, "log"));   // 这一推也可能撞冲突面：选了云端就得重载，别让屏上留着旧世界
       }
       return true;
     }
@@ -293,6 +312,7 @@ export function createEditor(d: EditorDeps) {
     d.onBeforeLoad?.();
     await flushLocal();
     encryptPending = false; pushFailures = 0;
+    worldReplaced = false; replacing = false; reloadAfterPersist = null;
     loadGen++;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0; pushPending = false;
@@ -316,6 +336,7 @@ export function createEditor(d: EditorDeps) {
     const dir = currentDir();
     st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.pendingTitle = null; st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
     pushPending = false; encryptPending = false; pushFailures = 0;
+    worldReplaced = false; replacing = false; reloadAfterPersist = null;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
     d.editor.value = ""; savedText = "";
     applyGuards(); d.setState(""); d.onDocChanged();
@@ -325,11 +346,16 @@ export function createEditor(d: EditorDeps) {
   async function refreshIfClean(): Promise<void> {
     const name = st.name;
     if (!name || refreshInFlight || !d.isSignedIn() || st.locked) return;
-    if (localTimer || renameInFlight || pushPending) return;
+    if (localTimer || renameInFlight || pushPending || persistInFlight || worldReplaced) return;
     refreshInFlight = true;
     const gen = loadGen;
     try {
-      const r = await pullDocIfClean(name);
+      // 库只认得已经落盘的脏；还停在编辑器里的字由 localDirty 告诉它（查云端那一下网络往返里用户可能刚好开始打字）。
+      // 一旦库决定替换（onReplaceStart，同步回调）：冻结输入直到新版载入——下载途中打进去的字会被整篇覆盖且不进备份箱（2026-09-29 端到端测试复现）。
+      const r = await pullDocIfClean(name, {
+        localDirty: () => !!localTimer || !!persistInFlight || pushPending || d.editor.value !== savedText,
+        onReplaceStart: () => { replacing = true; applyGuards(); d.setStatus(t("st.replacingFromCloud")); },
+      });
       if (gen !== loadGen) return;
       if (r.status === "fast-forwarded") {
         await reload(name);
@@ -338,7 +364,7 @@ export function createEditor(d: EditorDeps) {
         d.setStatus(t("st.cloudGone"), { error: true });
       }
     } catch (e) { reportError(e, "log"); }
-    finally { refreshInFlight = false; }
+    finally { refreshInFlight = false; if (replacing) { replacing = false; applyGuards(); } }
   }
 
   // ── 只读保护（per-device）──
