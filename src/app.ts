@@ -414,14 +414,13 @@ function renderPageKin(): void {
   const s = project.session();
   for (const n of tocChildren) {
     const li = document.createElement("li");
-    // hidden（2026-09-30）：正文里的目录行和侧栏同一套——自己藏的 = 眼睛 + 灰，被祖先藏的只灰
+    // hidden（2026-09-30）：正文里的目录行和侧栏同一套——只变灰不画图标（user「都改颜色了那么眼睛图标就不要了吧」）
     const hiddenSelf = project.isHidden(n), hiddenUp = !hiddenSelf && project.isHiddenInTree(n);
     const b = document.createElement("button"); b.type = "button"; b.className = "child-toc-row" + (hiddenSelf ? " hidden-self" : hiddenUp ? " hidden-inherited" : ""); b.dataset.name = n;
     const meta = s?.project.nodes.get(n);
     b.title = (meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : nodeDisplayName(n)) + (hiddenSelf ? " · " + t("edge.hiddenTip") : hiddenUp ? " · " + t("edge.hiddenBy", { name: nodeDisplayName(project.hiddenAncestor(n) ?? "") }) : "");
     const kindIcon = nodeKind(n) === "image" ? `<svg class="ico" aria-hidden="true"><use href="#image"/></svg>` : "";
-    const hiddenIcon = hiddenSelf ? `<svg class="ico child-toc-hidden" aria-hidden="true"><use href="#visibility-hide"/></svg>` : "";
-    b.innerHTML = (kindIcon || `<svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg>`) + `<span class="child-toc-name"></span>` + hiddenIcon + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
+    b.innerHTML = (kindIcon || `<svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg>`) + `<span class="child-toc-name"></span>` + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
     b.querySelector(".child-toc-name")!.textContent = nodeDisplayName(n);
     b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); editorEl.focus(); });
     li.appendChild(b); childTocList.appendChild(li);
@@ -1253,23 +1252,30 @@ editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "re
 type PttKey = "ControlLeft" | "CapsLock";
 const pttKeyPref = (): PttKey => (deviceKvGet("pttKey") === "CapsLock" ? "CapsLock" : "ControlLeft");
 let pttBackend: VoiceSession | null = null, pttCommitted = false, pttTimer: ReturnType<typeof setTimeout> | null = null;
+let pttArmedNoPack = false;   // 没包 + 按住式：keydown 不提示（Ctrl+C 之类和弦天天弹「要先下载语音包」——user 2026-09-30「按 ctrl 的时候为什么还是显示需要下载语音包」），干净松键才提一句
 const isPttKey = (e: KeyboardEvent) => e.code === pttKeyPref();
 const pttIsToggle = (): boolean => pttKeyPref() === "CapsLock";
 function pttAbort(): void { if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } pttBackend?.abort(); pttBackend = null; pttCommitted = false; }
 function pttStop(): void { if (!pttBackend) return; if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } if (pttCommitted) pttBackend.stop(); else pttBackend.abort(); pttBackend = null; pttCommitted = false; }
 document.addEventListener("keydown", (event) => {
   if (pttBackend && !isPttKey(event)) { if (!pttIsToggle()) pttAbort(); return; }   // 按住式：别的键 = 和弦（Ctrl+C）→ 弃；切换式：手是空的，打字不打断（1s 静音自动停）
+  if (pttArmedNoPack && !isPttKey(event)) { pttArmedNoPack = false; return; }   // 没包时的和弦：不提示
   if (!isPttKey(event) || event.repeat || event.shiftKey || event.altKey || event.metaKey) return;
   if (pttBackend) { if (pttIsToggle()) pttStop(); return; }   // 切换式：再按一下 = 停
   if (document.activeElement !== editorEl || !canEditNow()) return;
   const backend = activeVoiceBackend();
   if (!backend || backend.state !== "idle") return;
+  // 没包：按住式等干净松键再提；切换式按了就是要说 → 立刻提。首次不知道有没有包 → 暖一下缓存，这一下不提示不起录
+  const slug = MODELS[voiceModel()].slug; const known = asr.isKnownReady(slug);
+  if (known === undefined) { void asr.status(slug).catch(() => { /* 下次再判 */ }); return; }
+  if (known === false) { if (pttIsToggle()) setStatus(t("voice.pack.missingHint")); else pttArmedNoPack = true; return; }
   pttBackend = backend; pttCommitted = pttIsToggle();   // 切换式没有 250ms 门：按了就是要说
   void backend.start(pickSpeechLang());
   if (pttIsToggle()) { if (pttBackend.state === "recording") onVoiceState("recording"); }
   else pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; if (pttBackend?.state === "recording") onVoiceState("recording"); }, PTT_HOLD_MS);
 }, { capture: true });
 document.addEventListener("keyup", (event) => {
+  if (isPttKey(event) && pttArmedNoPack) { pttArmedNoPack = false; setStatus(t("voice.pack.missingHint")); return; }   // 干净按了一下语音键、没包 → 提一句（和弦已在 keydown 里解除）
   if (!isPttKey(event) || !pttBackend || pttIsToggle()) return;   // 切换式不看 keyup（macOS 只在切灭时发）
   pttStop();
 });

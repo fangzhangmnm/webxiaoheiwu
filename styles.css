@@ -1607,9 +1607,8 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-foot { display: flex; flex-wrap: wrap; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
 /* v2 邻域（ADR-0014 §7）：`..` 行 = 父页（顶层 = 书，不可点）；块头 = 兄弟 / 子节 / 链接 / 谁指向这里；没有第三层。 */
 .edge-row.parent .edge-main { font-weight: 600; }
-/* hidden（2026-09-30，Unity Hierarchy 同款）：自己藏的 = 眼睛 + 灰；被祖先藏的 = 只灰 */
+/* hidden（2026-09-30，Unity Hierarchy 同款）：藏着的行只变灰、不画图标（user「都改颜色了那么眼睛图标就不要了吧」） */
 .edge-row.hidden-self .edge-name, .edge-row.hidden-inherited .edge-name { opacity: 0.5; }
-.edge-row .edge-hidden { width: 12px; height: 12px; flex: none; opacity: 0.6; }
 .page-hidden-badge { color: var(--ink-muted); opacity: 0.8; }
 .edge-row.parent .edge-dots { flex: none; color: var(--ink-soft); font-family: var(--font-ui); letter-spacing: 1px; }
 .edge-row.parent.root .edge-main { color: var(--ink-soft); font-weight: 500; cursor: default; }
@@ -1795,9 +1794,8 @@ body.ruled-lines .body-mirror { background-image: none; }
 .child-toc-row .ico { flex: none; align-self: flex-start; width: 0.7em; height: 0.7em; margin-top: calc((var(--editor-lh) - 0.7em) / 2); color: var(--ink-muted); }
 .child-toc-name { flex: 0 1 auto; min-width: 0; line-height: var(--editor-lh); white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .child-toc-sub { flex: none; margin-left: auto; padding-left: 0.6em; line-height: var(--editor-lh); font-family: var(--font-ui); font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
-/* hidden（2026-09-30 user「hidden 的话正文里的链接也应该有颜色变化」）：目录行与侧栏同一套——自己藏的 = 眼睛 + 灰，被祖先藏的只灰；`..` 指向的上级本身不出门也灰 */
+/* hidden（2026-09-30 user「hidden 的话正文里的链接也应该有颜色变化」「都改颜色了那么眼睛图标就不要了吧」）：目录行与侧栏同一套只变灰；`..` 指向的上级本身不出门也灰 */
 .child-toc-row.hidden-self .child-toc-name, .child-toc-row.hidden-inherited .child-toc-name { opacity: 0.5; }
-.child-toc-row .child-toc-hidden { flex: none; align-self: flex-start; width: 0.7em; height: 0.7em; margin-left: 0.3em; margin-top: calc((var(--editor-lh) - 0.7em) / 2); color: var(--ink-muted); opacity: 0.7; }
 .kin-hidden { opacity: 0.55; }
 
 /* 「宽稿纸」档（body.paper-wide）2026-09-30 撤了（user「win mini 现在的情况不需要加宽，加宽可以撤了」）；矮屏档 body.paper-short 仍在。 */

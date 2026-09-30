@@ -91,15 +91,14 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
 
   /** 一行 = 一页：点 = 跳；`block` 决定行菜单。 */
   function row(name: string, block: Block): HTMLLIElement {
-    const hiddenSelf = d.mode.isHidden(name), hiddenUp = !hiddenSelf && d.mode.isHiddenInTree(name);   // hidden（2026-09-30）：自己藏的画眼睛，被祖先藏的只画灰（Unity Hierarchy 同款）
+    const hiddenSelf = d.mode.isHidden(name), hiddenUp = !hiddenSelf && d.mode.isHiddenInTree(name);   // hidden（2026-09-30）：只变灰，不画图标（user「都改颜色了那么眼睛图标就不要了吧」）；tooltip 分自己藏 / 被谁藏
     const li = document.createElement("li"); li.className = "edge-row" + (name === d.mode.current() ? " current" : "") + (hiddenSelf ? " hidden-self" : hiddenUp ? " hidden-inherited" : ""); li.dataset.block = block; li.dataset.name = name;
     const main = document.createElement("button"); main.type = "button"; main.className = "edge-main";
     const shown = nodeDisplayName(name);
     const meta = d.mode.session()?.project.nodes.get(name);
     main.title = (meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : shown) + (hiddenSelf ? " · " + t("edge.hiddenTip") : hiddenUp ? " · " + t("edge.hiddenBy", { name: nodeDisplayName(d.mode.hiddenAncestor(name) ?? "") }) : "");
     const kindIcon = nodeKind(name) === "image" ? `<svg class="ico edge-kind" aria-hidden="true"><use href="#image"/></svg>` : "";   // 图片页行首图标（2.1）
-    const hiddenIcon = hiddenSelf ? `<svg class="ico edge-hidden" aria-hidden="true"><use href="#visibility-hide"/></svg>` : "";
-    main.innerHTML = kindIcon + `<span class="edge-name">${esc(shown)}</span>` + hiddenIcon + (meta && meta.modified ? `<span class="edge-sub">${esc(fmtTime(meta.modified))}</span>` : "");   // 同一行小字 = 修改时间（user 2026-09-10）
+    main.innerHTML = kindIcon + `<span class="edge-name">${esc(shown)}</span>` + (meta && meta.modified ? `<span class="edge-sub">${esc(fmtTime(meta.modified))}</span>` : "");   // 同一行小字 = 修改时间（user 2026-09-10）
     main.addEventListener("click", () => { d.mode.jump(name); clearQuery(); d.focusEditor(); });   // 不自动收（user 2026-09-10「进节点的时候也不要自动弹回」）
     li.appendChild(main);
     const items = menuItems(name, block);
