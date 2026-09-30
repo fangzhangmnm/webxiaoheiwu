@@ -712,6 +712,8 @@ body {
 .settings-section[open] .voice-config-form {
   margin-top: 10px;
 }
+/* 全部节都折叠得起来（v2.3.10，user 2026-09-30「输入法等其他节能不能也折叠防误触」）：只有「账号」默认开；展开后标题和内容之间留一口气 */
+.settings-section[open] > .settings-section-title + * { margin-top: 10px; }
 
 .voice-config-form {
   display: flex;

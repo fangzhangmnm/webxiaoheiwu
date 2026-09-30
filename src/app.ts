@@ -1206,7 +1206,7 @@ voiceAbortHook = () => { if (localSession && (localSession.state === "recording"
 function pickSpeechLang(): string { const s = ime.getState(); return s.enabled && !s.asciiMode ? "zh-CN" : "en-US"; }
 function renderMicVisibility(): void {
   const st = editor.state;
-  const absent = !activeVoiceBackend() || (project.active() ? (project.locked() || project.currentKind() === "image") : (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted));   // 锁着/不可用：锁卡盖着纸面，话筒收起；图片页没有正文可口述
+  const absent = !activeVoiceBackend() || pttKeyPref() === "none" || (project.active() ? (project.locked() || project.currentKind() === "image") : (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted));   // 锁着/不可用：锁卡盖着纸面，话筒收起；图片页没有正文可口述
   const blocked = project.active() ? !project.canEdit() : st.readOnly;   // 只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
   micButton.hidden = absent;
   micButton.classList.toggle("disabled", blocked);
@@ -1249,7 +1249,7 @@ editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "re
 //   v2.3.6（user 2026-09-30「语音键能用 caps 吗，左 ctrl 和 ctrl c 撞车了」）：device-kv `pttKey` 可选 **CapsLock**——它是**切换式**（按一下开始、再按一下停），不是按住：
 //   macOS / iPadOS 上 CapsLock 的 keydown 只在切亮时发、keyup 只在切灭时发（按住不发连发），按住式在那边根本站不住；Windows 正常，但切换式两边一致。
 //   CapsLock 同时会翻系统大小写锁：用它当语音键时，实体键盘打进内置输入法的字母一律折回小写（pipeline foldCapsLock），不然拼音全变大写。
-type PttKey = "ControlLeft" | "CapsLock" | "none";   // none = 禁用键盘语音键，只用话筒钮（user 2026-09-30「再加一个禁用的选项」）
+type PttKey = "ControlLeft" | "CapsLock" | "none";   // none = 这台设备语音整个禁用：不起录、不提示、话筒钮也收（user 2026-09-30「再加一个禁用的选项」「禁用就是话筒也没有啦，是第一个选项」）
 const pttKeyPref = (): PttKey => { const v = deviceKvGet("pttKey"); return v === "CapsLock" || v === "none" ? v : "ControlLeft"; };
 let pttBackend: VoiceSession | null = null, pttCommitted = false, pttTimer: ReturnType<typeof setTimeout> | null = null;
 let pttArmedNoPack = false;   // 没包 + 按住式：keydown 不提示（Ctrl+C 之类和弦天天弹「要先下载语音包」——user 2026-09-30「按 ctrl 的时候为什么还是显示需要下载语音包」），干净松键才提一句
@@ -1280,7 +1280,7 @@ document.addEventListener("keyup", (event) => {
   pttStop();
 });
 const pttKeySelect = $<HTMLSelectElement>("pttKeySelect");
-function applyPttKey(): void { pttKeySelect.value = pttKeyPref(); input.foldCapsLock = pttIsToggle(); }
+function applyPttKey(): void { pttKeySelect.value = pttKeyPref(); input.foldCapsLock = pttIsToggle(); renderMicVisibility(); }   // 禁用 = 话筒钮也收（user 2026-09-30「禁用就是话筒也没有啦」）
 pttKeySelect.addEventListener("change", () => { pttAbort(); pttArmedNoPack = false; const v = pttKeySelect.value; deviceKvSet("pttKey", v === "CapsLock" || v === "none" ? v : null); applyPttKey(); });
 applyPttKey();
 

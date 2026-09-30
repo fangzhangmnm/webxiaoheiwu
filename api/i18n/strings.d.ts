@@ -549,8 +549,8 @@ export declare const S: {
         readonly en: "Recognition runs on this device; audio never leaves it, so it works on encrypted drafts too. The first use downloads a voice pack once (works offline after). Press the voice key to talk, or tap the mic.";
     };
     readonly "ui.voice.pttKey": {
-        readonly zh: "语音键（本机）";
-        readonly en: "Voice key (this device)";
+        readonly zh: "语音（本机）";
+        readonly en: "Voice (this device)";
     };
     readonly "ui.voice.pttKey.ctrl": {
         readonly zh: "左 Ctrl：按住说话";
@@ -561,8 +561,8 @@ export declare const S: {
         readonly en: "CapsLock: press to start, press again to stop";
     };
     readonly "ui.voice.pttKey.none": {
-        readonly zh: "禁用：只用右下角话筒";
-        readonly en: "Off: mic button only";
+        readonly zh: "禁用（这台设备不用语音，话筒也收起）";
+        readonly en: "Off (no voice on this device; mic button hidden too)";
     };
     readonly "ui.voice.pttKeyHint": {
         readonly zh: "左 Ctrl 和 Ctrl+C 之类会撞车时换 CapsLock。CapsLock 会翻大小写锁，所以用它当语音键时实体键盘打的字母一律按小写进输入法。";

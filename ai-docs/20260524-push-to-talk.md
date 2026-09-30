@@ -215,4 +215,4 @@ device debugging) is worth keeping in mind.
 - CapsLock 会翻系统大小写锁：pipeline `foldCapsLock` 开着时，实体键盘打进内置输入法的单字母一律折回小写（不然拼音全大写进 RIME）。
 - 「硬键盘候选只有五个方便盲打」同日：悬浮条一页 5 个（原 9），软键盘 dock 仍 40。
 - **没包时的提示（v2.3.8，user「按 ctrl 的时候为什么还是显示需要下载语音包」）**：按住式以前在 keydown 就调 `start()`，`LocalSession` 发现没包立刻回调提示 → Ctrl+C 这种和弦每次都弹。现在：没包 → keydown 只记一个「armed」旗，别的键来了（和弦）就解除，干净松键才在状态栏提一句；切换式（CapsLock）按了就是要说 → 立刻提；首次不知道有没有包（`asr.isKnownReady` 未知）→ 只暖缓存、这一下不提示不起录。
-- **v2.3.9**：语音键多一档「禁用」（device-kv `pttKey = none`）：键盘不起录不提示，只用右下角话筒（user「再加一个禁用的选项」）。
+- **v2.3.9 / v2.3.10**：语音多一档「禁用」（device-kv `pttKey = none`，选项排第一）：这台设备语音整个关掉——键盘不起录不提示，**话筒钮也收**（user「再加一个禁用的选项」「禁用就是话筒也没有啦，是第一个选项」）。

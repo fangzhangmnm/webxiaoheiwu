@@ -353,18 +353,18 @@
       </header>
 
       <div class="settings-view" id="settingsView" hidden>
-        <section class="settings-section is-flat">
-          <h3 class="settings-section-title" data-i18n="ui.sec.account">账号</h3>
+        <details class="settings-section" open>
+          <summary class="settings-section-title" data-i18n="ui.sec.account">账号</summary>
           <div class="auth-row" id="authRow"></div>
-        </section>
+        </details>
 
-        <section class="settings-section is-flat">
-          <h3 class="settings-section-title" data-i18n="ui.sec.language">界面语言</h3>
+        <details class="settings-section">
+          <summary class="settings-section-title" data-i18n="ui.sec.language">界面语言</summary>
           <select id="langSelect" class="voice-config-select"></select>
-        </section>
+        </details>
 
-        <section class="settings-section is-flat" id="readingModeSection">
-          <h3 class="settings-section-title" data-i18n="ui.sec.reading">阅读节奏</h3>
+        <details class="settings-section" id="readingModeSection">
+          <summary class="settings-section-title" data-i18n="ui.sec.reading">阅读节奏</summary>
           <div class="reading-mode-picker" id="readingModePicker" role="radiogroup">
             <label class="reading-mode-option is-selected" data-mode="novel">
               <input type="radio" name="readingMode" value="novel" checked />
@@ -394,10 +394,10 @@
             <input type="checkbox" id="wordCountToggle" checked />
             <span data-i18n="ui.reading.wordCount">字数统计</span>
           </label>
-        </section>
+        </details>
 
-        <section class="settings-section is-flat" id="imeSection">
-          <h3 class="settings-section-title" data-i18n="ui.sec.ime">输入法</h3>
+        <details class="settings-section" id="imeSection">
+          <summary class="settings-section-title" data-i18n="ui.sec.ime">输入法</summary>
           <p class="reading-mode-hint" data-i18n="ui.ime.hint">内置输入法在本机运行（RIME），你敲的每个字不经过任何系统或云端输入法；会自动学习词汇并跨设备同步。</p>
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.ime.schema">输入方案</span>
@@ -438,10 +438,10 @@
             <input type="checkbox" id="systemImeToggle" />
             <span data-i18n="ui.ime.useSystem">改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）</span>
           </label>
-        </section>
+        </details>
 
-        <section class="settings-section is-flat" id="passwordSection">
-          <h3 class="settings-section-title" data-i18n="ui.sec.password">加密密码</h3>
+        <details class="settings-section" id="passwordSection">
+          <summary class="settings-section-title" data-i18n="ui.sec.password">加密密码</summary>
           <p class="reading-mode-hint" id="passwordStatus"></p>
           <p class="reading-mode-hint" data-i18n="ui.pw.hint">一个账号一个当前密码；每篇加密稿用它自己被封时的那把（改密码时可选择把已有稿一起换）。没有任何后门。</p>
           <div class="voice-config-actions">
@@ -449,7 +449,7 @@
             <button class="auth-action" id="lockNowButton" type="button" data-i18n="ui.pw.lockNow">立即锁定</button>
             <button class="auth-action" id="resetPasswordButton" type="button" data-i18n="ui.pw.reset">忘记密码，重置…</button>
           </div>
-        </section>
+        </details>
 
         <details class="settings-section" id="voiceConfigSection">
           <summary class="settings-section-title" data-i18n="ui.sec.voice">语音输入</summary>
@@ -459,9 +459,9 @@
               <label class="voice-config-field">
                 <span class="voice-config-label" data-i18n="ui.voice.pttKey">语音键（本机）</span>
                 <select id="pttKeySelect" class="voice-config-select">
+                  <option value="none" data-i18n="ui.voice.pttKey.none">禁用（这台设备不用语音，话筒也收起）</option>
                   <option value="ControlLeft" data-i18n="ui.voice.pttKey.ctrl">左 Ctrl：按住说话</option>
                   <option value="CapsLock" data-i18n="ui.voice.pttKey.caps">CapsLock：按一下开始，再按一下停</option>
-                  <option value="none" data-i18n="ui.voice.pttKey.none">禁用：只用右下角话筒</option>
                 </select>
               </label>
               <p class="voice-config-hint" data-i18n="ui.voice.pttKeyHint">左 Ctrl 和 Ctrl+C 之类会撞车时换 CapsLock。CapsLock 会翻大小写锁，所以用它当语音键时实体键盘打的字母一律按小写进输入法。</p>
@@ -491,8 +491,8 @@
           </div>
         </details>
 
-        <section class="settings-section is-flat">
-          <h3 class="settings-section-title" data-i18n="ui.sec.maintenance">维护</h3>
+        <details class="settings-section">
+          <summary class="settings-section-title" data-i18n="ui.sec.maintenance">维护</summary>
           <div class="settings-row">
             <button class="auth-action" id="forceUpdateButton" type="button" data-i18n="ui.forceUpdate">强制更新（清缓存重启）</button>
             <button class="auth-action danger" id="factoryResetButton" type="button" data-i18n="ui.factoryReset">还原出厂设置（清本机全部数据）…</button>
@@ -505,7 +505,7 @@
           </div>
           <pre id="diagLog" class="diag-log" hidden></pre>
           <div class="settings-build" id="settingsBuild" title="构建版本" data-i18n-title="ui.buildTitle"></div>
-        </section>
+        </details>
       </div>
 
       <div class="drawer-actions" id="drawerActions">
@@ -538,6 +538,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-c2adc0d5781d.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-bcd66701c3bd.mjs"></script>
   </body>
 </html>
