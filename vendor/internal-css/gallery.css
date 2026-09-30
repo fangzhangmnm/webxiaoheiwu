@@ -91,13 +91,25 @@
      圆角改由 thumb 自己承担（只圆上两角，贴卡片弧度）。 */
   cursor: pointer;
   position: relative;
-  transition: transform 0.08s ease, box-shadow 0.08s ease, opacity 0.15s ease;
+  transition: box-shadow 0.08s ease, opacity 0.15s ease;
 }
 .gallery-tile[data-busy="1"] {
   opacity: 0.55;
   cursor: progress;
 }
-.gallery-tile:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+/* 0.6.3：hover 只给真有指针的设备（@media (hover: hover)），且不再 transform——
+   ① iOS 触屏没有 hover，tap 会把 :hover 粘在卡片上；菜单出了卡片之后（0.6.2）手指点菜单项 = 离开卡片 → 粘着的 hover 解除 → 版面一变，
+     Safari 把这一下当 mouseover 处理、吞掉 click（user 真机 2026-09-30「gallery的删除好像有问题，删不了」的头号嫌疑）；
+   ② transform 让卡片自成层叠上下文（0.6.2 修的那个根因），抬 1px 的装饰不值这个价。悬停提示只剩阴影。 */
+@media (hover: hover) {
+  .gallery-tile:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .gallery-tile-menu-btn:hover { background: rgba(255, 255, 255, 1); }
+  .gallery-tile-menu-popup button:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  .gallery-tile-menu-popup button.danger:hover { background: color-mix(in srgb, #c0392b 12%, transparent); }
+  .gallery-tile.image-file:hover .gallery-tile-thumb,
+  .gallery-tile.image-file:hover .gallery-tile-name-row { opacity: 1; }
+  .gallery-grid.list .gallery-tile:hover { box-shadow: none; background: color-mix(in srgb, var(--ink) 4%, transparent); }
+}
 .gallery-tile.active {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
@@ -162,7 +174,6 @@
   -webkit-backdrop-filter: blur(4px);
   transition: background 0.1s ease;
 }
-.gallery-tile-menu-btn:hover { background: rgba(255, 255, 255, 1); }
 .gallery-tile-menu-popup {
   /* 0.6.2：不再住卡片里（卡片 :hover 的 transform 在 iOS 上粘住 → 卡片自成层叠上下文 → 菜单被下一排卡片盖住）。
      <Teleport> 到图库挂载点，fixed，坐标由 gallery-screen.ts placeMenu 按 ⋯ 钮算（贴屏幕下缘往上翻 #14），层级 = 宿主的菜单 band
@@ -189,9 +200,7 @@
   gap: 9px;
 }
 .gallery-tile-menu-popup button svg { width: 16px; height: 16px; flex: none; }
-.gallery-tile-menu-popup button:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .gallery-tile-menu-popup button.danger { color: #c0392b; }
-.gallery-tile-menu-popup button.danger:hover { background: color-mix(in srgb, #c0392b 12%, transparent); }
 /* cloud-gone ghost 菜单的解释行（非按钮）：窄、灰、可折行 */
 .gallery-menu-note {
   padding: 8px 12px;
@@ -323,8 +332,6 @@
    v0.9.35（QA 1）：降级只罩缩略图+名字行——罩整 tile 会连坐 ⋯ 菜单弹层（iPad 无 hover 恢复不了） */
 .gallery-tile.image-file .gallery-tile-thumb,
 .gallery-tile.image-file .gallery-tile-name-row { opacity: 0.72; }
-.gallery-tile.image-file:hover .gallery-tile-thumb,
-.gallery-tile.image-file:hover .gallery-tile-name-row { opacity: 1; }
 .gallery-tile.image-file .gallery-tile-thumb {
   /* 素材图整图看全（contain）；画作 thumb 维持既有裁切规则不动 */
   object-fit: contain;
@@ -420,7 +427,6 @@
 /* ── 0.3.0 列表视图（tile.layout:"list"，JRB 第三消费者；提案 ai-docs/20260919-proposal-list-view.md）：一行一件，名字整行最多折两行，副标题一行，右侧 ⋯。默认 cards 规则一字不动。 ── */
 .gallery-grid.list { display: flex; flex-direction: column; gap: 0; padding: 0 0 16px; }
 .gallery-grid.list .gallery-tile { display: grid; grid-template-columns: 40px minmax(0, 1fr) 30px; grid-template-areas: "thumb name menu"; align-items: center; column-gap: 10px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
-.gallery-grid.list .gallery-tile:hover { transform: none; box-shadow: none; background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .gallery-grid.list .gallery-tile.active { box-shadow: inset 3px 0 0 var(--accent); }
 .gallery-grid.list .gallery-tile-thumb { grid-area: thumb; width: 40px; aspect-ratio: var(--tile-aspect, 1 / 1); border-radius: 4px; font-size: 16px; }
 .gallery-grid.list .gallery-tile-ph-icon { width: 60%; height: 60%; }

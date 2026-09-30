@@ -447,9 +447,12 @@ for (const [w, h] of sizes) {
   probe(tag, "tile menu lives outside the tile (teleported to #galleryMount), position: fixed, in the --z-menu band", await page.evaluate(() => { const m = document.querySelector(".gallery-tile-menu-popup:not(.hidden)"); if (!m) return false; const cs = getComputedStyle(m); const band = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--z-menu")); return !m.closest(".gallery-tile") && m.parentElement === document.getElementById("galleryMount") && cs.position === "fixed" && parseFloat(cs.zIndex) === band; }), await page.evaluate(() => { const m = document.querySelector(".gallery-tile-menu-popup:not(.hidden)"); return m ? `parent=${m.parentElement?.id} pos=${getComputedStyle(m).position} z=${getComputedStyle(m).zIndex} inTile=${!!m.closest(".gallery-tile")}` : "no open menu"; }));
   // 模拟 iOS 粘住的 :hover（卡片 transform → 自成层叠上下文）：菜单已不在卡片里，应当不受影响；菜单矩形四点 elementFromPoint 全命中菜单
   probe(tag, "tile menu sits under its ⋯ button inside the viewport and stays hit-testable at all four corners even with the tile transformed (iOS sticky :hover simulation)", await page.evaluate(() => { const m = document.querySelector(".gallery-tile-menu-popup:not(.hidden)"), b = document.querySelector(".gallery-tile:not(.folder) .gallery-tile-menu-btn"); if (!m || !b) return false; const tile = b.closest(".gallery-tile"); tile.style.transform = "translateY(-1px)"; try { const r = m.getBoundingClientRect(), a = b.getBoundingClientRect(); if (r.top < a.bottom || r.left < 0 || r.right > innerWidth || r.right < a.right - 2) return false; const pts = [[r.left + 6, r.top + 6], [r.right - 6, r.bottom - 6], [r.left + 6, r.bottom - 6], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]; return pts.every(([x, y]) => m.contains(document.elementFromPoint(x, y))); } finally { tile.style.transform = ""; } }), await page.evaluate(() => { const m = document.querySelector(".gallery-tile-menu-popup:not(.hidden)"); if (!m) return "no menu"; const r = m.getBoundingClientRect(); const tiles = [...document.querySelectorAll("#galleryMount .gallery-tile")]; const covered = tiles.filter((t) => { const q = t.getBoundingClientRect(); return q.top < r.bottom && q.bottom > r.top && q.left < r.right && q.right > r.left; }).length; const hit = document.elementFromPoint(r.left + 6, r.bottom - 6); return `menu ${Math.round(r.top)}-${Math.round(r.bottom)} overlaps ${covered} tile(s); bottom-left hits <${hit?.tagName.toLowerCase()}.${typeof hit?.className === "string" ? hit.className.split(" ")[0] : ""}>`; }));
-  await page.evaluate(() => { document.getElementById("galleryMount").scrollTop += 40; document.getElementById("galleryMount").dispatchEvent(new Event("scroll", { bubbles: true })); }); await wait(120);
-  probe(tag, "scrolling the grid closes the tile menu (a fixed menu must not float away from its tile)", await page.evaluate(() => !document.querySelector(".gallery-tile-menu-popup:not(.hidden)")));
-  await page.evaluate(() => { document.getElementById("galleryMount").scrollTop = 0; });
+  // workbench-elements 0.1.2：只在锚真的移了位才收（iOS tap 的幽灵 scroll 不算）——先证明幽灵 scroll 不关，再让网格真的滚（临时垫高让它可滚）
+  probe(tag, "a scroll event that does not move the tile (iOS phantom scroll on tap) leaves the menu open", await page.evaluate(() => { document.getElementById("galleryMount").dispatchEvent(new Event("scroll", { bubbles: true })); return !!document.querySelector(".gallery-tile-menu-popup:not(.hidden)"); }));
+  await page.evaluate(() => { const g = document.querySelector("#galleryMount .gallery-grid"); g.style.paddingBottom = "2000px"; const m = document.getElementById("galleryMount"); m.scrollTop += 40; m.dispatchEvent(new Event("scroll", { bubbles: true })); }); await wait(120);
+  probe(tag, "really scrolling the grid (tile moves) closes the tile menu (a fixed menu must not float away from its tile)", await page.evaluate(() => !document.querySelector(".gallery-tile-menu-popup:not(.hidden)")), await page.evaluate(() => `scrollTop=${document.getElementById("galleryMount").scrollTop}`));
+  await page.evaluate(() => { const g = document.querySelector("#galleryMount .gallery-grid"); g.style.paddingBottom = ""; document.getElementById("galleryMount").scrollTop = 0; });
+  await page.evaluate(() => { const m = document.querySelector(".gallery-tile-menu-popup:not(.hidden)"); if (m) document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });   // 万一没收，别让后面的点击被它拦住
   await page.click(".gallery-tile:not(.folder) .gallery-tile-menu-btn"); await wait(200);
   await page.mouse.click(w - 40, h - 40); await wait(200);
   probe(tag, "tapping outside closes the tile menu", await page.evaluate(() => !document.querySelector(".gallery-tile-menu-popup:not(.hidden)")));
@@ -585,6 +588,29 @@ for (const [w, h] of sizes) {
       await page.click("#edgeParent"); await wait(200); await page.click("#edgeParent"); await wait(200);
       probe(tag, "dogfood: `..` twice → 正文 at the top level (`..` = book, grey)", (await cur()) === "正文.txt" && JSON.stringify(await parentRow()) === JSON.stringify({ name: "20250216 樱川 AI参考", root: true, disabled: true }), JSON.stringify(await parentRow()));
       await shot("25-dogfood-toc");
+    } }
+  // ── 删除整链（user 真机 2026-09-30「gallery的删除好像有问题，删不了」，gallery 0.6.2 菜单出卡片之后）：新建稿 → 书库 ⋯ → 送到回收站 → 确认 sheet 在菜单 band 之上 → 卡片消失 → 回收站里有它
+  { if (await page.evaluate(() => document.body.dataset.mode !== "gallery")) { await ensureSidebar(true); await page.click("#edgeLibrary"); await wait(1000); }
+    await page.click("#galleryNewBtn"); await wait(200);
+    await page.evaluate(() => { const it = [...document.querySelectorAll(".popup-menu button")].find((b) => /新建稿/.test(b.textContent ?? "")); if (!it) throw new Error("new-draft menu item not found"); it.click(); });   // 只在弹出菜单里找（锁卡上也有一颗藏着的「新建稿」）
+    await wait(700);
+    const leaveSheet = await page.evaluate(() => { const sh = document.getElementById("sheet"); return sh && !sh.classList.contains("hidden") ? (sh.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 120) : null; });
+    if (leaveSheet) { console.log(tag, "leaving the local book asked:", leaveSheet); await page.click("#sheetConfirm"); }   // 本机打开的书（dogfood）离开时会问一句
+    await page.waitForFunction(() => document.body.dataset.mode !== "gallery" && !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 10000 }); await wait(300);   // 书开着时先离开书（落盘）再开新稿
+    await page.evaluate(() => { const e = document.getElementById("editor"); e.focus(); e.value = "要删的稿"; e.dispatchEvent(new Event("input", { bubbles: true })); }); await wait(1500);
+    const victim = await page.evaluate(() => window.__xhw.editor.state.name ?? window.__xhw.editor.state.path ?? null);
+    await page.click("#libraryButton"); await wait(1000);
+    const tileSel = await page.evaluate((v) => { const t = [...document.querySelectorAll("#galleryMount .gallery-tile:not(.folder)")].find((x) => (x.querySelector(".gallery-tile-name")?.getAttribute("title") ?? "") === v); if (!t) return null; t.dataset.auditVictim = "1"; return '[data-audit-victim="1"]'; }, victim);
+    probe(tag, "delete chain: the fresh draft shows up as a tile", !!tileSel, `victim=${victim}`);
+    if (tileSel) {
+      await page.click(`${tileSel} .gallery-tile-menu-btn`); await wait(250);
+      await page.click(".gallery-tile-menu-popup:not(.hidden) button.danger"); await wait(400);
+      probe(tag, "delete chain: 送到回收站 → confirm sheet opens above the menu band and the menu is closed", await page.evaluate(() => { const sh = document.getElementById("sheet"); const c = document.getElementById("sheetConfirm").getBoundingClientRect(); const top = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2); return !sh.classList.contains("hidden") && /删除/.test(sh.textContent ?? "") && !!top?.closest("#sheet") && !document.querySelector(".gallery-tile-menu-popup:not(.hidden)"); }), await page.evaluate(() => `sheet hidden=${document.getElementById("sheet").classList.contains("hidden")} menuOpen=${!!document.querySelector(".gallery-tile-menu-popup:not(.hidden)")}`));
+      await page.click("#sheetConfirm"); await wait(1500);
+      probe(tag, "delete chain: after confirm the tile is gone", await page.evaluate(() => !document.querySelector('[data-audit-victim="1"]')), await page.evaluate(() => document.getElementById("toast")?.textContent ?? ""));
+      await page.click("#galleryTrashBtn"); await wait(900);
+      probe(tag, "delete chain: the trash view lists it", await page.evaluate((v) => [...document.querySelectorAll("#galleryMount .gallery-tile")].some((t) => (t.querySelector(".gallery-tile-name")?.getAttribute("title") ?? t.textContent ?? "").includes(v.replace(/\.txt$/, ""))), victim), await page.evaluate(() => [...document.querySelectorAll("#galleryMount .gallery-tile .gallery-tile-name")].map((n) => n.textContent?.trim()).join("|")));
+      await page.click("#galleryAsideBack"); await wait(300);
     } }
   await ctx.close();
 }
