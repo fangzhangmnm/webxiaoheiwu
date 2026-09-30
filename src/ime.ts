@@ -211,9 +211,20 @@ export class NaturalCodeIME {
   //   引号样式 = 设置项（user「引号变成方形的…我觉得设置」）：curly = 交给 RIME 的 “” ‘’；corner = 「」『』 交替开合（语音标点同步走 zh-punct）。
   quoteStyle: "curly" | "corner" = "curly";
   private quoteOpen = { d: true, s: true };
-  private punctOverride(key: string): string | null {
+  //   v2.1.31（user 2026-09-30「输入法没有把^变成省略号，然后可能其他的中文符号也有点乱」）：^ 和 _ 以前根本不在路由表里（原样落半角），
+  //   < > [ ] { } $ 交给 RIME 又弹多选菜单（《〈«‹ / 「【〔［ …）——一律按 Windows 微软拼音的直出：……  ——  《》  【】  ｛｝  ￥。
+  //   [ ] 组字中是候选翻页，不覆盖。
+  private punctOverride(key: string, composing = false): string | null {
     if (key === "`") return "·";
     if (key === "~") return "～";   // 与 Windows 微软拼音一致（RIME 默认对 ~ 弹半角/全角候选菜单，多一步）
+    if (key === "^") return "……";
+    if (key === "_") return "——";
+    if (key === "$") return "￥";
+    if (key === "<") return "《";
+    if (key === ">") return "》";
+    if (key === "{") return "｛";
+    if (key === "}") return "｝";
+    if (!composing) { if (key === "[") return "【"; if (key === "]") return "】"; }
     if (this.quoteStyle !== "corner") return null;
     if (key === '"') { const ch = this.quoteOpen.d ? "「" : "」"; this.quoteOpen.d = !this.quoteOpen.d; return ch; }
     if (key === "'") { const ch = this.quoteOpen.s ? "『" : "』"; this.quoteOpen.s = !this.quoteOpen.s; return ch; }
@@ -291,7 +302,7 @@ export class NaturalCodeIME {
     if (!this.enabled || this.asciiMode) return { type: "passthrough" };
     if (isAsciiLetter(event)) { event.preventDefault(); return await this.backend.typeLetter(event.key.toLowerCase()); }
     if (!(event.ctrlKey || event.altKey || event.metaKey)) {   // JS 层标点覆盖（RIME 方案层改不了，见 punctOverride）
-      const p = this.punctOverride(event.key);
+      const p = this.punctOverride(event.key, this.isComposing());
       if (p != null) {
         event.preventDefault();
         if (this.isComposing()) { const r = await this.backend.commitDefault(false); if (r.type === "commit") return { type: "commit", text: r.text + p, consumedBuffer: r.consumedBuffer }; }

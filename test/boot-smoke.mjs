@@ -212,7 +212,7 @@ try {
     await ime.setSimplified(false); await typeKeys(["z", "h", "e"]); out.trad = cands().slice(0, 5); await ime.backend.clear();
     await ime.setSimplified(true); await typeKeys(["z", "h", "e"]); out.simpAgain = cands().slice(0, 5); await ime.backend.clear();
     // 标点覆盖：` ~ → ·；方引号设置 → 「」『』 交替
-    ed.value = ""; ime.quoteStyle = "corner"; await typeKeys(['"', '"', "'", "'", "~", "`"]); out.punct = ed.value; ime.quoteStyle = "curly"; ed.value = "";
+    ed.value = ""; ime.quoteStyle = "corner"; await typeKeys(['"', '"', "'", "'", "~", "`", "^", "_", "$", "<", ">", "[", "]", "{", "}"]); out.punct = ed.value; ime.quoteStyle = "curly"; ed.value = "";
     // 系统组字收编（Quest/安卓把实体键盘字母过系统输入法）：模拟 compositionend "nihao" → 裸字母被删、喂进 RIME、候选出「你好」
     ed.value = ""; ed.focus(); ed.value = "nihao"; ed.selectionStart = ed.selectionEnd = 5;
     ed.dispatchEvent(new CompositionEvent("compositionend", { data: "nihao", bubbles: true })); await wait(900);
@@ -221,7 +221,7 @@ try {
     return out;
   });
   check("系统组字收编：compositionend 'nihao' → 裸字母删掉、RIME 候选出「你好」", typeof imeRun === "object" && imeRun.sysComp?.value === "" && imeRun.sysComp?.cands?.includes("你好"), JSON.stringify(imeRun.sysComp));
-  check("标点覆盖：方引号 「」『』 交替 + ~ 出「～」 + ` 出「·」", typeof imeRun === "object" && imeRun.punct === "「」『』～·", JSON.stringify(imeRun.punct));
+  check("标点覆盖：方引号 「」『』 交替 + ~ 出「～」 + ` 出「·」 + ^ 出「……」+ _ 出「——」+ $ 出「￥」+ <> 出《》 + [] 出【】 + {} 出｛｝（v2.1.31，user「^ 变成省略号」）", typeof imeRun === "object" && imeRun.punct === "「」『』～·……——￥《》【】｛｝", JSON.stringify(imeRun.punct));
   // undo 彻查（user 2026-09-04）：真按键。IME 提交后 Ctrl+Z 只撤最后一词、Ctrl+Shift+Z 重做；退格钮删的能撤；换稿不漏拼音
   const undoRun = await (async () => {
     const val = () => page.$eval("#editor", (e) => e.value);
