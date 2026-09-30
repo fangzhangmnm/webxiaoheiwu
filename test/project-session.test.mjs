@@ -203,3 +203,21 @@ describe("project/session · 落盘途中的改动不被清脏", () => {
     await ps.flush(false); assert(!ps.dirty);
   });
 });
+
+describe("project/session · setTimes（「改时间…」；user 2026-09-30「修改页的 timestamp…方便整理旧书」）", () => {
+  it("modified 直接写、标脏；created 晚于新时间就一起拉回；不存在的页响亮拒；锁着拒", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("夏音.webxiaoheiwu.zip", "目录.txt"); await ps.flush();
+    const m0 = ps.project.nodes.get("目录.txt"); m0.created = 5000; m0.modified = 5000;   // 假时钟是计数器，先摆一个像样的出生时间
+    ps.setTimes("目录.txt", 3000);   // 比 created 早 → created 一起拉回
+    eq(ps.project.nodes.get("目录.txt").modified, 3000); eq(ps.project.nodes.get("目录.txt").created, 3000, "created 不能晚于 modified");
+    assert(ps.dirty, "改时间 = 改书");
+    const later = 8000;   // 比 created 晚：created 保持
+    ps.setTimes("目录.txt", later);
+    eq(ps.project.nodes.get("目录.txt").modified, later); eq(ps.project.nodes.get("目录.txt").created, 3000);
+    let threw = false; try { ps.setTimes("没有这一页.txt", 1); } catch { threw = true; } assert(threw, "不存在的页要 throw");
+    await ps.flush(); const back = createProjectSession(s.deps); await back.open("夏音.webxiaoheiwu.zip");
+    eq(back.project.nodes.get("目录.txt").modified, later, "时间戳进 graph.json 往返");
+    ps.setReadOnly(true); assert(throwsName(() => ps.setTimes("目录.txt", 1), "LockedBookError"), "锁着拒");
+  });
+});

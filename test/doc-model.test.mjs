@@ -1,5 +1,6 @@
 // doc-model 纯函数契约：文件名约定（user 三轮回退终形）/ 排序 / 字数 / 编码 / 采纳验真。created 2026-09-03 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
+const LOOSE = await import("../src/doc-model.ts");
 import { parseDocName, makeDocName, collisionCandidate, sanitizeTitle, compareDocNamesDesc, statsForText, decodeTextBytes, looksLikeTextDoc, isDocName, formatDate, splitDocPath, joinDocPath, sanitizeFolderName, hex4, isOpaqueStem } from "../src/doc-model.ts";
 
 describe("doc-model · 文件名（有名保名，无名 yyyymmdd-hex4；2026-09-03 对齐 WeebPaint）", () => {
@@ -59,5 +60,33 @@ describe("doc-model · 编码", () => {
     assert(looksLikeTextDoc(enc("正文"))); assert(looksLikeTextDoc(new Uint8Array(0)));
     assert(!looksLikeTextDoc(enc("<!DOCTYPE html><html>captive portal</html>")));
     assert(!looksLikeTextDoc(new Uint8Array([0x00, 0xff, 0xfe, 0x12, 0x00, 0x99])));
+  });
+});
+
+describe("doc-model · parseLooseDate（「改时间…」收的写法；user 2026-09-30「修改页的 timestamp…方便整理旧书」）", () => {
+  const { parseLooseDate, fmtLooseDate } = LOOSE;
+  const now = new Date(2026, 8, 30, 12, 0);
+  const at = (y, mo, d, h = 12, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
+  it("日期 + 时间：横杠 / 斜杠 / 紧凑 / 中文年月日 都认", () => {
+    eq(parseLooseDate("2026-09-26 14:30", now), at(2026, 9, 26, 14, 30));
+    eq(parseLooseDate("2026/9/26 9:05", now), at(2026, 9, 26, 9, 5));
+    eq(parseLooseDate("20260926 1430", now), at(2026, 9, 26, 14, 30));
+    eq(parseLooseDate("2026年9月26日 14：30", now), at(2026, 9, 26, 14, 30));
+  });
+  it("只有日期 = 当天 12:00（排序稳、不跨日）", () => {
+    eq(parseLooseDate("2026-09-26", now), at(2026, 9, 26));
+    eq(parseLooseDate("20260926", now), at(2026, 9, 26));
+    eq(parseLooseDate(" 2026.9.26 ", now), at(2026, 9, 26));
+  });
+  it("看不懂 / 不存在的日子 / 一天以上的未来 → null", () => {
+    eq(parseLooseDate("昨天", now), null);
+    eq(parseLooseDate("2026-02-30", now), null);
+    eq(parseLooseDate("2026-13-01", now), null);
+    eq(parseLooseDate("2026-10-05", now), null, "未来一天以上不收");
+    eq(parseLooseDate("2026-09-30 23:59", now), at(2026, 9, 30, 23, 59), "今天之内可以");
+  });
+  it("fmtLooseDate ↔ parseLooseDate 往返", () => {
+    const ms = at(2025, 1, 2, 3, 4);
+    eq(fmtLooseDate(ms), "2025-01-02 03:04"); eq(parseLooseDate(fmtLooseDate(ms), now), ms);
   });
 });

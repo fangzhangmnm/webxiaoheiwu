@@ -18,7 +18,7 @@ export interface TextFieldOpts {
   onBlur?: () => void;
 }
 export interface TextField {
-  el: HTMLInputElement;
+  el: HTMLInputElement | HTMLTextAreaElement;
   composing(): boolean;
   /** 受控回写：见文件头 ③。 */
   setValue(v: string): void;
@@ -28,7 +28,7 @@ export interface TextField {
 //   和系统输入法的 isComposing 是同一回事；以前只认系统输入法，内置输入法组字时在章节名框按 Enter 会同时「上屏」和「提交改名并跳回正文」。
 export const isCompositionKey = (e: KeyboardEvent): boolean => e.isComposing || e.keyCode === 229 || e.defaultPrevented;
 
-export function bindTextField(el: HTMLInputElement, opts: TextFieldOpts = {}): TextField {
+export function bindTextField(el: HTMLInputElement | HTMLTextAreaElement, opts: TextFieldOpts = {}): TextField {
   let composing = false;
   let pending: string | null = null;
   function setValue(v: string): void {
@@ -42,7 +42,7 @@ export function bindTextField(el: HTMLInputElement, opts: TextFieldOpts = {}): T
   el.addEventListener("compositionstart", () => { composing = true; });
   el.addEventListener("compositionend", () => { composing = false; if (pending != null) { const v = pending; pending = null; setValue(v); } });
   el.addEventListener("input", () => { opts.onInput?.(el.value, composing); });
-  el.addEventListener("keydown", (e) => {
+  (el as HTMLElement).addEventListener("keydown", (e) => {   // 联合类型拿不到带类型的事件表，退回 HTMLElement 的
     if (isCompositionKey(e)) return;   // 输入法的 Enter / Esc 不是命令
     if (e.key === "Enter" && opts.onEnter) { e.preventDefault(); opts.onEnter(e); }
     else if (e.key === "Escape" && opts.onEscape) { e.preventDefault(); opts.onEscape(e); }

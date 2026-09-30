@@ -1468,7 +1468,8 @@ body {
 /* 章节名行 = ⟨ 章节名 ⟩：上一页 / 下一页 chevron 住章节名两侧，不再占页脚（user 2026-09-10「上一页和下一页可以放在标题行，用 ⟨ ⟩ 的 svg…quest 屏幕 vertical space is scarcity」） */
 .node-title-row { display: none; flex: none; align-items: center; gap: 4px; margin: 0 0 calc(var(--editor-font) * 0.5); }
 body[data-project] .node-title-row { display: flex; }
-.node-title { flex: 1 1 auto; min-width: 0; width: auto; box-sizing: border-box; border: 0; background: transparent; outline: none; text-align: center; line-height: 1.4; font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink); padding: 0; margin: 0; caret-color: var(--accent); }
+/* 章节名框 = 单行起步的 textarea，随内容长高（user 2026-09-30「不过对于标题栏怎么办。也自动加行？」）：Enter 仍 = 提交（text-field 拦下），不出现换行 */
+.node-title { flex: 1 1 auto; min-width: 0; width: auto; box-sizing: border-box; border: 0; background: transparent; outline: none; text-align: center; line-height: 1.4; resize: none; overflow: hidden; display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink); padding: 0; margin: 0; caret-color: var(--accent); }
 .node-title::placeholder { color: var(--ink-muted); font-weight: 400; opacity: 0.7; }
 /* 页脚（v2.1.26）：‹ 上一页 · 字数 · 下一页 ›，印在纸的末尾（user 2026-09-30「同意也加导航，和页头一样」；字数统计 = user 2026-09-10「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」）。
    margin-top: auto = 短稿时页脚也在纸的底端；三件都藏着时整行不占地。 */
@@ -1771,16 +1772,17 @@ body.ruled-lines .body-mirror { background-image: none; }
 .child-toc[hidden] { display: none; }
 .child-toc-head { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }   /* 只给读屏：行本身看得出是链接 */
 .child-toc-list { list-style: none; margin: 0; padding: 0; }
-.child-toc-list li { height: var(--editor-lh); }
+/* 目录行可换行（user 2026-09-30「碰到长的英文标题…对于子节目录来说可以换行吧」）：最多两行，每行仍 = --editor-lh，行高整数倍 → 仍坐在线上 */
+.child-toc-list li { min-height: var(--editor-lh); }
 .child-toc-row {
-  width: 100%; height: var(--editor-lh); display: flex; align-items: baseline; gap: 0.4em; margin: 0; padding: 0; border: 0; border-radius: 0;
+  width: 100%; min-height: var(--editor-lh); display: flex; align-items: flex-start; gap: 0.4em; margin: 0; padding: 0; border: 0; border-radius: 0;
   background: transparent; color: var(--accent-strong); font: inherit; line-height: var(--editor-lh); text-align: left; cursor: pointer;
 }
 .child-toc-row:hover .child-toc-name, .child-toc-row:focus-visible .child-toc-name { text-decoration: underline; text-underline-offset: 0.2em; }
 .child-toc-row:focus-visible { outline: none; }
-.child-toc-row .ico { flex: none; align-self: center; width: 0.7em; height: 0.7em; color: var(--ink-muted); }
-.child-toc-name { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.child-toc-sub { flex: none; margin-left: auto; padding-left: 0.6em; font-family: var(--font-ui); font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.child-toc-row .ico { flex: none; align-self: flex-start; width: 0.7em; height: 0.7em; margin-top: calc((var(--editor-lh) - 0.7em) / 2); color: var(--ink-muted); }
+.child-toc-name { flex: 0 1 auto; min-width: 0; line-height: var(--editor-lh); white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.child-toc-sub { flex: none; margin-left: auto; padding-left: 0.6em; line-height: var(--editor-lh); font-family: var(--font-ui); font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 
 /* 宽稿纸（body.paper-wide）：矮而宽的可用区（GPD Win Mini 这类小横屏；平板横屏 + 软键盘）纵向空间稀缺 → 每行字数加到 34、行距 1.7、纸边收一点。
    上限仍然有（--box-max）：再宽的窗口（VR）也不铺满。阅读节奏（轻小说 / 标准）在这一档里不起作用——这一档只在高度不够时出现。 */
@@ -1839,7 +1841,7 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 .xhw-paper.draft { background: var(--cover-sheet); }
 /* 锁着 / 还在云端：纸上一枚小图标，放在封面左下、日期上方，不和书名抢地方 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder.locked { background: var(--cover-paper); }
-#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder > span:not(.gallery-tile-ph-icon) { display: none; }   /* 2026-09-30 user「只需要左上的那个锁」：锁 / 云一律在左上（大锁 + 同步徽章），纸上不再另印 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder > span:not(.gallery-tile-ph-icon) { display: none !important; }   /* 2026-09-30 user「只需要左上的那个锁」：锁 / 云一律在左上（大锁 + 同步徽章），纸上不再另印。!important：包给这些 span 的是行内 display（加密占位的 42px 锁、云端占位的 48px 云） */
 
 /* 面：印在封面上的那一层 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile-overlay { border-radius: 3px 6px 6px 3px; container-type: inline-size; }
@@ -1873,7 +1875,10 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 .xhw-cover.h.sz-m  .xhw-cover-title { font-size: clamp(12px, 11cqw, 19px); }
 .xhw-cover.h.sz-s  .xhw-cover-title { font-size: clamp(11px, 9.5cqw, 16px); }
 .xhw-cover.coded .xhw-cover-title { font-size: clamp(13px, 13cqw, 22px); letter-spacing: 0.04em; }   /* 没起名的稿：四位消歧码 */
-.xhw-cover-date { position: absolute; left: calc(var(--spine-w) + 9px); bottom: 21px; font-family: var(--font-ui); font-size: 9px; line-height: 1.2; letter-spacing: 0.02em; color: var(--cover-ink-soft); font-variant-numeric: tabular-nums; }   /* 2026-09-30 user「下面的日期短一点」：9px、收紧字距、贴近底行 */
+/* 底栏（user 2026-09-30「左边是 yyyymmdd，右边是 size」「半透明背景垫底…很窄的一条贴着底部」）：17px 一条贴底、纸色 78% 垫底、不描边 */
+.xhw-cover-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 17px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 6px 0 calc(var(--spine-w) + 8px); font-family: var(--font-ui); font-size: 9px; line-height: 17px; letter-spacing: 0.02em; color: var(--cover-ink-soft); background: color-mix(in srgb, var(--cover-paper) 78%, transparent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.xhw-cover-size { margin-left: auto; }
+.xhw-cover-date { flex: none; }
 
 /* 底下是封面图：字带一圈纸色描边（扁平：只有偏移、没有模糊），小字和徽章同理。不加底栏。 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) {
@@ -1882,9 +1887,9 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
   --halo: 1px 0 0 var(--halo-ink), -1px 0 0 var(--halo-ink), 0 1px 0 var(--halo-ink), 0 -1px 0 var(--halo-ink),
           1px 1px 0 var(--halo-ink), -1px -1px 0 var(--halo-ink), 1px -1px 0 var(--halo-ink), -1px 1px 0 var(--halo-ink);
 }
-#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title,
-#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-date,
-#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-meta { text-shadow: var(--halo); color: var(--cover-ink); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title { text-shadow: var(--halo); color: var(--cover-ink); }   /* 只有书名描边；底栏靠垫底不描边 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-bar,
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-meta { color: var(--cover-ink); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title { padding: 3px; }   /* 描边不被裁掉 */
 /* 有封面图的书不画装订线（user 2026-09-30「有封面的时候左边不应该有 binding 的那一条」）：--spine-w 归零，书名 / 日期 / 锁标的让位一起收回 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover.book { --spine-w: 0px; }
@@ -1899,7 +1904,9 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
   background: transparent; color: var(--cover-ink); border-radius: 0 0 6px 3px;
 }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-name { font-size: 12.5px; line-height: 1.3; color: inherit; white-space: normal; overflow: hidden; text-overflow: clip; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-#galleryMount .gallery-grid:not(.list) .gallery-tile-meta { font-size: 9px; letter-spacing: -0.01em; color: var(--cover-ink-soft); margin-top: 1px; margin-right: -5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* 「时间 · 大小」一行放下（user 2026-09-30「最下面看不到 kb 大小」） */
+#galleryMount .gallery-grid:not(.list) .gallery-tile-meta { position: absolute; right: 6px; bottom: 0; height: 17px; line-height: 17px; margin: 0; max-width: 60%; font-size: 9px; letter-spacing: -0.01em; color: var(--cover-ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* 包的「时间 · 大小」顶在底栏右侧；gallery ≥ 0.6.4 把 size 交给覆盖层后整行藏掉（user「上次编辑…可以做 tooltip」） */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover-bar.has-size) .gallery-tile-meta { position: static; width: 0; height: 0; margin: 0; overflow: visible; }   /* 只藏文字；同步徽章住在它里面（绝对定位到左上，参照系 = 铺满卡的名字行），不能整块 display:none、也不能让它自己当参照系 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover-bar.has-size) .gallery-tile-meta > span:not(.gallery-tile-state-icon) { display: none; }
 /* 左上角：先云（同步徽章）再锁（user 2026-09-30「云图标也放在左上，先云再锁」）；名字行里那把小锁是重复的，藏掉 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile-meta .gallery-tile-state-icon.enc { display: none; }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-meta .gallery-tile-state-icon[class*="b-"] { position: absolute; left: 9px; top: 8px; width: 20px; height: 20px; color: var(--cover-ink); }

@@ -42,7 +42,9 @@ export interface ProjectModeDeps {
   /** 纸的滚动容器（main.surface；v2.1.26 一张纸模型：正文框自己不滚）。换页滚回顶；重载后放回原位。 */
   sheet: HTMLElement;
   /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
-  titleEl: HTMLInputElement;
+  titleEl: HTMLInputElement | HTMLTextAreaElement;
+  /** 章节名框内容变了（打字 / 程序回写）→ 宿主让框随内容长高并重算纸面（v2.1.30 自动加行，user 2026-09-30「也自动加行？」「自动加行同意」）。 */
+  onTitleResize?: () => void;
   /** 图片页视图（2.1）：#pageImage 容器 / <img> / 元信息行。当前页是图片时 textarea 让位。 */
   imageBox: HTMLElement;
   imageEl: HTMLImageElement;
@@ -109,12 +111,12 @@ export function createProjectMode(d: ProjectModeDeps) {
   const stemOf = (n: string): string => { const i = n.lastIndexOf("."); return i > 0 ? n.slice(0, i) : n; };
   /** 章节名框 = 窄接口（v2.1.13）：合成态里 Enter/Esc 不是命令；回写只在值真变时写、光标放回原处。 */
   const titleField = bindTextField(d.titleEl, {
-    onInput: () => { if (!canEdit()) { syncTitle(); return; } d.setState(stateText(), { unsynced: d.isSignedIn() && home?.kind === "store" }); },   // 打字中途**不提交不回写**（以前 500ms 就改名 + 回写 .value → iOS 系统输入法删字时光标跳 / 空格被吃 / 组字被打断；user 2026-09-26）
+    onInput: () => { if (!canEdit()) { syncTitle(); return; } d.onTitleResize?.(); d.setState(stateText(), { unsynced: d.isSignedIn() && home?.kind === "store" }); },   // 打字中途**不提交不回写**（以前 500ms 就改名 + 回写 .value → iOS 系统输入法删字时光标跳 / 空格被吃 / 组字被打断；user 2026-09-26）
     onEnter: () => { if (commitTitle()) d.editorEl.focus(); },
     onEscape: () => { syncTitle(); d.editorEl.focus(); },
     onBlur: () => { if (!commitTitle()) syncTitle(); },   // 离开框 = 提交；没落成（撞名 / 非法）→ 回显真名，别留个假名字在屏上
   });
-  function syncTitle(): void { const cur = session?.current() ?? null; titleField.setValue(cur ? (nodeKind(cur) === "image" ? stemOf(cur) : nodeDisplayName(cur)) : ""); }
+  function syncTitle(): void { const cur = session?.current() ?? null; titleField.setValue(cur ? (nodeKind(cur) === "image" ? stemOf(cur) : nodeDisplayName(cur)) : ""); d.onTitleResize?.(); }
   /** 把章节名框里的字落成改名。返回 true = 名字已与框一致（含「没改」/ 合成中先不动）；false = 没落成（撞名/非法），框保留用户打的字让人改。 */
   /** 参考窗（ADR-0016）：换书 / 关书时把参考目录交出去；打不开的书 / 关书 = 空表。 */
   function applyReferences(): void { d.references?.apply(session?.project.references ?? new Map()); }
@@ -533,6 +535,8 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 带废弃前缀（任一界面语言的前缀都认——书可能在别的语言下废弃过）。 */
   const discardPrefixes = (): string[] => Object.values(S["edge.discardPrefix"]);
   const isDiscarded = (target: string): boolean => discardPrefixes().some((pre) => target.startsWith(pre));
+  /** 改这一页的时间戳（user 2026-09-30「加一个修改页的 timestamp 的功能，这样方便整理旧书」）：modified 直接写；created 不能晚于 modified，晚了一起拉回。 */
+  const setPageTime = guardEdit((name: string, ms: number) => { session!.setTimes(name, ms); });
   /** 废弃（用户面 = 删除）：改名 `_废-`（前缀按界面语言）+ 在树里连同子树出树、子节各自改名；不删字节。回退 / 前进栈跟着改名。lastDiscarded = 改名表（toast 用）。 */
   let lastDiscarded: { from: string; to: string }[] = [];
   const discardPage = guardEdit((target: string) => { commitEditor(); const r = session!.discard(target, t("edge.discardPrefix"), discardPrefixes()); lastDiscarded = r.renamed; for (const x of r.renamed) if (x.from !== x.to) { renameInBack(x.from, x.to); d.references?.pageRenamed(x.from, x.to); } syncTitle(); });   // 废弃 = 改名（ADR-0014 §8）→ 链接卡跟着改名，不断；syncTitle：废弃的是当前页时章节名框必须立刻回显 `_废-` 名——否则 200 ms 后的落盘 commitEditor 会把旧名字当改名落回去、静默撤销废弃（2026-09-29 参考窗 e2e 抓到）
@@ -618,7 +622,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, refreshIfClean, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
     jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText,
-    addLink, removeLink, moveLink, lastDetached: () => lastDetached, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
+    addLink, removeLink, moveLink, lastDetached: () => lastDetached, setPageTime, pageTime: (n: string) => session?.project.nodes.get(n)?.modified ?? 0, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
     cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail,
     noteReferencesChanged,

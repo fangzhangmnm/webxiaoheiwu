@@ -9,7 +9,7 @@ import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections,
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary } from "./docs.ts";
-import { docKind, formatDate, statsForText, decodeTextBytes, hex4 } from "./doc-model.ts";
+import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
 import { importPageName } from "./image/policy.ts";
 import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD, type GalleryView } from "@internal/gallery";
@@ -207,7 +207,8 @@ const refHost = createReferenceHost({
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
 const project = createProjectMode({
   references: refHost.hooks,
-  editorEl, sheet, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
+  editorEl, sheet, titleEl: $<HTMLTextAreaElement>("nodeTitle"), setStatus, setState,
+  onTitleResize: () => fitTitle(),
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
@@ -249,6 +250,15 @@ async function addPageFlow(where: "sibling" | "child"): Promise<boolean> {
 /** 挪到…（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」）：通用 pick sheet（sheets.ts openPickSheet）搜主干里的页 → 放到它之下 / 之后；
  *  固定首行「书的末尾（顶层）」= v2.1.6 的「归入主干」并进来（空树唯一入口仍在）。子树跟着走，文案写明子节数。散页首行 / 顶栏「+」菜单 / 树行 ⋯ 菜单三处同一条路。 */
 const MOVE_END = "\u0000end";   // pick sheet 固定首行「书的末尾」的哨兵（含 NUL，不会和页名撞）
+async function setPageTimeFlow(name: string): Promise<void> {
+  if (!project.canEdit()) return;
+  const cur = project.pageTime(name);
+  const raw = await openInputSheet(t("edge.setTimeTitle", { name: nodeDisplayName(name) }), { message: t("edge.setTimeHint"), defaultValue: cur ? fmtLooseDate(cur) : "", placeholder: "2026-09-26 14:30", okLabel: t("common.ok") });
+  if (raw == null || !raw.trim()) return;
+  const ms = parseLooseDate(raw);
+  if (ms == null) { setStatus(t("edge.setTimeBad"), { error: true }); return; }
+  if (project.setPageTime(name, ms)) { edgeSidebar.render(); setStatus(t("edge.setTimeDone", { name: nodeDisplayName(name), time: fmtLooseDate(ms) })); }
+}
 /** 孤儿页 = 废弃的 `_废-` 页 + 没有入链、也不在主干的散页（user 2026-09-30「不是一键全删除，而是一个系统的列举所有孤儿的入口」）。 */
 function orphanPages(): { name: string; discarded: boolean; links: number }[] {
   if (!project.active()) return [];
@@ -345,6 +355,14 @@ const dockHeightNow = (): number => parseFloat(document.documentElement.style.ge
 const paper = createPaper({ page: pageEl, editor: editorEl, widthPref: paperWidthPref, dockHeight: dockHeightNow, onChanged: () => syncBodyHeight() });
 /** 正文框高度 = 内容行数 × 行高（量的是看不见的孪生框，paper.contentHeight），子节目录 = (1 + 子节数) × 行高紧跟其后——一切都是整行，
  *  所以目录的每一行都坐在稿纸的线上（v2.1.17，user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）。图片页正文框藏着、目录照露。 */
+/** 章节名框随内容长高（v2.1.30，user 2026-09-30「也自动加行？」「自动加行同意」）：单行起步的 textarea，量 scrollHeight 落成高度，再重算纸面（alignTop 把正文上沿补到整像素，别绕开）。 */
+const nodeTitleEl = $<HTMLTextAreaElement>("nodeTitle");
+function fitTitle(): void {
+  nodeTitleEl.style.height = "0px";
+  const h = nodeTitleEl.scrollHeight;
+  nodeTitleEl.style.height = h > 0 ? `${h}px` : "";
+  syncBodyHeight();
+}
 function syncBodyHeight(): void {
   paper.alignTop(pageBody);
   const lh = paper.lineHeight();
@@ -562,7 +580,8 @@ addPageButton.addEventListener("click", (e) => {
     { id: "child", label: t("edge.addChild"), icon: "new" },
     { id: "move", label: t("edge.moveTo"), icon: "move-to-file", separatorBefore: true },   // 挪到…（pick sheet；书的末尾 = 空树唯一入口，v2.1.6 归入主干并入）
     { id: "toRef", label: t("ref.sendToRef"), icon: "picture-in-picture", separatorBefore: true, disabled: !project.canEdit() },   // 这一页 → 参考窗（链接卡；ADR-0016）
-  ], onPick: (id) => { if (id === "move") { if (cur) void movePageFlow(cur); } else if (id === "toRef") { if (cur) refHost.sendPage(cur); } else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+    { id: "time", label: t("edge.setTime"), separatorBefore: true, disabled: !project.canEdit() },   // 改这一页的时间戳（整理旧书；user 2026-09-30）
+  ], onPick: (id) => { if (id === "move") { if (cur) void movePageFlow(cur); } else if (id === "toRef") { if (cur) refHost.sendPage(cur); } else if (id === "time") { if (cur) void setPageTimeFlow(cur); } else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
 });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());
@@ -592,7 +611,7 @@ async function newProjectFlow(): Promise<void> {
   if (r == null) return;
   const raw = r.value, wantEncrypt = r.checked;
   const date = formatDate(Date.now());
-  const firstNode = `${t("project.defaultName")}.txt`;   // 唯一的默认页名 =《作品》及各语言对应词（user 2026-09-10）
+  const firstNode = `${t("project.firstPage")}.txt`;   // 唯一的默认页名 =「目录」及各语言对应词（user 2026-09-30「书创建的第一页叫目录吧，不叫作品」；此前 2026-09-10 =「作品」）
   try {
     const empty = await packProject(emptyProject());
     const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder());

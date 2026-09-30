@@ -96,6 +96,8 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const removeLink = guard((to: string) => unlink(project, requireCurrent(), to, now));
   const setLinksOrder = guard((list: string[]) => setLinks(project, requireCurrent(), list, now));
   const rename = guard((from: string, to: string) => renameNode(project, from, to, now));
+  /** 改时间戳（整理旧书用）：modified = ms；created 晚于它就一起拉到 ms（created 永远 ≤ modified）。 */
+  const setTimes = guard((name: string, ms: number) => { const m = project.nodes.get(name); if (!m) throw new Error(`setTimes: no such page ${name}`); m.modified = ms; if (!m.created || m.created > ms) m.created = ms; });
   const remove = guard((target: string) => deleteNode(project, target));
   /** 修改锁（跟着作品进 graph.json）：切换 = 正经改动（标脏；调用方随即落盘/推云）。唯一不受锁挡的改动（解锁本身）；格式太新仍不许。 */
   function setReadOnly(v: boolean): void { if (readOnly) throw new Error("read-only project (format too new)"); if (project.readOnly === v) return; project.readOnly = v; touch(); }
@@ -170,7 +172,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   return {
     open, create, close, flush, toBlob, adoptName, setBack, touchReferences,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
-    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, discard, purge, setReadOnly,
+    current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, setTimes, remove, discard, purge, setReadOnly,
     cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail,
     treeUp, treeDown, treeOutdent, treeIndent, treeDetach, archiveAfter, archiveUnder, archiveAtEnd, newSibling, newChild,
     neighborhood, sidebar, backlinksOf, find, exists, pathOf, isInTree, order, exportBranch, canMutate,

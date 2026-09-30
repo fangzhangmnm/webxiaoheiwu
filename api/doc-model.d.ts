@@ -58,3 +58,7 @@ export declare function encodeText(text: string): Uint8Array;
 /** 采纳云端字节前的验真（store validateAdopt，收**明文**）：挡 captive-portal HTML / 二进制垃圾覆盖好本地。
  *  txt 无魔数 → 判据 = 能按上面的编码链解出（非 lossy）且开头不是 HTML 文档。空文件合法。 */
 export declare function looksLikeTextDoc(bytes: Uint8Array): boolean;
+/** 「改时间…」：把这一页的修改时间改成用户打的日期（user 2026-09-30「加一个修改页的 timestamp 的功能，这样方便整理旧书」）。
+ *  收：`2026-09-26 14:30` / `2026-09-26` / `20260926` / `2026/9/26 9:05` / `20260926 1430`；只有日期 = 当天 12:00（排序稳、不跨日）。 */
+export declare function parseLooseDate(raw: string, now?: Date): number | null;
+export declare const fmtLooseDate: (ms: number) => string;

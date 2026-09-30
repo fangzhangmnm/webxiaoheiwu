@@ -2,7 +2,8 @@
 // created 2026-09-10 by Claude Fable 5.1。包出屏幕 + 动词 + 数据面；本文件只出：Vue 注入、DocHost（编辑器端口）、policy（两档扩展名、身份=全名、缩略图 = 书的 Thumbnails/thumbnail.png 尾读，2.1）、
 //   加密适配（crypto-state）、chrome 按钮（返回 / 新建 / 回收站 / 设置）。文案 = 包内 zh/en 默认（按 lang 切）。
 import { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick, Teleport } from "../vendor/vue/vue.esm-browser.prod.js";
-import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type VerbStore, type DataFaceStore, type Gallery, type GalleryView, type AsideKind, type AsideScope } from "@internal/gallery";
+import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type TileInfo, type VerbStore, type DataFaceStore, type Gallery, type GalleryView, type AsideKind, type AsideScope } from "@internal/gallery";
+import { humanSize } from "@internal/gallery";
 import { requireStore, auth } from "./app-store.ts";
 import { appEncryption } from "./encryption.ts";
 import { THUMBNAIL_ENTRY } from "./project/format.ts";
@@ -94,7 +95,11 @@ export function initGalleryHost(d: GalleryHostDeps) {
     ui: {
       iconHtml: (name, opts) => iconHtml(name, opts),
       tilePlaceholderHtml: (name) => paperHtml(isProjectName(name) ? "book" : "draft"),
-      tileOverlayHtml: (name) => coverHtml(parseDocName(name).stem, isProjectName(name) ? "book" : "draft"),
+      // gallery 0.6.4 起第二参给 TileInfo（size / lastModified；回收站 / 备份箱的卡没有 size → 只印日期，包的那行继续顶在底栏右侧）
+      tileOverlayHtml: (name: string, item?: TileInfo) => coverHtml(parseDocName(name).stem, isProjectName(name) ? "book" : "draft", {
+        sizeText: item?.size != null ? humanSize(item.size) : undefined,
+        editedText: item?.lastModified ? t("gal.editedAt", { time: new Date(item.lastModified).toLocaleString() }) : undefined,
+      }),
     },
     // （v2.1.23 / gallery 0.6.0：naming / isZipDoc / policy.isDoc 退役——哪些是文档、主干、是不是 zip 全由 store 的种类表说，宿主不再自己切名字。）
     policy: {

@@ -6,11 +6,11 @@ export interface TextFieldOpts {
     onBlur?: () => void;
 }
 export interface TextField {
-    el: HTMLInputElement;
+    el: HTMLInputElement | HTMLTextAreaElement;
     composing(): boolean;
     /** 受控回写：见文件头 ③。 */
     setValue(v: string): void;
 }
 /** 这一击是不是输入法在组字（Enter = 上屏、Escape = 取消组字，都不是 app 的命令）。 */
 export declare const isCompositionKey: (e: KeyboardEvent) => boolean;
-export declare function bindTextField(el: HTMLInputElement, opts?: TextFieldOpts): TextField;
+export declare function bindTextField(el: HTMLInputElement | HTMLTextAreaElement, opts?: TextFieldOpts): TextField;

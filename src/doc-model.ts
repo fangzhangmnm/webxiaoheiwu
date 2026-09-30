@@ -152,3 +152,20 @@ export function looksLikeTextDoc(bytes: Uint8Array): boolean {
   if (bytes.subarray(0, 512).some((b) => b === 0)) return encoding.startsWith("utf-16");   // NUL 只有 UTF-16 合法
   return true;
 }
+
+/** 「改时间…」：把这一页的修改时间改成用户打的日期（user 2026-09-30「加一个修改页的 timestamp 的功能，这样方便整理旧书」）。
+ *  收：`2026-09-26 14:30` / `2026-09-26` / `20260926` / `2026/9/26 9:05` / `20260926 1430`；只有日期 = 当天 12:00（排序稳、不跨日）。 */
+export function parseLooseDate(raw: string, now = new Date()): number | null {
+  const s = raw.trim().replace(/[年月]/g, "-").replace(/[日]/g, "").replace(/[／]/g, "/").replace(/：/g, ":");
+  let m = /^(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})(?:[\sT]+(\d{1,2})[:：]?(\d{2}))?$/.exec(s);
+  if (!m) { m = /^(\d{4})(\d{2})(\d{2})(?:[\sT]+(\d{2})(\d{2}))?$/.exec(s); }
+  if (!m) return null;
+  const y = +m[1]!, mo = +m[2]!, d = +m[3]!;
+  const hasTime = m[4] != null; const hh = hasTime ? +m[4]! : 12, mi = hasTime ? +m[5]! : 0;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || hh > 23 || mi > 59) return null;
+  const dt = new Date(y, mo - 1, d, hh, mi, 0, 0);
+  if (dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;   // 2 月 30 这种
+  if (dt.getTime() > now.getTime() + 24 * 3600 * 1000) return null;   // 未来一天以上不收（多半是打错）
+  return dt.getTime();
+}
+export const fmtLooseDate = (ms: number): string => { const d = new Date(ms); const p2 = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };

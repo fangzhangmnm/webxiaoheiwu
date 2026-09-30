@@ -55,6 +55,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     removeLink: (to: string) => boolean;
     setLinksOrder: (list: string[]) => void;
     rename: (from: string, to: string) => void;
+    setTimes: (name: string, ms: number) => void;
     remove: (target: string) => boolean;
     discard: (target: string, prefix: string, prefixes?: readonly string[] | undefined) => {
         renamed: {

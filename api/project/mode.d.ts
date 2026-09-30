@@ -27,7 +27,9 @@ export interface ProjectModeDeps {
     /** 纸的滚动容器（main.surface；v2.1.26 一张纸模型：正文框自己不滚）。换页滚回顶；重载后放回原位。 */
     sheet: HTMLElement;
     /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
-    titleEl: HTMLInputElement;
+    titleEl: HTMLInputElement | HTMLTextAreaElement;
+    /** 章节名框内容变了（打字 / 程序回写）→ 宿主让框随内容长高并重算纸面（v2.1.30 自动加行，user 2026-09-30「也自动加行？」「自动加行同意」）。 */
+    onTitleResize?: () => void;
     /** 图片页视图（2.1）：#pageImage 容器 / <img> / 元信息行。当前页是图片时 textarea 让位。 */
     imageBox: HTMLElement;
     imageEl: HTMLImageElement;
@@ -95,6 +97,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         removeLink: (to: string) => boolean;
         setLinksOrder: (list: string[]) => void;
         rename: (from: string, to: string) => void;
+        setTimes: (name: string, ms: number) => void;
         remove: (target: string) => boolean;
         discard: (target: string, prefix: string, prefixes?: readonly string[] | undefined) => {
             renamed: {
@@ -215,6 +218,8 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     removeLink: (to: string) => boolean;
     moveLink: (to: string, dir: 1 | -1) => boolean;
     lastDetached: () => number;
+    setPageTime: (name: string, ms: number) => boolean;
+    pageTime: (n: string) => number;
     discardPage: (target: string) => boolean;
     lastDiscarded: () => {
         from: string;

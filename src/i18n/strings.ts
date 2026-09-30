@@ -445,6 +445,7 @@ export const S = {
   "project.newEncrypt":     { zh: "加密这本书（建好即封，先要密码）", en: "Encrypt this book (sealed on creation; asks for the password first)" },
   "project.encryptSkipped": { zh: "没设密码，这本书先是明文——顶栏锁钮随时可加密", en: "No password set — the book stays plain for now; the lock button in the top bar can encrypt it any time" },
   "project.defaultName":    { zh: "作品", en: "Work" },
+  "project.firstPage":      { zh: "目录", en: "Contents" },
   "project.created":        { zh: "已新建书 {name}", en: "Book {name} created" },
   "project.createFailed":   { zh: "新建书失败：{e}", en: "Could not create the book: {e}" },
   "project.openLocal":      { zh: "打开本机的书…", en: "Open a local book…" },
@@ -567,6 +568,7 @@ export const S = {
   // ── 2.0 图库屏（chrome 文案；网格内文案是包的 zh/en 默认）──
   "gal.aria":               { zh: "书库", en: "Library" },
   "gal.title":              { zh: "书库", en: "Library" },
+  "gal.editedAt":           { zh: "上次编辑 {time}", en: "Last edited {time}" },
   "gal.back":               { zh: "回到编辑器", en: "Back to editor" },
   "gal.new":                { zh: "新建", en: "New" },
   "gal.trash":              { zh: "回收站", en: "Trash" },
@@ -590,6 +592,11 @@ export const S = {
   "galx.folderNeedSignin":  { zh: "书库离线（未登录或权限失效），无法新建文件夹", en: "Library is offline (not signed in or access expired); cannot create a folder" },
   "galx.quotaCritical":     { zh: "本地存储 {pct}% 已满——立即去书库卸载不常用的稿", en: "Local storage is {pct}% full — unload rarely used documents from the library now" },
 
+  "edge.setTime":           { zh: "改时间…", en: "Set time…" },
+  "edge.setTimeTitle":      { zh: "「{name}」的修改时间", en: "Modified time of “{name}”" },
+  "edge.setTimeHint":       { zh: "整理旧书用：写成 2026-09-26 14:30，或只写日期 2026-09-26 / 20260926（当天中午）。侧栏小字和检索排序用的就是它。", en: "For tidying old books: 2026-09-26 14:30, or just a date like 2026-09-26 / 20260926 (noon). The sidebar's small print and search order use it." },
+  "edge.setTimeBad":        { zh: "看不懂这个时间；写成 2026-09-26 14:30 或 20260926", en: "Couldn't read that time; use 2026-09-26 14:30 or 20260926" },
+  "edge.setTimeDone":       { zh: "「{name}」的修改时间 → {time}", en: "“{name}” modified time → {time}" },
   "edge.orphans":           { zh: "孤儿页 · {n}", en: "Orphans · {n}" },
   "edge.orphansTitle":      { zh: "孤儿页", en: "Orphan pages" },
   "edge.orphansHint":       { zh: "废弃的页，和没有任何页指向、也不在主干里的散页。选一页：打开、归入主干、废弃或彻底删除。", en: "Discarded pages, and loose pages nothing points to. Pick one to open, move into the trunk, discard, or delete for good." },

@@ -1652,6 +1652,10 @@ export declare const S: {
         readonly zh: "作品";
         readonly en: "Work";
     };
+    readonly "project.firstPage": {
+        readonly zh: "目录";
+        readonly en: "Contents";
+    };
     readonly "project.created": {
         readonly zh: "已新建书 {name}";
         readonly en: "Book {name} created";
@@ -2120,6 +2124,10 @@ export declare const S: {
         readonly zh: "书库";
         readonly en: "Library";
     };
+    readonly "gal.editedAt": {
+        readonly zh: "上次编辑 {time}";
+        readonly en: "Last edited {time}";
+    };
     readonly "gal.back": {
         readonly zh: "回到编辑器";
         readonly en: "Back to editor";
@@ -2207,6 +2215,26 @@ export declare const S: {
     readonly "galx.quotaCritical": {
         readonly zh: "本地存储 {pct}% 已满——立即去书库卸载不常用的稿";
         readonly en: "Local storage is {pct}% full — unload rarely used documents from the library now";
+    };
+    readonly "edge.setTime": {
+        readonly zh: "改时间…";
+        readonly en: "Set time…";
+    };
+    readonly "edge.setTimeTitle": {
+        readonly zh: "「{name}」的修改时间";
+        readonly en: "Modified time of “{name}”";
+    };
+    readonly "edge.setTimeHint": {
+        readonly zh: "整理旧书用：写成 2026-09-26 14:30，或只写日期 2026-09-26 / 20260926（当天中午）。侧栏小字和检索排序用的就是它。";
+        readonly en: "For tidying old books: 2026-09-26 14:30, or just a date like 2026-09-26 / 20260926 (noon). The sidebar's small print and search order use it.";
+    };
+    readonly "edge.setTimeBad": {
+        readonly zh: "看不懂这个时间；写成 2026-09-26 14:30 或 20260926";
+        readonly en: "Couldn't read that time; use 2026-09-26 14:30 or 20260926";
+    };
+    readonly "edge.setTimeDone": {
+        readonly zh: "「{name}」的修改时间 → {time}";
+        readonly en: "“{name}” modified time → {time}";
     };
     readonly "edge.orphans": {
         readonly zh: "孤儿页 · {n}";
