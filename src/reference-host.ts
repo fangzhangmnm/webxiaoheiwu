@@ -33,6 +33,8 @@ export interface ReferenceHostDeps {
   setStatus: (text: string, opts?: { error?: boolean }) => void;
   /** 顶栏下缘（浮窗的出血区地板）。 */
   topFloor: () => number;
+  /** 关窗后把焦点还给正文（可选）。 */
+  focusEditor?: () => void;
 }
 
 export function createReferenceHost(d: ReferenceHostDeps) {
@@ -85,6 +87,21 @@ export function createReferenceHost(d: ReferenceHostDeps) {
   el.addEventListener("requestload", () => { d.fileInput.value = ""; d.fileInput.click(); });
   d.fileInput.addEventListener("change", () => { const files = [...(d.fileInput.files ?? [])]; if (files.length) void importFiles(files); });
   el.addEventListener("requestpaste", () => { void pasteFromClipboard(); });
+  // 粘贴归焦点（库 0.3.1，user 2026-09-30「这个看 focus 吧」）：参考窗有焦点 → Ctrl+V 的文件（图片 / txt·md）或文字进参考窗；
+  //   焦点在正文 → 这里不管，正文自己的 paste 监听照旧（文字进稿、图片 → 问过再加图片页）。
+  window.addEventListener("paste", (e) => {
+    if (!el.hasFocus) return;
+    const cd = e.clipboardData; if (!cd) return;
+    e.preventDefault(); e.stopPropagation();
+    const files = [...cd.files];
+    if (files.length) { void importFiles(files); return; }
+    const text = cd.getData("text/plain");
+    if (text.trim()) { el.addText(text, { name: "" }); el.open = true; return; }
+    d.setStatus(t("ref.pasteEmpty"), { error: true });
+  }, true);
+  // 拖放到参考窗上 = 导入（同一条漏斗）
+  el.addEventListener("dragover", (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+  el.addEventListener("drop", (e) => { const files = [...(e.dataTransfer?.files ?? [])]; if (!files.length) return; e.preventDefault(); e.stopPropagation(); void importFiles(files); });
   el.addEventListener("notice", (e) => {
     const n = (e as CustomEvent).detail as { level: string; code: string; name?: string; message: string };
     reportError(new Error(`[reference] ${n.code}: ${n.name ?? ""} ${n.message}`), n.level === "error" ? "warning" : "log");
@@ -129,10 +146,15 @@ export function createReferenceHost(d: ReferenceHostDeps) {
     const had = cardsOfPage(name)[0];
     if (had) el.deck.select(el.deck.indexOf(had.id));
     else el.deck.add({ kind, target: PAGE + name, name: nodeDisplayName(name) });
-    el.open = true;
+    el.open = true; el.focus({ preventScroll: true });   // 发过来 = 接下来大概率要贴（粘贴归焦点）
     rememberPanel();
   }
-  function toggle(): void { el.open = !el.open; if (el.open) syncFloor(); rememberPanel(); }
+  /** 入口开关：开 = 顺手给焦点（「开窗 → Ctrl+V」一步到位，user「ctrl v 是参考窗最高频的使用方法」）；关 = 焦点回宿主。 */
+  function toggle(): void {
+    el.open = !el.open;
+    if (el.open) { syncFloor(); el.focus({ preventScroll: true }); } else d.focusEditor?.();
+    rememberPanel();
+  }
 
   // ── mode 钩子（ADR-0016）──
   const hooks: ReferenceModeHooks = {

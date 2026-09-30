@@ -39,6 +39,9 @@ export interface EdgeSidebarDeps {
   /** 参考窗（ADR-0016）：顶部入口开 / 关；页行菜单「发到参考窗」= 推模型（user 2026-09-29「在页面上加一个 send to reference」）。 */
   onReference: () => void;
   onSendToReference: (name: string) => void;
+  /** 孤儿页入口（user 2026-09-30「一个系统的列举所有孤儿的入口」，翻案 ADR-0014「不做孤儿面板」）：导航底部一行「孤儿页 · n」。 */
+  orphanCount: () => number;
+  onOrphans: () => void;
 }
 type Block = "parent" | "siblings" | "children" | "links" | "incoming" | "results";
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -55,10 +58,10 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   let query = "";
   el.innerHTML = `
     <div class="edge-entries">
-      <button type="button" class="edge-entry" id="edgeLibrary">${icon("bookshelf")}<span>${esc(t("sidebar.library"))}</span></button>
-      <button type="button" class="edge-entry" id="edgeExport" title="${esc(t("sidebar.exportTitle"))}">${icon("export")}<span>${esc(t("sidebar.export"))}</span></button>
-      <button type="button" class="edge-entry" id="edgeReference" title="${esc(t("ref.title"))}">${icon("picture-in-picture")}<span>${esc(t("ref.title"))}</span></button>
-      <button type="button" class="edge-entry" id="edgeSettings">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
+      <button type="button" class="edge-entry" id="edgeLibrary" title="${esc(t("sidebar.library"))}" aria-label="${esc(t("sidebar.library"))}">${icon("bookshelf")}<span>${esc(t("sidebar.library"))}</span></button>
+      <button type="button" class="edge-entry" id="edgeExport" title="${esc(t("sidebar.exportTitle"))}" aria-label="${esc(t("sidebar.export"))}">${icon("export")}<span>${esc(t("sidebar.export"))}</span></button>
+      <button type="button" class="edge-entry" id="edgeReference" title="${esc(t("ref.title"))}" aria-label="${esc(t("ref.title"))}">${icon("picture-in-picture")}<span>${esc(t("ref.title"))}</span></button>
+      <button type="button" class="edge-entry" id="edgeSettings" title="${esc(t("ui.settings"))}" aria-label="${esc(t("ui.settings"))}">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
     </div>
     <div class="edge-settings" id="edgeSettingsPane">
       <div class="edge-settings-head">
@@ -78,6 +81,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
       </div>
       <input type="search" class="edge-search" id="edgeSearch" placeholder="${esc(t("edge.searchPh"))}" aria-label="${esc(t("edge.search"))}" autocomplete="off" />
       <ul class="edge-list" id="edgeList" role="list"></ul>
+      <button type="button" class="edge-orphans" id="edgeOrphans" hidden></button>
       <div class="edge-foot" id="edgeFoot" hidden>
         <button type="button" class="auth-action" id="edgeDownload" hidden>${esc(t("edge.download"))}</button>
       </div>
@@ -173,6 +177,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     $("edgeTxtPane").hidden = m.active() || !d.canLift();
     $("edgeReference").hidden = !m.active();   // txt 稿没有装参考的地方（参考永远跟着文档走，不做「只在这次有效」——user 2026-09-29）
     if (!m.active()) return;
+    { const n = d.orphanCount(); const b = $("edgeOrphans"); b.hidden = n === 0; b.textContent = t("edge.orphans", { n }); }
     const cur = m.current();
     nodeEl.textContent = cur ? nodeDisplayName(cur) : "";
     projEl.textContent = m.displayName() ?? "";
@@ -233,6 +238,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   $("edgeExport").addEventListener("click", () => d.onExport());   // 一下 = 复制（不弹菜单：导出分享要顺手，user 2026-09-26「方便的导出分享功能其实很重要」）
   $("edgeLift").addEventListener("click", () => { void d.onLift().then((ok) => { if (ok) render(); }); });
   $("edgeReference").addEventListener("click", () => d.onReference());
+  $("edgeOrphans").addEventListener("click", () => d.onOrphans());
   $("edgeSettings").addEventListener("click", () => d.onSettings());
   $("edgeSettingsBack").addEventListener("click", () => d.onSettingsBack());
   $("edgeBack").addEventListener("click", () => { if (d.mode.goBack()) { clearQuery(); render(); d.focusEditor(); } });   // 不自动收（user「点 return back 的时候侧栏不应自动弹回」）

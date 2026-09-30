@@ -590,6 +590,16 @@ export const S = {
   "galx.folderNeedSignin":  { zh: "书库离线（未登录或权限失效），无法新建文件夹", en: "Library is offline (not signed in or access expired); cannot create a folder" },
   "galx.quotaCritical":     { zh: "本地存储 {pct}% 已满——立即去书库卸载不常用的稿", en: "Local storage is {pct}% full — unload rarely used documents from the library now" },
 
+  "edge.orphans":           { zh: "孤儿页 · {n}", en: "Orphans · {n}" },
+  "edge.orphansTitle":      { zh: "孤儿页", en: "Orphan pages" },
+  "edge.orphansHint":       { zh: "废弃的页，和没有任何页指向、也不在主干里的散页。选一页：打开、归入主干、废弃或彻底删除。", en: "Discarded pages, and loose pages nothing points to. Pick one to open, move into the trunk, discard, or delete for good." },
+  "edge.orphansPh":         { zh: "搜索孤儿页", en: "Search orphans" },
+  "edge.orphanDiscarded":   { zh: "废弃", en: "discarded" },
+  "edge.orphanLoose":       { zh: "散页", en: "loose" },
+  "edge.orphanOpen":        { zh: "打开", en: "Open" },
+  "img.pasteAddTitle":      { zh: "把 {n} 张图片加成新页？", en: "Add {n} image(s) as new pages?" },
+  "img.pasteAddMsg":        { zh: "会作为当前页的子节加进书里。要放进参考窗的话，先点一下参考窗再粘贴。", en: "They will be added under the current page. To put them in the reference window instead, click the window first, then paste." },
+  "img.pasteAddOk":         { zh: "加成新页", en: "Add as pages" },
   // ── 参考窗（@internal/reference-window 宿主文案；ADR-0016，2026-09-29）──
   "ref.title":              { zh: "参考窗", en: "Reference window" },
   "ref.sendToRef":          { zh: "发到参考窗", en: "Send to reference window" },

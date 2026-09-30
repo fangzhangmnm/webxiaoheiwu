@@ -137,6 +137,42 @@ try {
   check("C 的正文改动确实推上去了", (td.decode(cloud3.contents.get("第一章·改名.txt")) ?? "").includes("C 又写了一句"), "");
   await C.close();
 
+  // ── 粘贴归焦点（库 0.3.1，user 2026-09-30「这个看 focus 吧」「ctrl v 文字 图片…是最高频的核心使用场景」）──
+  await A.ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await A.eval((n) => window.__xhw.project.jump(n), "第一章·改名.txt"); await A.wait(200);
+  const before = await refState(A);
+  // 文字：焦点在正文 → 进正文，不进参考窗
+  await A.eval(() => navigator.clipboard.writeText("剪贴板里的设定文字"));
+  await A.eval(() => { document.getElementById("editor").focus(); const e = document.getElementById("editor"); e.setSelectionRange(e.value.length, e.value.length); });
+  await A.page.keyboard.press("Control+V"); await A.wait(400);
+  check("焦点在正文 → Ctrl+V 文字进正文、参考窗不变", (await A.text()).includes("剪贴板里的设定文字") && (await refState(A)).size === before.size, `size=${(await refState(A)).size}`);
+  // 文字：点一下参考窗（窗身）→ 拿焦点 → Ctrl+V 进参考窗（文字卡）
+  await A.eval(() => document.getElementById("referenceWindow").focus());
+  check("参考窗 focus() 后 hasFocus", await A.eval(() => document.getElementById("referenceWindow").hasFocus));
+  await A.page.keyboard.press("Control+V"); await A.wait(500);
+  s = await refState(A);
+  check("焦点在参考窗 → Ctrl+V 文字 = 新文字卡（带字节，非链接）", s.size === before.size + 1 && s.cards[s.size - 1].kind === "text" && s.cards[s.size - 1].hasBytes && s.text.includes("剪贴板里的设定文字"), JSON.stringify(s.cards[s.size - 1]) + " / " + s.text.slice(0, 40));
+  // 图片：焦点在正文 → 先弹确认（不确认不加页）；焦点在参考窗 → 图片卡
+  await A.eval(async () => { const c = document.createElement("canvas"); c.width = 16; c.height = 16; const g = c.getContext("2d"); g.fillStyle = "#f00"; g.fillRect(0, 0, 16, 16); const blob = await new Promise((r) => c.toBlob(r, "image/png")); await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); });   // 探针造图：Chromium 会重编码，必须是真 PNG
+  await A.eval(() => document.getElementById("editor").focus());
+  const pagesBefore = await A.eval(() => window.__xhw.project.nodeNames().length);
+  await A.page.keyboard.press("Control+V"); await A.wait(600);
+  const sheetUp = await A.eval(() => !document.getElementById("sheet").classList.contains("hidden"));
+  check("焦点在正文 → Ctrl+V 图片先弹确认 sheet（user「不小心按一下太坑了」）", sheetUp);
+  await A.eval(() => document.getElementById("sheetCancel")?.click()); await A.wait(400);
+  check("取消 → 没有加页", (await A.eval(() => window.__xhw.project.nodeNames().length)) === pagesBefore);
+  await A.eval(() => document.getElementById("referenceWindow").focus());
+  await A.page.keyboard.press("Control+V"); await A.wait(1200);
+  s = await refState(A);
+  check("焦点在参考窗 → Ctrl+V 图片 = 图片卡（走减肥漏斗）", s.size === before.size + 2 && s.cards[s.size - 1].kind === "image" && s.cards[s.size - 1].hasBytes, JSON.stringify(s.cards.map((c) => c.kind)));
+  check("Ctrl+V 图片没有变成新页", (await A.eval(() => window.__xhw.project.nodeNames().length)) === pagesBefore);
+  // 侧栏入口开窗 = 顺手给焦点（「开窗 → Ctrl+V」一步到位）
+  await A.eval(() => { document.getElementById("referenceWindow").open = false; document.getElementById("editor").focus(); });
+  await A.eval(() => window.__xhw.setSidebar(true)); await A.wait(300);
+  await A.page.click("#edgeReference"); await A.wait(300);
+  check("侧栏「参考窗」入口打开 → 窗开且有焦点", (await refState(A)).open && (await A.eval(() => document.getElementById("referenceWindow").hasFocus)));
+  await A.eval(() => window.__xhw.setSidebar(false));
+
   const errs = [...A.errors];
   check("零页面错误", errs.length === 0, errs.join("\n"));
   await A.close();

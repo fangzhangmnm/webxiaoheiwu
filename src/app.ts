@@ -202,6 +202,7 @@ let voiceAbortHook: (() => void) | null = null;
 const refHost = createReferenceHost({
   el: $<WpReferenceWindow>("referenceWindow"), fileInput: $<HTMLInputElement>("referenceFileInput"), setStatus,
   topFloor: () => Math.round(document.querySelector<HTMLElement>("header.top-bar")?.getBoundingClientRect().bottom ?? 0),
+  focusEditor: () => editorEl.focus(),
 });
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
 const project = createProjectMode({
@@ -220,6 +221,7 @@ refHost.bindMode(project);
 const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
   onReference: () => refHost.toggle(), onSendToReference: (name) => refHost.sendPage(name),
+  orphanCount: () => orphanPages().length, onOrphans: () => { void orphansFlow(); },
   onLibrary: () => { void galleryHost.open(); },
   onExport: () => { void copyCurrentPage(); },
   onSettings: () => showSidebarSettings(),
@@ -247,6 +249,44 @@ async function addPageFlow(where: "sibling" | "child"): Promise<boolean> {
 /** 挪到…（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」）：通用 pick sheet（sheets.ts openPickSheet）搜主干里的页 → 放到它之下 / 之后；
  *  固定首行「书的末尾（顶层）」= v2.1.6 的「归入主干」并进来（空树唯一入口仍在）。子树跟着走，文案写明子节数。散页首行 / 顶栏「+」菜单 / 树行 ⋯ 菜单三处同一条路。 */
 const MOVE_END = "\u0000end";   // pick sheet 固定首行「书的末尾」的哨兵（含 NUL，不会和页名撞）
+/** 孤儿页 = 废弃的 `_废-` 页 + 没有入链、也不在主干的散页（user 2026-09-30「不是一键全删除，而是一个系统的列举所有孤儿的入口」）。 */
+function orphanPages(): { name: string; discarded: boolean; links: number }[] {
+  if (!project.active()) return [];
+  return project.nodeNames().map((name) => ({ name, discarded: project.isDiscarded(name), links: project.backlinksOfPage(name).length }))
+    .filter((o) => o.discarded || (!project.isInTree(o.name) && o.links === 0))
+    .sort((a, b) => Number(b.discarded) - Number(a.discarded) || a.name.localeCompare(b.name, "zh"));
+}
+/** 孤儿页入口：pick sheet 列全部孤儿（可搜），选一页 → 打开 / 挪到… / 废弃 / 彻底删除（只对 `_废-`，删前确认）。做完一件回到列表，直到取消。 */
+async function orphansFlow(): Promise<void> {
+  for (;;) {
+    const rows = orphanPages(); if (!rows.length) { setStatus(t("edge.noResults")); return; }
+    const r = await openPickSheet<string, "open" | "move" | "discard" | "purge">(t("edge.orphansTitle"), {
+      message: t("edge.orphansHint"), placeholder: t("edge.orphansPh"), emptyText: t("edge.noResults"),
+      search: (q) => rows.filter((o) => !q.trim() || o.name.toLowerCase().includes(q.trim().toLowerCase()))
+        .map((o) => ({ value: o.name, label: `${nodeDisplayName(o.name)} · ${t(o.discarded ? "edge.orphanDiscarded" : "edge.orphanLoose")}${o.links ? ` · ${o.links}` : ""}`, icon: project.isInTree(o.name) ? undefined : "file" })),
+      actions: (row) => project.isDiscarded(row.value)
+        ? [{ id: "open", label: t("edge.orphanOpen"), primary: true }, { id: "purge", label: t("edge.purge") }]
+        : [{ id: "open", label: t("edge.orphanOpen"), primary: true }, { id: "move", label: t("edge.moveTo") }, { id: "discard", label: t("edge.discard") }],
+    });
+    if (!r) return;
+    const name = r.value, shown = nodeDisplayName(name);
+    if (r.action === "open") { project.jump(name); edgeSidebar.render(); editorEl.focus(); return; }
+    if (r.action === "move") { await movePageFlow(name); continue; }
+    if (r.action === "discard") {
+      const n = project.subtreeCount(name); const prefix = t("edge.discardPrefix");
+      if (await openConfirmSheet(n ? t("edge.discardTitleTree", { name: shown, n }) : t("edge.discardTitle", { name: shown }), n ? t("edge.discardMsgTree", { prefix, n }) : t("edge.discardMsg", { prefix }), { danger: true, okLabel: t("edge.discard") }) && project.discardPage(name)) {
+        const first = project.lastDiscarded()[0];
+        setStatus(t("edge.discarded", { from: nodeDisplayName(first?.from ?? name), to: nodeDisplayName(first?.to ?? name) }));
+      }
+      continue;
+    }
+    if (r.action === "purge") {
+      const n = project.backlinksOfPage(name).length;
+      if (await openConfirmSheet(t("edge.purgeTitle", { name: shown }), n ? t("edge.purgeMsg", { n }) : t("edge.purgeMsgNoLinks"), { danger: true, okLabel: t("edge.purge") })) { project.purgePage(name); edgeSidebar.render(); }
+      continue;
+    }
+  }
+}
 async function movePageFlow(name: string): Promise<boolean> {
   if (!project.canEdit()) { if (project.active() && project.readOnly()) setStatus(t("edge.lockedHint"), { error: true }); return false; }
   const n = project.subtreeCount(name);
@@ -457,6 +497,11 @@ async function replaceImageFlow(file: File, opts: { hd: boolean }): Promise<void
 $("pageImageCover").addEventListener("click", () => { void setCoverFlow(); });
 $("pageImageReplace").addEventListener("click", () => { void pickImagesFlow(true); });
 /** 拖放 / 粘贴同一漏斗（user 2026-09-10 Q8 同意）：书模式 txt = 新页、图 = 图片页；txt 模式 txt = 新稿、图 = 提示先变成书；粘贴位图无名 → 日期码。 */
+/** 粘贴 / 拖放的图片要加成新页 → 先问一句（user 2026-09-30「复制图片 as new page 需要弹框确认。不然的话不小心按一下太坑了」）；「从图片…」那条路自己有 sheet，不经这里。 */
+async function confirmAddImagePages(files: File[]): Promise<boolean> {
+  if (!project.active() || !project.canEdit()) return true;   // 不在书里 / 锁着：让 importImageFiles 自己报那句
+  return openConfirmSheet(t("img.pasteAddTitle", { n: files.length }), t("img.pasteAddMsg"), { okLabel: t("img.pasteAddOk") });
+}
 async function importDroppedFiles(files: File[]): Promise<void> {
   const isTxt = (f: File) => /\.txt$/i.test(f.name) || f.type === "text/plain";
   const txts = files.filter(isTxt), imgs = files.filter((f) => !isTxt(f));
@@ -466,7 +511,7 @@ async function importDroppedFiles(files: File[]): Promise<void> {
       const name = normalizeNodeName(f.name.replace(/\.txt$/i, "")) ?? `${formatDate(Date.now())}-${hex4()}.txt`;
       if (project.newNode(name, text)) setStatus(t("img.txtAdded", { name: parseDocName(name).stem }));
     }
-    if (imgs.length) await importImageFiles(imgs, { hd: false });
+    if (imgs.length && await confirmAddImagePages(imgs)) await importImageFiles(imgs, { hd: false });
     return;
   }
   if (imgs.length) setStatus(t("img.dropTxtMode"), { error: true });
@@ -482,7 +527,7 @@ async function importDroppedFiles(files: File[]): Promise<void> {
   const paperEl = document.querySelector<HTMLElement>(".page")!;
   paperEl.addEventListener("dragover", (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
   paperEl.addEventListener("drop", (e) => { const files = [...(e.dataTransfer?.files ?? [])]; if (!files.length) return; e.preventDefault(); void importDroppedFiles(files); });
-  editorEl.addEventListener("paste", (e) => { const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/")); if (!files.length) return; e.preventDefault(); void importImageFiles(files, { hd: false, unnamed: true }); });
+  editorEl.addEventListener("paste", (e) => { const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/")); if (!files.length) return; e.preventDefault(); void confirmAddImagePages(files).then((ok) => { if (ok) return importImageFiles(files, { hd: false, unnamed: true }); }); });
 }
 /** 把当前 txt 草稿变成书（user 2026-09-10「加一个把 draft lift 成书的机制（保留 draft?）」）：正文 → 新书第一页（页名 = 稿名），书名默认 = 稿名；
  *  原稿**保留**（非破坏；不要了自己送回收站）；原稿是加密的 → 新书立即加密（明文只在本地 IDB 停留一步，同「新建即加密」）。 */

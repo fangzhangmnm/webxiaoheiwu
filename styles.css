@@ -1572,9 +1572,16 @@ button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -
 body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-backdrop { display: none; position: fixed; inset: 0; z-index: calc(var(--z-chrome) - 1); background: rgba(58, 40, 24, 0.22); }   /* 顶栏（5）之下：☰ 仍可点 */
 .edge-entries { display: flex; gap: 6px; }
-.edge-entry { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; cursor: pointer; }
+/* 四个入口只留图标（user 2026-09-30「也许就 icon 就够了」：四个带字挤成两行）；文字留给读屏（.edge-entry span 视觉隐藏）+ title 悬停 */
+.edge-entry { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0; padding: 9px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; cursor: pointer; }
 .edge-entry:hover, .edge-entry:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--bg-0)); }
-.edge-entry .ico { width: 16px; height: 16px; flex: none; }
+.edge-entry .ico { width: 18px; height: 18px; flex: none; }
+.edge-entry span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.edge-entry[hidden] { display: none; }
+/* 孤儿页入口（2026-09-30）：导航底部一行小字钮，有孤儿才露 */
+.edge-orphans { align-self: flex-start; margin: 2px 0 0; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 12px; cursor: pointer; }
+.edge-orphans:hover, .edge-orphans:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--bg-0)); color: var(--ink); }
+.edge-orphans[hidden] { display: none; }   /* 参考窗入口在 txt 稿上藏（display 规则会盖过 hidden 属性，得点名） */
 .edge-txt { display: flex; }
 .edge-txt[hidden] { display: none; }
 .edge-pane { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
@@ -1832,7 +1839,7 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 .xhw-paper.draft { background: var(--cover-sheet); }
 /* 锁着 / 还在云端：纸上一枚小图标，放在封面左下、日期上方，不和书名抢地方 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder.locked { background: var(--cover-paper); }
-#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder > span:not(.gallery-tile-ph-icon) { position: absolute; left: 16px; bottom: 42px; width: 22px !important; height: 22px !important; opacity: 0.7; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder > span:not(.gallery-tile-ph-icon) { display: none; }   /* 2026-09-30 user「只需要左上的那个锁」：锁 / 云一律在左上（大锁 + 同步徽章），纸上不再另印 */
 
 /* 面：印在封面上的那一层 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile-overlay { border-radius: 3px 6px 6px 3px; container-type: inline-size; }
@@ -1847,7 +1854,8 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 .xhw-cover.draft { --spine-w: 0px; color: var(--cover-sheet-ink); }
 /* 加密件的大锁（gallery 0.6.1 `.gallery-tile-lockmark`；user 2026-09-30「gallery里面加密和不加密也需要有辨识度。左上角加一把大锁？」）：
    住封面左上角、书名之上的那一条空带里；书的让开装订线；光晕用纸色（包默认白色，在深色封面图上才对，纸面上要用纸色） */
-#galleryMount .gallery-grid:not(.list) .gallery-tile-lockmark { left: 9px; top: 7px; width: 24%; max-width: 44px; color: var(--enc); filter: drop-shadow(0 0 1px var(--cover-paper)) drop-shadow(0 0 1px var(--cover-paper)) drop-shadow(0 0 2px var(--cover-paper)); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-lockmark { left: 9px; top: 6px; width: 24px; height: 24px; color: var(--enc); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-lockmark { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover.book) .gallery-tile-lockmark { left: 15px; }
 .xhw-cover-title { display: block; max-width: 100%; max-height: 100%; overflow: hidden; font-weight: 700; letter-spacing: 0.04em; font-family: "Songti SC", "STSongti-SC-Bold", "Noto Serif CJK SC", "Source Han Serif SC", "Noto Serif SC", var(--font-editor), serif; }
 .xhw-cover.v .xhw-cover-title { writing-mode: vertical-rl; text-orientation: mixed; height: 100%; margin-left: auto; letter-spacing: 0.08em; }
@@ -1865,30 +1873,44 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 .xhw-cover.h.sz-m  .xhw-cover-title { font-size: clamp(12px, 11cqw, 19px); }
 .xhw-cover.h.sz-s  .xhw-cover-title { font-size: clamp(11px, 9.5cqw, 16px); }
 .xhw-cover.coded .xhw-cover-title { font-size: clamp(13px, 13cqw, 22px); letter-spacing: 0.04em; }   /* 没起名的稿：四位消歧码 */
-.xhw-cover-date { position: absolute; left: calc(var(--spine-w) + 9px); bottom: 24px; font-family: var(--font-ui); font-size: 10px; line-height: 1.2; letter-spacing: 0.05em; color: var(--cover-ink-soft); font-variant-numeric: tabular-nums; }
+.xhw-cover-date { position: absolute; left: calc(var(--spine-w) + 9px); bottom: 21px; font-family: var(--font-ui); font-size: 9px; line-height: 1.2; letter-spacing: 0.02em; color: var(--cover-ink-soft); font-variant-numeric: tabular-nums; }   /* 2026-09-30 user「下面的日期短一点」：9px、收紧字距、贴近底行 */
 
 /* 底下是封面图：字带一圈纸色描边（扁平：只有偏移、没有模糊），小字和徽章同理。不加底栏。 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) {
-  --halo: 1px 0 0 var(--cover-paper), -1px 0 0 var(--cover-paper), 0 1px 0 var(--cover-paper), 0 -1px 0 var(--cover-paper),
-          1px 1px 0 var(--cover-paper), -1px -1px 0 var(--cover-paper), 1px -1px 0 var(--cover-paper), -1px 1px 0 var(--cover-paper),
-          2px 0 0 var(--cover-paper), -2px 0 0 var(--cover-paper), 0 2px 0 var(--cover-paper), 0 -2px 0 var(--cover-paper),
-          2px 1px 0 var(--cover-paper), -2px 1px 0 var(--cover-paper), 2px -1px 0 var(--cover-paper), -2px -1px 0 var(--cover-paper),
-          1px 2px 0 var(--cover-paper), -1px 2px 0 var(--cover-paper), 1px -2px 0 var(--cover-paper), -1px -2px 0 var(--cover-paper);
+  /* 2026-09-30 user「有封面图的时候黑字的描边能不能用白色，然后稍微细一点。没封面图的时候可以不描边」：白、1px 八向；纸面上没有这条规则 = 不描边 */
+  --halo-ink: #fff;
+  --halo: 1px 0 0 var(--halo-ink), -1px 0 0 var(--halo-ink), 0 1px 0 var(--halo-ink), 0 -1px 0 var(--halo-ink),
+          1px 1px 0 var(--halo-ink), -1px -1px 0 var(--halo-ink), 1px -1px 0 var(--halo-ink), -1px 1px 0 var(--halo-ink);
 }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title,
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-date,
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-meta { text-shadow: var(--halo); color: var(--cover-ink); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title { padding: 3px; }   /* 描边不被裁掉 */
-#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-meta .gallery-tile-state-icon svg { filter: drop-shadow(1px 0 0 var(--cover-paper)) drop-shadow(-1px 0 0 var(--cover-paper)) drop-shadow(0 1px 0 var(--cover-paper)) drop-shadow(0 -1px 0 var(--cover-paper)); }
+/* 有封面图的书不画装订线（user 2026-09-30「有封面的时候左边不应该有 binding 的那一条」）：--spine-w 归零，书名 / 日期 / 锁标的让位一起收回 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover.book { --spine-w: 0px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover.book::before { display: none; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb):has(.xhw-cover.book) .gallery-tile-lockmark { left: 9px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-meta .gallery-tile-state-icon svg { filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff); }
 
 /* 图库包的名字行：挪到封面下沿，没有底色（字直接落在封面上），让开装订线 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile-name-row {
-  position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding: 4px 8px 5px 16px;
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0; box-sizing: border-box; padding: 4px 8px 5px 16px;
+  display: flex; flex-direction: column; justify-content: flex-end;   /* 铺满整张卡（同步徽章要用卡的坐标去左上），内容仍贴底 */
   background: transparent; color: var(--cover-ink); border-radius: 0 0 6px 3px;
 }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-name { font-size: 12.5px; line-height: 1.3; color: inherit; white-space: normal; overflow: hidden; text-overflow: clip; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-#galleryMount .gallery-grid:not(.list) .gallery-tile-meta { font-size: 10px; color: var(--cover-ink-soft); margin-top: 1px; }
-#galleryMount .gallery-grid:not(.list) .gallery-tile-meta .gallery-tile-state-icon svg { width: 12px; height: 12px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-meta { font-size: 9px; letter-spacing: -0.01em; color: var(--cover-ink-soft); margin-top: 1px; margin-right: -5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* 「时间 · 大小」一行放下（user 2026-09-30「最下面看不到 kb 大小」） */
+/* 左上角：先云（同步徽章）再锁（user 2026-09-30「云图标也放在左上，先云再锁」）；名字行里那把小锁是重复的，藏掉 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile-meta .gallery-tile-state-icon.enc { display: none; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-meta .gallery-tile-state-icon[class*="b-"] { position: absolute; left: 9px; top: 8px; width: 20px; height: 20px; color: var(--cover-ink); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-meta .gallery-tile-state-icon[class*="b-"] { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile-meta .gallery-tile-state-icon[class*="b-"] svg { width: 20px; height: 20px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover.book) .gallery-tile-meta .gallery-tile-state-icon[class*="b-"] { left: 15px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb):has(.xhw-cover.book) .gallery-tile-meta .gallery-tile-state-icon[class*="b-"] { left: 9px; }
+/* 徽章有图时大锁往右让 24px（徽章 v-html 可能为空 → :empty 不让） */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.gallery-tile-meta .gallery-tile-state-icon[class*="b-"]:not(:empty)) .gallery-tile-lockmark { left: 33px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover.book):has(.gallery-tile-meta .gallery-tile-state-icon[class*="b-"]:not(:empty)) .gallery-tile-lockmark { left: 39px; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb):has(.xhw-cover.book):has(.gallery-tile-meta .gallery-tile-state-icon[class*="b-"]:not(:empty)) .gallery-tile-lockmark { left: 33px; }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-active-tag { position: absolute; left: auto; right: 6px; top: auto; bottom: 22px; margin: 0; background: var(--cover-paper); border: 1px solid var(--cover-spine-edge); }   /* 「打开中」：和日期同一行的右端（时间大小那一行窄卡片上放不下两样） */
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover.draft) .gallery-tile-name-row { padding-left: 9px; color: var(--cover-sheet-ink); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover) .gallery-tile-name { display: none; }   /* 名字已经印在封面上 */
