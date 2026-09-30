@@ -225,6 +225,17 @@ user iPhone 真机截图：卡片 ⋯ 菜单弹出，下半截被下一排卡片
 - 验证：ui-audit 新探针四条（菜单在 `#galleryMount` 直系且 fixed 且 z = `--z-menu`；菜单矩形四点 `elementFromPoint` 全命中菜单、且它确实压在别的卡片上；网格滚动即收；外点即收）。iOS 真机归 user。
 - 协调：参考窗 session 通气过——它的 ＋ 菜单也走这个模块，「外部滚动 = 收」无异议；它不动 gallery / popup-menu。
 
+### 7.7 「gallery 的删除删不了」（v2.1.28，2026-09-30，参考窗 session 转述 user 真机原话）　edited by Claude Fable 5.1 2026-09-30
+
+无头 iPhone 12 触屏上下文（`tmp/round0929/probe-delete.mjs`）：⋯ → 送到回收站 → 确认 sheet 在菜单 band 之上 → 确认 → 卡片消失 → 回收站里有它，零错误。链路没坏，是 iOS 特有。两个只在 iOS 出现、且都是 v2.1.27 引进的嫌疑，各用结构消掉（gallery 0.6.3 + workbench-elements 0.1.2）：
+
+| 嫌疑 | 机制 | 修 |
+|---|---|---|
+| 粘住的 hover 解除 | iOS 没 hover，tap 把 `:hover` 粘在卡片上；菜单出了卡片后，手指点菜单项 = 离开卡片 → hover 解除 → `transform` 变 → Safari 把这一下当 mouseover、吞掉 click | gallery.css 会动版面 / 透明度的 hover 全进 `@media (hover: hover)`，卡片 hover 不再 transform |
+| 幽灵 scroll | 0.1.1「菜单外滚动 = 关」；iOS 的 tap 有时伴随 `scroll` 事件 → click 到达前菜单已收 | 0.1.2 只在锚真的移了位（> 0.5px）才关 |
+
+ui-audit 末尾加「删除整链」四条（新建稿 → 书库 ⋯ → 送到回收站 → sheet 在最上且菜单已收 → 卡片消失 → 回收站列出）+ 幽灵 scroll 不关 / 真滚动才关。**iOS 真机仍归 user**；若还删不了，要知道是「菜单点不开 / 点菜单项没反应 / 确认了没反应 / toast 说了什么」哪一种。
+
 ### 7.3 没做
 
 「各种手感调整」user 没给具体条目。一行字数、行高、软键盘键高这些现在都是 AI 定的起始值，要等 user 真机用过给反馈才有依据调。
@@ -247,6 +258,7 @@ user iPhone 真机截图：卡片 ⋯ 菜单弹出，下半截被下一排卡片
 | 参考窗（另一个会话，ADR-0016） | v2.1.25 | 已推 dev，真机零 |
 | 一张纸模型 + 页脚导航 + 中英芯片 + 加密大锁（gallery 0.6.1） | v2.1.26 | 已推 dev，真机零 |
 | 书库卡片菜单进菜单 band（gallery 0.6.2 + workbench-elements 0.1.1） | v2.1.27 | 已推 dev，真机零 |
+| 「删除删不了」iOS 两嫌疑结构消掉（gallery 0.6.3 + workbench-elements 0.1.2）+ 删除整链探针 | v2.1.28 | 已推 dev，真机待 user |
 | 手感调整 | — | 等 user 真机反馈（§7.3） |
 | 书的冲突模型（按页合并） | — | 提案已写，user 说慢慢想 |
 | 日文输入法 | — | 评估已写，user 说不急 |
