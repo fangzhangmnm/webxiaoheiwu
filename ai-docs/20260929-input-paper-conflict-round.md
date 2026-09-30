@@ -215,6 +215,16 @@ user 2026-09-30 对提案 §9 三问的答复：「对的，整张纸滚；这�
 
 验证：`npm test` 130 / smoke 全过（两条探针改量新几何）/ `ui-audit` 全过（嵌入态那组探针重写：正文框 = 内容高度、纸滚、网格相位滚动不变、纸末尾打字光标可见、锁卡 / 图片页几何）/ `kb-audit` 全过（+2：打字那一行在顶栏与键盘之间；纸末尾续打最后一行在键盘之上）/ `ruled-audit` 全过（+3：纸滚 137px 前后每行「墨迹底边 → 线」逐行相同）。**抖动本身无头量不出（WebKit 的那一帧差），真机归 user。**
 
+### 7.6 书库卡片菜单的 z order（v2.1.27，2026-09-30）　edited by Claude Fable 5.1 2026-09-30
+
+user iPhone 真机截图：卡片 ⋯ 菜单弹出，下半截被下一排卡片盖住。「z order系统的解决一下，看一下weebpaint怎么做的」「所以已经有ui深模块窄接口了吗」。
+
+- 根因：菜单是卡片里的 `absolute; z-index: 5`，卡片 `:hover` 带 `transform`，iOS 点一下 hover 粘住 → 卡片自成层叠上下文 → 菜单 z 困在卡片里、后面的卡片按 DOM 顺序盖上来。无头 Chromium 不粘 hover，量不出。
+- 深模块本来就有：`@internal/workbench-elements` 的 `popup-menu.ts`（WeebPaint 抽出来的：挂 body、fixed、坐标 `positionPopup`、z 走 band 表、外点关 / Escape / 栈 / resize），头注释点名「图库三 popup」该走它的收养 adapter，图库包一直没接。
+- 做法：gallery 0.6.2——四处菜单各包 `<Teleport :to="挂载点">`（Vue 的 DOM 归 Vue 搬），`toggleAdoptedPopup(popup, { anchor: ⋯钮, band: "css" })`，`gallery.css` `position: fixed; z-index: var(--z-menu, 400)`；workbench-elements 0.1.1 补「菜单外滚动 = 关」（fixed 之后滚网格菜单会漂）。宿主 `gallery-host.ts` 的 `vue` 多递 `Teleport`。
+- 验证：ui-audit 新探针四条（菜单在 `#galleryMount` 直系且 fixed 且 z = `--z-menu`；菜单矩形四点 `elementFromPoint` 全命中菜单、且它确实压在别的卡片上；网格滚动即收；外点即收）。iOS 真机归 user。
+- 协调：参考窗 session 通气过——它的 ＋ 菜单也走这个模块，「外部滚动 = 收」无异议；它不动 gallery / popup-menu。
+
 ### 7.3 没做
 
 「各种手感调整」user 没给具体条目。一行字数、行高、软键盘键高这些现在都是 AI 定的起始值，要等 user 真机用过给反馈才有依据调。
@@ -236,6 +246,7 @@ user 2026-09-30 对提案 §9 三问的答复：「对的，整张纸滚；这�
 | 首键预热 + 候选条瘦身 | v2.1.24 | 已推 dev，真机零 |
 | 参考窗（另一个会话，ADR-0016） | v2.1.25 | 已推 dev，真机零 |
 | 一张纸模型 + 页脚导航 + 中英芯片 + 加密大锁（gallery 0.6.1） | v2.1.26 | 已推 dev，真机零 |
+| 书库卡片菜单进菜单 band（gallery 0.6.2 + workbench-elements 0.1.1） | v2.1.27 | 已推 dev，真机零 |
 | 手感调整 | — | 等 user 真机反馈（§7.3） |
 | 书的冲突模型（按页合并） | — | 提案已写，user 说慢慢想 |
 | 日文输入法 | — | 评估已写，user 说不急 |

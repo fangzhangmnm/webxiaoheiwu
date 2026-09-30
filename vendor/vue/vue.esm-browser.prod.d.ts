@@ -24,3 +24,5 @@ export function nextTick(cb?: () => void): Promise<void>;
 export function defineComponent(options: any): any;
 export interface App { mount(el: Element | string): any; unmount(): void; }
 export function createApp(root: any, props?: any): App;
+/** 内置 Teleport 组件（2026-09-30：图库包 0.6.2 要它把卡片菜单搬出卡片；模板里当组件用，类型不求精确）。 */
+export const Teleport: any;

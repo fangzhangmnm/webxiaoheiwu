@@ -164,16 +164,16 @@
 }
 .gallery-tile-menu-btn:hover { background: rgba(255, 255, 255, 1); }
 .gallery-tile-menu-popup {
-  position: absolute; right: 4px; top: 34px;
+  /* 0.6.2：不再住卡片里（卡片 :hover 的 transform 在 iOS 上粘住 → 卡片自成层叠上下文 → 菜单被下一排卡片盖住）。
+     <Teleport> 到图库挂载点，fixed，坐标由 gallery-screen.ts placeMenu 按 ⋯ 钮算（贴屏幕下缘往上翻 #14），层级 = 宿主的菜单 band
+     （宿主没定义 --z-menu 时兜底 400，别再像 2026-09-10 那样掉成 auto）。 */
+  position: fixed; z-index: var(--z-menu, 400);
   /* 外观（实底）：WeebPaint 里走 .menu-panel 共享规则，包内自带一份（2026-09-10 WXHW 收货时菜单透明压在卡片文字上） */
-  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); color: var(--ink); z-index: 5; padding: 4px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); color: var(--ink); padding: 4px;
   min-width: 140px;
-  z-index: 5;
   display: flex; flex-direction: column;
   overflow: hidden;
 }
-/* #14：卡片贴屏幕下缘时菜单向上翻（JS 量 bbox 超视口底 → 加 .up），底部行不再伸出屏外 */
-.gallery-tile-menu-popup.up { top: auto; bottom: 34px; }
 .gallery-tile-menu-popup button {
   padding: 8px 12px;
   text-align: left;
