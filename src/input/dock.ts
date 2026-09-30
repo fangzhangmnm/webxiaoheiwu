@@ -35,6 +35,9 @@ export interface ImeDockDeps {
 }
 export interface ImeDock {
   render(): void;
+  /** 预热（v2.1.24，user「启动打第一个字的时候会卡」）：把候选条用几个样例候选不可见地画一次，逼浏览器先做样式计算和汉字字形整形——
+   *  量过：首键 20–30 ms、后续 7 ms，差额全在主线程首次画候选条（worker 那边只要 1 ms）；预热后首键 = 后续键。空闲时调，正在组字就不动。 */
+  warmUp(): void;
   /** 软键盘此刻露着吗。 */
   keyboardShown(): boolean;
   keyboard: ReturnType<typeof createSoftKeyboard>;
@@ -127,5 +130,16 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
   window.addEventListener("resize", () => { if (shown) { keyboard.setForm(form()); setLayoutVar(); } });
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => setLayoutVar()).observe(d.dock);
 
-  return { render, keyboardShown: () => shown, keyboard };
+  function warmUp(): void {
+    if (ime.getState().buffer || !d.floating.classList.contains("hidden")) return;   // 正在用就别碰
+    const sample = { buffer: "ni hao", candidates: [String.fromCharCode(0x4f60, 0x597d), String.fromCharCode(0x62df, 0x597d), String.fromCharCode(0x5c3c, 0x597d)], page: 0, hasMore: true, engine: "", enabled: true, asciiMode: false, initializeError: null } as ReturnType<NaturalCodeIME["getState"]>;
+    d.floating.style.visibility = "hidden";
+    d.floating.classList.remove("hidden");
+    fPreedit.textContent = sample.buffer; fCands.innerHTML = candHtml(sample, true);
+    void d.floating.offsetHeight;   // 逼一次布局：样式计算 + 字形整形都在这一下发生
+    d.floating.classList.add("hidden"); d.floating.style.visibility = "";
+    fPreedit.textContent = ""; fCands.innerHTML = "";
+    if (shown) { cands.innerHTML = candHtml(sample, false); void cands.offsetHeight; cands.innerHTML = ""; }   // 手机式那一块露着时，它的候选行也过一遍（同一帧内清掉，看不见）
+  }
+  return { render, keyboardShown: () => shown, keyboard, warmUp };
 }
