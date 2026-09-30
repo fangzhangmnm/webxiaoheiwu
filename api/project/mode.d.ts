@@ -177,7 +177,9 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     adoptName: (newName: string) => void;
     close: () => Promise<void>;
     flushLocal: () => Promise<void>;
-    pushNow: () => Promise<void>;
+    pushNow: (opts?: {
+        force?: boolean;
+    }) => Promise<void>;
     refreshIfClean: () => Promise<void>;
     noteExternalEdit: () => void;
     pendingLocalSave: () => boolean;

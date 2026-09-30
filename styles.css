@@ -1667,7 +1667,7 @@ body.ime-docked .drawer { padding-bottom: var(--dock-h, 0px); }
 body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
 
 .ime-dock {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-ime);
+  position: fixed; left: 0; right: 0; bottom: var(--kb-offset, 0px); z-index: var(--z-ime);   /* 贴 visual viewport 底（iPad mini 竖屏真机「软键盘没有贴到屏底部」2026-09-30：fixed 钉的是 layout viewport，iOS 把视口顶起 / 留一条系统附件栏时会脱开；--kb-offset = 两个视口的差） */
   background: var(--kb-bg); border-top: 1px solid var(--line-strong);
   padding: 0 max(3px, var(--sa-left)) max(env(safe-area-inset-bottom, 0px), 4px) max(3px, var(--sa-right));
   font-family: var(--font-ui); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;

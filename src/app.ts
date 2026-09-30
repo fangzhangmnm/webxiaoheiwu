@@ -91,7 +91,12 @@ async function smartSave(): Promise<void> {
   if (before === "none" || before === "locked" || before === "unavailable") return;
   saveButton.classList.add("flash"); setTimeout(() => saveButton.classList.remove("flash"), 500);
   void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
-  if (before === "clean") { await refreshIfCleanAny(); if (syncKindAny() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return; }
+  if (before === "clean") {
+    await refreshIfCleanAny();
+    // 书：干净态也 force 写 + 推——把不标脏的 editor-state（参考窗显隐 / 排版档 / 导航位置）顺手捞上去（user 2026-09-30；WeebPaint smartSaveAndPush 同款不看脏）；txt 稿没有这种状态，只快进
+    if (project.active() && syncKindAny() === "clean" && project.home()?.kind === "store" && auth.isSignedIn()) { await project.pushNow({ force: true }); renderSaveButton(); return; }
+    if (syncKindAny() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return;
+  }
   if (before === "local" && !auth.isSignedIn() && !(project.active() && project.home()?.kind === "local")) {
     await pushNowAny();   // 未登录 = 只落本机
     if (_cloudSignInPromptDeclined || navigator.onLine === false) { setStatus(t("save.local")); renderSaveButton(); return; }   // 离线时登录无意义 → 不弹
@@ -518,13 +523,12 @@ function visibleBookStats(): { cjk: number; en: number; pages: number } {
   for (const n of s.exportOrder(null)) { if (nodeKind(n) !== "txt") continue; const st = statsForText(readNodeText(s.project, n) ?? ""); cjk += st.cjk; en += st.en; pages++; }
   return { cjk, en, pages };
 }
-/** 编辑器贡献的「样子」（字体栈、行距倍数 = 阅读节奏、纸色墨色、写字线）；字号档 / 框宽不抄（每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样）。 */
+/** 编辑器贡献的「样子」（字体栈、纸色墨色、写字线）；字号档 / 框宽 / 行距不抄（字号档是每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样；行距跟导出档走）。 */
 function editorLook(): LongImageLook {
   const cs = getComputedStyle(editorEl), root = getComputedStyle(document.documentElement), pg = getComputedStyle(pageEl);
   const v = (name: string, fallback: string): string => root.getPropertyValue(name).trim() || pg.getPropertyValue(name).trim() || fallback;
-  const ratio = parseFloat(pg.getPropertyValue("--editor-line-height")) || parseFloat(root.getPropertyValue("--editor-line-height")) || 1.7;
   return {
-    family: cs.fontFamily, lineHeightRatio: ratio,
+    family: cs.fontFamily,
     paper: pg.backgroundColor || "#fff", ink: v("--ink", "#1b1b1b"), inkSoft: cs.color || "#222222", muted: v("--ink-muted", "#888888"),
     rule: document.body.classList.contains("ruled-lines") ? v("--line", "#d8d2c4") : null,
   };

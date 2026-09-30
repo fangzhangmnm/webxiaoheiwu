@@ -218,6 +218,9 @@ user 原话要点：「没网的小孩和我可能也对实体感兴趣。之前
 - **字体**：现在 = 系统字体栈 `--font-editor`（-apple-system / PingFang SC / Microsoft YaHei / Segoe UI / system-ui），**没有 vendor 字体**——各设备出的图字体不同（iPad 苹方、Win 微软雅黑、Quest Noto）。要固定字体：给我一个 TTF/OTF + 可再分发的许可证，vendor 进仓 `vendor/fonts/`、FontFace 装上、换 look.family 一行。
 - **切片改「尽量一张」+ 宽 750 + 按内容压（v2.3.2，user「长图能尽量不切图吗，三屏太难受了，上限是多少。然后超上限了弹窗让用户决策吧，以及文件尺寸控制下」「我们字很大，所以px宽度可以窄一点，750或者更窄？然后用高压」「默认jpg行吗…是否用jpg你可以pushback」）**：上限 16,000 px（纹理上限 16384；750 宽 ≈ 12 屏）；超过才弹 sheet 选 N 张（≤12 屏）/ M 张（≈3 屏）；纯文字张 PNG-256、有图张 JPEG q82（pushback：文字 PNG 调色板比 JPEG 更小更锐）；「好了」报总大小。
 - **排版三档跟书（v2.3.3）**：user「行宽应该是字数而不是px…字大小影响缩放」「导出只有行宽一个选项。以及还是给离散选项」「清晰度不用用户knob」「行宽还是三档吧…比手机还极端的第三档」→ 每行 14 / 20 / 28 字唯一 knob（user 数过「应该是 14」），像素/字定死 30（图宽 504 / 684 / 924），设定进 editor-state（ADR-0010 修订）；导出不抄编辑器尺子只借样子；hyphen 不做（user 拍板）。编辑器那边（定宽超限调小字数、Quest / GPD / SE2 / iPad）现状 = 字号 clamp 16px 下限已自动减字数，未动。
+- **行距跟档（v2.3.4）**：1.9 / 1.75 / 1.6（user「行间距可以和三档一起变」）。
+- **轻小说图文流**：user 诊断「part 是匿名的…我们的数据起源是叶子都有身份」→ 匿名 part 只能住在有身份的叶子里 = 正文里的图片引用 = markdown token；user「只能 markdown 纪元的话就先拖着，这个需要大动排版和 wysiwyg 引擎，不是小事，得一起做」→ **拖到 markdown 纪元**。
+- **v2.3.5**：手动保存顺手捞（干净态 force 写 + 推）；软键盘贴 visual viewport 底（iPad mini 真机报告，结构修未验）；参考窗库 bottomFloor（等过目发 0.3.2）。
 - **hidden 已落（v2.3.2，user「hidden为什么还没有做」）**：布尔 + Unity 语义，细节 = ADR-0014 2026-09-30 修订 + WXHW CLAUDE.md v2.3.2 条。
 - **未做**（等 user）：切片张数 / 整张选项；封面来源三选里的另两条（现在 = `cover` 字段指的页，没有就只印书名）；PDF；markdown 树文本；实体 / 拼版下一轮。
 

@@ -5,7 +5,7 @@
 //     · pxPerChar 像素/字 = 缩放（图宽 = 字数 × 像素/字 + 边距；只影响清晰度 / 文件大小，不改读者看到的字大小——图贴屏宽）。
 //       不是用户选项（user「导出只有行宽一个选项」「清晰度不用用户knob。knob不要太多」「能不能更抠，或者对小行宽更抠」）：定死 PX_PER_CHAR = 30 → 14 字 504 宽、20 字 684、28 字 924——
 //       小行宽自动更抠（字在屏上大，糊一点也清楚；28 字每个字在屏上小，反而要更多像素才不糊）；
-//     · look.lineHeightRatio 行距 = 阅读节奏（沿用编辑器的短行 / 标准）。
+//     · 行距跟档走（user 2026-09-30「行间距可以和三档一起变」）：14 → 1.9、20 → 1.75、28 → 1.6；编辑器的短行 / 标准不进图。
 //   编辑器只贡献「样子」：字体 / 纸色墨色 / 写字线；不再抄它的字号档和框宽（那是每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样）。
 //   一张图 = 封面（graph.json cover 有来源页就铺高清图，没有就只印书名 + 日期）+ 各页（章节名 + 正文 + 插图页原位）；
 //   尽量一张（user 2026-09-30「长图能尽量不切图吗，三屏太难受了」）：只有超过单张上限（SINGLE_IMAGE_MAX_HEIGHT）才切，切法由调用方问过 user 再定；切只在行与行之间、章节名不落单、一张图片不拆。
@@ -18,18 +18,20 @@ export interface ImageRef { blob: Blob; w: number; h: number }
 export type LongImageSection =
   | { kind: "text"; heading: string | null; text: string }
   | { kind: "image"; heading: string | null; image: ImageRef };
-/** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、行距倍数（阅读节奏）、纸色 / 墨色、写字线颜色（null = 没开）。 */
-export interface LongImageLook { family: string; lineHeightRatio: number; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
-/** 排版引擎的输入：每行几个字 + 像素/字。用户面只有 charsPerLine（跟书走，editor-state.json `export.charsPerLine`；没定的书 / txt 稿用账号默认）。 */
-export interface ExportTypeset { charsPerLine: number; pxPerChar: number }
+/** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、纸色 / 墨色、写字线颜色（null = 没开）。 */
+export interface LongImageLook { family: string; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
+/** 排版引擎的输入：每行几个字 + 像素/字 + 行距倍数。用户面只有 charsPerLine（跟书走，editor-state.json `export.charsPerLine`；没定的书 / txt 稿用账号默认），其余由档推出。 */
+export interface ExportTypeset { charsPerLine: number; pxPerChar: number; lineHeightRatio: number }
 /** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
 export const PX_PER_CHAR = 30;
 /** 每行字数的离散选项（user「行宽还是三档吧。我这种有阅读写作障碍的用比手机还极端的第三档」「诗歌啊小故事啊，或者需要刻意自律篇幅的时候」「随便写一点看着就蛮多=点燃引擎」）：
  *  14 极端短行（诗 / 小故事 / 自律篇幅；user 数过「应该是 14」；800 字 ≈ 4 屏半）· 20 高考作文格 / 网文 app 默认区间（800 字 ≈ 2 屏）· 28 纸书 32 开（800 字 ≈ 1 屏）。 */
 export const CHARS_PRESETS: readonly number[] = [14, 20, 28];
+/** 每档的行距倍数（短行要松才好看；纸书密）。 */
+const LINE_HEIGHT_BY_CHARS: Readonly<Record<number, number>> = { 14: 1.9, 20: 1.75, 28: 1.6 };
 export const DEFAULT_CHARS_PER_LINE = 20;
 export const isCharsPerLine = (v: unknown): v is number => typeof v === "number" && CHARS_PRESETS.includes(v);
-export const typesetFor = (charsPerLine: number): ExportTypeset => ({ charsPerLine, pxPerChar: PX_PER_CHAR });
+export const typesetFor = (charsPerLine: number): ExportTypeset => ({ charsPerLine, pxPerChar: PX_PER_CHAR, lineHeightRatio: LINE_HEIGHT_BY_CHARS[charsPerLine] ?? 1.75 });
 /** 图宽 = 字数 × 像素/字 + 两边各 1.4 字。 */
 export const widthFor = (ts: ExportTypeset): number => Math.round(ts.charsPerLine * ts.pxPerChar) + 2 * Math.round(1.4 * ts.pxPerChar);
 export interface LongImageSpec {
@@ -110,7 +112,7 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
   const inner = Math.round(spec.typeset.charsPerLine * F);   // 折行的尺子 = 字数 × 像素/字（汉字一字一格；拉丁字母约两个算一个）
   const SIDE = Math.round(1.4 * F), TOP = Math.round(1.4 * F), BOTTOM = Math.round(1.1 * F), FOOT = Math.round(1.3 * F);   // 边距 / 页脚以「字」为单位
   const W = inner + 2 * SIDE;
-  const LH = Math.max(1, Math.round(F * look.lineHeightRatio));
+  const LH = Math.max(1, Math.round(F * spec.typeset.lineHeightRatio));
   const body: TextStyle = { family: look.family, sizePx: F, color: look.inkSoft };
   const head: TextStyle = { family: look.family, sizePx: F * 1.25, weight: 600, color: look.ink };
   const titleStyle: TextStyle = { family: look.family, sizePx: F * 1.6, weight: 600, color: look.ink };

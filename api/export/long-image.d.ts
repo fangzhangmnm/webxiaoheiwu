@@ -13,20 +13,20 @@ export type LongImageSection = {
     heading: string | null;
     image: ImageRef;
 };
-/** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、行距倍数（阅读节奏）、纸色 / 墨色、写字线颜色（null = 没开）。 */
+/** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、纸色 / 墨色、写字线颜色（null = 没开）。 */
 export interface LongImageLook {
     family: string;
-    lineHeightRatio: number;
     paper: string;
     ink: string;
     inkSoft: string;
     muted: string;
     rule: string | null;
 }
-/** 排版引擎的输入：每行几个字 + 像素/字。用户面只有 charsPerLine（跟书走，editor-state.json `export.charsPerLine`；没定的书 / txt 稿用账号默认）。 */
+/** 排版引擎的输入：每行几个字 + 像素/字 + 行距倍数。用户面只有 charsPerLine（跟书走，editor-state.json `export.charsPerLine`；没定的书 / txt 稿用账号默认），其余由档推出。 */
 export interface ExportTypeset {
     charsPerLine: number;
     pxPerChar: number;
+    lineHeightRatio: number;
 }
 /** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
 export declare const PX_PER_CHAR = 30;

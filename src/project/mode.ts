@@ -154,7 +154,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   }   // 图片页的 textarea 是空壳，绝不提交   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
   /** 切节点 / 落盘前：章节名框 + 正文都先落进内存图。force=false（定时落盘 / 推云）：章节名框还聚焦着就别碰它——半截名字不是名字，离开框自会提交（v2.1.13）。 */
   function commitEditor(force = true): void { if (force || document.activeElement !== d.titleEl) commitTitle(); commitTextarea(); }
-  async function persist(push: boolean): Promise<void> {
+  async function persist(push: boolean, force = false): Promise<void> {
     if (persistInFlight) await persistInFlight;
     const g = gen;
     const run = (async () => {
@@ -169,7 +169,7 @@ export function createProjectMode(d: ProjectModeDeps) {
         return;
       }
       const t0 = performance.now();
-      const r = await session!.flush(push, { force: push && pushPending });   // 推云：本地落盘已清 dirty，同一份字节还得以 tryPush 交给库（否则永远推不出去）
+      const r = await session!.flush(push, { force: push && (pushPending || force) });   // 推云：本地落盘已清 dirty，同一份字节还得以 tryPush 交给库（否则永远推不出去）；force = 手动保存顺手捞（不标脏的 editor-state：参考窗显隐 / 排版档 / 导航）
       if (r.wrote && !push) lastPersistMs = performance.now() - t0;   // 只量本地落盘（推云那次含网络，不算体重）
       if (g !== gen) return;
       if (r.wrote && push) diagNote("book", `push "${home!.name}": ${r.pushed ? "pushed" : `not pushed (${r.reason ?? "?"})`}${r.resolution ? ` resolution=${r.resolution}` : ""} in ${Math.round(performance.now() - t0)}ms`);
@@ -212,7 +212,8 @@ export function createProjectMode(d: ProjectModeDeps) {
     const target = Math.min(now + PUSH_DEBOUNCE_MS, firstDirtyAt + PUSH_HEARTBEAT_MS) + extraDelayMs;
     pushTimer = setTimeout(() => { void pushNow(); }, Math.max(0, target - now));
   }
-  async function pushNow(): Promise<void> {
+  /** opts.force：干净态也写 + 推（手动保存「顺手捞」，user 2026-09-30「editor state 比如参考窗的显示隐藏，如果我手动点了保存也会触发上传」；对齐 WeebPaint smartSaveAndPush 不看脏一律 saveAndPush）。 */
+  async function pushNow(opts: { force?: boolean } = {}): Promise<void> {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0;
     if (!canEdit()) return;
@@ -226,7 +227,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     const g = gen;
     try {
-      await persist(true);
+      await persist(true, !!opts.force);
       if (g !== gen) return;
       if (reloadAfterPersist) { reloadAfterPersist = false; await reopenFromStore("takeCloud"); return; }
       d.setState(stateText(), { unsynced: pushPending });

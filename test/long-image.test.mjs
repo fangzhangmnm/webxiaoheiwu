@@ -25,9 +25,9 @@ describe("export/long-image · wrapText", () => {
 });
 
 describe("export/long-image · planLongImage 切片", () => {
-  const look = { family: "x", lineHeightRatio: 2, paper: "#fff", ink: "#000", inkSoft: "#222", muted: "#888", rule: "#ccc" };
-  // 假量尺 CJK 20 宽 → 像素/字 20 时一字一格；每行 20 字 → 正文 400 宽、边距 28、图宽 456；行高 40
-  const spec = (sections, extra = {}) => ({ title: "书", date: "20260930", cover: null, sections, look, typeset: { charsPerLine: 20, pxPerChar: 20 }, sliceLabel: (i, n) => `${i}/${n}`, ...extra });
+  const look = { family: "x", paper: "#fff", ink: "#000", inkSoft: "#222", muted: "#888", rule: "#ccc" };
+  // 假量尺 CJK 20 宽 → 像素/字 20 时一字一格；每行 20 字 → 正文 400 宽、边距 28、图宽 456；行距 2 → 行高 40
+  const spec = (sections, extra = {}) => ({ title: "书", date: "20260930", cover: null, sections, look, typeset: { charsPerLine: 20, pxPerChar: 20, lineHeightRatio: 2 }, sliceLabel: (i, n) => `${i}/${n}`, ...extra });
   it("短文一张；页脚只印书名；字数按 CJK / 拉丁分别数", () => {
     const p = planLongImage(spec([{ kind: "text", heading: "一", text: "你好 world" }]), m);
     eq(p.slices.length, 1); eq(p.totalHeight, p.slices[0].h, "不切时 totalHeight = 那一张的高"); eq(p.width, 456, "图宽 = 字数 × 像素/字 + 2 × 1.4 字"); eq(p.slices[0].w, 456); eq(p.slices[0].hasImage, false); eq(p.cjk, 2); eq(p.en, 1); eq(p.textPages, 1); eq(p.imagePages, 0);
@@ -52,14 +52,16 @@ describe("export/long-image · planLongImage 切片", () => {
     const imgs = p.slices.flatMap((s) => s.ops.filter((o) => o.op === "image"));
     eq(imgs.length, 2); eq(imgs[0].w, 456); eq(imgs[0].h, 684, "封面 ≤ 1.5 × 宽"); assert(imgs[0].crop, "太高的封面裁中段"); eq(imgs[1].w, 400); eq(imgs[1].h, 200); eq(p.imagePages, 1); eq(p.slices[0].hasImage, true, "有图的张 → 调用方走 JPEG");
   });
-  it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同", () => {
+  it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同；行距跟档走", async () => {
     const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";   // 30 字 → 20 字/行 = 2 行
     const m2 = { width: (t) => [...t].reduce((a, c) => a + (c === " " ? 10 : cjkRe.test(c) ? 40 : 20), 0), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }) };
     const a = planLongImage(spec([{ kind: "text", heading: null, text }]), m);
-    const b = planLongImage(spec([{ kind: "text", heading: null, text }], { typeset: { charsPerLine: 20, pxPerChar: 40 } }), m2);
+    const b = planLongImage(spec([{ kind: "text", heading: null, text }], { typeset: { charsPerLine: 20, pxPerChar: 40, lineHeightRatio: 2 } }), m2);
     const bodyLines = (p) => p.slices[0].ops.filter((o) => o.op === "text" && /^[一二三四五六七八九十]+$/.test(o.text)).length;
     eq(b.width, a.width * 2); eq(bodyLines(a), 2); eq(bodyLines(b), 2);
-    const c = planLongImage(spec([{ kind: "text", heading: null, text }], { typeset: { charsPerLine: 10, pxPerChar: 20 } }), m);
+    const c = planLongImage(spec([{ kind: "text", heading: null, text }], { typeset: { charsPerLine: 10, pxPerChar: 20, lineHeightRatio: 2 } }), m);
+    const { typesetFor } = await import("../src/export/long-image.ts");
+    eq(typesetFor(14).lineHeightRatio, 1.9); eq(typesetFor(20).lineHeightRatio, 1.75); eq(typesetFor(28).lineHeightRatio, 1.6, "行距跟档走（user 2026-09-30）");
     eq(bodyLines(c), 3, "10 字/行 → 3 行");
   });
 });
