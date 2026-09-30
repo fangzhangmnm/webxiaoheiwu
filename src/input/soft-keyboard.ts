@@ -17,8 +17,10 @@ export interface SoftKeyboardDeps {
   onKey(key: string): void;
   onLiteral(text: string): void;
   onToggleMode(): void;
+  /** 「收起键盘」键（v2.1.24 从候选条右侧搬进最下一排最右，像 iPad；候选条整行都留给候选词——user 2026-09-29「那个下箭头的位置也不对，吃掉了候选词需要的宝贵的横向空间」）。 */
+  onHide(): void;
   /** 键帽上的字（界面语言）。 */
-  labels: { space: string; symbols: string; letters: string; more: string; zh: string; en: string; enter: string; backspace: string; shift: string };
+  labels: { space: string; symbols: string; letters: string; more: string; zh: string; en: string; enter: string; backspace: string; shift: string; hide: string };
 }
 export interface SoftKeyboard {
   el: HTMLElement;
@@ -33,7 +35,7 @@ export interface SoftKeyboard {
 }
 
 type Layer = "letters" | "sym1" | "sym2";
-type Act = "key" | "letter" | "literal" | "shift" | "layer" | "mode";
+type Act = "key" | "letter" | "literal" | "shift" | "layer" | "mode" | "hide";
 interface K { act: Act; v: string; label?: string; icon?: string; w?: number; cls?: string; aria?: string }
 
 const lit = (chars: string): K[] => [...chars].map((c) => ({ act: "literal" as const, v: c }));
@@ -61,6 +63,7 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
     const enter: K = { act: "key", v: "Enter", icon: "key-enter", w: form === "tablet" ? 1.6 : 1.8, cls: "fn accent", aria: d.labels.enter };
     const modeKey: K = { act: "mode", v: "", label: zh ? d.labels.zh : d.labels.en, w: 1.25, cls: "fn" + (masked ? " disabled" : "") };
     const space: K = { act: "key", v: " ", label: d.labels.space, w: form === "tablet" ? 5 : 3.6, cls: "space" };
+    const hide: K = { act: "hide", v: "", icon: "chevron-down", w: 1, cls: "fn hide", aria: d.labels.hide };
     if (layer === "letters") {
       const r1 = [..."qwertyuiop"].map(letterKey), r2 = [..."asdfghjkl"].map(letterKey), r3 = [..."zxcvbnm"].map(letterKey);
       for (const x of extra) r2.push({ act: "key", v: x, label: x });
@@ -69,14 +72,14 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
       const dot: K = zh ? { act: "literal", v: "。" } : { act: "literal", v: "." };
       const bottom: K[] = [{ act: "layer", v: "sym1", label: d.labels.symbols, w: 1.25, cls: "fn" }, modeKey, comma, space, dot];
       if (form === "tablet") bottom.push({ act: "key", v: "ArrowLeft", icon: "chevron-left", cls: "fn" }, { act: "key", v: "ArrowRight", icon: "chevron-right", cls: "fn" });
-      bottom.push(enter);
+      bottom.push(enter, hide);
       const out = [r1, r2, [sh, ...r3, bksp], bottom];
       if (form === "tablet") out.unshift(lit("1234567890"));
       return out;
     }
     const table = layer === "sym1" ? (zh ? SYM1_ZH : SYM1_EN) : zh ? SYM2_ZH : SYM2_EN;
     const flip: K = { act: "layer", v: layer === "sym1" ? "sym2" : "sym1", label: layer === "sym1" ? d.labels.more : d.labels.symbols, w: 1.5, cls: "fn" };
-    return [table[0]!, table[1]!, [flip, ...table[2]!, bksp], [{ act: "layer", v: "letters", label: d.labels.letters, w: 1.25, cls: "fn" }, modeKey, space, enter]];
+    return [table[0]!, table[1]!, [flip, ...table[2]!, bksp], [{ act: "layer", v: "letters", label: d.labels.letters, w: 1.25, cls: "fn" }, modeKey, space, enter, hide]];
   }
   let renderDue = false;
   /** 状态变了要重画：有手指按着就先欠着。 */
@@ -111,6 +114,7 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
     else if (k.act === "shift") { const now = Date.now(); shift = shift === "off" ? "once" : shift === "once" && now - lastShiftTap < 400 ? "lock" : "off"; lastShiftTap = now; invalidate(); }
     else if (k.act === "layer") { layer = k.v as Layer; invalidate(); }
     else if (k.act === "mode") { if (!masked) d.onToggleMode(); }
+    else if (k.act === "hide") d.onHide();
   }
 
   // ── 手指 ──

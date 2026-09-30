@@ -1424,7 +1424,19 @@ async function boot(): Promise<void> {
   applyWordCount(wordCountPref());
   applyFontScale(fontScalePref());
   applyQuoteStyle(quoteStylePref());
-  if (deviceKvGet("imeEnabled") !== "0") { ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (deviceKvGet("imeEnabled") !== "0") ime.enabled = true; if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); await pullUserDict(); }   // 默认开（2026-09-03）
+  // 输入法默认开（2026-09-03）。v2.1.24：初始化**不挡启动**——先开文档；RIME 后端一创建就接管，加载期间打的字排队等它（ime.ts initialize 注释）。
+  //   就绪后：状态行刷新、拉用户词库、然后在空闲片里预热一次（首键比后续键慢 6 倍，量于 tmp/round0929/probe-first-key.mjs；预热不设强制 timeout，家规「启动速度优先」）。
+  if (deviceKvGet("imeEnabled") !== "0") {
+    ime.simplified = imeSimplifiedPref(); ime.enabled = true;
+    void ime.initialize(imeSchemaPref()).then(async () => {
+      if (deviceKvGet("imeEnabled") === "0") ime.enabled = false;
+      if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true });
+      renderImeState();
+      await pullUserDict();
+      const idle = (fn: () => void) => (typeof requestIdleCallback === "function" ? requestIdleCallback(() => fn()) : setTimeout(fn, 1));
+      idle(() => { void ime.warmUp(); imeDock.warmUp(); });
+    });
+  }
   renderImeState();
   drawer.subscribe();
 

@@ -35,6 +35,9 @@ export interface ImeDockDeps {
 }
 export interface ImeDock {
   render(): void;
+  /** 预热（v2.1.24，user「启动打第一个字的时候会卡」）：把候选条用几个样例候选不可见地画一次，逼浏览器先做样式计算和汉字字形整形——
+   *  量过：首键 20–30 ms、后续 7 ms，差额全在主线程首次画候选条（worker 那边只要 1 ms）；预热后首键 = 后续键。空闲时调，正在组字就不动。 */
+  warmUp(): void;
   /** 软键盘此刻露着吗。 */
   keyboardShown(): boolean;
   keyboard: ReturnType<typeof createSoftKeyboard>;
@@ -44,10 +47,12 @@ const esc = (x: string): string => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", 
 
 export function createImeDock(d: ImeDockDeps): ImeDock {
   const { ime, pipeline } = d;
-  const keyboard = createSoftKeyboard({ labels: d.labels, onKey: (k) => { void pipeline.press(k); }, onLiteral: (t) => { void pipeline.literal(t); }, onToggleMode: () => { void pipeline.toggleMode(); } });
-  d.dock.innerHTML = `<div class="ime-strip"><div class="ime-strip-main"><div class="ime-preedit" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div></div><button type="button" class="ime-hide" tabindex="-1" aria-label="${esc(d.labels.hide)}" title="${esc(d.labels.hide)}">${iconHtml("chevron-down", { cls: "ico" })}</button></div>`;
+  const keyboard = createSoftKeyboard({ labels: d.labels, onKey: (k) => { void pipeline.press(k); }, onLiteral: (t) => { void pipeline.literal(t); }, onToggleMode: () => { void pipeline.toggleMode(); }, onHide: () => { d.onHideRequest(); render(); } });
+  // 手机式那一块（v2.1.24）：候选条只有候选那一行——拼音不显示（user 2026-09-29「候选词框能不能矮一点，拼音放别的地方，或者干脆不显示？」），
+  //   「收起键盘」搬进键盘最下一排（原来在候选条右侧占一列 46px，候选词少一格）。PC 式悬浮条照旧带拼音行。
+  d.dock.innerHTML = `<div class="ime-strip"><div class="ime-cands" role="listbox"></div></div>`;
   d.dock.appendChild(keyboard.el);
-  const preedit = d.dock.querySelector<HTMLElement>(".ime-preedit")!, cands = d.dock.querySelector<HTMLElement>(".ime-cands")!, hideBtn = d.dock.querySelector<HTMLElement>(".ime-hide")!;
+  const cands = d.dock.querySelector<HTMLElement>(".ime-cands")!;
   d.floating.innerHTML = `<div class="ime-preedit" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div>`;
   const fPreedit = d.floating.querySelector<HTMLElement>(".ime-preedit")!, fCands = d.floating.querySelector<HTMLElement>(".ime-cands")!;
 
@@ -83,8 +88,6 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     const composing = s.enabled && !!s.buffer && !!field && !masked;
     if (shown) {
       keyboard.setForm(form()); keyboard.setMasked(masked); keyboard.setMode(s.asciiMode ? "en" : "zh");
-      preedit.textContent = composing ? s.buffer : "";
-      preedit.scrollLeft = preedit.scrollWidth;   // 拼音太长时看尾巴（正在打的那一截）
       cands.innerHTML = composing ? candHtml(s, false) : "";
       if (s.buffer !== lastBuffer || s.page !== lastPage) cands.scrollLeft = 0;   // 每次换了拼音 / 翻了页都从头看：首选永远在最左
       setLayoutVar();
@@ -118,14 +121,23 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     box.addEventListener("contextmenu", (e) => e.preventDefault());
     box.addEventListener("click", (e) => onCandClick(e as MouseEvent, floating));
   }
-  preedit.addEventListener("click", () => { void pipeline.pick(-1); });
   fPreedit.addEventListener("click", () => { void pipeline.pick(-1); });
-  hideBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); d.onHideRequest(); render(); });
 
   document.addEventListener("focusin", () => render());
   document.addEventListener("focusout", () => { setTimeout(render, 0); });   // focusout 时 activeElement 还没换，下一拍再看
   window.addEventListener("resize", () => { if (shown) { keyboard.setForm(form()); setLayoutVar(); } });
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => setLayoutVar()).observe(d.dock);
 
-  return { render, keyboardShown: () => shown, keyboard };
+  function warmUp(): void {
+    if (ime.getState().buffer || !d.floating.classList.contains("hidden")) return;   // 正在用就别碰
+    const sample = { buffer: "ni hao", candidates: [String.fromCharCode(0x4f60, 0x597d), String.fromCharCode(0x62df, 0x597d), String.fromCharCode(0x5c3c, 0x597d)], page: 0, hasMore: true, engine: "", enabled: true, asciiMode: false, initializeError: null } as ReturnType<NaturalCodeIME["getState"]>;
+    d.floating.style.visibility = "hidden";
+    d.floating.classList.remove("hidden");
+    fPreedit.textContent = sample.buffer; fCands.innerHTML = candHtml(sample, true);
+    void d.floating.offsetHeight;   // 逼一次布局：样式计算 + 字形整形都在这一下发生
+    d.floating.classList.add("hidden"); d.floating.style.visibility = "";
+    fPreedit.textContent = ""; fCands.innerHTML = "";
+    if (shown) { cands.innerHTML = candHtml(sample, false); void cands.offsetHeight; cands.innerHTML = ""; }   // 手机式那一块露着时，它的候选行也过一遍（同一帧内清掉，看不见）
+  }
+  return { render, keyboardShown: () => shown, keyboard, warmUp };
 }

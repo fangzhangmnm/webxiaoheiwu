@@ -60,8 +60,8 @@ for (const [w, h, tag] of SIZES) {
   await page.evaluate(() => { const e = document.getElementById("editor"); e.focus(); const v = Array.from({ length: 40 }, (_, i) => `第${i + 1}行：她推开门。`).join("\n"); e.setRangeText(v, 0, e.value.length, "end"); e.dispatchEvent(new Event("input", { bubbles: true })); const p = v.indexOf("\n", v.indexOf("\n") + 1); e.setSelectionRange(p, p); e.scrollTop = 0; });
   const before = await ed();
   await tapKeys("nihao"); await wait(300);
-  const strip = await page.evaluate(() => { const c = [...document.querySelectorAll("#imeDock .cand:not(.nav)")].map((e) => { const r = e.getBoundingClientRect(); return { t: e.textContent, l: r.left, r: r.right }; }); return { pre: document.querySelector("#imeDock .ime-preedit").textContent, c, floatHidden: document.getElementById("candidateBar").classList.contains("hidden") }; });
-  probe(tag, "composing: pinyin on its own line, candidates below, floating bar hidden", /ni\s?hao/.test(strip.pre) && strip.c.length >= 3 && strip.floatHidden, JSON.stringify(strip));
+  const strip = await page.evaluate(() => { const c = [...document.querySelectorAll("#imeDock .cand:not(.nav)")].map((e) => { const r = e.getBoundingClientRect(); return { t: e.textContent, l: r.left, r: r.right }; }); return { pre: window.__xhw.ime.getState().buffer, c, floatHidden: document.getElementById("candidateBar").classList.contains("hidden") }; });
+  probe(tag, "composing: candidates in the strip (pinyin not shown in the dock, v2.1.24), floating bar hidden", /ni\s?hao/.test(strip.pre) && strip.c.length >= 3 && strip.floatHidden, JSON.stringify(strip));
   probe(tag, "first candidate fully on screen at the left", strip.c[0] && strip.c[0].l >= 0 && strip.c[0].r <= w, JSON.stringify(strip.c[0]));
   await shot("02-composing");
   const picked = await tapCand(0);
@@ -75,8 +75,8 @@ for (const [w, h, tag] of SIZES) {
   const a3 = await ed();
   probe(tag, "ni + space + 。 → 你。 in that order", a3.v.slice(s0, s0 + 2) === "你。" && a3.s === s0 + 2, a3.v.slice(s0 - 2, s0 + 4));
   await tapKeys("woxiangquchifanranhou"); await wait(400);
-  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const p = document.querySelector("#imeDock .ime-preedit"); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, preTail: p.scrollLeft + p.clientWidth >= p.scrollWidth - 1, pre: p.textContent }; });
-  probe(tag, "long pinyin: 1st candidate still starts at the strip's left edge and is fully on screen; pinyin line shows its tail", !!long.first && long.first.l >= 0 && long.first.l - long.stripLeft < 12 && long.first.r <= w && long.preTail, JSON.stringify(long));
+  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, stripH: strip.height, noPreedit: !document.querySelector("#imeDock .ime-preedit"), noHideInStrip: !document.querySelector("#imeDock .ime-strip .ime-hide"), hideKey: !!document.querySelector("#imeDock .ime-key.hide") }; });
+  probe(tag, "long pinyin: 1st candidate still starts at the strip's left edge and is fully on screen; strip = candidates only (no pinyin line, no hide column, ≤ 40px); hide key lives in the bottom row", !!long.first && long.first.l >= 0 && long.first.l - long.stripLeft < 12 && long.first.r <= w && long.noPreedit && long.noHideInStrip && long.hideKey && long.stripH <= 40, JSON.stringify(long));
   await shot("03-long-pinyin");
   await tapKey("空格"); await wait(300);
 
@@ -86,7 +86,7 @@ for (const [w, h, tag] of SIZES) {
   await tapKeys("12"); await tapKey("？"); await tapKey("ABC"); await wait(100);
   await tapKey("上档"); await tapKey("A"); await tapKey("b"); await wait(200);
   const a4 = await ed();
-  probe(tag, "123 layer digits + ？, back to letters, shift-once A then lowercase b goes to the IME", a4.v.slice(s1, s1 + 4) === "12？A" && (await page.evaluate(() => document.querySelector("#imeDock .ime-preedit").textContent)) === "b", a4.v.slice(s1, s1 + 6));
+  probe(tag, "123 layer digits + ？, back to letters, shift-once A then lowercase b goes to the IME", a4.v.slice(s1, s1 + 4) === "12？A" && (await page.evaluate(() => window.__xhw.ime.getState().buffer)) === "b", a4.v.slice(s1, s1 + 6));
   await tapKey("退格（按住连删）"); await wait(150);   // 删掉拼音 b
   await tapKey("退格（按住连删）"); await wait(150);   // 删掉 A
   const a5 = await ed();
@@ -96,7 +96,7 @@ for (const [w, h, tag] of SIZES) {
   await page.keyboard.press("Control+z").catch(() => {});   // 实体键：顺带验「实体键盘让位」在 ⑥
 
   // ⑤ 收起键盘 → 键盘钮在；点键盘钮 → 回来
-  const ctx2ok = await page.evaluate(() => { const b = document.querySelector("#imeDock .ime-hide"); b.click(); return true; }); void ctx2ok; await wait(400);
+  await tapKey("收起键盘"); await wait(400);
   probe(tag, "real key press (Ctrl+Z) made the soft keyboard step aside; hide button keeps it hidden; paper gets its height back", (await rectOf("#imeDock"))?.shown !== true && (await rectOf(".page")).b > h - 40, JSON.stringify(await rectOf(".page")));
   const tg = await rectOf("#kbToggle");
   probe(tag, "keyboard button shows at the paper's bottom-left while the keyboard is hidden", !!tg?.shown && tg.l < w / 2, JSON.stringify(tg));

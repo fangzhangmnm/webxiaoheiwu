@@ -97,18 +97,26 @@ class RimeWorkerBackend implements Backend {
   }
   setSchema(schema: ImeSchema): Promise<void> {
     this.schema = schema;
-    return this.enqueue(async () => { await this.call("setIME", schema); await this.applyOptions(); this.resetState(); });
+    return this.enqueue(async () => { await this.call("setIME", schema); await this.applyOptions(); this.resetState(); }, { compose: false });
   }
-  setSimplified(v: boolean): Promise<void> { this.simplified = v; return this.enqueue(() => this.applyOptions()); }
+  setSimplified(v: boolean): Promise<void> { this.simplified = v; return this.enqueue(() => this.applyOptions(), { compose: false }); }
   getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine, page: this.page, hasMore: this.hasMore }; }
   resetState() { this.buffer = ""; this.candidates = []; this.page = 0; this.hasMore = false; }
   private pending = 0;
-  get busy(): boolean { return this.pending > 0; }   // 任务在飞：首字回包前空格/退格/数字要排在它后面，不能按「缓冲为空」直通
-  enqueue<T>(task: () => Promise<T>): Promise<T> {
-    this.pending++;
+  /** **组字**任务在飞（首字回包前空格 / 退格 / 数字要排在它后面，不能按「缓冲为空」直通）。
+   *  只数组字任务：换方案 / 初始化 / 预热排在同一条队里但不算——否则输入法还在加载时按 Enter 会被当成「组字中的确认」吞掉。 */
+  get busy(): boolean { return this.pending > 0; }
+  enqueue<T>(task: () => Promise<T>, opts: { compose?: boolean } = { compose: true }): Promise<T> {
+    const compose = opts.compose !== false;
+    if (compose) this.pending++;
     const p = this.queue.then(task, task); this.queue = p.catch(() => {});
-    p.then(() => { this.pending--; }, () => { this.pending--; });
+    if (compose) p.then(() => { this.pending--; }, () => { this.pending--; });
     return p;
+  }
+  /** 预热（v2.1.24；user 2026-09-29「启动打第一个字的时候会卡」）：初始化完成后空闲时发一次假的组字再撤掉，
+   *  让 librime 把词典 / 前缀树等首次查询才加载的东西先加载了——量过：首键 ≈ 6 倍于后续键。排在队里、不算组字，用户真打字排在它后面照常。 */
+  warmUp(): Promise<void> {
+    return this.enqueue(async () => { if (this.buffer) return; await this.call("process", "a"); await this.call("process", "{Escape}"); this.resetState(); }, { compose: false });
   }
   // RPC 通道严格串行：my-rime worker 协议无请求 id，响应靠「下一条 success/error」配对——两路并飞就错位
   //   （2026-09-04 smoke 抓到：清缓冲与换方案并飞 → 微软双拼拿到上一条的候选、五笔空）。任务级原子性仍由 enqueue 负责。
@@ -218,17 +226,28 @@ export class NaturalCodeIME {
 
   private initPromise: Promise<void> | null = null;
   schema: ImeSchema = DEFAULT_SCHEMA;
+  /** 起 RIME worker 并加载方案。**不挡启动**（v2.1.24，user「启动打第一个字的时候会卡」+ 家规「启动速度优先」）：boot 不 await 它，
+   *  文档先开；RIME 后端一创建就接管，初始化是它队列里的第一项，加载期间用户打的字排在后面等它——不丢字、也不会被降级后端抢答。
+   *  加载失败才换成 starter-map（此时排着的字也交给 starter-map 重打一遍不现实：清掉组字并报错，这是罕见路径）。 */
   async initialize(schema: ImeSchema = this.schema): Promise<void> {
     this.schema = schema;
     if (this.initialized) return;
-    if (!this.initPromise) this.initPromise = (async () => {   // 加载中连点不起第二个 worker（审计 UI-21）
+    if (!this.initPromise) {   // 加载中连点不起第二个 worker（审计 UI-21）
       const rime = new RimeWorkerBackend();
       rime.simplified = this.simplified;
-      try { await rime.initialize(schema); this.backend = rime; this.initializeError = null; }
-      catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
-      this.initialized = true;
-    })();
+      this.backend = rime;
+      this.initPromise = (async () => {
+        try { await rime.initialize(schema); this.initializeError = null; }
+        catch (e) { this.backend = new StarterMapBackend(); this.initializeError = e instanceof Error ? e.message : "unknown RIME init error"; }
+        this.initialized = true;
+      })();
+    }
     await this.initPromise;
+  }
+  /** 预热（空闲时调一次；见 RimeWorkerBackend.warmUp）。未初始化 / 降级后端 → 无事。 */
+  warmUp(): Promise<void> {
+    const b = this.backend as { warmUp?: () => Promise<void> };
+    return b.warmUp ? b.warmUp().catch((e) => { console.warn("[ime] warm-up failed", e); }) : Promise.resolve();
   }
   /** 换方案（全拼 ↔ 微软双拼）；未初始化时只记下，初始化时生效。 */
   async setSchema(schema: ImeSchema): Promise<void> {
