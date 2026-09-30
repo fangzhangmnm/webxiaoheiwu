@@ -11,6 +11,7 @@ export interface ImeDockDeps {
         hide: string;
         prevPage: string;
         nextPage: string;
+        toggleMode: string;
     };
     /** 软键盘现在该不该露（设置 + 设备 + 有没有见过实体键盘，app 说了算）。 */
     keyboardWanted(): boolean;
@@ -26,6 +27,8 @@ export interface ImeDock {
     warmUp(): void;
     /** 软键盘此刻露着吗。 */
     keyboardShown(): boolean;
+    /** 中 / 英 切换了：PC 式悬浮条空着也闪一下芯片（v2.1.26，顶栏不再有「中 / 英」一字；软键盘露着时键盘自己的中 / 英键就是状态，不闪）。 */
+    flashMode(): void;
     keyboard: ReturnType<typeof createSoftKeyboard>;
 }
 export declare function createImeDock(d: ImeDockDeps): ImeDock;

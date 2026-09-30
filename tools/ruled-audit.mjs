@@ -24,8 +24,9 @@ const url = `http://127.0.0.1:${srv.address().port}/index.html`;
 const browser = await chromium.launch();
 const KV = "webxiaoheiwu-7c2e9a41b3d05f68:";
 
-/** 一组条件下量一次。返回每行的 { 墨迹底边, 线, 距离 }（设备像素）。 */
-async function measure({ w, h, dpr, mode, scale, paper, shot, book = false }) {
+/** 一组条件下量一次。返回每行的 { 墨迹底边, 线, 距离 }（设备像素）。
+ *  scroll = 先把纸（main.surface）滚这么多 CSS px 再量（v2.1.26 一张纸模型：正文框不滚，滚的是纸；字和线同层 → 滚动前后每行的距离必须一样）。 */
+async function measure({ w, h, dpr, mode, scale, paper, shot, book = false, scroll = 0 }) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
   await ctx.addInitScript(({ kv, scale }) => { try { localStorage.setItem(kv + "imeEnabled", "0"); if (scale !== "1") localStorage.setItem(kv + "fontScale", scale); } catch {} }, { kv: KV, scale });
   const page = await ctx.newPage();
@@ -45,7 +46,9 @@ async function measure({ w, h, dpr, mode, scale, paper, shot, book = false }) {
     await page.evaluate((p) => { window.__xhw.project.jump(p); window.__xhw.renderPageKin(); document.activeElement?.blur(); }, parent);
   }
   await page.waitForTimeout(300);
-  const box = await page.evaluate((book) => { const r = document.getElementById(book ? "pageBody" : "editor").getBoundingClientRect(); const cs = getComputedStyle(document.getElementById("editor")); return { x: r.left, y: r.top, w: r.width, h: r.height, font: parseFloat(cs.fontSize), lh: cs.lineHeight, tocRows: document.querySelectorAll("#childToc:not([hidden]) .child-toc-row").length }; }, book);
+  if (scroll) { await page.evaluate((y) => { document.querySelector("main.surface").scrollTop = y; }, scroll); await page.waitForTimeout(150); }
+  // 量的是纸面容器在视口里露出来的那一段（正文框可能比视口高）：上沿 = 容器上沿与顶栏下沿取大，下沿 = 容器下沿与视口取小
+  const box = await page.evaluate((book) => { const r0 = document.getElementById(book ? "pageBody" : "editor").getBoundingClientRect(); const sf = document.querySelector("main.surface"); const top = Math.max(r0.top, sf.getBoundingClientRect().top + parseFloat(getComputedStyle(sf).paddingTop)); const bottom = Math.min(r0.bottom, innerHeight - parseFloat(getComputedStyle(sf).paddingBottom)); const r = { left: r0.left, top, width: r0.width, height: bottom - top }; const cs = getComputedStyle(document.getElementById("editor")); return { x: r.left, y: r.top, w: r.width, h: r.height, font: parseFloat(cs.fontSize), lh: cs.lineHeight, tocRows: document.querySelectorAll("#childToc:not([hidden]) .child-toc-row").length }; }, book);
   if (shot) await page.screenshot({ path: `tmp/ui/${shot}.png` });
   const png = await page.screenshot({ clip: { x: box.x, y: box.y, width: box.w, height: box.h } });
   await ctx.close();
@@ -82,9 +85,19 @@ cases.push({ w: 375, h: 667, dpr: 2, mode: "novel", scale: "1" }, { w: 744, h: 1
 for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: "novel", scale: "1", paper: "auto", shot: `winmini-1097x${h}` });
 // 有子节的页：正文两行 + 三条子节链接，链接行也要坐在线上
 for (const [w, h, dpr] of [[1100, 900, 1], [744, 1133, 2], [1097, 537, 1.75], [375, 667, 3]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", paper: "auto", book: true, shot: `toc-on-lines-${w}x${h}` });
+// 一张纸模型（v2.1.26）：纸滚过一个不是整行的距离之后，每行「墨迹底边 → 线」的距离必须和没滚时逐行一样（字和线同层的机械证据；抖动本身归真机）
+for (const [w, h, dpr] of [[1100, 900, 1], [375, 667, 2], [1097, 537, 1.75]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", paper: "auto", scroll: 137, invariant: true });
 let bad = 0;
 for (const c of cases) {
   const m = await measure(c);
+  if (c.invariant) {
+    const m0 = await measure({ ...c, scroll: 0 });
+    const g0 = m0.rows.map((r) => r.gap), g1 = m.rows.map((r) => r.gap);
+    const ok = g1.length >= 6 && g0.length >= 6 && new Set(g0).size <= 2 && new Set(g1).size <= 2 && Math.abs(Math.min(...g0) - Math.min(...g1)) <= 1 && Math.abs(Math.max(...g0) - Math.max(...g1)) <= 1;
+    if (!ok) bad++;
+    console.log(`${ok ? "ok  " : "FAIL"} [scroll-invariant] ${c.w}x${c.h} dpr=${c.dpr} gaps@0=${Math.min(...g0)}..${Math.max(...g0)} (${g0.length} rows) gaps@${c.scroll}=${Math.min(...g1)}..${Math.max(...g1)} (${g1.length} rows)`);
+    continue;
+  }
   const gaps = m.rows.map((r) => r.gap).filter((g) => g != null);
   const min = Math.min(...gaps), max = Math.max(...gaps);
   const em = m.box.font * c.dpr;

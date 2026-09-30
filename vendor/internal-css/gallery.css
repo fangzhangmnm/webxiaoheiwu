@@ -236,6 +236,15 @@
 .gallery-tile-state-icon.b-conflictBoth { color: var(--warn); }
 .gallery-tile-state-icon.b-newerOnCloud { color: var(--accent); }
 /* 「编辑中」角标叠在第 1 行（name）右侧，可压住右端文字（用户：可重叠）。0.2.1：文字从 CSS content 搬进模板走 i18n（gal.tile.active；WXHW 改「打开中」） */
+/* 0.6.1：加密的文档卡片左上角一把大锁（覆盖层之上、名字行之下），解锁与否都显示——一眼分出加密和不加密
+   （WXHW user 2026-09-30「gallery里面加密和不加密也需要有辨识度。左上角加一把大锁？」）。宿主可改位置 / 大小；列表布局不画。 */
+.gallery-tile-lockmark {
+  position: absolute; left: 8px; top: 8px; width: 22%; max-width: 40px; aspect-ratio: 1;
+  display: block; pointer-events: none; color: var(--enc, #b45309);
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+}
+.gallery-tile-lockmark svg { width: 100%; height: 100%; display: block; }
+.gallery-grid.list .gallery-tile-lockmark { display: none; }
 .gallery-tile-active-tag {
   position: absolute; right: 6px; top: 8px;
   pointer-events: none;

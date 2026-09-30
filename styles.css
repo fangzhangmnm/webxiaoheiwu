@@ -102,28 +102,42 @@ body {
   overflow: hidden;
 }
 
+/* 一张纸模型（v2.1.26，2026-09-30 user「对的，整张纸滚」）：main.surface 是唯一的滚动容器，纸（.page）从标题到页脚是一整张、有多少字就多高；
+   正文框自己不滚（高度 = 内容高度，app.ts syncBodyHeight 量）。写字线画在 .page-body 上，字和线同一层 → 滚动时不再相对抖
+   （旧做法 = textarea 内部滚动 + background-attachment: local，WebKit 上背景比合成层滚动慢一帧）。顶栏常驻一条（--sheet-top）；纸从它下面滚过。
+   flex 列：滚动区末尾的 padding 在所有浏览器都算进可滚范围（块容器的 padding-bottom 历史上不可靠）。 */
+:root { --sheet-top: calc(var(--top-floor) + 32px); --sheet-bottom: calc(var(--bottom-floor) + var(--kb-offset, 0px) + var(--dock-h, 0px)); --sheet-h: calc(100dvh - var(--sheet-top) - var(--sheet-bottom)); }
 .surface {
   position: relative;
   height: 100dvh;
-  overflow: hidden;
+  overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--sheet-top) 0 var(--sheet-bottom);
+  scroll-padding-top: calc(var(--sheet-top) + 8px); scroll-padding-bottom: calc(var(--sheet-bottom) + 8px);   /* 光标跟随（scrollIntoView）别把那一行塞到顶栏 / 键盘底下 */
+  scrollbar-width: thin; scrollbar-color: var(--bg-3) transparent;
 }
+.surface::-webkit-scrollbar { width: 6px; }
+.surface::-webkit-scrollbar-track { background: transparent; }
+.surface::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
 
 /* Top bar — narrow, aligned with the page box */
 
 .top-bar {
   position: fixed;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(calc(100% - 16px), var(--box-max));
+  top: 0; left: 0; right: 0;
+  height: var(--sheet-top);
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   gap: 4px;
-  padding: 0;
-  background: transparent;
+  padding: var(--top-floor) max(8px, calc(50% - var(--box-max) / 2)) 4px;   /* 内容与纸同宽（窄屏两边留 8px）；整条是不透明的带子，纸从底下滚过 */
+  background-color: var(--bg-0);
+  background-image:
+    radial-gradient(80% 60% at 50% 0%, rgba(255, 250, 235, 0.45), transparent 60%),
+    radial-gradient(60% 50% at 100% 100%, rgba(160, 88, 38, 0.06), transparent 65%);
+  background-size: 100% 100dvh; background-repeat: no-repeat; background-position: 0 0;   /* 与 body 的渐变逐像素相同：带子的下沿没有接缝 */
   z-index: var(--z-chrome);
-  min-height: 28px;
 }
 
 .menu-button {
@@ -242,18 +256,6 @@ body {
   padding-right: 4px;
 }
 
-#imeStatus {
-  pointer-events: auto;
-  cursor: pointer;
-  user-select: none;
-}
-
-#imeStatus:hover {
-  color: var(--ink-soft);
-}
-
-.status .sep { color: var(--line-strong); }
-
 #saveStatus.error { color: var(--danger); }
 #saveStatus.unsynced::before {
   content: "● ";
@@ -267,18 +269,22 @@ body {
 /* The page box — same max-width as top bar, thin border, fills vertically */
 
 .page {
+  --page-pad-y: clamp(18px, 3vh, 28px); --floater-band: 0px;
+  width: 100%;
   max-width: var(--box-max);
-  margin: 40px auto 12px;
-  padding: clamp(18px, 3vh, 28px) clamp(18px, 3.5vw, 32px);
+  flex: none;
+  margin: 0 auto;
+  padding: var(--page-pad-y) clamp(18px, 3.5vw, 32px) calc(var(--page-pad-y) + var(--floater-band));
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 52px);
+  min-height: var(--sheet-h);   /* 短稿也是一整张纸；长稿比视口高，滚的是 .surface */
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   background: var(--bg-1);
   box-shadow: 0 16px 40px rgba(58, 40, 24, 0.12);
   position: relative;
 }
+.page:has(> .mic-button:not([hidden])) { --floater-band: 52px; }   /* 纸的末尾留一条给钉在视口角上的话筒 / 键盘钮：页脚的 › 不被它盖住 */
 
 .ghost-banner {
   display: flex;
@@ -369,7 +375,9 @@ body {
 }
 
 .body {
-  flex: 1 1 auto;
+  flex: none;
+  display: block;
+  overflow: hidden;   /* 高度 = 内容高度（app.ts 量），永远不内部滚动 */
   border: 0;
   background: transparent;
   font-family: var(--font-editor);
@@ -380,11 +388,8 @@ body {
   outline: none;
   resize: none;
   width: 100%;
-  min-height: 0;
   padding: 0;
   letter-spacing: 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--bg-3) transparent;
 }
 
 .body::placeholder { color: var(--ink-muted); }
@@ -397,22 +402,15 @@ body {
   background: rgba(160, 88, 38, 0.22);
 }
 
-.body::-webkit-scrollbar { width: 6px; }
-.body::-webkit-scrollbar-track { background: transparent; }
-.body::-webkit-scrollbar-thumb {
-  background: var(--bg-3);
-  border-radius: 3px;
-}
-.body::-webkit-scrollbar-thumb:hover { background: var(--ink-muted); }
 
 /* 候选：样式全在文件末尾「输入法附件」一节（v2.1.16；悬浮条 .candidates + 手机式 .ime-dock） */
 
 /* Voice input — floating mic button anchored to the page box */
 
 .mic-button {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;   /* 键盘由 .page 整体缩高（--kb-offset）应对，纸内件不再各自抬 */
+  position: fixed;   /* 钉在视口：纸整张滚，它不跟着走；横向对齐纸的右边（纸居中、宽 ≤ --box-max） */
+  right: calc(max(0px, 50% - var(--box-max) / 2) + 14px);
+  bottom: calc(var(--sheet-bottom) + 14px);   /* 软键盘 / iOS 键盘那一块（--dock-h / --kb-offset）之上 */
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -1217,11 +1215,6 @@ body {
 }
 
 @media (max-width: 560px) {
-  .top-bar { top: 4px; }
-  .page {
-    margin-top: 36px;
-    height: calc(100dvh - 48px);
-  }
   .status { font-size: 10px; gap: 4px; }
   .doc-name { font-size: 11px; }
 }
@@ -1403,7 +1396,7 @@ body {
 .settings-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .diag-log { font: 11px/1.4 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; max-height: 40vh; overflow: auto; background: rgba(0,0,0,.05); padding: 8px; border-radius: 8px; margin: 8px 0 0; }
 #langSelect { max-width: 200px; }
-#imeStatus { cursor: pointer; }
+
 
 /* 语音包（离线模型）行：状态 + 进度 + 三个动作钮 */
 .voice-pack-row { display: flex; flex-direction: column; gap: 8px; }
@@ -1420,7 +1413,7 @@ body {
 
 /* ── 审计修补（2026-09-03）── */
 .crypto-toggle[hidden], .lock-toggle[hidden] { display: none !important; }   /* 作者层 display 压掉了 UA 的 [hidden]（审计 UI-2） */
-.key-banner { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: var(--z-page); margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
+.key-banner { position: fixed; top: calc(var(--sheet-top) + 4px); left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: var(--z-page); margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
 .status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* 长状态别把标题挤没（审计 UI-11） */
 .voice-config-save.is-danger { color: var(--danger, #b0413e); }   /* 暗色遗留的 #ff8a8a 在淡底上看不见（审计 UI-17） */
 .drawer.hidden { visibility: hidden; transition: transform 0.25s ease, visibility 0s linear 0.25s; }   /* 屏外按钮不可 Tab 到（审计 UI-18） */
@@ -1477,10 +1470,16 @@ body {
 body[data-project] .node-title-row { display: flex; }
 .node-title { flex: 1 1 auto; min-width: 0; width: auto; box-sizing: border-box; border: 0; background: transparent; outline: none; text-align: center; line-height: 1.4; font-family: var(--font-editor); font-size: calc(var(--editor-font) * 1.25); font-weight: 600; color: var(--ink); padding: 0; margin: 0; caret-color: var(--accent); }
 .node-title::placeholder { color: var(--ink-muted); font-weight: 400; opacity: 0.7; }
-.page-foot { flex: none; text-align: right; font-size: 12px; line-height: 1.4; color: var(--ink-muted); padding-top: 6px; font-variant-numeric: tabular-nums; user-select: none; }   /* 页脚字数统计（user 2026-09-10「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」） */
+/* 页脚（v2.1.26）：‹ 上一页 · 字数 · 下一页 ›，印在纸的末尾（user 2026-09-30「同意也加导航，和页头一样」；字数统计 = user 2026-09-10「页脚可以开一个字数统计，xx 字 xx 词，可设置里面 toggle 关」）。
+   margin-top: auto = 短稿时页脚也在纸的底端；三件都藏着时整行不占地。 */
+.page-foot-row { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: auto; padding-top: calc(var(--editor-font) * 0.5); }
+.page-foot-row:not(:has(> :not([hidden]))) { display: none; }
+.page-foot { flex: 1 1 auto; min-width: 0; text-align: center; font-family: var(--font-ui); font-size: 12px; line-height: 32px; color: var(--ink-muted); font-variant-numeric: tabular-nums; user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .page-foot[hidden] { display: none; }
 /* 图片页（2.1，ADR-0012/0013）：textarea 让位给 img；contain 不放大（user「如果超框就缩小 to fit…小图不要放大，不然 jumpscale」）；点击切 1:1（滚动看细节）。 */
 body[data-page-kind="image"] #editor, body[data-page-kind="image"] .page-foot, body[data-page-kind="image"] .candidates { display: none; }
+body[data-page-kind="image"] .page { height: var(--sheet-h); }   /* 图片页没有正文可长：纸就是一屏，图 contain 进去 */
+body[data-page-kind="image"] .page-body { flex: none; }
 .page-image { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; overflow: auto; }
 .page-image[hidden] { display: none; }
 .page-image img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; cursor: zoom-in; flex: 0 1 auto; min-height: 0; }
@@ -1494,16 +1493,16 @@ body[data-page-kind="image"] #editor, body[data-page-kind="image"] .page-foot, b
 .node-title.locked { color: var(--ink-muted); }
 .node-title::selection { background: rgba(160, 88, 38, 0.22); }
 #saveStatus:empty + .sep { display: none; }
-#imeStatus:empty { display: none; }
-.status:has(#imeStatus:empty) .sep { display: none; }   /* 系统输入法时右侧没字，分隔点别悬空 */
-#imeStatus { font-family: var(--font-ui); font-size: 11px; line-height: 16px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-soft); }
+
+
+
 /* 写字线：样式在文件末尾「稿纸几何」一节（v2.1.17；行高 / 线位由 src/ui/paper.ts 量了写） */
 /* 列表行：名字左缘对齐（锁挪到云图标左边；有夹时正文行补一个夹图标宽的留白——user 2026-09-04「锁放在云图标左边…看起来对齐」） */
 .doc-main .doc-name { flex: 1 1 auto; min-width: 0; }
 .doc-badge { margin-left: 0; }
 .doc-lead { width: 13px; flex: none; }
 .toast {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: var(--z-toast);   /* 图库屏（8）之上：图库里的状态提示也得看见 */
+  position: fixed; left: 50%; bottom: calc(var(--sheet-bottom) + 14px); transform: translateX(-50%); z-index: var(--z-toast);   /* 图库屏（8）之上：图库里的状态提示也得看见 */
   max-width: min(86%, 560px); padding: 6px 12px; border-radius: 999px;
   background: color-mix(in srgb, var(--ink) 86%, transparent); color: var(--bg);
   font-family: var(--font-ui); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1511,13 +1510,11 @@ body[data-page-kind="image"] #editor, body[data-page-kind="image"] .page-foot, b
 }
 .toast.show { opacity: 1; visibility: visible; transition: opacity 120ms ease; }
 .toast.error { background: var(--danger); color: #fff; }
-body:has(.candidates:not(.hidden)) .toast { bottom: 64px; }   /* 候选条已不在 .page 里：兄弟选择器换成 body:has */
+body:has(.candidates:not(.hidden)) .toast { bottom: calc(var(--sheet-bottom) + 64px); }   /* 候选条已不在 .page 里：兄弟选择器换成 body:has */
 /* 语音模式退格钮（话筒左邻，只在纯口述时出现）。Quest「键盘不在本页」提示条 + 压暗 2026-09-04 撤（user：光标失踪本身看得见，没有煤气灯疑惑）；焦点找回逻辑留在 app.ts */
-.mic-side { right: 70px; width: 40px; height: 40px; bottom: 18px; }
+.mic-side { right: calc(max(0px, 50% - var(--box-max) / 2) + 70px); width: 40px; height: 40px; bottom: calc(var(--sheet-bottom) + 18px); }
 .mic-side .ico { width: 18px; height: 18px; }
 /* 话筒悬浮在纸面右下、不占版面；页脚字数统计露着时往上让一让（user 2026-09-10「麦克风也是悬浮的，如果和字数统计挡了可以稍微往上挪一点」）。#wordCount 在 DOM 里排在话筒前面，兄弟选择器够用 */
-.page-foot:not([hidden]) ~ .mic-button { bottom: 52px; }
-.page-foot:not([hidden]) ~ .mic-side { bottom: 56px; }
 /* ── 纸面亲缘（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表，然后标题栏也有回到上一级的链接，这样导航就舒服」）──
    回上一级：章节名上方一行 `.. 父页名`（UI 小字；与侧栏 `..` 行同语汇）；顶层页 hidden（顶栏已是书名）。 */
 .parent-link { display: none; align-self: center; align-items: center; gap: 6px; max-width: 100%; margin: 0 0 4px; padding: 2px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); font-family: var(--font-ui); font-size: 12px; line-height: 1.4; cursor: pointer; }
@@ -1525,17 +1522,12 @@ body[data-project] .parent-link:not([hidden]) { display: inline-flex; }
 .parent-link .edge-dots { flex: none; letter-spacing: 1px; }
 .parent-link-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .parent-link:hover, .parent-link:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); outline: none; }
-/* 子节目录：正文之下、页脚之上。只在正文滚到底 / 装得下时露出（app.ts 迟滞：露出后往上滚超过目录高度才收）；最高占纸面 40%、内部滚动；
-   textarea 的内部滚动模型不动——露出 = 目录占位、正文让出同样高度并保持贴底。话筒随之上让（--child-toc-h 由 app 写在 .page 上）。 */
-.page-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }   /* 正文 + 目录的容器（v2.1.11）：没子节的页 = 透明一层，textarea 照旧 flex 填满 */
-/* 嵌入态（v2.1.11，有子节的页；user「取决于父节点输入了多少行…相当于嵌入了」）：textarea 高度由 app 按内容写（上限 = 容器 − 目录），目录紧跟其后；写字线搬到容器上让正文下方继续有线（同字号同行高 → 同一网格） */
-/* 嵌入态 / 子节目录：样式在文件末尾「稿纸几何」一节（v2.1.17） */
-.page[data-toc-shown] .mic-button { bottom: calc(14px + var(--child-toc-h, 0px)); }
-.page[data-toc-shown] .mic-side { bottom: calc(18px + var(--child-toc-h, 0px)); }
-.page[data-toc-shown] .page-foot:not([hidden]) ~ .mic-button { bottom: calc(52px + var(--child-toc-h, 0px)); }
-.page[data-toc-shown] .page-foot:not([hidden]) ~ .mic-side { bottom: calc(56px + var(--child-toc-h, 0px)); }
+/* 子节目录：正文之下、页脚之上，有子节就露（v2.1.26 起纸整张滚，「滚到底才露」的迟滞退役）。 */
+.page-body { flex: 1 1 auto; display: flex; flex-direction: column; }   /* 正文 + 目录的容器：正文框 = 内容高度，目录紧跟其后（user 2026-09-26「取决于父节点输入了多少行…相当于嵌入了」）；剩下的纸面空白也画线（点了照样能写） */
+
+/* 子节目录：样式在文件末尾「稿纸几何」一节（v2.1.17） */
 /* 锁卡（0.2 护栏，2026-09-04）：锁着 / 不可用的稿不再假装是编辑器 */
-.lock-card { position: absolute; inset: 0; z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
+.lock-card { position: fixed; top: var(--sheet-top); bottom: var(--sheet-bottom); left: max(0px, 50% - var(--box-max) / 2); right: max(0px, 50% - var(--box-max) / 2); z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
 .lock-card[hidden] { display: none; }
 .lock-card-ico { width: 28px; height: 28px; color: var(--enc); }
 .lock-card-text { margin: 0; font-family: var(--font-ui); font-size: 14px; color: var(--ink-soft); max-width: 36em; }
@@ -1548,8 +1540,8 @@ body[data-project] .parent-link:not([hidden]) { display: inline-flex; }
    :root[data-standalone] 由 app 按 display-mode / navigator.standalone 打（媒体查询没法在无头测试里模拟，attribute 可测）。 */
 :root { --top-floor: 4px; --bottom-floor: 14px; --sa-left: 0px; --sa-right: 0px; }
 :root[data-standalone] { --top-floor: max(env(safe-area-inset-top, 0px), 20px); --bottom-floor: max(env(safe-area-inset-bottom, 0px), 14px); --sa-left: env(safe-area-inset-left, 0px); --sa-right: env(safe-area-inset-right, 0px); }
-.top-bar { top: var(--top-floor); }
-.page { margin: calc(var(--top-floor) + 36px) auto calc(var(--bottom-floor) - 2px); height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px); }   /* 4/14 时与原 40px/12px/52px 完全相同 */
+
+/* 纸的上下留白 = .surface 的 padding（--sheet-top / --sheet-bottom，见文件头「一张纸模型」） */
 .drawer { box-sizing: border-box; padding-top: calc(var(--top-floor) - 4px); padding-bottom: calc(var(--bottom-floor) - 14px); padding-right: var(--sa-right); }
 .update-toast { bottom: calc(var(--bottom-floor) - 2px); right: calc(12px + var(--sa-right)); }
 
@@ -1566,8 +1558,8 @@ button, .top-bar, .drawer, .menu-panel, .mic-button, .lock-card, .candidates { -
 .save-btn.s-local, .save-btn.s-offline { color: var(--quiet); }
 .save-btn.s-pending { color: var(--warn); }
 .save-btn.flash { color: var(--ok); }
-/* ── iOS 软键盘：纸面整体缩到键盘上方（visualViewport → --kb-offset），光标/候选/话筒都在可见区（user 2026-09-04「屏幕没跟上，被键盘遮挡，候选也看不到」）── */
-.page { height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px - var(--kb-offset, 0px)); }
+/* ── iOS 软键盘：visualViewport → --kb-offset，进 --sheet-bottom（.surface 底部让位；光标 / 候选 / 话筒都在可见区，user 2026-09-04「屏幕没跟上，被键盘遮挡，候选也看不到」）── */
+
 
 /* ═══ 2.0 侧栏（☰ 唯一入口；user 2026-09-10「只有一个三条杠」「侧栏不应默认开」「侧栏不平衡，放在右边试试看」）：顶部 书库/设置 两入口 + 工程内导航（当前节点的出边，ADR-0008）。
    开关 = body[data-edges]（默认 0）。永远是纸面之上的一层浮层、不推纸面（user 2026-09-10「windows 上面弹侧栏的时候写作区不应该位移，而是侧栏在上面一个图层里」）；窄屏（≤900px）加遮罩。零全图、零计数。 ═══ */
@@ -1645,7 +1637,7 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
    手机式那一块住 body 层贴底、z = --z-ime（sheet / 锁屏之上：sheet 里的输入框也要用它打字）；纸面 / 侧栏 / sheet / 抽屉让出它的高度（:root --dock-h，dock.ts 量了写）。
    拼音单独一行、候选另起一行：长拼音再也挤不走首选（以前拼音芯片排在候选前面，375 宽的屏上首选只露 30px）。 */
 :root { --dock-h: 0px; --key-bg: color-mix(in srgb, var(--bg) 92%, white); --key-fn-bg: color-mix(in srgb, var(--line) 70%, var(--bg)); --key-pressed: color-mix(in srgb, var(--accent) 22%, var(--bg)); --kb-bg: color-mix(in srgb, var(--void) 78%, var(--line-strong)); }
-.page { height: calc(100dvh - var(--top-floor) - var(--bottom-floor) - 34px - var(--kb-offset, 0px) - var(--dock-h, 0px)); }
+
 body.ime-docked { --bottom-floor: 6px; }   /* 底部安全区由键盘那一块自己垫；纸面贴着它 */
 body.ime-docked .edge-sidebar { bottom: calc(12px + var(--dock-h, 0px)); }
 .crypto-modal { align-items: flex-start; overflow-y: auto; box-sizing: border-box; }   /* 卡片比可用高度高时能滚（手机横屏 + 键盘只剩 170px）；margin:auto = 放得下就居中、放不下从顶排起 */
@@ -1721,14 +1713,19 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
 /* PC 式悬浮候选条（实体键盘）：两行——拼音在上、候选在下；首选永远从最左开始 */
 .candidates {
   position: fixed; left: 50%; bottom: calc(var(--bottom-floor, 14px) + 8px + var(--kb-offset, 0px)); transform: translateX(-50%); z-index: var(--z-ime);
-  display: flex; flex-direction: column; align-items: stretch; gap: 1px; padding: 3px 6px 4px; box-sizing: border-box;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; column-gap: 6px; row-gap: 1px; padding: 3px 6px 4px; box-sizing: border-box;
   width: max-content; max-width: min(calc(100% - 24px), 640px); overflow: hidden;
   border: 1px solid var(--line-strong); border-radius: 10px; background: rgba(241, 230, 207, 0.96);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 6px 18px rgba(58, 40, 24, 0.2);
   user-select: none; -webkit-user-select: none;
 }
 .candidates.hidden { display: none; }
-.candidates .ime-preedit { height: 15px; line-height: 15px; padding: 0 4px; }
+/* 中 / 英 芯片：顶栏的那一字 v2.1.26 搬到这里（悬浮条只在组字时出现，切中英时空着也闪一下让人看见）；点 = 切中 / 英（同 Shift） */
+.candidates .ime-mode { grid-row: 1 / 3; grid-column: 1; align-self: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-ui); font-size: 13px; font-weight: 600; color: var(--ink-soft); background: color-mix(in srgb, var(--ink) 8%, transparent); cursor: pointer; user-select: none; }
+.candidates .ime-mode:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 14%, transparent); }
+.candidates .ime-preedit { grid-column: 2; height: 15px; line-height: 15px; padding: 0 4px; }
+.candidates .ime-cands { grid-column: 2; }
+.candidates .ime-preedit:empty { display: none; }   /* 只闪芯片时没有拼音行：条就一行高 */
 .candidates .ime-cands { height: auto; min-height: 28px; padding: 0; touch-action: pan-x; }
 .candidates .cand { height: 28px; min-width: 0; padding: 0 8px; font-size: 15px; border-radius: 6px; }
 .candidates.lingering { visibility: hidden; }   /* 触屏点过候选：空着多留一拍再收（占着位置、看不见），等手指抬起 */
@@ -1740,10 +1737,7 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
 
 
 /* 键盘钮：纸面左下角（与右下角的话筒对称） */
-.mic-button.kb-toggle { right: auto; left: 14px; }
-.page-foot:not([hidden]) ~ .kb-toggle { bottom: 52px; }
-.page[data-toc-shown] .kb-toggle { bottom: calc(14px + var(--child-toc-h, 0px)); }
-.page[data-toc-shown] .page-foot:not([hidden]) ~ .kb-toggle { bottom: calc(52px + var(--child-toc-h, 0px)); }
+.mic-button.kb-toggle { right: auto; left: calc(max(0px, 50% - var(--box-max) / 2) + 14px); }
 .kb-toggle .ico { width: 22px; height: 22px; }
 
 /* ═══ 稿纸几何（v2.1.17，2026-09-29；src/ui/paper.ts）═══
@@ -1753,22 +1747,19 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
 .page { --editor-lh: calc(var(--editor-font) * var(--editor-line-height)); --rule-y: calc(var(--editor-lh) - 0.4em); --rule-w: 1px; }   /* paper.ts 还没量之前的近似值 */
 .body { line-height: var(--editor-lh); }
 .body-mirror { position: absolute; left: 0; top: 0; height: 0; min-height: 0; flex: none; visibility: hidden; pointer-events: none; overflow: hidden; }
-body.ruled-lines .body, body.ruled-lines .child-toc, body.ruled-lines .page[data-toc-embed] .page-body {
+body.ruled-lines .page-body {   /* 线只画在这一层（正文框 / 目录都透明）：字和线同层，整张纸一起滚，不会相对抖（v2.1.26） */
   /* 一张「会重复的渐变」铺满整个内容区，不是一块一块平铺：第 k 条线的位置 = k × 行高 + 线位，是算出来的，不会逐块取整累积漂移 */
   background-image: repeating-linear-gradient(to bottom, transparent 0, transparent var(--rule-y), var(--line) var(--rule-y), var(--line) calc(var(--rule-y) + var(--rule-w)), transparent calc(var(--rule-y) + var(--rule-w)), transparent var(--editor-lh));
   background-repeat: no-repeat;
   background-position: 0 0;
 }
-body.ruled-lines .body, body.ruled-lines .child-toc { background-attachment: local; }   /* 线随内容滚动，像纸 */
+
 body.ruled-lines .body-mirror { background-image: none; }
 
-/* 嵌入态（有子节的页）：正文框高度 = 内容行数 × 行高（上限 = 容器里放得下的整行数），子节目录紧跟其后；都是整行，所以和容器的格子对得上。
-   正文框与目录各自不透明（容器的线不从底下透上来——正文内部滚动时两套线会错位）。 */
-.page[data-toc-embed] .body { flex: 0 0 auto; background-color: var(--bg-1); }
+/* 有子节的页：正文框高度 = 内容行数 × 行高，子节目录紧跟其后；都是整行，所以和容器的格子对得上（目录透明，坐在容器的线上）。 */
 .child-toc {
-  flex: none; overflow-y: auto; margin: 0; padding: var(--editor-lh) 0 0; border: 0; box-sizing: border-box;   /* 顶上空一行 = 正文与目录之间的那一行空白 */
-  background-color: var(--bg-1); font-family: var(--font-editor); font-size: var(--editor-font); line-height: var(--editor-lh);
-  scrollbar-width: thin; scrollbar-color: var(--bg-3) transparent;
+  flex: none; margin: 0; padding: var(--editor-lh) 0 0; border: 0; box-sizing: border-box;   /* 顶上空一行 = 正文与目录之间的那一行空白 */
+  background: transparent; font-family: var(--font-editor); font-size: var(--editor-font); line-height: var(--editor-lh);
 }
 .child-toc[hidden] { display: none; }
 .child-toc-head { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }   /* 只给读屏：行本身看得出是链接 */
@@ -1787,16 +1778,14 @@ body.ruled-lines .body-mirror { background-image: none; }
 /* 宽稿纸（body.paper-wide）：矮而宽的可用区（GPD Win Mini 这类小横屏；平板横屏 + 软键盘）纵向空间稀缺 → 每行字数加到 34、行距 1.7、纸边收一点。
    上限仍然有（--box-max）：再宽的窗口（VR）也不铺满。阅读节奏（轻小说 / 标准）在这一档里不起作用——这一档只在高度不够时出现。 */
 body.paper-wide { --target-chars: 34; --box-max: 760px; --editor-line-height: 1.7; --editor-font-max: 20px; }
-body.paper-wide .page { padding-top: 10px; padding-bottom: 10px; }
+body.paper-wide .page { --page-pad-y: 10px; }
 body.paper-wide .node-title-row { margin-bottom: calc(var(--editor-font) * 0.25); }
 body.paper-wide .node-title { font-size: calc(var(--editor-font) * 1.1); }
 body.paper-wide .parent-link { margin-bottom: 0; }
 /* 矮纸（body.paper-short）：可用高度 ≤ 300（手机横屏 + 软键盘只剩一百多像素）→ 页脚字数统计让位，纸边再收 */
-body.paper-short .page { padding-top: 6px; padding-bottom: 6px; }
-body.paper-short .page-foot { display: none; }
-body.paper-short .page-foot:not([hidden]) ~ .mic-button, body.paper-short .page-foot:not([hidden]) ~ .kb-toggle { bottom: 8px; }
-body.paper-short .page-foot:not([hidden]) ~ .mic-side { bottom: 12px; }
-body.paper-short .mic-button { width: 40px; height: 40px; bottom: 8px; }
+body.paper-short .page { --page-pad-y: 6px; }
+body.paper-short .page:has(> .mic-button:not([hidden])) { --floater-band: 44px; }
+body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--sheet-bottom) + 8px); }
 
 /* ═══ 设置住在侧栏里（v2.1.18，user 2026-09-29「不如设置和侧条都是同一个侧条里面？」）═══
    侧栏 data-view="settings"：导航各块让位，设置面板占满；面板加宽到抽屉那么宽（设置里的下拉和说明文字是按 320 排的）。 */
@@ -1856,6 +1845,10 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: 8px; }
 }
 .xhw-cover.book::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--spine-w); background: var(--cover-spine); border-right: 1px solid var(--cover-spine-edge); }   /* 装订线 */
 .xhw-cover.draft { --spine-w: 0px; color: var(--cover-sheet-ink); }
+/* 加密件的大锁（gallery 0.6.1 `.gallery-tile-lockmark`；user 2026-09-30「gallery里面加密和不加密也需要有辨识度。左上角加一把大锁？」）：
+   住封面左上角、书名之上的那一条空带里；书的让开装订线；光晕用纸色（包默认白色，在深色封面图上才对，纸面上要用纸色） */
+#galleryMount .gallery-grid:not(.list) .gallery-tile-lockmark { left: 9px; top: 7px; width: 24%; max-width: 44px; color: var(--enc); filter: drop-shadow(0 0 1px var(--cover-paper)) drop-shadow(0 0 1px var(--cover-paper)) drop-shadow(0 0 2px var(--cover-paper)); }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover.book) .gallery-tile-lockmark { left: 15px; }
 .xhw-cover-title { display: block; max-width: 100%; max-height: 100%; overflow: hidden; font-weight: 700; letter-spacing: 0.04em; font-family: "Songti SC", "STSongti-SC-Bold", "Noto Serif CJK SC", "Source Han Serif SC", "Noto Serif SC", var(--font-editor), serif; }
 .xhw-cover.v .xhw-cover-title { writing-mode: vertical-rl; text-orientation: mixed; height: 100%; margin-left: auto; letter-spacing: 0.08em; }
 .xhw-cover.v .tcy { text-combine-upright: all; -webkit-text-combine: horizontal; letter-spacing: 0; }

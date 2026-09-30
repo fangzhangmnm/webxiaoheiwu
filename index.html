@@ -178,8 +178,6 @@
         </button>
         <div class="status" aria-live="polite">
           <span id="saveStatus"></span>
-          <span class="sep" aria-hidden="true">·</span>
-          <span id="imeStatus" role="button" tabindex="0">系统输入法</span>
         </div>
         <button class="menu-button" id="addPageButton" type="button" hidden aria-label="加一页" data-i18n-aria="top.addPage" data-i18n-title="top.addPage">
           <svg class="ico" aria-hidden="true"><use href="#new"/></svg>
@@ -226,17 +224,16 @@
           <button type="button" class="page-nav-btn" id="pageNext" aria-label="下一页" data-i18n-aria="edge.next" hidden><svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg></button>
         </div>
         <label class="sr-only" for="editor" data-i18n="ui.editorAria">小说编辑区</label>
-        <!-- 正文 + 子节目录的容器（v2.1.11）：有子节的页里 textarea 按内容高度伸缩（上限 = 本容器 − 露着的目录），目录紧跟正文最后一行
-             （user 2026-09-26「如果父节点没有输入很多段的话子节不应该在最下面，而是取决于父节点输入了多少行…相当于嵌入了」）；正文超过上限退回内部滚动；写字线在本容器上继续；点正文下方空白照样能写 -->
+        <!-- 正文 + 子节目录的容器。一张纸模型（v2.1.26，user 2026-09-30「整张纸滚」）：textarea 有多少字就多高、自己不滚，滚的是整张纸（main.surface）；
+             目录紧跟正文最后一行（user 2026-09-26「取决于父节点输入了多少行…相当于嵌入了」）；写字线画在本容器上（字和线同一层，滚动时不再相对抖）；点正文下方空白照样能写 -->
         <div class="page-body" id="pageBody">
           <textarea id="editor" class="body" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off"></textarea>
-          <!-- 子节目录（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表」）：正文之下；长正文滚到底才露出（app.ts 迟滞）；行 = 子节名 + 修改时间，点 = 跳 -->
+          <!-- 子节目录（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表」）：正文之下、跟着纸滚；行 = 子节名 + 修改时间，点 = 跳 -->
           <nav id="childToc" class="child-toc" hidden aria-label="子节" data-i18n-aria="edge.children">
             <div class="child-toc-head" data-i18n="edge.children">子节</div>
             <ul id="childTocList" class="child-toc-list" role="list"></ul>
           </nav>
         </div>
-        <div id="wordCount" class="page-foot" aria-live="off" hidden></div>
         <div id="pageImage" class="page-image" hidden>
           <img id="pageImageImg" alt="" />
           <div class="page-image-bar">
@@ -244,6 +241,12 @@
             <button type="button" class="auth-action" id="pageImageCover" data-i18n="img.setCover">设为封面</button>
             <button type="button" class="auth-action" id="pageImageReplace" data-i18n="img.replace">替换图片…</button>
           </div>
+        </div>
+        <!-- 页脚（v2.1.26，一张纸模型；user 2026-09-30「整张纸滚」「同意也加导航，和页头一样」）：‹ 上一页 · 字数 · 下一页 ›，印在纸的末尾，跟着纸滚；和页头那一行同一套几何 -->
+        <div class="page-foot-row" role="group" aria-label="上一页 / 下一页" data-i18n-aria="edge.pageNav">
+          <button type="button" class="page-nav-btn" id="pagePrevFoot" aria-label="上一页" data-i18n-aria="edge.prev" hidden><svg class="ico" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+          <div id="wordCount" class="page-foot" aria-live="off" hidden></div>
+          <button type="button" class="page-nav-btn" id="pageNextFoot" aria-label="下一页" data-i18n-aria="edge.next" hidden><svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg></button>
         </div>
         <input type="file" id="imageFileInput" accept="image/*" multiple hidden />
         <input type="file" id="imageReplaceInput" accept="image/*" hidden />
@@ -254,7 +257,7 @@
         <button id="voiceBackspaceButton" class="mic-button mic-side" type="button" hidden aria-label="退格" data-i18n-aria="ui.voiceBackspace" data-i18n-title="ui.voiceBackspace">
           <svg class="ico" aria-hidden="true"><use href="#backspace"/></svg>
         </button>
-        <!-- 键盘钮（v2.1.16）：软键盘没露着、而这台设备可能用得上（触屏为主 / Quest）时在纸面左下角；点 = 召出软键盘 -->
+        <!-- 话筒 / 退格 / 键盘钮 / toast：钉在视口（纸整张滚，它们不跟着走）。键盘钮（v2.1.16）：软键盘没露着、而这台设备可能用得上（触屏为主 / Quest）时在左下角；点 = 召出软键盘 -->
         <button id="kbToggle" class="mic-button kb-toggle" type="button" hidden aria-label="软键盘" data-i18n-aria="kb.show" data-i18n-title="kb.show">
           <svg class="ico" aria-hidden="true"><use href="#keyboard"/></svg>
         </button>
@@ -529,6 +532,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-9f2a5d47299d.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-d9dcc6afd3bd.mjs"></script>
   </body>
 </html>

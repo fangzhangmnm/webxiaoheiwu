@@ -122,6 +122,7 @@ console.log("[xhw] build:", APP_VERSION);
 $("settingsBuild").textContent = APP_VERSION;
 
 const editorEl = $<HTMLTextAreaElement>("editor");
+const sheet = document.querySelector<HTMLElement>("main.surface")!;   // 一张纸模型（v2.1.26）：唯一的滚动容器；正文框自己不滚
 // 系统软键盘全量禁用（user 2026-09-29「加软键盘，以后不用触屏手机的自带键盘了。全量禁用」）：内置输入法开着时，**所有**文本框 inputmode=none——
 //   系统键盘不弹、系统输入法不碰字节；触屏设备改由 app 内软键盘打字（src/input/）。唯一还会弹系统键盘的路 = 设置里的逃生开关「改用系统输入法」。
 // 软键盘露不露（per-device，device-kv `softKeyboard`）：auto（默认）= 触屏为主的设备上文本框一聚焦就露，见到实体键盘敲键就让位；
@@ -145,11 +146,14 @@ document.addEventListener("pointerdown", (e) => { const f = asTextField(e.target
 document.addEventListener("focusin", (e) => { const f = asTextField(e.target); if (f) applyInputModeTo(f); }, true);
 if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset，纸面整体缩到键盘上方（styles .page height）；iOS 若把视口顶上去，拉回 0 让固定顶栏别被推出屏
   const vv = window.visualViewport;
-  const upd = () => {
+  const upd = (follow: boolean) => {
     if (vv.offsetTop > 0 && document.activeElement && document.activeElement !== document.body) window.scrollTo(0, 0);
-    document.documentElement.style.setProperty("--kb-offset", `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
+    const next = `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`;
+    if (document.documentElement.style.getPropertyValue("--kb-offset") === next) return;
+    document.documentElement.style.setProperty("--kb-offset", next);
+    if (follow) followCaret();   // 键盘那一块变了：光标所在行别留在它底下
   };
-  vv.addEventListener("resize", upd); vv.addEventListener("scroll", upd); upd();
+  vv.addEventListener("resize", () => upd(true)); vv.addEventListener("scroll", () => upd(true)); upd(false);
 }
 
 // ── 密码政策接线（弹窗 = 输入 sheet；verifier 住 synced-app-state）──
@@ -186,7 +190,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
   { title: t("fp.title"), hint: t("fp.hint", { name: parseDocName(name).title }), wrong: t("pw.wrong"), ok: t("pw.unlock") },
   (pw) => verifyDocPassword(name, pw));
 const editor = createEditor({
-  editor: editorEl, setStatus, setState,
+  editor: editorEl, sheet, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
   onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
@@ -202,7 +206,7 @@ const refHost = createReferenceHost({
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
 const project = createProjectMode({
   references: refHost.hooks,
-  editorEl, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
+  editorEl, sheet, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
@@ -275,62 +279,51 @@ async function exportBranchFlow(name: string): Promise<void> {
   } catch (e) { reportError(e); setStatus(t("edge.exportFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
 /** 章节名两侧的上一页 / 下一页 chevron（全树前序 DFS；树首 / 树尾 / 散页 → 灰；锁着 / 无书 → 整颗藏）。页脚那排 2026-09-10 撤（user「不应该浪费页脚的空间…放在标题行，用 ⟨ ⟩ 的 svg」）。 */
+//   v2.1.26：页脚也有一对（user 2026-09-30「同意也加导航，和页头一样」）——纸整张滚，写到末尾时下一页就在手边。
 const pagePrev = $<HTMLButtonElement>("pagePrev"), pageNext = $<HTMLButtonElement>("pageNext");
+const pagePrevFoot = $<HTMLButtonElement>("pagePrevFoot"), pageNextFoot = $<HTMLButtonElement>("pageNextFoot");
 function renderPageNav(): void {
   const nb = project.active() && !project.locked() ? project.neighborhood() : null;
-  pagePrev.hidden = pageNext.hidden = !nb;
-  pagePrev.disabled = !nb?.prev; pageNext.disabled = !nb?.next;
-  pagePrev.title = nb?.prev ? nodeDisplayName(nb.prev) : t("edge.prev"); pageNext.title = nb?.next ? nodeDisplayName(nb.next) : t("edge.next");
+  for (const [prev, next] of [[pagePrev, pageNext], [pagePrevFoot, pageNextFoot]] as const) {
+    prev.hidden = next.hidden = !nb;
+    prev.disabled = !nb?.prev; next.disabled = !nb?.next;
+    prev.title = nb?.prev ? nodeDisplayName(nb.prev) : t("edge.prev"); next.title = nb?.next ? nodeDisplayName(nb.next) : t("edge.next");
+  }
 }
-pagePrev.addEventListener("click", () => { if (project.prevPage()) edgeSidebar.render(); });
-pageNext.addEventListener("click", () => { if (project.nextPage()) edgeSidebar.render(); });
+for (const b of [pagePrev, pagePrevFoot]) b.addEventListener("click", () => { if (project.prevPage()) edgeSidebar.render(); });
+for (const b of [pageNext, pageNextFoot]) b.addEventListener("click", () => { if (project.nextPage()) edgeSidebar.render(); });
 // ── 纸面亲缘（v2.1.9，user 2026-09-26「父亲页面拉到最下面可以显示孩子页面的目录列表，然后标题栏也有回到上一级的链接，这样导航就舒服」）：
-//   `.. 父页名` 住章节名上方（顶层页藏：顶栏已是书名；与侧栏 `..` 行同一语汇）；子节目录住正文之下，**只在正文滚到底（或装得下）时露出**——写到中段不占地，写到末尾自然看见下一层。
-//   textarea 的内部滚动模型不动（编辑手感不冒险）：露出 = 目录占位、正文让出同样的高度并保持贴底；迟滞 = 露出后往上滚超过目录高度 + 24px 才收（否则边界上抖）。图片页没正文可滚：有子节就露。
+//   `.. 父页名` 住章节名上方（顶层页藏：顶栏已是书名；与侧栏 `..` 行同一语汇）；子节目录住正文之下，有子节就露。
+//   一张纸模型（v2.1.26，user 2026-09-30「对的，整张纸滚」）：正文框高度 = 内容高度、自己不滚，滚的是 main.surface；目录紧跟正文最后一行；
+//   以前「正文滚到底才露目录」的迟滞（v2.1.11）随内部滚动一起退役。
 const parentLink = $<HTMLButtonElement>("parentLink"), parentLinkName = $("parentLinkName");
 const childToc = $("childToc"), childTocList = $("childTocList"), pageEl = document.querySelector<HTMLElement>(".page")!, pageBody = $("pageBody");
 let tocChildren: string[] = [];
-const TOC_SHOW_EPS_PX = 2, TOC_HIDE_SLACK_PX = 24;
 // 稿纸几何（行高 / 写字线 / 宽窄档）：src/ui/paper.ts。稿纸宽度偏好跟设备走（device-kv `paperWidth`）：同一个人的 iPad 要窄稿纸、Win Mini 要宽的。
 const paperWidthPref = (): PaperWidthPref => { const v = deviceKvGet("paperWidth"); return v === "mode" || v === "wide" ? v : "auto"; };
 const dockHeightNow = (): number => parseFloat(document.documentElement.style.getPropertyValue("--dock-h")) || 0;
-const paper = createPaper({ page: pageEl, editor: editorEl, widthPref: paperWidthPref, dockHeight: dockHeightNow, onChanged: () => { syncBodyHeight(); updateChildToc(); } });
-const tocDistance = (): number => editorEl.scrollHeight - editorEl.clientHeight - editorEl.scrollTop;   // 正文离底还有几像素（≤0 = 贴底 / 装得下）
-const embedMode = (): boolean => tocChildren.length > 0 && project.active() && project.currentKind() !== "image";
-/** 嵌入态（v2.1.11，user 2026-09-26「如果父节点没有输入很多段的话子节不应该在最下面，而是取决于父节点输入了多少行…相当于嵌入了」）：有子节的页里 textarea 按内容高度伸缩，
- *  目录紧跟正文最后一行（中间空一行）；正文长过上限退回内部滚动（滚到底才露 / 迟滞照旧）。没子节的页 = 恢复 flex 填满，零变化。
- *  v2.1.17（user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）：一切高度都是**整行**——正文框 = 行数 × 行高，目录 = (1 + 子节数) × 行高，
- *  所以目录的每一行都坐在稿纸的线上。内容高度量的是一个看不见的孪生框（paper.contentHeight），不再把正文框自己先压成 0 再量（那会让版面跳一下）。 */
+const paper = createPaper({ page: pageEl, editor: editorEl, widthPref: paperWidthPref, dockHeight: dockHeightNow, onChanged: () => syncBodyHeight() });
+/** 正文框高度 = 内容行数 × 行高（量的是看不见的孪生框，paper.contentHeight），子节目录 = (1 + 子节数) × 行高紧跟其后——一切都是整行，
+ *  所以目录的每一行都坐在稿纸的线上（v2.1.17，user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）。图片页正文框藏着、目录照露。 */
 function syncBodyHeight(): void {
   paper.alignTop(pageBody);
-  if (!embedMode()) {
-    if (pageEl.hasAttribute("data-toc-embed")) { pageEl.removeAttribute("data-toc-embed"); editorEl.style.height = ""; childToc.style.height = ""; }
-    delete pageEl.dataset.tocShown; setTocVar(); return;
-  }
-  pageEl.setAttribute("data-toc-embed", "");
-  const lh = paper.lineHeight(), boxH = pageBody.clientHeight;
-  const boxLines = Math.max(1, Math.floor(boxH / lh));
-  const tocLines = childToc.hidden ? 0 : Math.min(tocChildren.length + 1, Math.max(3, Math.floor(boxLines * 0.4)));   // 目录最多占四成；再多它自己滚
-  childToc.style.height = tocLines ? `${tocLines * lh}px` : "";
-  const maxLines = Math.max(1, boxLines - tocLines);
-  const cur = editorEl.clientHeight;
-  const steady = editorEl.scrollHeight > cur + 1 && Math.abs(cur - maxLines * lh) < 1;   // 长正文稳态：已经顶到上限还在溢出，不用量
-  if (!steady) {
-    const contentLines = Math.max(1, Math.round(paper.contentHeight() / lh));
-    editorEl.style.height = `${Math.min(contentLines, maxLines) * lh}px`;
-  }
-  if (!childToc.hidden && editorEl.clientHeight >= maxLines * lh - 1) pageEl.dataset.tocShown = "1"; else delete pageEl.dataset.tocShown;
-  setTocVar();
+  const lh = paper.lineHeight();
+  const h = `${Math.max(1, Math.round(paper.contentHeight() / lh)) * lh}px`;
+  if (editorEl.style.height !== h) editorEl.style.height = h;
+  childToc.hidden = !(tocChildren.length > 0 && project.active());
 }
-function setTocVar(): void { pageEl.style.setProperty("--child-toc-h", pageEl.dataset.tocShown ? `${childToc.offsetHeight}px` : "0px"); }   // 话筒上让
-function showToc(): void { if (!childToc.hidden) return; childToc.hidden = false; syncBodyHeight(); editorEl.scrollTop = editorEl.scrollHeight; }   // 让出高度后正文仍贴底（否则下一个 scroll 事件判「没到底」→ 收 → 抖）
-function hideToc(): void { if (childToc.hidden) return; childToc.hidden = true; syncBodyHeight(); }
-function updateChildToc(): void {
-  if (!tocChildren.length) { hideToc(); return; }
-  if (project.currentKind() === "image") { showToc(); return; }   // 图片页没有正文可滚：有子节就露
-  const dist = tocDistance();
-  if (childToc.hidden) { if (dist <= TOC_SHOW_EPS_PX) showToc(); }
-  else if (dist > childToc.offsetHeight + TOC_HIDE_SLACK_PX) hideToc();
+/** 光标跟随的兜底：浏览器插字后会把光标滚进最近的可滚祖先（Chromium / WebKit 都会），但键盘那一块露收 / iOS 视口变了它不管——
+ *  光标那一行不在纸的可见区（顶栏之下、键盘之上）就把纸滚过去。量光标行用同一个孪生框（光标在末尾时不用再量）。 */
+function followCaret(): void {
+  if (document.activeElement !== editorEl) return;
+  const lh = paper.lineHeight();
+  const bottom = editorEl.getBoundingClientRect().top + paper.caretBottom();   // 光标行底边（视口坐标）
+  const top = bottom - lh;
+  const cs = getComputedStyle(sheet);
+  const viewTop = sheet.getBoundingClientRect().top + (parseFloat(cs.paddingTop) || 0);
+  const viewBottom = sheet.getBoundingClientRect().bottom - (parseFloat(cs.paddingBottom) || 0);
+  if (bottom > viewBottom - 8) sheet.scrollTop += bottom - viewBottom + 8 + lh;
+  else if (top < viewTop + 8) sheet.scrollTop -= viewTop - top + 8 + lh;
 }
 function renderPageKin(): void {
   const nb = project.active() && !project.locked() ? project.neighborhood() : null;
@@ -352,13 +345,12 @@ function renderPageKin(): void {
     b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); editorEl.focus(); });
     li.appendChild(b); childTocList.appendChild(li);
   }
-  syncBodyHeight(); updateChildToc();
+  syncBodyHeight();
 }
 parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); editorEl.focus(); } });
-editorEl.addEventListener("scroll", updateChildToc, { passive: true });
-editorEl.addEventListener("input", () => { syncBodyHeight(); updateChildToc(); });   // 末尾续写：正文长一行目录跟着下一行；顶到上限后仍贴底 → 目录留着
-window.addEventListener("resize", () => { paper.refresh(); syncBodyHeight(); updateChildToc(); });   // 键盘 / 转屏 / 缩放改了容器高度与设备像素比
-pageBody.addEventListener("pointerdown", (e) => { if (e.target !== pageBody) return; e.preventDefault(); editorEl.focus(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });   // 嵌入态正文下方的空白纸面：点了照样能写（光标到末尾），别让人以为纸「断」了
+editorEl.addEventListener("input", () => { syncBodyHeight(); followCaret(); });   // 末尾续写：正文长一行目录跟着下一行；光标行不在可见区就把纸滚过去
+window.addEventListener("resize", () => { paper.refresh(); syncBodyHeight(); followCaret(); });   // 键盘 / 转屏 / 缩放改了容器高度与设备像素比
+pageBody.addEventListener("pointerdown", (e) => { if (e.target !== pageBody) return; e.preventDefault(); editorEl.focus(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });   // 正文下方的空白纸面：点了照样能写（光标到末尾），别让人以为纸「断」了
 // ── 导出 = 当前页全页进剪贴板（v2.1.9，user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮…方便的导出分享功能其实很重要」）：
 //   txt 稿 = 整篇；书的文字页 = 这一页（textarea 里的活字，所见即所得）；图片页 = 图片本身（PNG 直给，其余经 codec 转 PNG——系统剪贴板只认 PNG；ClipboardItem 里塞 Promise 保住 Safari 的用户手势）。
 //   锁着 / 空页 / 浏览器不支持 → toast 说清，不谎报已复制。
@@ -377,10 +369,10 @@ async function copyCurrentPage(): Promise<void> {
 async function writeClipboardText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
   // 退路（旧 WebView / 非安全上下文）：借 textarea 全选 + execCommand，选区与滚动原样放回
-  const el = editorEl; const s0 = el.selectionStart, e0 = el.selectionEnd, top = el.scrollTop;
+  const el = editorEl; const s0 = el.selectionStart, e0 = el.selectionEnd, top = sheet.scrollTop;
   el.focus(); el.select();
   const ok = document.execCommand("copy");
-  el.setSelectionRange(s0, e0); el.scrollTop = top;
+  el.setSelectionRange(s0, e0); sheet.scrollTop = top;
   if (!ok) throw new Error("clipboard unavailable");
 }
 async function copyCurrentImage(): Promise<void> {
@@ -807,7 +799,6 @@ function deviceLabel(): string {
 }
 
 // ── 输入法接线（输入管线 / 软键盘 / 候选 = src/input/；这里只有 app 的策略）──
-const imeStatus = $("imeStatus");
 const kbToggle = $<HTMLButtonElement>("kbToggle");
 // 方案跟人走（synced prefs：肌肉记忆换设备不该变）；逃生开关跟设备走（device-kv：取决于这台机器有没有实体键盘）。user 2026-09-03 问「持久化跟谁走」→ 此定。
 const imeSchemaPref = (): ImeSchema => { const v = prefs.getItem<string>("imeSchema"); return isImeSchema(v) ? v : DEFAULT_SCHEMA; };
@@ -832,11 +823,11 @@ const input = createInputPipeline({
 });
 const imeDock = createImeDock({
   ime, pipeline: input, dock: $("imeDock"), floating: $("candidateBar"),
-  labels: { space: t("kb.space"), symbols: t("kb.symbols"), letters: t("kb.letters"), more: t("kb.more"), zh: t("ime.modeZh"), en: t("ime.modeEn"), enter: t("kb.enter"), backspace: t("ui.voiceBackspace"), shift: t("kb.shift"), hide: t("kb.hide"), prevPage: t("kb.prevPage"), nextPage: t("kb.nextPage") },
+  labels: { space: t("kb.space"), symbols: t("kb.symbols"), letters: t("kb.letters"), more: t("kb.more"), zh: t("ime.modeZh"), en: t("ime.modeEn"), enter: t("kb.enter"), backspace: t("ui.voiceBackspace"), shift: t("kb.shift"), hide: t("kb.hide"), prevPage: t("kb.prevPage"), nextPage: t("kb.nextPage"), toggleMode: t("ime.clickToToggle") },
   keyboardWanted,
   onHideRequest: () => { kbHiddenBy = "user"; kbSummoned = false; },
   onLayout: () => {
-    paper.refresh(); syncBodyHeight(); updateChildToc(); renderKbToggle();
+    paper.refresh(); syncBodyHeight(); renderKbToggle(); followCaret();
     const f = input.focused(); if (f && f !== editorEl && f.closest(".crypto-modal")) f.scrollIntoView({ block: "nearest" });   // sheet 里的框：键盘露出来之后别被它挡住
   },
 });
@@ -853,18 +844,20 @@ kbToggle.addEventListener("click", () => {
   if (!input.target()) editorEl.focus();
   renderImeState();
 });
+let lastAsciiMode: boolean | null = null;
 function renderImeState(): void {
   const s = ime.getState();
-  // zen：顶栏只剩「中/英」一字（方案名进 title 悬停 + 设置页；系统输入法时整个不显示）。点它 = 切中/英（同 Shift）；改用系统输入法只在设置页。
-  imeStatus.textContent = !s.enabled ? "" : s.asciiMode ? t("ime.modeEn") : t("ime.modeZh");
-  imeStatus.title = s.enabled ? `${s.engine === "rime" ? schemaName(ime.schema) : t("ime.nameFallback")} · ${t("ime.clickToToggle")}` : "";
+  // zen（v2.1.26，user 2026-09-30「输入法也许可以收到悬浮框里面」）：顶栏不再有「中 / 英」；它是悬浮候选条左端的芯片（dock.ts 画），切中 / 英时空着也闪一下让人看见。
+  //   手机式软键盘露着时键盘自己的中 / 英键就是状态。方案名只在设置页；改用系统输入法只在设置页。
+  if (lastAsciiMode != null && lastAsciiMode !== s.asciiMode && s.enabled) imeDock.flashMode();
+  lastAsciiMode = s.enabled ? s.asciiMode : null;
   imeDock.keyboard.setExtraLetters(ime.schema === "double_pinyin_mspy" ? [";"] : []);   // 微软双拼把 ; 当韵母键
   imeDock.render();
   renderKbToggle();
 }
 async function setImeEnabled(on: boolean): Promise<void> {
   if (on) {
-    if (!ime.initialized) { imeStatus.textContent = t("ime.loading"); ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
+    if (!ime.initialized) { setStatus(t("ime.loading")); ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
     ime.enabled = true;
   } else { ime.enabled = false; ime.resetComposition(); }
   deviceKvSet("imeEnabled", ime.enabled ? "1" : "0");   // 默认开：键缺省 = 开；"0" = 逃生开关「用系统输入法」
@@ -872,8 +865,6 @@ async function setImeEnabled(on: boolean): Promise<void> {
   renderImeState();
 }
 async function toggleIme(): Promise<void> { await setImeEnabled(!ime.enabled); }
-imeStatus.addEventListener("mousedown", (e) => e.preventDefault());   // 别抢编辑器焦点
-imeStatus.addEventListener("click", () => { void input.toggleMode(); });
 
 // RIME 用户词库 ↔ collection（事件驱动节流；idle/unload 无条件 flush）
 let lastDictPushAt = 0, dictPushInFlight = false;
@@ -1013,9 +1004,9 @@ const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
 const paperWidthSelect = $<HTMLSelectElement>("paperWidthSelect");
 paperWidthSelect.value = paperWidthPref();
-paperWidthSelect.addEventListener("change", () => { const v = paperWidthSelect.value; deviceKvSet("paperWidth", v === "mode" || v === "wide" ? v : null); paper.refresh(); syncBodyHeight(); updateChildToc(); });
+paperWidthSelect.addEventListener("change", () => { const v = paperWidthSelect.value; deviceKvSet("paperWidth", v === "mode" || v === "wide" ? v : null); paper.refresh(); syncBodyHeight(); });
 const fontScalePref = (): string => { const v = deviceKvGet("fontScale"); return v && FONT_SCALES.includes(v) ? v : "1"; };
-function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; paper.refresh(); syncBodyHeight(); updateChildToc(); }   // 嵌入态的正文高度随字号变
+function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; paper.refresh(); syncBodyHeight(); }   // 嵌入态的正文高度随字号变
 fontScaleSelect.addEventListener("change", () => { const v = FONT_SCALES.includes(fontScaleSelect.value) ? fontScaleSelect.value : "1"; deviceKvSet("fontScale", v === "1" ? null : v); applyFontScale(v); });
 // 写字线（synced prefs，与阅读节奏同席：视觉偏好跟人走；缺省开）
 const ruledLinesToggle = $<HTMLInputElement>("ruledLinesToggle");

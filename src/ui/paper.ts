@@ -11,7 +11,9 @@
 //     基线用 DOM 量（一个零高的 inline-block 坐在基线上），不用 canvas。
 //   · 稿纸宽窄档（body.paper-wide）：矮而宽的可用区（小横屏 / 平板横屏 + 软键盘）自动换成宽稿纸——纵向空间稀缺时拿横向换字数；
 //     上限仍是 --box-max（VR 的大窗口不会铺满）。body.paper-short：可用高度很矮（手机横屏 + 软键盘）时页脚字数统计让位、纸边收窄。
-// 不管的事：纸面上各件怎么摆（app.ts syncBodyHeight）、正文内容。
+//   · 一张纸模型（v2.1.26，2026-09-30 user「对的，整张纸滚」）：正文框高度 = 内容高度（contentHeight 量孪生框），自己不滚，滚的是整张纸；
+//     光标跟随的兜底用同一个孪生框量光标那一行的底边（caretBottom）。
+// 不管的事：纸面上各件怎么摆（app.ts syncBodyHeight）、正文内容、滚动本身。
 
 export type PaperWidthPref = "auto" | "mode" | "wide";
 export interface PaperDeps {
@@ -31,6 +33,8 @@ export interface Paper {
   lineHeight(): number;
   /** 正文内容的高度（不碰正文框本身：量一个看不见的孪生框）。 */
   contentHeight(): number;
+  /** 光标（selectionEnd）所在那一行的底边，相对正文框上沿（px）。光标在末尾时 = contentHeight，不用再量一次。 */
+  caretBottom(): number;
   /** 把一个件的上沿补到整像素（用 margin-top 补零点几像素）。纸面上方的章节名行高度带小数（字号 × 1.25 × 1.4），正文容器的上沿就落在零点几像素上；
    *  浏览器画字时各自取整，正文框和目录行会差出 1 像素（2026-09-29 量到：同一套线，目录的字比正文的字低 1–2 个像素）。上沿是整数就没有这回事。 */
   alignTop(el: HTMLElement): void;
@@ -87,11 +91,16 @@ export function createPaper(d: PaperDeps): Paper {
     }
     if (changed) d.onChanged();
   }
-  function contentHeight(): number {
+  function measure(text: string): number {
     if (!mirror.isConnected) d.page.appendChild(mirror);
     mirror.style.width = `${d.editor.clientWidth}px`;
-    mirror.value = d.editor.value;
+    mirror.value = text;
     return mirror.scrollHeight;
+  }
+  function contentHeight(): number { return measure(d.editor.value); }
+  function caretBottom(): number {
+    const v = d.editor.value, end = d.editor.selectionEnd ?? v.length;
+    return measure(end >= v.length ? v : v.slice(0, end));   // 到光标为止的文本有几行，光标就在第几行（textarea 末尾的换行也算一行，和真框一致）
   }
   function alignTop(el: HTMLElement): void {
     el.style.marginTop = "0px";
@@ -99,5 +108,5 @@ export function createPaper(d: PaperDeps): Paper {
     const pad = Math.ceil(top - 0.01) - top;
     el.style.marginTop = pad > 0.01 ? `${pad.toFixed(3)}px` : "0px";
   }
-  return { refresh, lineHeight: () => lh || 24, contentHeight, alignTop };
+  return { refresh, lineHeight: () => lh || 24, contentHeight, caretBottom, alignTop };
 }

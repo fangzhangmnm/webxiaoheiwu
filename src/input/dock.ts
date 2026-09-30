@@ -25,7 +25,7 @@ export interface ImeDockDeps {
   /** 手机式那一块（#imeDock）与 PC 式悬浮条（#candidateBar）。 */
   dock: HTMLElement;
   floating: HTMLElement;
-  labels: SoftKeyboardDeps["labels"] & { hide: string; prevPage: string; nextPage: string };
+  labels: SoftKeyboardDeps["labels"] & { hide: string; prevPage: string; nextPage: string; toggleMode: string };
   /** 软键盘现在该不该露（设置 + 设备 + 有没有见过实体键盘，app 说了算）。 */
   keyboardWanted(): boolean;
   /** 用户按了「收起键盘」。 */
@@ -40,6 +40,8 @@ export interface ImeDock {
   warmUp(): void;
   /** 软键盘此刻露着吗。 */
   keyboardShown(): boolean;
+  /** 中 / 英 切换了：PC 式悬浮条空着也闪一下芯片（v2.1.26，顶栏不再有「中 / 英」一字；软键盘露着时键盘自己的中 / 英键就是状态，不闪）。 */
+  flashMode(): void;
   keyboard: ReturnType<typeof createSoftKeyboard>;
 }
 
@@ -53,8 +55,11 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
   d.dock.innerHTML = `<div class="ime-strip"><div class="ime-cands" role="listbox"></div></div>`;
   d.dock.appendChild(keyboard.el);
   const cands = d.dock.querySelector<HTMLElement>(".ime-cands")!;
-  d.floating.innerHTML = `<div class="ime-preedit" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div>`;
-  const fPreedit = d.floating.querySelector<HTMLElement>(".ime-preedit")!, fCands = d.floating.querySelector<HTMLElement>(".ime-cands")!;
+  // PC 式悬浮条（v2.1.26）：左端一枚「中 / 英」芯片（原顶栏那一字搬来；user 2026-09-30「输入法也许可以收到悬浮框里面」），点 = 切中 / 英；右边拼音行 + 候选行。
+  d.floating.innerHTML = `<span class="ime-mode" role="button"></span><div class="ime-preedit" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div>`;
+  const fMode = d.floating.querySelector<HTMLElement>(".ime-mode")!, fPreedit = d.floating.querySelector<HTMLElement>(".ime-preedit")!, fCands = d.floating.querySelector<HTMLElement>(".ime-cands")!;
+  const MODE_FLASH_MS = 1100;
+  let modeFlashUntil = 0;
 
   let shown = false, hideTimer: ReturnType<typeof setTimeout> | null = null, lingerUntil = 0, lastBuffer = "", lastPage = -1;
   const form = (): KeyboardForm => (Math.min(window.innerWidth, window.innerHeight) >= 600 && window.innerWidth >= 700 ? "tablet" : "phone");
@@ -99,9 +104,11 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     const s = ime.getState();
     const field = pipeline.focused();
     const composing = s.enabled && !!s.buffer && !!field && !isMasked(field);
-    if (shown || (!composing && Date.now() >= lingerUntil)) { d.floating.classList.add("hidden"); fPreedit.textContent = ""; fCands.innerHTML = ""; return; }
+    const flashing = Date.now() < modeFlashUntil;
+    if (shown || (!composing && !flashing && Date.now() >= lingerUntil)) { d.floating.classList.add("hidden"); fPreedit.textContent = ""; fCands.innerHTML = ""; return; }
     d.floating.classList.remove("hidden");
-    d.floating.classList.toggle("lingering", !composing);
+    d.floating.classList.toggle("lingering", !composing && !flashing);
+    fMode.textContent = s.asciiMode ? d.labels.en : d.labels.zh; fMode.dataset.mode = s.asciiMode ? "en" : "zh"; fMode.title = d.labels.toggleMode;
     fPreedit.textContent = composing ? s.buffer : "";
     fPreedit.scrollLeft = fPreedit.scrollWidth;
     fCands.innerHTML = composing ? candHtml(s, true) : "";
@@ -122,6 +129,12 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     box.addEventListener("click", (e) => onCandClick(e as MouseEvent, floating));
   }
   fPreedit.addEventListener("click", () => { void pipeline.pick(-1); });
+  fMode.addEventListener("click", () => { void pipeline.toggleMode(); });
+  function flashMode(): void {
+    if (shown) return;
+    modeFlashUntil = Date.now() + MODE_FLASH_MS;
+    renderFloating(); setTimeout(renderFloating, MODE_FLASH_MS + 20);
+  }
 
   document.addEventListener("focusin", () => render());
   document.addEventListener("focusout", () => { setTimeout(render, 0); });   // focusout 时 activeElement 还没换，下一拍再看
@@ -139,5 +152,5 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     fPreedit.textContent = ""; fCands.innerHTML = "";
     if (shown) { cands.innerHTML = candHtml(sample, false); void cands.offsetHeight; cands.innerHTML = ""; }   // 手机式那一块露着时，它的候选行也过一遍（同一帧内清掉，看不见）
   }
-  return { render, keyboardShown: () => shown, keyboard, warmUp };
+  return { render, keyboardShown: () => shown, keyboard, warmUp, flashMode };
 }

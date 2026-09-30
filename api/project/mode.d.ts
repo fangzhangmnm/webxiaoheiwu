@@ -24,6 +24,8 @@ export interface ProjectModeDeps {
     /** 云端新版正在换掉本地这一本（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待（user 2026-09-29「快进的时候就 waiting，这样稳一点」）。 */
     onReplacing?: (on: boolean) => void;
     editorEl: HTMLTextAreaElement;
+    /** 纸的滚动容器（main.surface；v2.1.26 一张纸模型：正文框自己不滚）。换页滚回顶；重载后放回原位。 */
+    sheet: HTMLElement;
     /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
     titleEl: HTMLInputElement;
     /** 图片页视图（2.1）：#pageImage 容器 / <img> / 元信息行。当前页是图片时 textarea 让位。 */

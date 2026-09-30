@@ -21,6 +21,8 @@ export interface StatusOpts { error?: boolean; unsynced?: boolean }
 export type SyncKind = "none" | "locked" | "unavailable" | "encryptPending" | "local" | "offline" | "unsynced" | "clean";
 export interface EditorDeps {
   editor: HTMLTextAreaElement;
+  /** 纸的滚动容器（main.surface；v2.1.26 一张纸模型：正文框自己不滚，打开落在开头 = 纸滚回顶）。 */
+  sheet: HTMLElement;
   setStatus: (text: string, opts?: StatusOpts) => void;   // 瞬时事件 → toast
   setState: (text: string, opts?: StatusOpts) => void;    // 粘性稿态 → 顶栏（空 = 留白）
   isSignedIn: () => boolean;
@@ -64,7 +66,7 @@ export function createEditor(d: EditorDeps) {
 
   function moveCaretToStart(): void {
     try { d.editor.selectionStart = 0; d.editor.selectionEnd = 0; } catch { /* some inputs reject */ }
-    d.editor.scrollTop = 0;
+    d.sheet.scrollTop = 0;
   }
   function applyGuards(): void {
     if (parked) return;

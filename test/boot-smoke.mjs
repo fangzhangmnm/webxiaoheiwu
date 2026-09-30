@@ -240,14 +240,15 @@ try {
   // iOS 出血线（WeebPaint ADR-0010 移植）+ 双击放大：standalone 时顶栏/抽屉退到 ≥20px 地板；通配 touch-action: manipulation；viewport user-scalable=no
   const floors = await page.evaluate(() => {
     const px = (el, prop) => parseFloat(getComputedStyle(el)[prop]);
-    const tb = document.querySelector(".top-bar"), dr = document.getElementById("drawer"), pg = document.querySelector(".page"), ed = document.getElementById("editor");
-    const before = { top: px(tb, "top"), drawerPad: px(dr, "paddingTop"), pageMt: px(pg, "marginTop") };
+    // v2.1.26 一张纸模型：顶栏是贴顶的一条带子（padding-top = 地板），纸的上沿 = 滚动容器 .surface 的 padding-top（= 地板 + 32）
+    const tb = document.querySelector(".top-bar"), dr = document.getElementById("drawer"), sf = document.querySelector("main.surface"), ed = document.getElementById("editor");
+    const before = { top: px(tb, "paddingTop"), drawerPad: px(dr, "paddingTop"), pageMt: px(sf, "paddingTop") };
     document.documentElement.setAttribute("data-standalone", "");
-    const after = { top: px(tb, "top"), drawerPad: px(dr, "paddingTop"), pageMt: px(pg, "marginTop") };
+    const after = { top: px(tb, "paddingTop"), drawerPad: px(dr, "paddingTop"), pageMt: px(sf, "paddingTop") };
     document.documentElement.removeAttribute("data-standalone");
     return { before, after, ta: getComputedStyle(ed).touchAction, taMenu: getComputedStyle(document.getElementById("menuButton")).touchAction, vp: document.querySelector('meta[name="viewport"]').content };
   });
-  check("iOS 出血线：standalone 顶栏 top 4→≥20、抽屉头下沉、纸面随顶栏；双击放大：编辑器/按钮 touch-action=manipulation + user-scalable=no", floors.before.top === 4 && floors.after.top >= 20 && floors.after.drawerPad >= 16 && floors.after.pageMt === floors.after.top + 36 && floors.ta === "manipulation" && floors.taMenu === "manipulation" && /user-scalable=no/.test(floors.vp), JSON.stringify(floors));
+  check("iOS 出血线：standalone 顶栏 top 4→≥20、抽屉头下沉、纸面随顶栏；双击放大：编辑器/按钮 touch-action=manipulation + user-scalable=no", floors.before.top === 4 && floors.after.top >= 20 && floors.after.drawerPad >= 16 && floors.after.pageMt === floors.after.top + 32 && floors.ta === "manipulation" && floors.taMenu === "manipulation" && /user-scalable=no/.test(floors.vp), JSON.stringify(floors));
   // smart save 钮 + 软键盘缩纸面
   const smart = await page.evaluate(async () => {
     const w = (ms) => new Promise((r) => setTimeout(r, ms)); const x = window.__xhw; const btn = document.getElementById("saveButton");
@@ -271,7 +272,7 @@ try {
     const f0 = parseFloat(getComputedStyle(ed).fontSize); sel.value = "1.3"; sel.dispatchEvent(new Event("change")); const f1 = parseFloat(getComputedStyle(ed).fontSize);
     const kv = localStorage.getItem("webxiaoheiwu-7c2e9a41b3d05f68:fontScale"); sel.value = "1"; sel.dispatchEvent(new Event("change"));
     const pg = document.querySelector(".page"); const lh = parseFloat(getComputedStyle(ed).lineHeight), ry = parseFloat(pg.style.getPropertyValue("--rule-y")), dpr = devicePixelRatio;
-    return { f0, f1, kv, lh, ry, lhWhole: Math.abs(lh - Math.round(lh)) < 0.01, ruleInside: ry > lh * 0.5 && ry < lh, img: getComputedStyle(ed).backgroundImage.slice(0, 40), dpr };
+    return { f0, f1, kv, lh, ry, lhWhole: Math.abs(lh - Math.round(lh)) < 0.01, ruleInside: ry > lh * 0.5 && ry < lh, img: getComputedStyle(document.getElementById("pageBody")).backgroundImage.slice(0, 40), dpr };
   });
   check("字号档位：1.3 档字号 ×1.3、落 device-kv；行高是整数像素、写字线在行的下半截（基线之下）、线是一张重复渐变", Math.abs(fs.f1 - fs.f0 * 1.3) < 0.6 && fs.kv === "1.3" && fs.lhWhole && fs.ruleInside && fs.img.startsWith("repeating-linear-gradient"), JSON.stringify(fs));
   const resetPage = await browser.newPage();
