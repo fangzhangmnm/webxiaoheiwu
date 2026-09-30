@@ -113,8 +113,9 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         replaceBytes: (target: string, bytes: Uint8Array<ArrayBufferLike>) => void;
         currentBytes: () => Uint8Array | null;
         bytesOf: (target: string) => Uint8Array | null;
-        setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => void;
+        setThumbnail: (png: Uint8Array<ArrayBufferLike> | null, source?: string | null | undefined) => void;
         thumbnail: () => Uint8Array | null;
+        coverPage: () => string | null;
         treeUp: (target: string) => boolean;
         treeDown: (target: string) => boolean;
         treeOutdent: (target: string) => boolean;
@@ -153,6 +154,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         pathOf: (target: string) => string[];
         isInTree: (target: string) => boolean;
         order: () => string[];
+        branchOrder: (target: string) => string[];
         exportBranch: (target: string) => string;
         canMutate: () => boolean;
     } | null;
@@ -214,6 +216,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     movePage: (target: string, to: MoveTo) => boolean;
     moveTargets: (target: string, q: string, limit?: number) => string[];
     exportBranchText: (target: string) => string;
+    commitEditor: (force?: boolean) => void;
     addLink: (to: string) => boolean;
     removeLink: (to: string) => boolean;
     moveLink: (to: string, dir: 1 | -1) => boolean;
@@ -247,8 +250,9 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     lastPlaced: () => "link" | "sibling" | "child";
     pageBytes: () => Uint8Array | null;
     replaceImage: (bytes: Uint8Array<ArrayBufferLike>, ext: string) => boolean;
-    setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => boolean;
+    setThumbnail: (png: Uint8Array<ArrayBufferLike> | null, source?: string | null | undefined) => boolean;
     thumbnail: () => Uint8Array | null;
+    coverPage: () => string | null;
     noteReferencesChanged: () => void;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;

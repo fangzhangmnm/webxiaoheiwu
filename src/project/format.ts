@@ -1,11 +1,12 @@
 // 书的容器格式 v2（ADR-0008 / ADR-0009 / ADR-0010 / ADR-0014）：`<名字>.webxiaoheiwu.zip` = graph.json + pages/ + .webxiaoheiwu/editor-state.json (+ Thumbnails/thumbnail.png)。
 // created 2026-09-10 by Claude Fable 5.1；v2（主干树 + links）同日由树 session 落地。硬规则：zip 内 entry 增删改名必须给 user 完整目录清单（ADR-0008 §3 是 as-of 清单）。
 //   作品.webxiaoheiwu.zip
-//   ├─ graph.json                 清单：format / version=2 / wroteWith / readOnly?（修改锁跟着作品）/ tree[]（主干树）/ pages{ <完整文件名>: { links[], created, modified } }
+//   ├─ graph.json                 清单：format / version=2 / wroteWith / readOnly?（修改锁跟着作品）/ cover?（封面来源页的完整文件名，2026-09-30 user「加 cover 字段」；ADR-0012 修订）/ tree[]（主干树）/ pages{ <完整文件名>: { links[], created, modified } }
 //   │                             · tree = 整理：嵌套数组，节点 = 名字字符串 或 { name, children }；一页至多一个父亲、兄弟有序、成员资格可选（散页合法）。
 //   │                               没有 folder 类型、没有节点类型、没有 compile 标记：组 = 有孩子的页（ADR-0014 §2）。
 //   │                             · links = 指向：多对多，房间的边 / wiki 关系。一句话：兄弟 = 顺序，孩子 = 归属，link = 指向。
-//   │                             · 不变量（§3）：一个名字在 tree 中至多一次（重复 → corrupt）；tree 与 links 里的每个名字必有 pages/ 文件（读到悬空 → 丢 + warning；写出绝不产生）。
+//   │                             · 不变量（§3）：一个名字在 tree 中至多一次（重复 → corrupt）；tree / links / cover 里的每个名字必有 pages/ 文件（读到悬空 → 丢 + warning；写出绝不产生）。
+//   │                             · cover = 「设为封面」时的来源图片页（Thumbnails/thumbnail.png 仍是快照本体；这个字段只记出处，给导出取高清图）。改名跟着改、彻底删除即清；没有 = 封面无出处（老书 / 来源页已删）。
 //   │                             · version !== 2 一律拒开：>2 = too-new（只读不覆盖）、<2 = not-project。legacy 零分支（user 2026-09-10「legacy 不用分支代码」）。
 //   ├─ pages/                     abandonware 时唯一的东西。扁平，不许子目录（user 2026-09-10「zip/pages，是吃这个书」）
 //   │   ├─ *.txt                  正文页
@@ -38,7 +39,7 @@ export const PINNED_MTIME = new Date(Date.UTC(1980, 0, 1));
 export interface NodeMeta { links: string[]; created: number; modified: number }
 /** 主干树节点：名字字符串（叶）或 { name, children }（组 = 有孩子的页）。`{ name, children: [] }` 与字符串同义，写出时折成字符串。 */
 export type TreeNode = string | { name: string; children: TreeNode[] };
-export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; wroteWith: string; readOnly?: boolean; tree: TreeNode[]; pages: Record<string, NodeMeta> }
+export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; wroteWith: string; readOnly?: boolean; cover?: string; tree: TreeNode[]; pages: Record<string, NodeMeta> }
 /** 参考窗的窗口状态（ADR-0016）：开没开、在哪、多大。随 editor-state 走，不标脏（同 last / back）。 */
 export interface RefPanelState { open: boolean; left: number; top: number; width: number; height: number }
 export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState }
@@ -55,6 +56,8 @@ export interface Project {
   readOnly: boolean;
   /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
   thumbnail: Uint8Array | null;
+  /** 封面来源页（graph.json `cover`；2026-09-30 user「加 cover 字段」「契约级别的东西越早改越好」）：「设为封面」时抄下来的图片页名。thumbnail 仍是快照本体，这里只记出处（导出长图 / PDF 取高清图）。null = 无出处。 */
+  cover: string | null;
   /** 参考窗目录（ADR-0016）：路径（含 REFERENCES_DIR 前缀）→ 字节。本模块零知识，原样进出；内容由 @internal/reference-window 编解码。 */
   references: Map<string, Uint8Array>;
   /** 增量重打（ADR-0015）：字节对象 → 它上次进 zip 时的已压缩 entry。键是**对象身份**：页一改（writeNodeText 换新 Uint8Array）自然失效，改名 / 搬树不换对象照样命中；不用记脏页集合。 */
@@ -79,7 +82,7 @@ export const nodeExt = (name: string): string => { const i = name.lastIndexOf(".
 /** 页的种类（只看扩展名）：txt 正文 / image 图片页 / other（合法但不打开）。 */
 export const nodeKind = (name: string): NodeKind => { const e = nodeExt(name); return e === "txt" ? "txt" : IMAGE_EXTS.includes(e) ? "image" : "other"; };
 
-export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null, references: new Map(), rawCache: new WeakMap() }; }
+export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null, cover: null, references: new Map(), rawCache: new WeakMap() }; }
 
 // ── 树的形状工具（纯函数，graph.ts 的树操作也用）──
 export const treeNodeName = (n: TreeNode): string => (typeof n === "string" ? n : n.name);
@@ -109,7 +112,7 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
     const m = p.nodes.get(name) ?? { links: [], created: 0, modified: 0 };
     nodes[name] = { links: m.links.filter(has), created: m.created, modified: m.modified };
   }
-  const graph: ProjectGraphJson = { format: PROJECT_FORMAT, version: PROJECT_FORMAT_VERSION, wroteWith: APP_VERSION, ...(p.readOnly ? { readOnly: true } : {}), tree: normalizeTree(pruneTree(p.tree, has)), pages: nodes };
+  const graph: ProjectGraphJson = { format: PROJECT_FORMAT, version: PROJECT_FORMAT_VERSION, wroteWith: APP_VERSION, ...(p.readOnly ? { readOnly: true } : {}), ...(p.cover && has(p.cover) ? { cover: p.cover } : {}), tree: normalizeTree(pruneTree(p.tree, has)), pages: nodes };   // cover 严格写：来源页没文件就不写（不产生悬空）
   const stats: PackStats = opts.stats ?? { passThrough: 0, encoded: 0 };
   const fresh: { path: string; bytes: Uint8Array }[] = [];   // 这次真压的字节对象：打完收割 raw 进缓存
   const bytesEntry = (path: string, bytes: Uint8Array): ZipEntryIn => {
@@ -213,6 +216,11 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
       p.tree = normalizeTree(pruneTree(parsed, (n) => !!resolve(n), dropped).map(function fix(n): TreeNode { return typeof n === "string" ? resolve(n)! : { name: resolve(n.name)!, children: n.children.map(fix) }; }));
       for (const d of dropped) warnings.push(`tree name without pages/ file dropped: ${d}`);
     }
+  }
+  // cover（封面来源页）：宽容读——名字解析到文件才认；悬空 → 丢 + warning（thumbnail 本体不受影响）
+  if (graph && graph.cover !== undefined) {
+    const c = typeof graph.cover === "string" ? resolve(graph.cover) : null;
+    if (c) p.cover = c; else warnings.push(`graph.json cover without pages/ file dropped: ${String(graph.cover)}`);
   }
   if (EDITOR_STATE_ENTRY in entries) {
     try {

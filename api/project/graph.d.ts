@@ -92,4 +92,6 @@ export declare function insertSibling(p: Project, after: string, newName: string
 /** 「+ 子节」：同 insertSibling，但放到 parent 的孩子末尾。 */
 export declare function insertChild(p: Project, parent: string, newName: string, now?: NowFn): InsertResult;
 /** 导出这一支（ADR-0014 §6）：选中页的子树前序 DFS，把 txt 页的正文用 `\n\n` 拼成一个文本（图片页 / 其他页跳过）。不在树里 → 只有它自己。 */
+/** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导出（txt / 长图）都从这里取序。 */
+export declare function subtreeOrder(p: Project, name: string): string[];
 export declare function exportSubtree(p: Project, name: string): string;

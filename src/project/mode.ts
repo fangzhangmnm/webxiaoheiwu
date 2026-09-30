@@ -613,18 +613,20 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.references?.pageChanged(session!.current()!);
     loadCurrentIntoEditor();
   });
-  const setThumbnail = guardEdit((png: Uint8Array | null) => { session!.setThumbnail(png); });
+  const setThumbnail = guardEdit((png: Uint8Array | null, source?: string | null) => { session!.setThumbnail(png, source); });
   const thumbnail = (): Uint8Array | null => session?.thumbnail() ?? null;
+  /** 封面来源页（graph.json cover）；没有 / 无书 = null。 */
+  const coverPage = (): string | null => session?.coverPage() ?? null;
   const moveLink = guardEdit((to: string, dir: -1 | 1) => { const links = session!.sidebar(); const i = links.indexOf(to); const j = i + dir; if (i < 0 || j < 0 || j >= links.length) return; [links[i], links[j]] = [links[j]!, links[i]!]; session!.setLinksOrder(links); });
 
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
     openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, refreshIfClean, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
-    jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText,
+    jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText, commitEditor,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, setPageTime, pageTime: (n: string) => session?.project.nodes.get(n)?.modified ?? 0, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
-    cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail,
+    cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail, coverPage,
     noteReferencesChanged,
   };
 }

@@ -15,6 +15,7 @@ import "./project-cadence.test.mjs";   // 2026-09-10 ADR-0015 书的落盘节律
 import "./z-index.test.mjs";
 import "./image.test.mjs";
 import "./book-cover.test.mjs";   // 2026-09-29 书库封面印书名 + 日期前缀两种写法
+import "./long-image.test.mjs";   // 2026-09-30 长图排版：折行 / 避头尾 / 切片（纯函数）
 import { run } from "./runner.mjs";
 console.log("\n  WebXiaoHeiWu —— app 域测试（store 契约在 internal-store/test/）\n");
 await run();

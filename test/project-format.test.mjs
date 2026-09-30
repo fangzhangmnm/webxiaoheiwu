@@ -157,6 +157,20 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     eq(td.decode(u8.subarray(last + 30, last + 30 + nameLen)), THUMBNAIL_ENTRY); eq(method, 0, "STORE");
     const r = await unpackProject(blob); eq(r.kind, "ok"); eq(Array.from(r.project.thumbnail).join(), Array.from(p.thumbnail).join());
   });
+  it("cover（封面来源页，2026-09-30 user「加 cover 字段」）：有来源就写、往返；来源页没文件 → 写时不写、读时丢 + warning；没封面字段的老书 cover = null", async () => {
+    const p = emptyProject(); createNode(p, "作品.txt", "x", () => 1); p.contents.set("夏音.jpg", new Uint8Array([255, 216, 255, 1])); p.nodes.set("夏音.jpg", { links: [], created: 1, modified: 1 });
+    p.thumbnail = new Uint8Array([1, 2, 3]);
+    const g0 = JSON.parse(td.decode((await zipUnpack(await packProject(p)))["graph.json"])); eq("cover" in g0, false, "没设来源就没有字段");
+    p.cover = "夏音.jpg";
+    const blob = await packProject(p); const g1 = JSON.parse(td.decode((await zipUnpack(blob))["graph.json"])); eq(g1.cover, "夏音.jpg");
+    const r = await unpackProject(blob); eq(r.kind, "ok"); eq(r.project.cover, "夏音.jpg"); eq(r.warnings.length, 0);
+    p.cover = "没有.jpg";   // 来源页不存在：严格写不产生悬空
+    const g2 = JSON.parse(td.decode((await zipUnpack(await packProject(p)))["graph.json"])); eq("cover" in g2, false);
+    // 手工造一份悬空 cover 的 graph.json → 宽容读：丢 + warning，thumbnail 不受影响
+    const entries = await zipUnpack(blob); const g = JSON.parse(td.decode(entries["graph.json"])); g.cover = "丢了.jpg";
+    const { zipPack } = await import("../src/zip.ts"); const b2 = await zipPack(Object.entries({ ...entries, "graph.json": new TextEncoder().encode(JSON.stringify(g)) }).map(([path, data]) => ({ path, data })));
+    const r2 = await unpackProject(b2); eq(r2.kind, "ok"); eq(r2.project.cover, null); eq(r2.warnings.filter((w) => /cover/.test(w)).length, 1, r2.warnings.join("\n")); eq(Array.from(r2.project.thumbnail).join(), "1,2,3");
+  });
   it("nodeKind：txt / image / other；图片页字节往返；图片页也能进树", async () => {
     eq(nodeKind("a.txt"), "txt"); eq(nodeKind("夏音.JPG"), "image"); eq(nodeKind("x.webp"), "image"); eq(nodeKind("动.gif"), "image"); eq(nodeKind("a.md"), "other"); eq(nodeKind("noext"), "other");
     const p = emptyProject(); createNode(p, "作品.txt", "", () => 1); p.contents.set("夏音.jpg", new Uint8Array([255, 216, 255, 1, 2, 3])); p.nodes.set("夏音.jpg", { links: [], created: 1, modified: 1 });

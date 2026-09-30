@@ -47,6 +47,15 @@ describe("project/graph · 撞名=链接、占位符已废、反链=查询", () 
     renameNode(p, "场景1.txt", "场景1.TXT", now); assert(p.contents.has("场景1.TXT")); eq(treeChildren(p, "场景1.txt").join(), "夏音-设定.txt", "改大小写后树里也是新写法");
     eq(treeParent(p, "夏音-设定.txt"), "场景1.TXT");
   });
+  it("cover 来源页：renameNode 跟着改（大小写不敏感）；deleteNode 即清；别的页改名 / 删除不动它", () => {
+    const p = emptyProject(); const now = tick();
+    createNode(p, "a.txt", "", now); p.contents.set("图.jpg", new Uint8Array([1])); p.nodes.set("图.jpg", { links: [], created: 1, modified: 1 }); p.contents.set("图2.jpg", new Uint8Array([2])); p.nodes.set("图2.jpg", { links: [], created: 1, modified: 1 });
+    p.cover = "图.jpg";
+    renameNode(p, "a.txt", "b.txt", now); eq(p.cover, "图.jpg");
+    renameNode(p, "图.JPG", "封面.jpg", now); eq(p.cover, "封面.jpg");
+    deleteNode(p, "图2.jpg"); eq(p.cover, "封面.jpg");
+    deleteNode(p, "封面.jpg"); eq(p.cover, null);
+  });
   it("deleteNode：正文没了，指向它的边一并断掉（不留悬空），树里拿掉、孩子提上来", () => {
     const p = emptyProject(); const now = tick();
     createNode(p, "a.txt", "", now); createNode(p, "b.txt", "", now); createNode(p, "c.txt", "", now); link(p, "a.txt", "b.txt", { now });

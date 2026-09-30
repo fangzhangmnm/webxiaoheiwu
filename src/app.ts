@@ -4,12 +4,12 @@ import { APP_VERSION } from "./version.ts";
 import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
-import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY } from "./sheets.ts";
+import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary } from "./docs.ts";
-import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate } from "./doc-model.ts";
+import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate, splitDatedName } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
 import { importPageName } from "./image/policy.ts";
 import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD, type GalleryView } from "@internal/gallery";
@@ -19,8 +19,9 @@ import type { WpReferenceWindow } from "@internal/reference-window";
 import { createEdgeSidebar, fmtTime } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
 import { nodeDisplayName } from "./project/naming.ts";
-import { packProject, emptyProject, nodeExt, nodeKind } from "./project/format.ts";
-import { decodeToRgba, encodePng } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）
+import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./project/format.ts";
+import { decodeToRgba, encodePng, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
+import { planLongImage, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
@@ -192,7 +193,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, sheet, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
   onReplacing: (on) => setReplacing(on),
@@ -212,7 +213,7 @@ const project = createProjectMode({
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   onReplacing: (on) => setReplacing(on),
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
@@ -224,7 +225,7 @@ const edgeSidebar = createEdgeSidebar({
   onReference: () => refHost.toggle(), onSendToReference: (name) => refHost.sendPage(name),
   orphanCount: () => orphanPages().length, onOrphans: () => { void orphansFlow(); },
   onLibrary: () => { void galleryHost.open(); },
-  onExport: () => { void copyCurrentPage(); },
+  onExport: () => { void exportSheetFlow(); },
   onSettings: () => showSidebarSettings(),
   onSettingsBack: () => hideSidebarSettings(),
   onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"), onMove: (name) => movePageFlow(name),
@@ -466,6 +467,96 @@ async function copyCurrentImage(): Promise<void> {
   try { await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]); setStatus(t("copy.doneImage")); }
   catch (e) { reportError(e, "log"); setStatus(t("copy.failed", { e: errText(e) }), { error: true }); }
 }
+// ── 导出（v2.3.1，2026-09-30 user「先做图片导出吧，这个今晚就能用」「wysiwyg，就用编辑器的行宽」「所以就是和我直觉一样，长图，pdf，文本」）：
+//   侧栏「导出」= 一张 sheet：复制文字（v2.1.9 的那一下）/ 长图：这一页 · 这一支 · 整本（txt 稿 = 整篇）。
+//   长图 = 所见即所得：look 从编辑器此刻的 computed style 量来（字体栈 / 字号 / 行高 / 正文框宽 / 纸色 / 墨色 / 写字线），
+//   排版 = src/export/long-image.ts（纯函数），落像素 = image/codec.ts（唯一 canvas 点），PNG = vendored UPNG。
+//   分享必须在用户手势里调（iOS Safari）：先生成、再弹「好了」sheet，点「分享」那一下才 navigator.share；没有 share 的（Quest / 桌面）= 下载；一张时还能进剪贴板。
+type LongImageScope = "page" | "branch" | "book" | "draft";
+async function exportSheetFlow(): Promise<void> {
+  const inBook = project.active();
+  if (inBook ? project.locked() : editor.state.locked) { setStatus(t("export.locked"), { error: true }); return; }
+  const choices: Choice<"copy" | LongImageScope>[] = [];
+  if (inBook) {
+    const cur = project.current();
+    choices.push({ label: t(project.currentKind() === "image" ? "export.copyImage" : "export.copyText"), value: "copy", primary: true }, { label: t("export.pageImage"), value: "page" });
+    if (cur && project.isInTree(cur)) choices.push({ label: t("export.branchImage"), value: "branch" });
+    choices.push({ label: t("export.bookImage"), value: "book" });
+  } else choices.push({ label: t("export.copyDraft"), value: "copy", primary: true }, { label: t("export.draftImage"), value: "draft" });
+  const v = await openChoiceSheet(t("export.title"), t(inBook ? "export.msgBook" : "export.msgDraft"), choices);
+  if (v == null) return;
+  if (v === "copy") { await copyCurrentPage(); return; }
+  await exportLongImageFlow(v);
+}
+/** 编辑器此刻的样子 → 长图的尺子（WYSIWYG：字体栈、字号、行高、正文框宽、纸色、墨色、写字线）。 */
+function editorLook(): LongImageLook {
+  const cs = getComputedStyle(editorEl), root = getComputedStyle(document.documentElement), pg = getComputedStyle(pageEl);
+  const v = (name: string, fallback: string): string => root.getPropertyValue(name).trim() || pg.getPropertyValue(name).trim() || fallback;
+  const lh = paper.lineHeight(); const ruleY = parseFloat(pg.getPropertyValue("--rule-y"));
+  return {
+    family: cs.fontFamily, fontPx: parseFloat(cs.fontSize) || 20, lineHeight: lh, innerWidth: editorEl.clientWidth || 400,
+    paper: pg.backgroundColor || "#fff", ink: v("--ink", "#1b1b1b"), inkSoft: cs.color || "#222222", muted: v("--ink-muted", "#888888"),
+    rule: document.body.classList.contains("ruled-lines") ? v("--line", "#d8d2c4") : null, ruleY: Number.isFinite(ruleY) ? ruleY : lh * 0.8,
+  };
+}
+async function imageRef(bytes: Uint8Array): Promise<ImageRef> { const blob = new Blob([bytes as unknown as BlobPart]); const { w, h } = await probeSize(blob); return { blob, w, h }; }
+/** 收集要画的东西：txt 稿 = 整篇；书 = 这一页 / 这一支（子树 DFS）/ 整本（全树 DFS，散页不含）；图片页原位；封面 = graph.json cover 指的那页的高清字节。 */
+async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | null> {
+  const sliceLabel = (i: number, n: number): string => t("export.sliceLabel", { i, n });
+  if (scope === "draft") {
+    const text = editorEl.value; if (!text.trim()) return null;
+    const st = editor.state; const stem = st.name ? parseDocName(st.name).stem : (st.pendingTitle || st.pendingDate || "");
+    const { date, title } = splitDatedName(stem);
+    return { title: title || stem, date, cover: null, sections: [{ kind: "text", heading: null, text }], look: editorLook(), sliceLabel };
+  }
+  const s = project.session(); const cur = project.current(); if (!s || !cur) return null;
+  project.commitEditor();
+  const names = scope === "page" ? [cur] : scope === "branch" ? s.branchOrder(cur) : s.order();
+  const sections: LongImageSection[] = [];
+  for (const n of names) {
+    const k = nodeKind(n);
+    if (k === "txt") sections.push({ kind: "text", heading: nodeDisplayName(n), text: readNodeText(s.project, n) ?? "" });
+    else if (k === "image") { const b = s.bytesOf(n); if (b) sections.push({ kind: "image", heading: null, image: await imageRef(b) }); }
+  }
+  if (!sections.length) return null;
+  const stem = parseDocName(project.name() ?? "").stem; const { date, title } = splitDatedName(stem);
+  const cp = project.coverPage(); const cb = cp && nodeKind(cp) === "image" ? s.bytesOf(cp) : null;
+  return { title: title || stem, date, cover: cb ? await imageRef(cb) : null, sections, look: editorLook(), sliceLabel };
+}
+async function renderLongImageFiles(scope: LongImageScope): Promise<{ files: File[]; plan: LongImagePlan } | null> {
+  const spec = await collectLongImage(scope); if (!spec) return null;
+  const plan = planLongImage(spec, createTextMeasurer());
+  const base = (spec.title || "export").replace(/[\\/:*?"<>|]/g, "-");
+  const files: File[] = [];
+  for (let i = 0; i < plan.slices.length; i++) {
+    const sl = plan.slices[i]!;
+    const img = await paintScene(sl.w, sl.h, spec.look.paper, sl.ops);
+    const png = await encodePng(img.data, img.w, img.h, 0);
+    files.push(new File([png as unknown as BlobPart], plan.slices.length > 1 ? `${base}-${i + 1}.png` : `${base}.png`, { type: "image/png" }));
+  }
+  return { files, plan };
+}
+async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
+  let r: { files: File[]; plan: LongImagePlan } | null;
+  try { r = await withBusy(t("export.making"), () => renderLongImageFiles(scope)); }
+  catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); return; }
+  if (!r) { setStatus(t("export.empty")); return; }
+  const { files, plan } = r;
+  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+  const canShare = typeof navigator.share === "function" && !!nav.canShare?.({ files });
+  const canCopy = files.length === 1 && typeof ClipboardItem !== "undefined" && !!navigator.clipboard?.write;
+  const choices: Choice<"share" | "download" | "copy">[] = [];
+  if (canShare) choices.push({ label: t("export.share"), value: "share", primary: true });
+  choices.push({ label: t("export.download"), value: "download", primary: !canShare });
+  if (canCopy) choices.push({ label: t("export.copyPng"), value: "copy" });
+  const v = await openChoiceSheet(t("export.readyTitle", { n: files.length }), t("export.readyMsg", { cjk: plan.cjk, en: plan.en, pages: plan.textPages, images: plan.imagePages }), choices);
+  if (v == null) return;
+  try {
+    if (v === "share") { await navigator.share({ files, title: files[0]!.name }); setStatus(t("export.shared")); }
+    else if (v === "copy") { await navigator.clipboard.write([new ClipboardItem({ "image/png": files[0]! })]); setStatus(t("export.copied")); }
+    else { for (let i = 0; i < files.length; i++) { triggerDownload(files[i]!, files[i]!.name); if (i < files.length - 1) await new Promise((res) => setTimeout(res, 350)); } setStatus(t("export.downloaded", { n: files.length })); }
+  } catch (e) { if ((e as { name?: string })?.name === "AbortError") return; reportError(e, "log"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); }
+}
 // ── 图片页（2.1，ADR-0012/0013）：单一漏斗 importImageFiles（文件选择 / 多选 / 拖放 / 粘贴 / 替换都走 slimImage）──
 const imageFileInput = $<HTMLInputElement>("imageFileInput"), imageReplaceInput = $<HTMLInputElement>("imageReplaceInput");
 let pendingHd = false;   // 「保留高清」勾（sheet 里选，跟着这一次选择）
@@ -510,15 +601,22 @@ async function importImageFiles(files: File[], opts: { hd: boolean; unnamed?: bo
   }
   if (bad.length) setStatus(t("img.notImage", { name: bad.join(", ") }), { error: true });
 }
-/** 设为封面：当前图片页 → Thumbnails/thumbnail.png（ADR-0012：封面就是这个 entry，没有 cover 字段；腰封文本若已有则保留）。 */
+/** 设为封面：当前图片页 → Thumbnails/thumbnail.png（ADR-0012：封面就是这个 entry；腰封文本若已有则保留）+ graph.json `cover` 记下来源页（2026-09-30 修订，user「加 cover 字段」：导出长图 / PDF 要取高清图）。 */
 async function setCoverFlow(): Promise<void> {
   const bytes = project.pageBytes(); if (!bytes || project.currentKind() !== "image") return;
   if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
   try {
     const old = project.thumbnail(); const blurb = old ? (readPngText(old)[PNG_BLURB_KEYWORD] ?? null) : null;
     const png = await withBusy(t("img.making"), () => makeCoverPng(bytes, blurb));
-    if (project.setThumbnail(png)) { setStatus(t("img.coverSet")); galleryHost.invalidateThumb(project.name() ?? ""); }
+    if (project.setThumbnail(png, project.current())) { setStatus(t("img.coverSet")); galleryHost.invalidateThumb(project.name() ?? ""); renderCoverButton(); }
   } catch (e) { reportError(e, "warning"); setStatus(t("img.failed", { e: errText(e) }), { error: true }); }
+}
+/** 「设为封面」钮的状态：这一页已是封面来源（graph.json cover）→ 灰 + 「当前封面」。 */
+function renderCoverButton(): void {
+  if (!project.active() || project.currentKind() !== "image") return;
+  const b = $<HTMLButtonElement>("pageImageCover"); const cur = project.current();
+  const isCover = !!cur && project.coverPage() === cur;
+  b.disabled = isCover; b.textContent = t(isCover ? "img.isCover" : "img.setCover");
 }
 /** 替换图片：保名保边（字节类型变了扩展名跟着变）；它若正是封面（重算 thumb 比对字节，零字段）→ 封面跟着换。 */
 async function replaceImageFlow(file: File, opts: { hd: boolean }): Promise<void> {
@@ -527,11 +625,12 @@ async function replaceImageFlow(file: File, opts: { hd: boolean }): Promise<void
   try {
     const r = await withBusy(t("img.making"), () => slimImage(file, { hd: opts.hd }));
     if (r.fatGif && !(await openConfirmSheet(t("img.fatGifTitle"), t("img.fatGifMsg", { name: file.name, size: humanSize(r.bytes.length) }), { okLabel: t("img.fatGifOk") }))) return;
-    const oldBytes = project.pageBytes(), thumb = project.thumbnail();
-    let wasCover = false, blurb: string | null = null;
-    if (oldBytes && thumb) { blurb = readPngText(thumb)[PNG_BLURB_KEYWORD] ?? null; wasCover = bytesEqual(await makeCoverPng(oldBytes, null), withPngText(thumb, PNG_BLURB_KEYWORD, null)); }
+    const oldBytes = project.pageBytes(), thumb = project.thumbnail(), cur0 = project.current();
+    const blurb: string | null = thumb ? (readPngText(thumb)[PNG_BLURB_KEYWORD] ?? null) : null;
+    let wasCover = !!cur0 && project.coverPage() === cur0;   // graph.json cover（2026-09-30）
+    if (!wasCover && !project.coverPage() && oldBytes && thumb) wasCover = bytesEqual(await makeCoverPng(oldBytes, null), withPngText(thumb, PNG_BLURB_KEYWORD, null));   // 老书没有 cover 字段：退回字节比对（ADR-0012 §5）
     if (!project.replaceImage(r.bytes, r.ext)) return;
-    if (wasCover) { project.setThumbnail(await makeCoverPng(r.bytes, blurb)); galleryHost.invalidateThumb(project.name() ?? ""); }
+    if (wasCover) { project.setThumbnail(await makeCoverPng(r.bytes, blurb), project.current()); galleryHost.invalidateThumb(project.name() ?? ""); renderCoverButton(); }
     setStatus(wasCover ? t("img.replacedCover") : t("img.replaced"));
   } catch (e) { if (e instanceof NotAnImageError) setStatus(t("img.notImage", { name: file.name }), { error: true }); else { reportError(e, "warning"); setStatus(t("img.failed", { e: errText(e) }), { error: true }); } }
 }
@@ -1603,4 +1702,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

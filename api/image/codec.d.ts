@@ -11,3 +11,56 @@ export declare function probeSize(blob: Blob): Promise<{
 export declare function encodeJpeg(rgba: Uint8ClampedArray, w: number, h: number, quality: number): Promise<Uint8Array>;
 /** PNG 编码（vendored UPNG，惰性加载）：colors=0 无损 RGBA8；>0 调色板量化（封面缩略图预算档）。 */
 export declare function encodePng(rgba: Uint8ClampedArray, w: number, h: number, colors: number): Promise<Uint8Array>;
+export interface TextStyle {
+    family: string;
+    sizePx: number;
+    weight?: number | string;
+    color: string;
+}
+export type SceneOp = {
+    op: "rect";
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color: string;
+} | {
+    op: "line";
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    color: string;
+    width: number;
+} | {
+    op: "text";
+    x: number;
+    y: number;
+    text: string;
+    style: TextStyle;
+    align?: "left" | "center" | "right";
+} | {
+    op: "image";
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    blob: Blob;
+    crop?: {
+        sx: number;
+        sy: number;
+        sw: number;
+        sh: number;
+    };
+};
+export interface TextMeasurer {
+    width(text: string, style: TextStyle): number;
+    ascent(style: TextStyle): {
+        asc: number;
+        desc: number;
+    };
+}
+/** 量字宽（一个 8×8 的量尺 canvas，单字宽度有缓存）。ascent = 字体的上下伸（浏览器不给 fontBoundingBox 就按 CJK 常见比例估）。 */
+export declare function createTextMeasurer(): TextMeasurer;
+/** 把显示列表画成一张 RGBA（bg 先铺满）。图片 op 经浏览器解码器 + drawImage（高质量重采样）；画完读出一次。 */
+export declare function paintScene(w: number, h: number, bg: string, ops: SceneOp[]): Promise<RgbaImage>;

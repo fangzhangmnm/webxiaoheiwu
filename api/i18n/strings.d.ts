@@ -2069,8 +2069,8 @@ export declare const S: {
         readonly en: "Export";
     };
     readonly "sidebar.exportTitle": {
-        readonly zh: "把这一页全文复制到剪贴板";
-        readonly en: "Copy this page’s full text to the clipboard";
+        readonly zh: "导出：复制文字 / 长图";
+        readonly en: "Export: copy text / long image";
     };
     readonly "copy.done": {
         readonly zh: "已复制全页：{cjk} 字 {en} 词";
@@ -2095,6 +2095,102 @@ export declare const S: {
     readonly "copy.imageUnsupported": {
         readonly zh: "这个浏览器不支持把图片复制到剪贴板";
         readonly en: "This browser can’t copy images to the clipboard";
+    };
+    readonly "export.title": {
+        readonly zh: "导出";
+        readonly en: "Export";
+    };
+    readonly "export.msgBook": {
+        readonly zh: "长图按编辑器此刻的字体和行宽排，封面和插图一起；约三屏一张，太长自动切开。";
+        readonly en: "Long images use the editor’s current font and line width, cover and illustrations included; about three screens per image, split automatically.";
+    };
+    readonly "export.msgDraft": {
+        readonly zh: "长图按编辑器此刻的字体和行宽排；约三屏一张，太长自动切开。";
+        readonly en: "Long images use the editor’s current font and line width; about three screens per image, split automatically.";
+    };
+    readonly "export.copyText": {
+        readonly zh: "复制这一页文字";
+        readonly en: "Copy this page’s text";
+    };
+    readonly "export.copyDraft": {
+        readonly zh: "复制全文";
+        readonly en: "Copy the whole text";
+    };
+    readonly "export.copyImage": {
+        readonly zh: "复制这张图";
+        readonly en: "Copy this image";
+    };
+    readonly "export.pageImage": {
+        readonly zh: "这一页 → 长图";
+        readonly en: "This page → long image";
+    };
+    readonly "export.branchImage": {
+        readonly zh: "这一支 → 长图";
+        readonly en: "This branch → long image";
+    };
+    readonly "export.bookImage": {
+        readonly zh: "整本 → 长图";
+        readonly en: "Whole book → long image";
+    };
+    readonly "export.draftImage": {
+        readonly zh: "整篇 → 长图";
+        readonly en: "Whole draft → long image";
+    };
+    readonly "export.making": {
+        readonly zh: "生成长图…";
+        readonly en: "Making the long image…";
+    };
+    readonly "export.readyTitle": {
+        readonly zh: "长图好了：{n} 张";
+        readonly en: "Long image ready: {n}";
+    };
+    readonly "export.readyMsg": {
+        readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文 · {images} 张图";
+        readonly en: "{cjk} chars · {en} words · {pages} text pages · {images} images";
+    };
+    readonly "export.share": {
+        readonly zh: "分享…";
+        readonly en: "Share…";
+    };
+    readonly "export.download": {
+        readonly zh: "下载";
+        readonly en: "Download";
+    };
+    readonly "export.copyPng": {
+        readonly zh: "复制到剪贴板";
+        readonly en: "Copy to clipboard";
+    };
+    readonly "export.shared": {
+        readonly zh: "已分享";
+        readonly en: "Shared";
+    };
+    readonly "export.downloaded": {
+        readonly zh: "已下载 {n} 张";
+        readonly en: "Downloaded {n}";
+    };
+    readonly "export.copied": {
+        readonly zh: "已复制长图";
+        readonly en: "Long image copied";
+    };
+    readonly "export.sliceLabel": {
+        readonly zh: "{i} / {n}";
+        readonly en: "{i} / {n}";
+    };
+    readonly "export.empty": {
+        readonly zh: "没有可导出的内容";
+        readonly en: "Nothing to export";
+    };
+    readonly "export.locked": {
+        readonly zh: "已锁定，先解锁再导出";
+        readonly en: "Locked — unlock first to export";
+    };
+    readonly "export.failed": {
+        readonly zh: "长图生成失败：{e}";
+        readonly en: "Long image failed: {e}";
+    };
+    readonly "img.isCover": {
+        readonly zh: "当前封面";
+        readonly en: "Current cover";
     };
     readonly "kin.parentTitle": {
         readonly zh: "回到上一级：{name}";

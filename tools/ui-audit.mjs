@@ -68,10 +68,17 @@ for (const [w, h] of sizes) {
   probe(tag, "☰ opens sidebar", await sidebarShown());
   // v2.1.9 侧栏「导出」（user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮」）：书库 | 导出 | 设置；一下 = 当前页全文进剪贴板 + toast「已复制全页」
   probe(tag, "sidebar top entries = 书库 | 导出 | 参考窗 | 设置 in that order, icon-only (labels visually hidden; export icon; 参考窗 entry only shown in book mode — ADR-0016)", await page.evaluate(() => { const ids = [...document.querySelectorAll(".edge-entries .edge-entry")].map((b) => b.id); const x = (id) => document.getElementById(id).getBoundingClientRect().left; const vis = ids.filter((id) => !document.getElementById(id).hidden); return JSON.stringify(ids) === JSON.stringify(["edgeLibrary", "edgeExport", "edgeReference", "edgeSettings"]) && vis.every((id, i) => i === 0 || x(vis[i - 1]) < x(id)) && document.querySelector("#edgeExport span").textContent === "导出" && !!document.querySelector("#edgeExport use[href='#export']") && document.getElementById("edgeReference").hidden === !document.body.dataset.project && vis.every((id) => getComputedStyle(document.querySelector("#" + id + " span")).position === "absolute"); }), await page.evaluate(() => [...document.querySelectorAll(".edge-entries .edge-entry")].map((b) => b.id + ":" + b.textContent.trim()).join("|")));
-  { const text = await page.inputValue("#editor"); await page.click("#edgeExport"); await wait(400);
+  // v2.3.1 导出 = 一张 sheet（复制文字 / 长图；user 2026-09-30「先做图片导出吧，这个今晚就能用」）：复制那条仍 = v2.1.9 的整页进剪贴板
+  { const text = await page.inputValue("#editor"); await page.click("#edgeExport"); await wait(300);
+    const choices = await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()));
+    probe(tag, "导出 (txt draft) → sheet: 复制全文 / 整篇 → 长图", choices.length === 2 && /复制全文/.test(choices[0]) && /整篇 → 长图/.test(choices[1]), JSON.stringify(choices));
+    await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].find((b) => /复制/.test(b.textContent))?.click()); await wait(400);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => "ERR:" + e.message));
-    probe(tag, "导出 (txt draft) → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
-    probe(tag, "sidebar stays open after 导出 (no auto-close)", await sidebarShown()); }
+    probe(tag, "导出 → 复制全文 → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
+    probe(tag, "sidebar stays open after 导出 (no auto-close)", await sidebarShown());
+    // 长图（v2.3.1）：整篇 → 1080 宽 PNG（vendored UPNG）；无头没有 navigator.share，结果 sheet 走下载 / 复制——这里直接调 __xhw.exportLongImage 验产物
+    const li = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("draft"); if (!r) return null; const f = r.files[0]; const u8 = new Uint8Array(await f.arrayBuffer()); const bm = await createImageBitmap(f); return { n: r.files.length, magic: [...u8.slice(0, 4)].join(","), w: bm.width, h: bm.height, cjk: r.plan.cjk, name: f.name }; });
+    probe(tag, "长图 (txt draft): ≥1 PNG slice, 1080 wide, ≤ 3 screens tall, word count > 0, .png name", !!li && li.n >= 1 && li.magic === "137,80,78,71" && li.w === 1080 && li.h > 200 && li.h <= 3 * 1920 && li.cjk > 0 && /\.png$/.test(li.name), JSON.stringify(li)); }
   // v2.1.18 设置住在侧栏里（user 2026-09-29「进设置的时候，关闭设置，还要关一次侧条，麻烦。不如设置和侧条都是同一个侧条里面？」）
   { await page.click("#edgeSettings"); await wait(300); await shot("02b-sidebar-settings");
     probe(tag, "侧栏里点设置 → the sidebar panel itself shows settings (no drawer, no second layer); sign-in button is there", await page.evaluate(() => { const sv = document.getElementById("settingsView"), sb = document.getElementById("edgeSidebar"); const r = sv.getBoundingClientRect(), b = sb.getBoundingClientRect(); return sb.contains(sv) && !sv.hidden && r.height > 100 && r.left >= b.left - 1 && r.right <= b.right + 1 && document.getElementById("drawer").classList.contains("hidden") && document.getElementById("drawerBackdrop").classList.contains("hidden") && !!document.querySelector("#authRow button") && getComputedStyle(document.querySelector(".edge-entries")).display === "none"; }));
@@ -509,6 +516,8 @@ for (const [w, h] of sizes) {
   if (w < 900) await ensureSidebar(false);   // 窄屏侧栏是浮层，盖着纸面上的钮
   await page.click("#pageImageCover"); await page.waitForFunction(() => !!window.__xhw.project.thumbnail(), null, { timeout: 30000 }); await wait(300);
   const thumb1 = await page.evaluate(() => Array.from(window.__xhw.project.thumbnail()));
+  // graph.json cover（2026-09-30 user「加 cover 字段」）：设为封面记下来源页；钮变灰「当前封面」
+  probe(tag, "设为封面 → coverPage() = this page + button disabled 当前封面", await page.evaluate(() => window.__xhw.project.coverPage() === window.__xhw.project.current() && document.getElementById("pageImageCover").disabled && /当前封面/.test(document.getElementById("pageImageCover").textContent)), await page.evaluate(() => `cover=${window.__xhw.project.coverPage()} cur=${window.__xhw.project.current()}`));
   probe(tag, "set as cover → Thumbnails/thumbnail.png bytes present, PNG, ≤ 70 KB", thumb1.length > 0 && thumb1[1] === 0x50 && thumb1.length <= 70 * 1024, String(thumb1.length));
   // 替换图片（封面跟着换）：sheet → 确认 → file input
   if (w < 900) await ensureSidebar(false);
@@ -518,8 +527,13 @@ for (const [w, h] of sizes) {
   const thumb2 = await page.evaluate(() => Array.from(window.__xhw.project.thumbnail()));
   probe(tag, "replace image on the cover page → cover regenerated (bytes differ), name kept", thumb2.length > 0 && thumb2.join() !== thumb1.join() && (await page.evaluate(() => window.__xhw.project.current())) === "地图.jpg", await page.textContent("#toast"));
   // v2.1.9 导出图片页 = 图片本身进剪贴板（jpg → PNG 经 codec）
-  await ensureSidebar(true); await page.click("#edgeExport"); await wait(1500);
+  await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
+  probe(tag, "导出 sheet on an image page = 复制这张图 / 这一页 / 这一支 / 整本", await page.evaluate(() => { const c = [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()); return c.length === 4 && /复制这张图/.test(c[0]) && /这一页 → 长图/.test(c[1]) && /这一支 → 长图/.test(c[2]) && /整本 → 长图/.test(c[3]); }), await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()).join("|")));
+  await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].find((b) => /复制这张图/.test(b.textContent))?.click()); await wait(1500);
   probe(tag, "导出 on an image page → clipboard holds image/png + toast 已复制这张图", await page.evaluate(async () => { try { const items = await navigator.clipboard.read(); return items.some((it) => it.types.includes("image/png")); } catch (e) { return "ERR:" + e.message; } }) === true && /已复制这张图/.test(await page.textContent("#toast")), await page.textContent("#toast"));
+  // 整本 → 长图：封面（cover 字段指的那页的高清字节）铺首屏 + 正文页 + 图片页原位
+  { const li = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book"); if (!r) return null; const bm = await createImageBitmap(r.files[0]); return { n: r.files.length, w: bm.width, h: bm.height, text: r.plan.textPages, images: r.plan.imagePages, cjk: r.plan.cjk }; });
+    probe(tag, "长图 (整本): cover from graph.json cover page + ≥1 text page + ≥1 image page, 1080 wide", !!li && li.n >= 1 && li.w === 1080 && li.text >= 1 && li.images >= 1 && li.h > 1080, JSON.stringify(li)); }
   // 断入边：先从 序章 链到 地图.jpg，图片页的「谁指向这里」列出 序章 → 断开
   await page.evaluate(() => { const p = window.__xhw.project; p.jump("序章.txt"); p.addLink("地图.jpg"); p.jump("地图.jpg"); window.__xhw.sidebar.render(); }); await wait(150);
   await ensureSidebar(true);

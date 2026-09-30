@@ -212,6 +212,13 @@ user 原话要点：「没网的小孩和我可能也对实体感兴趣。之前
 
 **§7 的十问作废**，等下一轮 user 自己起头。
 
+## 9. 落地记录（2026-09-30 晚，v2.3.1）
+- user「先做图片导出吧，这个今晚就能用。你需要什么？需要我找一个我能接受的字体吗？现在我们用的是什么字体？」「cover字段一起做，这种契约级别的东西越早改越好」。
+- **已落**：`cover` 字段（ADR-0012 修订）+ 长图（侧栏「导出」sheet：复制文字 / 这一页 · 这一支 · 整本 → 长图；txt 稿 = 整篇）。WYSIWYG = 编辑器此刻的 computed style；约三屏一张；分享走 Web Share API（手势内）/ 下载 / 剪贴板。细节 = WXHW CLAUDE.md v2.3.1 条；目视样张 `tmp/round0930/`（不进 git）。
+- **字体**：现在 = 系统字体栈 `--font-editor`（-apple-system / PingFang SC / Microsoft YaHei / Segoe UI / system-ui），**没有 vendor 字体**——各设备出的图字体不同（iPad 苹方、Win 微软雅黑、Quest Noto）。要固定字体：给我一个 TTF/OTF + 可再分发的许可证，vendor 进仓 `vendor/fonts/`、FontFace 装上、换 look.family 一行。
+- **未做**（等 user）：hidden 字段（§8）；切片张数 / 整张选项；封面来源三选里的另两条（现在 = `cover` 字段指的页，没有就只印书名）；PDF；markdown 树文本；实体 / 拼版下一轮。
+
+
 ## 7.（作废，见 §8）原「等 user 拍板」清单
 
 ① 旗子四个值要不要 `old`（还是「笔记」就够）；四个中文词。

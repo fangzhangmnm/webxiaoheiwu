@@ -28,6 +28,7 @@ export interface ProjectGraphJson {
     version: number;
     wroteWith: string;
     readOnly?: boolean;
+    cover?: string;
     tree: TreeNode[];
     pages: Record<string, NodeMeta>;
 }
@@ -57,6 +58,8 @@ export interface Project {
     readOnly: boolean;
     /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
     thumbnail: Uint8Array | null;
+    /** 封面来源页（graph.json `cover`；2026-09-30 user「加 cover 字段」「契约级别的东西越早改越好」）：「设为封面」时抄下来的图片页名。thumbnail 仍是快照本体，这里只记出处（导出长图 / PDF 取高清图）。null = 无出处。 */
+    cover: string | null;
     /** 参考窗目录（ADR-0016）：路径（含 REFERENCES_DIR 前缀）→ 字节。本模块零知识，原样进出；内容由 @internal/reference-window 编解码。 */
     references: Map<string, Uint8Array>;
     /** 增量重打（ADR-0015）：字节对象 → 它上次进 zip 时的已压缩 entry。键是**对象身份**：页一改（writeNodeText 换新 Uint8Array）自然失效，改名 / 搬树不换对象照样命中；不用记脏页集合。 */

@@ -116,6 +116,7 @@ export function renameNode(p: Project, from: string, to: string, now: NowFn = DE
   const k = nameKey(src);
   for (const [, mm] of p.nodes) mm.links = mm.links.map((l) => (nameKey(l) === k ? t : l));
   p.tree = mapTreeNames(p.tree, (n) => (nameKey(n) === k ? t : n));
+  if (p.cover && nameKey(p.cover) === k) p.cover = t;   // 封面来源页跟着改名（graph.json cover）
   if (p.editorState.last && nameKey(p.editorState.last) === k) p.editorState.last = t;
   p.editorState.back = p.editorState.back.map((n) => (nameKey(n) === k ? t : n));
 }
@@ -152,6 +153,7 @@ export function deleteNode(p: Project, name: string): boolean {
   const loc = locate(p.tree, n);
   if (loc) loc.arr.splice(loc.index, 1, ...treeNodeChildren(loc.arr[loc.index]!));
   collapseEmpty(p);
+  if (p.cover && nameKey(p.cover) === k) p.cover = null;   // 来源页没了 = 封面无出处（thumbnail 快照留着）
   if (p.editorState.last === n) p.editorState.last = null;
   p.editorState.back = p.editorState.back.filter((x) => x !== n);
   return true;
@@ -303,9 +305,13 @@ export function insertChild(p: Project, parent: string, newName: string, now: No
   return { name: r.name, created: r.created, placed: true };
 }
 /** 导出这一支（ADR-0014 §6）：选中页的子树前序 DFS，把 txt 页的正文用 `\n\n` 拼成一个文本（图片页 / 其他页跳过）。不在树里 → 只有它自己。 */
-export function exportSubtree(p: Project, name: string): string {
+/** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导出（txt / 长图）都从这里取序。 */
+export function subtreeOrder(p: Project, name: string): string[] {
   const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
   const l = locate(p.tree, n);
-  const order = l ? dfsOrder(p, [l.arr[l.index]!]) : [n];
+  return l ? dfsOrder(p, [l.arr[l.index]!]) : [n];
+}
+export function exportSubtree(p: Project, name: string): string {
+  const order = subtreeOrder(p, name);
   return order.filter((x) => nodeKind(x) === "txt").map((x) => (readNodeText(p, x) ?? "").replace(/\s+$/, "")).join("\n\n") + "\n";
 }

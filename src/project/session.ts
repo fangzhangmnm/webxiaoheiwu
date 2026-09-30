@@ -6,7 +6,7 @@
 //   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 废弃 / 彻底删 /
 //     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页（可指定位置）/ 封面 / 断入边 / 修改锁本身。删除模型 = 断开链接 / 废弃 / 彻底删除 三个显式动词，无引用计数（ADR-0014 §8）
 import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
-import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes,
+import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes, subtreeOrder,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 
 /** 参考窗目录的进出口（ADR-0016）：session 对目录零知识——保存前向宿主要一份，读到的整份由 mode 交出去。 */
@@ -128,9 +128,15 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const replaceBytes = guard((target: string, bytes: Uint8Array) => replaceNodeBytes(project, target, bytes, now));
   const currentBytes = (): Uint8Array | null => { const c = current(); return c ? (project.contents.get(c) ?? null) : null; };
   const bytesOf = (target: string): Uint8Array | null => { const n = resolveName(project, target); return n ? (project.contents.get(n) ?? null) : null; };
-  /** 封面 = Thumbnails/thumbnail.png 本身（ADR-0012；没有 cover 字段）：设 / 清都是正经改动。 */
-  const setThumbnail = guard((png: Uint8Array | null) => { project.thumbnail = png && png.length ? png : null; });
+  /** 封面 = Thumbnails/thumbnail.png 本身（ADR-0012）+ 来源页 graph.json `cover`（2026-09-30 修订，user「加 cover 字段」）：设 / 清都是正经改动。
+   *  source = 这张封面从哪一页生成的（图片页名）；不给 / 解析不到 = 无出处；png 为 null（清封面）时出处一并清。 */
+  const setThumbnail = guard((png: Uint8Array | null, source?: string | null) => {
+    project.thumbnail = png && png.length ? png : null;
+    project.cover = project.thumbnail && source ? resolveName(project, source) : null;
+  });
   const thumbnail = (): Uint8Array | null => project.thumbnail;
+  /** 封面来源页（graph.json cover；没有 = null）。 */
+  const coverPage = (): string | null => project.cover;
 
   // ── 查询（零态度：无全图、无计数）──
   /** 当前页的邻域（侧栏数据；ADR-0014 §7）：树里 = 父 / 兄弟 / 孩子；links = 出边；incoming = 谁指向这里。 */
@@ -149,6 +155,8 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const order = () => dfsOrder(project);
   /** 导出这一支：target 子树 DFS 拼接的正文（ADR-0014 §6）。 */
   const exportBranch = (target: string) => exportSubtree(project, target);
+  /** 这一支的页序（子树前序 DFS；散页 = 只有自己）。长图 / PDF 导出取序用。 */
+  const branchOrder = (target: string) => subtreeOrder(project, target);
 
   // ── 落盘 ──
   /** opts.force：不脏也写（推云节律用——本地 200ms 落盘已清 dirty，15s 后推云还得把同一份字节以 tryPush 再交给库，否则永远推不出去）。 */
@@ -173,9 +181,9 @@ export function createProjectSession(d: ProjectSessionDeps) {
     open, create, close, flush, toBlob, adoptName, setBack, touchReferences,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, setTimes, remove, discard, purge, setReadOnly,
-    cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail,
+    cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail, coverPage,
     treeUp, treeDown, treeOutdent, treeIndent, treeDetach, archiveAfter, archiveUnder, archiveAtEnd, newSibling, newChild,
-    neighborhood, sidebar, backlinksOf, find, exists, pathOf, isInTree, order, exportBranch, canMutate,
+    neighborhood, sidebar, backlinksOf, find, exists, pathOf, isInTree, order, branchOrder, exportBranch, canMutate,
   };
 }
 export type ProjectSession = ReturnType<typeof createProjectSession>;

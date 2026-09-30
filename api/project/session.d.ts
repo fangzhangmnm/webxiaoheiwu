@@ -71,8 +71,9 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     replaceBytes: (target: string, bytes: Uint8Array<ArrayBufferLike>) => void;
     currentBytes: () => Uint8Array | null;
     bytesOf: (target: string) => Uint8Array | null;
-    setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => void;
+    setThumbnail: (png: Uint8Array<ArrayBufferLike> | null, source?: string | null | undefined) => void;
     thumbnail: () => Uint8Array | null;
+    coverPage: () => string | null;
     treeUp: (target: string) => boolean;
     treeDown: (target: string) => boolean;
     treeOutdent: (target: string) => boolean;
@@ -111,6 +112,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     pathOf: (target: string) => string[];
     isInTree: (target: string) => boolean;
     order: () => string[];
+    branchOrder: (target: string) => string[];
     exportBranch: (target: string) => string;
     canMutate: () => boolean;
 };

@@ -21,3 +21,11 @@
 - ADR-0008 目录清单加 `Thumbnails/thumbnail.png`（最后一个 entry）；§5「2.0 不做」两条作废。
 - gallery 包 0.2.0/0.2.1：`core/thumbs/make-thumb`、`core/thumbs/png-text`、tooltip、`tile.aspect`、`thumbs.has`、`gal.tile.active`（WeebPaint 收货时换掉自家 `renderThumbnailAdaptive`）。
 - 酒馆卡（`chara` 文本块）不串扰：封面从像素重新生成，来源图的文本块不会被抄过来；进门剥 metadata 会把酒馆卡废掉，user「酒馆卡我们现在确实不做不支持。不用特殊处理」。
+
+## 修订 2026-09-30（graph.json 加 `cover` 字段 = 封面的来源页；edited by Claude Fable 5.1）
+- user 2026-09-30「加 cover 字段」「cover字段一起做，这种契约级别的东西越早改越好」。起因 = 导出纪元：长图 / PDF 要印**高清**封面，而 `Thumbnails/thumbnail.png` 只有 ≤256²；user 问「我选中插画页 send to cover art 的时候是做了一个 copy，然后没有对插画页的引用？」——是，§1 当年就是这么定的，现在补上出处。
+- **§1 改为**：封面本体仍是 `Thumbnails/thumbnail.png`（快照，规格 §2 不动，书库尾读不动）；graph.json 顶层多一个可选 `cover: "<图片页完整文件名>"` = 「设为封面」时的来源页。**只记出处，不定语义**：thumbnail 不会因为来源页改了字节而自动重生（app 不在用户没叫它的时候自己动）；改名跟着改（同 links / tree）；彻底删除即清（宽容读：悬空 → 丢 + warning；严格写：来源页没文件就不写）。没有这个字段 = 封面无出处（老书 / 来源页已删），长图 / PDF 只印字封面。
+- **§5 简化**：替换图片时「要不要跟着换封面」先看 `cover` 字段；老书没有字段才退回字节比对。
+- 「否决」里的第一条（`cover` 字段：发明字段；页删了字段悬空）撤销——悬空由 ADR-0014 §3 的宽容读 / 严格写兜住，字段现在有真需求。
+- version 仍 2（refPanel / references 同款加法）。比 v2.3.1 老的 app 打开再保存会丢这个字段（它只写 links / created / modified）；目前无此风险（prod 是 v2.2.0 之前只有 0.2.21，开不了 v2 书）。
+- 落地 v2.3.1：`format.ts`（`Project.cover` / graph 读写）、`graph.ts`（renameNode / deleteNode 跟随）、`session.setThumbnail(png, source)` / `coverPage()`、app「设为封面」记来源 + 钮态「当前封面」；测试 `project-format` / `project-graph` 各一条；ui-audit 探针。

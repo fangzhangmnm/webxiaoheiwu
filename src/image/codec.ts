@@ -50,3 +50,56 @@ export async function encodePng(rgba: Uint8ClampedArray, w: number, h: number, c
   const { default: UPNG } = await import("../../vendor/upng/upng.esm.js");
   return new Uint8Array(UPNG.encode([new Uint8Array(rgba).buffer], w, h, colors));
 }
+
+// ── 画一张场景（长图导出，2026-09-30 user「先做图片导出吧，这个今晚就能用」）：排版在 src/export/long-image.ts 算好一张显示列表，这里只负责量字宽与落像素——canvas 仍只在本文件。
+//   字体 = 调用方给的 family 字符串（此刻是编辑器的系统字体栈；将来 vendor 自己的字体 = 先 FontFace 装上再给名字），本模块不认识字体文件。
+export interface TextStyle { family: string; sizePx: number; weight?: number | string; color: string }
+export type SceneOp =
+  | { op: "rect"; x: number; y: number; w: number; h: number; color: string }
+  | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: string; width: number }
+  | { op: "text"; x: number; y: number; text: string; style: TextStyle; align?: "left" | "center" | "right" }   // y = 基线
+  | { op: "image"; x: number; y: number; w: number; h: number; blob: Blob; crop?: { sx: number; sy: number; sw: number; sh: number } };
+export interface TextMeasurer { width(text: string, style: TextStyle): number; ascent(style: TextStyle): { asc: number; desc: number } }
+const fontString = (st: TextStyle): string => `${st.weight ?? 400} ${st.sizePx}px ${st.family}`;
+/** 量字宽（一个 8×8 的量尺 canvas，单字宽度有缓存）。ascent = 字体的上下伸（浏览器不给 fontBoundingBox 就按 CJK 常见比例估）。 */
+export function createTextMeasurer(): TextMeasurer {
+  const c = makeCanvas(8, 8); const cx = c.getContext("2d") as CanvasRenderingContext2D | null;
+  if (!cx) throw new Error("2d context unavailable");
+  const cache = new Map<string, number>();
+  return {
+    width(text, style) {
+      const f = fontString(style); const short = text.length <= 2; const k = f + "\0" + text;
+      if (short) { const hit = cache.get(k); if (hit !== undefined) return hit; }
+      cx.font = f; const w = cx.measureText(text).width;
+      if (short) cache.set(k, w);
+      return w;
+    },
+    ascent(style) {
+      cx.font = fontString(style);
+      const mt = cx.measureText(String.fromCharCode(0x56fd) + "Ag") as TextMetrics & { fontBoundingBoxAscent?: number; fontBoundingBoxDescent?: number };
+      const asc = mt.fontBoundingBoxAscent, desc = mt.fontBoundingBoxDescent;
+      return asc && desc ? { asc, desc } : { asc: style.sizePx * 0.88, desc: style.sizePx * 0.24 };
+    },
+  };
+}
+/** 把显示列表画成一张 RGBA（bg 先铺满）。图片 op 经浏览器解码器 + drawImage（高质量重采样）；画完读出一次。 */
+export async function paintScene(w: number, h: number, bg: string, ops: SceneOp[]): Promise<RgbaImage> {
+  const c = makeCanvas(w, h);
+  const cx = c.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D | null;
+  if (!cx) throw new Error("2d context unavailable");
+  cx.fillStyle = bg; cx.fillRect(0, 0, w, h);
+  cx.imageSmoothingEnabled = true; (cx as CanvasRenderingContext2D & { imageSmoothingQuality?: string }).imageSmoothingQuality = "high";
+  for (const o of ops) {
+    if (o.op === "rect") { cx.fillStyle = o.color; cx.fillRect(o.x, o.y, o.w, o.h); }
+    else if (o.op === "line") { cx.strokeStyle = o.color; cx.lineWidth = o.width; cx.beginPath(); cx.moveTo(o.x1, o.y1); cx.lineTo(o.x2, o.y2); cx.stroke(); }
+    else if (o.op === "text") { cx.font = fontString(o.style); cx.fillStyle = o.style.color; cx.textAlign = o.align ?? "left"; cx.textBaseline = "alphabetic"; cx.fillText(o.text, o.x, o.y); }
+    else {
+      const src = await decodeBlob(o.blob);
+      if (o.crop) cx.drawImage(src as CanvasImageSource, o.crop.sx, o.crop.sy, o.crop.sw, o.crop.sh, o.x, o.y, o.w, o.h);
+      else cx.drawImage(src as CanvasImageSource, o.x, o.y, o.w, o.h);
+      if ("close" in src) try { (src as ImageBitmap).close(); } catch { /* ignore */ }
+    }
+  }
+  const img = cx.getImageData(0, 0, w, h);
+  return { data: img.data, w, h };
+}
