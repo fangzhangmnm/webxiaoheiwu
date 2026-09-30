@@ -40,6 +40,8 @@ interface Backend {
     dumpUserDir?(): Promise<UserDictDump>;
     restoreUserDir?(dump: UserDictDump): Promise<void>;
     setSimplified?(v: boolean): Promise<void>;
+    /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
+    setPageSize?(n: number): Promise<void>;
 }
 export interface UserDictDump {
     files: {
@@ -57,6 +59,9 @@ export declare class NaturalCodeIME {
     private quoteOpen;
     private punctOverride;
     setSimplified(v: boolean): Promise<void>;
+    /** 候选每页几个（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」）：后端换掉 / 重建也要记住，所以存在这里。 */
+    pageSize: number;
+    setPageSize(n: number): Promise<void>;
     backend: Backend;
     initializeError: string | null;
     initialized: boolean;

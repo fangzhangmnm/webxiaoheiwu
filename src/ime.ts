@@ -36,6 +36,8 @@ interface Backend {
   dumpUserDir?(): Promise<UserDictDump>;
   restoreUserDir?(dump: UserDictDump): Promise<void>;
   setSimplified?(v: boolean): Promise<void>;
+  /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
+  setPageSize?(n: number): Promise<void>;
 }
 export interface UserDictDump { files: { path: string; data: string }[]; savedAt?: number; device?: string }
 
@@ -90,11 +92,14 @@ class RimeWorkerBackend implements Backend {
   simplified = true;
   /** 会话开关：简/繁（user 2026-09-04「quest 输入法拼命出繁体」）、中文标点、关 emoji 候选（luna 方案默认开，写小说是噪音）。
    *  Quest 首次部署是异步的、deploy 完成会刷新会话——开关可能被打回方案默认（繁体）→ 除了换方案后设一次，**每次起组字前再重申一次**（一次 ccall，零成本），不赌会话状态。 */
+  pageSize = 9;
   async applyOptions(): Promise<void> {
     await this.call("setOption", "simplification", this.simplified ? 1 : 0);
     await this.call("setOption", "ascii_punct", 0);
     await this.call("setOption", "emoji_suggestion", 0);
+    await this.call("setPageSize", this.pageSize);   // 同 simplification：deploy 刷新会话可能打回方案默认，每次重申
   }
+  setPageSize(n: number): Promise<void> { if (this.pageSize === n) return Promise.resolve(); this.pageSize = n; return this.enqueue(() => this.applyOptions(), { compose: false }); }
   setSchema(schema: ImeSchema): Promise<void> {
     this.schema = schema;
     return this.enqueue(async () => { await this.call("setIME", schema); await this.applyOptions(); this.resetState(); }, { compose: false });
@@ -231,6 +236,9 @@ export class NaturalCodeIME {
     return null;
   }
   async setSimplified(v: boolean): Promise<void> { this.simplified = v; if (this.backend.setSimplified) { try { await this.backend.setSimplified(v); } catch (e) { console.warn("[ime] setSimplified failed", e); } } }
+  /** 候选每页几个（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」）：后端换掉 / 重建也要记住，所以存在这里。 */
+  pageSize = 9;
+  async setPageSize(n: number): Promise<void> { this.pageSize = n; if (this.backend.setPageSize) { try { await this.backend.setPageSize(n); } catch (e) { console.warn("[ime] setPageSize failed", e); } } }
   backend: Backend = new StarterMapBackend();
   initializeError: string | null = null;
   initialized = false;
@@ -245,7 +253,7 @@ export class NaturalCodeIME {
     if (this.initialized) return;
     if (!this.initPromise) {   // 加载中连点不起第二个 worker（审计 UI-21）
       const rime = new RimeWorkerBackend();
-      rime.simplified = this.simplified;
+      rime.simplified = this.simplified; rime.pageSize = this.pageSize;
       this.backend = rime;
       this.initPromise = (async () => {
         try { await rime.initialize(schema); this.initializeError = null; }

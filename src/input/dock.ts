@@ -19,6 +19,7 @@ import { iconHtml } from "../ui/icon.ts";
 const FLOAT_LINGER_MS = 350;   // 悬浮候选条被触屏点过之后多留这么久（空着）：等手指抬起、原生手势判完
 const HIDE_DELAY_MS = 120;     // 焦点离开文本框后晚这么久才收键盘：点按钮那一下别让版面在手指底下跳
 
+const DOCK_PAGE_SIZE = 40, FLOAT_PAGE_SIZE = 9;
 export interface ImeDockDeps {
   ime: NaturalCodeIME;
   pipeline: InputPipeline;
@@ -65,8 +66,11 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
   let shown = false, hideTimer: ReturnType<typeof setTimeout> | null = null, lingerUntil = 0, lastBuffer = "", lastPage = -1;
   const form = (): KeyboardForm => (Math.min(window.innerWidth, window.innerHeight) >= 600 && window.innerWidth >= 700 ? "tablet" : "phone");
 
+  /** 候选条。手机式（软键盘）：一页 40 个、整条手指横滑、不出翻页芯片（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」；
+   *  40 个还不够时条尾留一枚 › 兜底）；PC 悬浮条：一页 9 个带序号、‹ › 翻页照旧。 */
   function candHtml(s: ReturnType<NaturalCodeIME["getState"]>, withIndex: boolean): string {
-    const chips = s.candidates.slice(0, 9).map((w, i) => `<span class="cand${i === 0 && s.page === 0 ? " first" : ""}" role="option" data-i="${i}">${withIndex ? `<span class="index">${i + 1}</span>` : ""}${esc(w)}</span>`);
+    const list = withIndex ? s.candidates.slice(0, 9) : s.candidates;
+    const chips = list.map((w, i) => `<span class="cand${i === 0 && s.page === 0 ? " first" : ""}" role="option" data-i="${i}">${withIndex ? `<span class="index">${i + 1}</span>` : ""}${esc(w)}</span>`);
     if (s.page > 0) chips.unshift(`<span class="cand nav" data-nav="prev" role="button" aria-label="${esc(d.labels.prevPage)}">${iconHtml("chevron-left", { cls: "ico" })}</span>`);
     if (s.hasMore) chips.push(`<span class="cand nav" data-nav="next" role="button" aria-label="${esc(d.labels.nextPage)}">${iconHtml("chevron-right", { cls: "ico" })}</span>`);
     return chips.join("");
@@ -79,6 +83,7 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
   function setShown(v: boolean): void {
     if (shown === v) return;
     shown = v;
+    void ime.setPageSize(v ? DOCK_PAGE_SIZE : FLOAT_PAGE_SIZE);   // 软键盘露着 = 候选一页 40 横滑；收起 = 悬浮条 9 个数字选词
     d.dock.classList.toggle("hidden", !v); d.dock.setAttribute("aria-hidden", v ? "false" : "true");
     document.body.classList.toggle("ime-docked", v);
     if (!v) keyboard.reset();

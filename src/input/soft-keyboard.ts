@@ -45,11 +45,14 @@ interface K { act: Act; v: string; label?: string; icon?: string; w?: number; cl
 const lit = (chars: string): K[] => [...chars].map((c) => ({ act: "literal" as const, v: c }));
 const litList = (list: string[]): K[] => list.map((c) => ({ act: "literal" as const, v: c }));
 // 符号层：中文态 = 中文标点（所见即所得），英文态 = ASCII。数字行两态相同。
-// 引号跟设置的引号风格走（v2.1.33，user 2026-09-30「软键盘的引号没有跟着引号风格变」）：curly 时 “”‘’ 在第一层、「」『』 在第二层；corner 时对调。
-const SYM1_ZH = (corner: boolean): K[][] => [lit("1234567890"), litList(["，", "。", "、", "？", "！", "：", "；", "……", "——", "·"]), litList([...(corner ? ["「", "」", "『", "』"] : ["“", "”", "‘", "’"]), "（", "）", "《", "》"])];
-const SYM2_ZH = (corner: boolean): K[][] => [litList([...(corner ? ["“", "”", "‘", "’"] : ["「", "」", "『", "』"]), "【", "】", "〔", "〕", "～", "￥"]), lit("-/@#%&*+=_"), lit("()[]<>\"'")];
-const SYM1_EN: K[][] = [lit("1234567890"), lit("-/:;()$&@\""), lit(".,?!'_*#")];
-const SYM2_EN: K[][] = [lit("[]{}#%^*+="), lit("_\\|~<>`$&@"), lit(".,?!'\"/-")];
+// 符号层照 iOS（v2.1.34，user 2026-09-30「可以对一下 ios 的键位」「ios 中英键位是有点不一样」，两张截图）：
+//   英：1234567890 / - / : ; ( ) $ & @ " / #+= . , ? ! ' ⌫；中：1234567890 / - / ： ； （ ） $ @ “ ” / #+= 。 ， 、 ？ ！ . ⌫
+//   引号对跟设置的引号风格（v2.1.33，user「软键盘的引号没有跟着引号风格变」）：corner 时第一层是 「」、“” 去第二层。
+//   第二层（#+=）iOS 只给了英文的：[ ] { } # % ^ * + = / _ \ | ~ < > € £ ¥ • / 123 . , ? ! '；中文照着搬（全角括号、《》、……——、·、￥）。
+const SYM1_ZH = (corner: boolean): K[][] => [lit("1234567890"), litList(["-", "/", "：", "；", "（", "）", "$", "@", ...(corner ? ["「", "」"] : ["“", "”"])]), litList(["。", "，", "、", "？", "！", "."])];
+const SYM2_ZH = (corner: boolean): K[][] => [litList(["【", "】", "｛", "｝", "#", "%", "^", "*", "+", "="]), litList(["_", "\\", "|", "～", "《", "》", "……", "——", "·", "￥"]), litList(corner ? ["“", "”", "‘", "’", "『", "』"] : ["「", "」", "『", "』", "‘", "’"])];
+const SYM1_EN: K[][] = [lit("1234567890"), lit("-/:;()$&@\""), lit(".,?!'")];
+const SYM2_EN: K[][] = [lit("[]{}#%^*+="), lit("_\\|~<>€£¥•"), lit(".,?!'")];
 
 export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
   const el = document.createElement("div");

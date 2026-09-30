@@ -421,7 +421,17 @@ function renderPageKin(): void {
 parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); editorEl.focus(); } });
 editorEl.addEventListener("input", () => { syncBodyHeight(); followCaret(); });   // 末尾续写：正文长一行目录跟着下一行；光标行不在可见区就把纸滚过去
 window.addEventListener("resize", () => { paper.refresh(); syncBodyHeight(); followCaret(); });   // 键盘 / 转屏 / 缩放改了容器高度与设备像素比
-pageBody.addEventListener("pointerdown", (e) => { if (e.target !== pageBody) return; e.preventDefault(); editorEl.focus(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });   // 正文下方的空白纸面：点了照样能写（光标到末尾），别让人以为纸「断」了
+/** 「点一下」而不是「按下」（v2.1.34，user 2026-09-30「滚动浏览的时候不应该触发软键盘」）：手指落下就给焦点的话，划纸面滚动也会把软键盘叫出来。
+ *  按下记位置，抬起时没怎么动（< 10px、< 600 ms）才算点。鼠标照旧按下即算（没有滚动手势）。 */
+function onTap(el: EventTarget, want: (e: PointerEvent) => boolean, run: (e: PointerEvent) => void, opts: { capture?: boolean } = {}): void {
+  let down: { id: number; x: number; y: number; t: number } | null = null;
+  el.addEventListener("pointerdown", (ev) => { const e = ev as PointerEvent; if (!want(e)) { down = null; return; } if (e.pointerType === "mouse") { run(e); down = null; return; } down = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() }; }, opts);
+  el.addEventListener("pointerup", (ev) => { const e = ev as PointerEvent; if (!down || down.id !== e.pointerId) return; const d = down; down = null; if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 10 && performance.now() - d.t < 600 && want(e)) run(e); }, opts);
+  el.addEventListener("pointercancel", () => { down = null; }, opts);
+}
+// 正文下方的空白纸面：点了照样能写（光标到末尾），别让人以为纸「断」了；划动不算
+pageBody.addEventListener("pointerdown", (e) => { if (e.target === pageBody) e.preventDefault(); });   // 按下别抢焦点、别起选区
+onTap(pageBody, (e) => e.target === pageBody, () => { editorEl.focus(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });
 // ── 导出 = 当前页全页进剪贴板（v2.1.9，user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮…方便的导出分享功能其实很重要」）：
 //   txt 稿 = 整篇；书的文字页 = 这一页（textarea 里的活字，所见即所得）；图片页 = 图片本身（PNG 直给，其余经 codec 转 PNG——系统剪贴板只认 PNG；ClipboardItem 里塞 Promise 保住 Safari 的用户手势）。
 //   锁着 / 空页 / 浏览器不支持 → toast 说清，不谎报已复制。
@@ -608,6 +618,7 @@ const isDirtyAny = () => (project.active() ? (project.session()?.dirty ?? false)
 async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
 /** 打开任一身份：工程 → 工程模式（txt 编辑器 park）；txt → txt 编辑器（工程模式关）。 */
 async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
+  libraryReturnTo = null;   // 换了文档：书库返回时不再重开旧的
   if (docKind(name) === "project") {
     if (!editor.isParked()) await editor.park();
     const ok = await project.openStore(name, { promptUnlock: opts.promptUnlock });
@@ -616,7 +627,26 @@ async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Pro
     return ok;
   }
   await leaveProject();
+  if (editor.isParked()) editor.resume();   // 进书库时 park 过（见 releaseForLibrary）
   return editor.open(name, opts);
+}
+// ── 进书库即关书（v2.1.34，user 2026-09-30「进书库关书同意」；起因「退出到图库之后还显示打开中」）：书库是文件管理器视角，进去就把手上的文档放下
+//   （落盘 + 释放），卡片上不再有「打开中」、随便删 / 改名、`galx.openActive` 那条路不再触发；「返回编辑器」= 重开刚才那篇（本地 IDB，快）。
+//   从书库里点开别的 / 新建 → openAny 已经换了文档，返回时什么都不做。
+let libraryReturnTo: string | null = null;
+async function releaseForLibrary(): Promise<void> {
+  libraryReturnTo = activeName();
+  if (project.active()) { await project.close(); delete document.body.dataset.project; edgeSidebar.render(); }
+  if (!editor.isParked()) await editor.park();   // park = 先 flush 再静默：不收 input、不落盘、身份清空
+  editorEl.value = "";   // 纸面别留上一篇的字（parked 期间 input 不算数）
+  renderTopbar(); setState(stateAny());
+  galleryHost.refresh();   // 「打开中」标签 / 可删性按「没有打开的」重算
+}
+async function returnFromLibrary(): Promise<void> {
+  const name = libraryReturnTo; libraryReturnTo = null;
+  if (activeName()) { editorEl.focus(); return; }   // 书库里已经开了别的（点卡片 / 新建）
+  if (name && await openAny(name)) { editorEl.focus(); return; }
+  await leaveProject(); if (editor.isParked()) editor.resume(); await editor.newDoc(); editorEl.focus();
 }
 async function newProjectFlow(): Promise<void> {
   // 默认名「作品」（user 2026-09-10「default 还是叫“作品”吧」；撞名由 createProjectDoc 加序号）；首节点「第一章」按语言生成
@@ -658,8 +688,8 @@ const galleryHost = initGalleryHost({
   activeName: () => activeName(), isDirty: () => isDirtyAny(),
   openAny, renameActive: () => renameCurrentDoc(), pushNow: () => pushNowAny(), flushLocal: () => flushLocalAny(),
   ensureUnlocked, setStatus, currentDir: () => (project.active() ? parseDocName(project.name() ?? "").dir : editor.currentDir()),
-  onOpened: () => { showLibraryView("files"); },
-  onClosed: () => { editorEl.focus(); },
+  onOpened: () => { showLibraryView("files"); void releaseForLibrary(); },
+  onClosed: () => { void returnFromLibrary(); },
 });
 $("galleryBack").addEventListener("click", () => galleryHost.close());
 $("gallerySettingsBtn").addEventListener("click", () => openDrawerSettings());
@@ -909,7 +939,7 @@ const imeDock = createImeDock({
   },
 });
 // 触屏点文本框：按「收起」收掉的键盘回来（实体键盘让位的不回来，见 kbHiddenBy）
-document.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse" && kbHiddenBy === "user" && asTextField(e.target)) { kbHiddenBy = null; setTimeout(renderImeState, 0); } }, true);
+onTap(document, (e) => e.pointerType !== "mouse" && kbHiddenBy === "user" && !!asTextField(e.target), () => { kbHiddenBy = null; setTimeout(renderImeState, 0); }, { capture: true });   // 划动滚动不算「点」（v2.1.34）
 /** 纸面左下角的键盘钮：软键盘没露着、而这台设备可能用得上（触屏为主 / Quest）时才在。点 = 召出软键盘并把焦点放回文本框。 */
 function renderKbToggle(): void {
   const usable = ime.enabled && softKeyboardPref() !== "off" && (TOUCH_PRIMARY || IS_QUEST_BROWSER) && !imeDock.keyboardShown();
