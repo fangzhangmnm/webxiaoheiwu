@@ -151,6 +151,7 @@ export const S = {
   "ui.voice.pttKey":       { zh: "语音键（本机）", en: "Voice key (this device)" },
   "ui.voice.pttKey.ctrl":  { zh: "左 Ctrl：按住说话", en: "Left Ctrl: hold to talk" },
   "ui.voice.pttKey.caps":  { zh: "CapsLock：按一下开始，再按一下停", en: "CapsLock: press to start, press again to stop" },
+  "ui.voice.pttKey.none":  { zh: "禁用：只用右下角话筒", en: "Off: mic button only" },
   "ui.voice.pttKeyHint":   { zh: "左 Ctrl 和 Ctrl+C 之类会撞车时换 CapsLock。CapsLock 会翻大小写锁，所以用它当语音键时实体键盘打的字母一律按小写进输入法。", en: "Switch to CapsLock if Left Ctrl collides with Ctrl+C and friends. CapsLock toggles caps lock, so letters typed on a hardware keyboard are folded to lowercase for the IME while it is the voice key." },
   "ui.voice.model":      { zh: "识别模型", en: "Model" },
   "ui.voice.model.sensevoice": { zh: "SenseVoice（推荐 · 228 MB · 带标点）", en: "SenseVoice (recommended · 228 MB · punctuation)" },

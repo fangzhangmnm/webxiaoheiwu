@@ -560,6 +560,10 @@ export declare const S: {
         readonly zh: "CapsLock：按一下开始，再按一下停";
         readonly en: "CapsLock: press to start, press again to stop";
     };
+    readonly "ui.voice.pttKey.none": {
+        readonly zh: "禁用：只用右下角话筒";
+        readonly en: "Off: mic button only";
+    };
     readonly "ui.voice.pttKeyHint": {
         readonly zh: "左 Ctrl 和 Ctrl+C 之类会撞车时换 CapsLock。CapsLock 会翻大小写锁，所以用它当语音键时实体键盘打的字母一律按小写进输入法。";
         readonly en: "Switch to CapsLock if Left Ctrl collides with Ctrl+C and friends. CapsLock toggles caps lock, so letters typed on a hardware keyboard are folded to lowercase for the IME while it is the voice key.";

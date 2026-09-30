@@ -50,7 +50,7 @@
 |---|---|---|
 | `@internal/store`（vendor-pkgs tgz） | IDB `webxiaoheiwu.*` + localStorage 前缀键 + sessionStorage | 库本体（稿件/回收站/备份/collections/同步态）——app 只经 `src/app-store.ts` |
 | `@internal/gallery`（vendor-pkgs tgz） | IDB `webxiaoheiwu-thumbs` | 书库封面缩略图派生缓存（gallery-native；key = store 身份、token = lastModified/size、全删可再生；user 2026-09-10「weebpaint 不是一直 idb 的吗」批；`src/gallery-host.ts` 只传库名） |
-| `src/device-kv.ts` | localStorage（GUID 前缀） | device 层标量唯一器官：imeEnabled / **softKeyboard**（auto · on · off）/ **softKeyboardHidden**（`hw` = 这台设备上次见过实体键盘，软键盘先不露；2026-09-29）/ ~~paperWidth~~（2026-09-30 撤，旧值不读不删）/ **pttKey**（`CapsLock` = 语音键切换式；缺省左 Ctrl 按住；2026-09-30）/ voiceEnabled / voiceModelSource / lang / lastOpen / gallery-folder / **last-scene**（书库里离开 → 回来在书库，2026-09-10）/ **diag-log**（黑匣子环 500 条，2026-09-09；经 deviceKvSetJson，diag-log.ts 自己不碰 localStorage） |
+| `src/device-kv.ts` | localStorage（GUID 前缀） | device 层标量唯一器官：imeEnabled / **softKeyboard**（auto · on · off）/ **softKeyboardHidden**（`hw` = 这台设备上次见过实体键盘，软键盘先不露；2026-09-29）/ ~~paperWidth~~（2026-09-30 撤，旧值不读不删）/ **pttKey**（`CapsLock` = 语音键切换式、`none` = 禁用只用话筒钮；缺省左 Ctrl 按住；2026-09-30）/ voiceEnabled / voiceModelSource / lang / lastOpen / gallery-folder / **last-scene**（书库里离开 → 回来在书库，2026-09-10）/ **diag-log**（黑匣子环 500 条，2026-09-09；经 deviceKvSetJson，diag-log.ts 自己不碰 localStorage） |
 | `service-worker.js` | Cache `xiaoheiwu-<hash>` | app 壳预缓存 + 运行时缓存 |
 | `src/pwa-shell.ts` | Cache（读键/删） | forceReset 清壳缓存，跳过 `pwa-models` |
 | `src/asr/worker.ts` | Cache `pwa-models`（家族共享名） | 语音模型包；可再生派生缓存（批） |

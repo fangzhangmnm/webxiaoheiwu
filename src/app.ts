@@ -1249,11 +1249,11 @@ editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "re
 //   v2.3.6（user 2026-09-30「语音键能用 caps 吗，左 ctrl 和 ctrl c 撞车了」）：device-kv `pttKey` 可选 **CapsLock**——它是**切换式**（按一下开始、再按一下停），不是按住：
 //   macOS / iPadOS 上 CapsLock 的 keydown 只在切亮时发、keyup 只在切灭时发（按住不发连发），按住式在那边根本站不住；Windows 正常，但切换式两边一致。
 //   CapsLock 同时会翻系统大小写锁：用它当语音键时，实体键盘打进内置输入法的字母一律折回小写（pipeline foldCapsLock），不然拼音全变大写。
-type PttKey = "ControlLeft" | "CapsLock";
-const pttKeyPref = (): PttKey => (deviceKvGet("pttKey") === "CapsLock" ? "CapsLock" : "ControlLeft");
+type PttKey = "ControlLeft" | "CapsLock" | "none";   // none = 禁用键盘语音键，只用话筒钮（user 2026-09-30「再加一个禁用的选项」）
+const pttKeyPref = (): PttKey => { const v = deviceKvGet("pttKey"); return v === "CapsLock" || v === "none" ? v : "ControlLeft"; };
 let pttBackend: VoiceSession | null = null, pttCommitted = false, pttTimer: ReturnType<typeof setTimeout> | null = null;
 let pttArmedNoPack = false;   // 没包 + 按住式：keydown 不提示（Ctrl+C 之类和弦天天弹「要先下载语音包」——user 2026-09-30「按 ctrl 的时候为什么还是显示需要下载语音包」），干净松键才提一句
-const isPttKey = (e: KeyboardEvent) => e.code === pttKeyPref();
+const isPttKey = (e: KeyboardEvent) => { const k = pttKeyPref(); return k !== "none" && e.code === k; };
 const pttIsToggle = (): boolean => pttKeyPref() === "CapsLock";
 function pttAbort(): void { if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } pttBackend?.abort(); pttBackend = null; pttCommitted = false; }
 function pttStop(): void { if (!pttBackend) return; if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } if (pttCommitted) pttBackend.stop(); else pttBackend.abort(); pttBackend = null; pttCommitted = false; }
@@ -1281,7 +1281,7 @@ document.addEventListener("keyup", (event) => {
 });
 const pttKeySelect = $<HTMLSelectElement>("pttKeySelect");
 function applyPttKey(): void { pttKeySelect.value = pttKeyPref(); input.foldCapsLock = pttIsToggle(); }
-pttKeySelect.addEventListener("change", () => { pttAbort(); deviceKvSet("pttKey", pttKeySelect.value === "CapsLock" ? "CapsLock" : null); applyPttKey(); });
+pttKeySelect.addEventListener("change", () => { pttAbort(); pttArmedNoPack = false; const v = pttKeySelect.value; deviceKvSet("pttKey", v === "CapsLock" || v === "none" ? v : null); applyPttKey(); });
 applyPttKey();
 
 // ── 阅读节奏 ──
