@@ -1,7 +1,7 @@
 // 参考窗的宿主适配层（ADR-0016；2026-09-29）。created 2026-09-29 by Claude Fable 5.1
 //
 // 参考窗本体 = @internal/reference-window（家族共享库：牌组模型 + 默认视图）。本文件是 WXHW 里**唯一**认识那个库的地方：
-//   · 注入：菜单端口（ui/popup-menu）、文案（i18n）、地板（顶栏下缘）、导入漏斗（图片走 image/ 的减肥管线，文字原样）
+//   · 注入：菜单端口（ui/popup-menu）、文案（i18n）、地板（顶栏下缘）、导入漏斗（图片走 image/ 的减肥管线，文字原样）；层级 = 侧栏之下（styles.css --z-window）
 //   · 持久化：整个 `.webxiaoheiwu/references/` 目录（manifest.json + 字节）经库的 encodeDeck / decodeDeck 进出，本文件只搬字节
 //     （mode/session 对目录零知识：保存前 collect、开书后 apply——ADR-0016）
 //   · 链接卡（user 2026-09-29「link图片页和文字页…一个立绘只用存一次」）：卡上 target = "page:<页名>"，内容从书里现取，只显示不存；

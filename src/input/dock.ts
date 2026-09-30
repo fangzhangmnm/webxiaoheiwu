@@ -49,12 +49,13 @@ const esc = (x: string): string => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", 
 
 export function createImeDock(d: ImeDockDeps): ImeDock {
   const { ime, pipeline } = d;
-  const keyboard = createSoftKeyboard({ labels: d.labels, onKey: (k) => { void pipeline.press(k); }, onLiteral: (t) => { void pipeline.literal(t); }, onToggleMode: () => { void pipeline.toggleMode(); }, onHide: () => { d.onHideRequest(); render(); } });
+  const keyboard = createSoftKeyboard({ labels: d.labels, quoteStyle: () => d.ime.quoteStyle, onKey: (k) => { void pipeline.press(k); }, onLiteral: (t) => { void pipeline.literal(t); }, onToggleMode: () => { void pipeline.toggleMode(); }, onHide: () => { d.onHideRequest(); render(); } });
   // 手机式那一块（v2.1.24）：候选条只有候选那一行——拼音不显示（user 2026-09-29「候选词框能不能矮一点，拼音放别的地方，或者干脆不显示？」），
   //   「收起键盘」搬进键盘最下一排（原来在候选条右侧占一列 46px，候选词少一格）。PC 式悬浮条照旧带拼音行。
-  d.dock.innerHTML = `<div class="ime-strip"><div class="ime-cands" role="listbox"></div></div>`;
+  // v2.1.33：拼音以小字回到候选条（user 2026-09-30「拼音还是用比较小的字体显示一下吧」）——贴在条的左上角一行 11px，不占候选的宽度
+  d.dock.innerHTML = `<div class="ime-strip"><div class="ime-preedit ime-preedit-small" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div></div>`;
   d.dock.appendChild(keyboard.el);
-  const cands = d.dock.querySelector<HTMLElement>(".ime-cands")!;
+  const cands = d.dock.querySelector<HTMLElement>(".ime-cands")!, dPreedit = d.dock.querySelector<HTMLElement>(".ime-preedit")!;
   // PC 式悬浮条（v2.1.26）：左端一枚「中 / 英」芯片（原顶栏那一字搬来；user 2026-09-30「输入法也许可以收到悬浮框里面」），点 = 切中 / 英；右边拼音行 + 候选行。
   d.floating.innerHTML = `<span class="ime-mode" role="button"></span><div class="ime-preedit" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div>`;
   const fMode = d.floating.querySelector<HTMLElement>(".ime-mode")!, fPreedit = d.floating.querySelector<HTMLElement>(".ime-preedit")!, fCands = d.floating.querySelector<HTMLElement>(".ime-cands")!;
@@ -94,6 +95,7 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     if (shown) {
       keyboard.setForm(form()); keyboard.setMasked(masked); keyboard.setMode(s.asciiMode ? "en" : "zh");
       cands.innerHTML = composing ? candHtml(s, false) : "";
+      dPreedit.textContent = composing ? s.buffer : ""; dPreedit.scrollLeft = dPreedit.scrollWidth;
       if (s.buffer !== lastBuffer || s.page !== lastPage) cands.scrollLeft = 0;   // 每次换了拼音 / 翻了页都从头看：首选永远在最左
       setLayoutVar();
     }

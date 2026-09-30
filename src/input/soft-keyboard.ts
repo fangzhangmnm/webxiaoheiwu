@@ -19,11 +19,15 @@ export interface SoftKeyboardDeps {
   onToggleMode(): void;
   /** 「收起键盘」键（v2.1.24 从候选条右侧搬进最下一排最右，像 iPad；候选条整行都留给候选词——user 2026-09-29「那个下箭头的位置也不对，吃掉了候选词需要的宝贵的横向空间」）。 */
   onHide(): void;
+  /** 引号风格（设置项；缺省 curly）：符号层第一层放哪对引号。 */
+  quoteStyle?(): "curly" | "corner";
   /** 键帽上的字（界面语言）。 */
   labels: { space: string; symbols: string; letters: string; more: string; zh: string; en: string; enter: string; backspace: string; shift: string; hide: string };
 }
 export interface SoftKeyboard {
   el: HTMLElement;
+  /** 外部输入变了（引号风格）：重画键面（有手指按着时等抬手）。 */
+  refresh(): void;
   setMode(mode: KeyboardMode): void;
   /** 密码框：只有英文层，中 / 英键灰掉。 */
   setMasked(masked: boolean): void;
@@ -41,8 +45,9 @@ interface K { act: Act; v: string; label?: string; icon?: string; w?: number; cl
 const lit = (chars: string): K[] => [...chars].map((c) => ({ act: "literal" as const, v: c }));
 const litList = (list: string[]): K[] => list.map((c) => ({ act: "literal" as const, v: c }));
 // 符号层：中文态 = 中文标点（所见即所得），英文态 = ASCII。数字行两态相同。
-const SYM1_ZH: K[][] = [lit("1234567890"), litList(["，", "。", "、", "？", "！", "：", "；", "……", "——", "·"]), litList(["“", "”", "‘", "’", "（", "）", "《", "》"])];
-const SYM2_ZH: K[][] = [litList(["「", "」", "『", "』", "【", "】", "〔", "〕", "～", "￥"]), lit("-/@#%&*+=_"), lit("()[]<>\"'")];
+// 引号跟设置的引号风格走（v2.1.33，user 2026-09-30「软键盘的引号没有跟着引号风格变」）：curly 时 “”‘’ 在第一层、「」『』 在第二层；corner 时对调。
+const SYM1_ZH = (corner: boolean): K[][] => [lit("1234567890"), litList(["，", "。", "、", "？", "！", "：", "；", "……", "——", "·"]), litList([...(corner ? ["「", "」", "『", "』"] : ["“", "”", "‘", "’"]), "（", "）", "《", "》"])];
+const SYM2_ZH = (corner: boolean): K[][] => [litList([...(corner ? ["“", "”", "‘", "’"] : ["「", "」", "『", "』"]), "【", "】", "〔", "〕", "～", "￥"]), lit("-/@#%&*+=_"), lit("()[]<>\"'")];
 const SYM1_EN: K[][] = [lit("1234567890"), lit("-/:;()$&@\""), lit(".,?!'_*#")];
 const SYM2_EN: K[][] = [lit("[]{}#%^*+="), lit("_\\|~<>`$&@"), lit(".,?!'\"/-")];
 
@@ -77,7 +82,8 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
       if (form === "tablet") out.unshift(lit("1234567890"));
       return out;
     }
-    const table = layer === "sym1" ? (zh ? SYM1_ZH : SYM1_EN) : zh ? SYM2_ZH : SYM2_EN;
+    const corner = d.quoteStyle?.() === "corner";
+    const table = layer === "sym1" ? (zh ? SYM1_ZH(corner) : SYM1_EN) : zh ? SYM2_ZH(corner) : SYM2_EN;
     const flip: K = { act: "layer", v: layer === "sym1" ? "sym2" : "sym1", label: layer === "sym1" ? d.labels.more : d.labels.symbols, w: 1.5, cls: "fn" };
     return [table[0]!, table[1]!, [flip, ...table[2]!, bksp], [{ act: "layer", v: "letters", label: d.labels.letters, w: 1.25, cls: "fn" }, modeKey, space, enter, hide]];
   }
@@ -89,7 +95,8 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
     keys = [];
     const html: string[] = [];
     for (const row of rows()) {
-      html.push(`<div class="ime-row" data-n="${row.length}">`);
+      const letters = layer === "letters" && row.every((k) => k.act === "shift" || k.v === "Backspace" || k.act === "letter" || (k.act === "key" && /^[a-z;]$/.test(k.v)));   // 字母排（含 shift / 退格）：CSS 按 iOS 几何定宽
+      html.push(`<div class="ime-row" data-n="${row.length}"${letters ? ' data-letters=""' : ""}>`);
       for (const k of row) {
         const i = keys.push(k) - 1;
         const label = k.icon ? iconHtml(k.icon, { cls: "ico" }) : esc(k.label ?? k.v);
@@ -164,5 +171,6 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
     setForm(f) { if (form !== f) { form = f; invalidate(); } },
     setExtraLetters(list) { if (list.join() !== extra.join()) { extra = [...list]; invalidate(); } },
     reset() { stopRepeat(); pending.clear(); if (layer !== "letters" || shift !== "off" || renderDue) { layer = "letters"; shift = "off"; render(); } },
+    refresh() { invalidate(); },
   };
 }

@@ -55,6 +55,17 @@ for (const [w, h, tag] of SIZES) {
   const keysFit = await page.evaluate(() => [...document.querySelectorAll("#imeDock .ime-key")].every((k) => { const r = k.getBoundingClientRect(); return r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.width >= 24 && r.height >= 30; }));
   probe(tag, "every key is on screen and at least 24×30", keysFit, await page.evaluate(() => JSON.stringify([...document.querySelectorAll("#imeDock .ime-key")].map((k) => { const r = k.getBoundingClientRect(); return [k.textContent, Math.round(r.width), Math.round(r.height)]; }).filter((x) => x[1] < 24 || x[2] < 30))));
   await shot("01-keyboard");
+  // 键位几何照 iOS（v2.1.33，user「ios 的键位会宽一点，然后 s 和 z 对齐的」）：所有字母键等宽；z 的左边 == s 的左边；第二排两端各空半键
+  {
+    const g = await page.evaluate(() => {
+      const keys = [...document.querySelectorAll(".ime-keys[data-layer=letters] .ime-key")].filter((k) => /^[a-z]$/.test(k.textContent.trim()));
+      const rect = (ch) => keys.find((k) => k.textContent.trim() === ch).getBoundingClientRect();
+      const widths = keys.map((k) => Math.round(k.getBoundingClientRect().width * 10) / 10);
+      const row2 = rect("a").left - rect("q").left, key = rect("q").width, gap = rect("w").left - rect("q").right;
+      return { minW: Math.min(...widths), maxW: Math.max(...widths), zLeft: rect("z").left, sLeft: rect("s").left, row2Offset: row2, halfKey: (key + gap) / 2, gap };
+    });
+    probe(tag, "letter keys all the same width; z aligned under s; asdf row inset by half a key (iOS geometry)", g.maxW - g.minW <= 1 && Math.abs(g.zLeft - g.sLeft) <= 1 && Math.abs(g.row2Offset - g.halfKey) <= 1, JSON.stringify(g));
+  }
 
   // ② 多行正文、光标放在第 2 行末 → 打「nihao」点首选 → 字落在光标处、光标紧跟其后（不乱跑）
   await page.evaluate(() => { const e = document.getElementById("editor"); e.focus(); const v = Array.from({ length: 40 }, (_, i) => `第${i + 1}行：她推开门。`).join("\n"); e.setRangeText(v, 0, e.value.length, "end"); e.dispatchEvent(new Event("input", { bubbles: true })); const p = v.indexOf("\n", v.indexOf("\n") + 1); e.setSelectionRange(p, p); e.scrollTop = 0; });
@@ -82,8 +93,8 @@ for (const [w, h, tag] of SIZES) {
   const a3 = await ed();
   probe(tag, "ni + space + 。 → 你。 in that order", a3.v.slice(s0, s0 + 2) === "你。" && a3.s === s0 + 2, a3.v.slice(s0 - 2, s0 + 4));
   await tapKeys("woxiangquchifanranhou"); await wait(400);
-  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, stripH: strip.height, noPreedit: !document.querySelector("#imeDock .ime-preedit"), noHideInStrip: !document.querySelector("#imeDock .ime-strip .ime-hide"), hideKey: !!document.querySelector("#imeDock .ime-key.hide") }; });
-  probe(tag, "long pinyin: 1st candidate still starts at the strip's left edge and is fully on screen; strip = candidates only (no pinyin line, no hide column, ≤ 40px); hide key lives in the bottom row", !!long.first && long.first.l >= 0 && long.first.l - long.stripLeft < 12 && long.first.r <= w && long.noPreedit && long.noHideInStrip && long.hideKey && long.stripH <= 40, JSON.stringify(long));
+  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, stripH: strip.height, smallPinyin: (() => { const p = document.querySelector("#imeDock .ime-preedit-small"); if (!p) return false; const cs = getComputedStyle(p); return p.textContent.length > 0 && parseFloat(cs.fontSize) <= 11 && cs.position === "absolute"; })(), noHideInStrip: !document.querySelector("#imeDock .ime-strip .ime-hide"), hideKey: !!document.querySelector("#imeDock .ime-key.hide") }; });
+  probe(tag, "long pinyin: 1st candidate still starts at the strip's left edge and is fully on screen; pinyin shown as a small (≤11px) overlay that costs no width or height (v2.1.33, user「拼音还是用比较小的字体显示一下吧」); no hide column, strip ≤ 40px; hide key lives in the bottom row", !!long.first && long.first.l >= 0 && long.first.l - long.stripLeft < 12 && long.first.r <= w && long.smallPinyin && long.noHideInStrip && long.hideKey && long.stripH <= 40, JSON.stringify(long));
   await shot("03-long-pinyin");
   await tapKey("空格"); await wait(300);
 
@@ -184,6 +195,16 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "Enter while composing commits the first candidate into the input (no newline, no space) and does NOT confirm the sheet", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden")) && /^[\u4e00-\u9fff]+$/.test(v), JSON.stringify(v));
   await page.keyboard.press("Enter"); await wait(900);
   probe(tag, "second Enter (not composing) confirms: file renamed", await page.evaluate((v) => document.getElementById("sheet").classList.contains("hidden") && document.getElementById("docNameButton").textContent === v, v), await page.evaluate(() => document.getElementById("docNameButton").textContent));
+
+  // 光标跟随（v2.1.33，user 2026-09-30「打字的时候为什么页面会往下滚」）：纸末尾连按回车，每次 scrollTop 的增量必须 == 一行（以前多滚一行 = 2 × lh）
+  {
+    await page.evaluate(() => { const e = document.getElementById("editor"); e.focus(); e.value = Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 行`).join("\n"); e.dispatchEvent(new Event("input", { bubbles: true })); e.setSelectionRange(e.value.length, e.value.length); });
+    await wait(500); await page.keyboard.press("Enter"); await wait(300);   // 先让光标贴到底边
+    const lh = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector(".page")).getPropertyValue("--editor-lh")));
+    const deltas = [];
+    for (let i = 0; i < 4; i++) { const before = await page.evaluate(() => document.querySelector("main.surface").scrollTop); await page.keyboard.press("Enter"); await wait(300); deltas.push(Math.round((await page.evaluate(() => document.querySelector("main.surface").scrollTop)) - before)); }
+    probe(tag, "typing at the paper's end: each newline scrolls exactly one line (delta == lh), never two", deltas.every((d) => Math.abs(d - lh) <= 1), `lh=${lh} deltas=${deltas.join(",")}`);
+  }
   await ctx.close();
 }
 await browser.close(); srv.close();

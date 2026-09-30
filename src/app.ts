@@ -388,8 +388,13 @@ function followCaret(): void {
   const cs = getComputedStyle(sheet);
   const viewTop = sheet.getBoundingClientRect().top + (parseFloat(cs.paddingTop) || 0);
   const viewBottom = sheet.getBoundingClientRect().bottom - (parseFloat(cs.paddingBottom) || 0);
-  if (bottom > viewBottom - 8) sheet.scrollTop += bottom - viewBottom + 8 + lh;
-  else if (top < viewTop + 8) sheet.scrollTop -= viewTop - top + 8 + lh;
+  // 只补到边距，不再多滚一行（v2.1.33，user 2026-09-30「打字的时候为什么页面会往下滚」：以前两支各多加一个 lh → 每次换行跳两行，
+  //   手机上可见区只有十来行，手感就是「页面往下滚」；「WXHW 更新」量到 delta = 2 × lh）。文字全走管线的 setRangeText，浏览器不做 reveal，这里多少就是多少。
+  //   滚动量对齐设备像素：光标行底边是小数，直接加上去 scrollTop 就带小数，dpr 3 上字和线的相位对不上（ruled-audit drift 0.50 抓到）。
+  //   留一行看头（光标行下面 / 上面还能看见一行）：放在**条件**里而不是滚动量里——这样每换一行只滚一行，末行下面仍有一条线（ruled-audit 末行 gap 靠它）。
+  const dpr = window.devicePixelRatio || 1; const snap = (v: number) => Math.round(v * dpr) / dpr;
+  if (bottom + lh > viewBottom - 8) sheet.scrollTop = snap(sheet.scrollTop + (bottom + lh - (viewBottom - 8)));
+  else if (top - lh < viewTop + 8) sheet.scrollTop = snap(sheet.scrollTop - ((viewTop + 8) - (top - lh)));
 }
 function renderPageKin(): void {
   const nb = project.active() && !project.locked() ? project.neighborhood() : null;
@@ -878,7 +883,7 @@ const SCHEMA_NAME_KEY = { luna_pinyin: "ime.schema.luna", luna_pinyin_fluency: "
 const schemaName = (s: ImeSchema) => t(SCHEMA_NAME_KEY[s]);
 const imeSimplifiedPref = (): boolean => prefs.getItem<boolean>("imeSimplified") !== false;   // 简/繁跟人走（synced prefs）；缺省简体
 const quoteStylePref = (): "curly" | "corner" => (prefs.getItem<string>("quoteStyle") === "corner" ? "corner" : "curly");   // 引号样式跟人走
-function applyQuoteStyle(v: "curly" | "corner"): void { ime.quoteStyle = v; setQuoteStyle(v); }
+function applyQuoteStyle(v: "curly" | "corner"): void { ime.quoteStyle = v; setQuoteStyle(v); imeDock?.keyboard.refresh(); }   // 软键盘符号层的引号跟着换（v2.1.33）
 let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
 const input = createInputPipeline({
   ime,
