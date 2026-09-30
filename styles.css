@@ -1795,6 +1795,10 @@ body.ruled-lines .body-mirror { background-image: none; }
 .child-toc-row .ico { flex: none; align-self: flex-start; width: 0.7em; height: 0.7em; margin-top: calc((var(--editor-lh) - 0.7em) / 2); color: var(--ink-muted); }
 .child-toc-name { flex: 0 1 auto; min-width: 0; line-height: var(--editor-lh); white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .child-toc-sub { flex: none; margin-left: auto; padding-left: 0.6em; line-height: var(--editor-lh); font-family: var(--font-ui); font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+/* hidden（2026-09-30 user「hidden 的话正文里的链接也应该有颜色变化」）：目录行与侧栏同一套——自己藏的 = 眼睛 + 灰，被祖先藏的只灰；`..` 指向的上级本身不出门也灰 */
+.child-toc-row.hidden-self .child-toc-name, .child-toc-row.hidden-inherited .child-toc-name { opacity: 0.5; }
+.child-toc-row .child-toc-hidden { flex: none; align-self: flex-start; width: 0.7em; height: 0.7em; margin-left: 0.3em; margin-top: calc((var(--editor-lh) - 0.7em) / 2); color: var(--ink-muted); opacity: 0.7; }
+.kin-hidden { opacity: 0.55; }
 
 /* 「宽稿纸」档（body.paper-wide）2026-09-30 撤了（user「win mini 现在的情况不需要加宽，加宽可以撤了」）；矮屏档 body.paper-short 仍在。 */
 /* 矮纸（body.paper-short）：可用高度 ≤ 300（手机横屏 + 软键盘只剩一百多像素）→ 页脚字数统计让位，纸边再收 */

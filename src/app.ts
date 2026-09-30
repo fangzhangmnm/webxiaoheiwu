@@ -408,16 +408,20 @@ function renderPageKin(): void {
   parentLink.hidden = !parent;
   parentLinkName.textContent = parent ? nodeDisplayName(parent) : "";
   parentLink.title = parent ? t("kin.parentTitle", { name: nodeDisplayName(parent) }) : ""; parentLink.setAttribute("aria-label", parentLink.title);
+  parentLink.classList.toggle("kin-hidden", !!parent && project.isHiddenInTree(parent));   // 上级本身不出门 → `..` 也灰（user 2026-09-30「hidden 的话正文里的链接也应该有颜色变化」）
   tocChildren = nb?.children ?? [];
   childTocList.innerHTML = "";
   const s = project.session();
   for (const n of tocChildren) {
     const li = document.createElement("li");
-    const b = document.createElement("button"); b.type = "button"; b.className = "child-toc-row"; b.dataset.name = n;
+    // hidden（2026-09-30）：正文里的目录行和侧栏同一套——自己藏的 = 眼睛 + 灰，被祖先藏的只灰
+    const hiddenSelf = project.isHidden(n), hiddenUp = !hiddenSelf && project.isHiddenInTree(n);
+    const b = document.createElement("button"); b.type = "button"; b.className = "child-toc-row" + (hiddenSelf ? " hidden-self" : hiddenUp ? " hidden-inherited" : ""); b.dataset.name = n;
     const meta = s?.project.nodes.get(n);
-    b.title = meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : nodeDisplayName(n);
+    b.title = (meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : nodeDisplayName(n)) + (hiddenSelf ? " · " + t("edge.hiddenTip") : hiddenUp ? " · " + t("edge.hiddenBy", { name: nodeDisplayName(project.hiddenAncestor(n) ?? "") }) : "");
     const kindIcon = nodeKind(n) === "image" ? `<svg class="ico" aria-hidden="true"><use href="#image"/></svg>` : "";
-    b.innerHTML = (kindIcon || `<svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg>`) + `<span class="child-toc-name"></span>` + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
+    const hiddenIcon = hiddenSelf ? `<svg class="ico child-toc-hidden" aria-hidden="true"><use href="#visibility-hide"/></svg>` : "";
+    b.innerHTML = (kindIcon || `<svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg>`) + `<span class="child-toc-name"></span>` + hiddenIcon + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
     b.querySelector(".child-toc-name")!.textContent = nodeDisplayName(n);
     b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); editorEl.focus(); });
     li.appendChild(b); childTocList.appendChild(li);
