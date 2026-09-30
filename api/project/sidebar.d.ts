@@ -27,6 +27,9 @@ export interface EdgeSidebarDeps {
     /** 参考窗（ADR-0016）：顶部入口开 / 关；页行菜单「发到参考窗」= 推模型（user 2026-09-29「在页面上加一个 send to reference」）。 */
     onReference: () => void;
     onSendToReference: (name: string) => void;
+    /** 孤儿页入口（user 2026-09-30「一个系统的列举所有孤儿的入口」，翻案 ADR-0014「不做孤儿面板」）：导航底部一行「孤儿页 · n」。 */
+    orphanCount: () => number;
+    onOrphans: () => void;
 }
 /** 页时间戳的短显示：今年 → M/D HH:mm；别的年 → YYYY/M/D。0 = 不知道 → 空。 */
 export declare function fmtTime(ms: number): string;

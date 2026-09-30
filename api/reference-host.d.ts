@@ -9,6 +9,8 @@ export interface ReferenceHostDeps {
     }) => void;
     /** 顶栏下缘（浮窗的出血区地板）。 */
     topFloor: () => number;
+    /** 关窗后把焦点还给正文（可选）。 */
+    focusEditor?: () => void;
 }
 export declare function createReferenceHost(d: ReferenceHostDeps): {
     hooks: ReferenceModeHooks;

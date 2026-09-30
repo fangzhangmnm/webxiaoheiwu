@@ -2208,6 +2208,46 @@ export declare const S: {
         readonly zh: "本地存储 {pct}% 已满——立即去书库卸载不常用的稿";
         readonly en: "Local storage is {pct}% full — unload rarely used documents from the library now";
     };
+    readonly "edge.orphans": {
+        readonly zh: "孤儿页 · {n}";
+        readonly en: "Orphans · {n}";
+    };
+    readonly "edge.orphansTitle": {
+        readonly zh: "孤儿页";
+        readonly en: "Orphan pages";
+    };
+    readonly "edge.orphansHint": {
+        readonly zh: "废弃的页，和没有任何页指向、也不在主干里的散页。选一页：打开、归入主干、废弃或彻底删除。";
+        readonly en: "Discarded pages, and loose pages nothing points to. Pick one to open, move into the trunk, discard, or delete for good.";
+    };
+    readonly "edge.orphansPh": {
+        readonly zh: "搜索孤儿页";
+        readonly en: "Search orphans";
+    };
+    readonly "edge.orphanDiscarded": {
+        readonly zh: "废弃";
+        readonly en: "discarded";
+    };
+    readonly "edge.orphanLoose": {
+        readonly zh: "散页";
+        readonly en: "loose";
+    };
+    readonly "edge.orphanOpen": {
+        readonly zh: "打开";
+        readonly en: "Open";
+    };
+    readonly "img.pasteAddTitle": {
+        readonly zh: "把 {n} 张图片加成新页？";
+        readonly en: "Add {n} image(s) as new pages?";
+    };
+    readonly "img.pasteAddMsg": {
+        readonly zh: "会作为当前页的子节加进书里。要放进参考窗的话，先点一下参考窗再粘贴。";
+        readonly en: "They will be added under the current page. To put them in the reference window instead, click the window first, then paste.";
+    };
+    readonly "img.pasteAddOk": {
+        readonly zh: "加成新页";
+        readonly en: "Add as pages";
+    };
     readonly "ref.title": {
         readonly zh: "参考窗";
         readonly en: "Reference window";
