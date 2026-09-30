@@ -113,8 +113,13 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     isInTree: (target: string) => boolean;
     order: () => string[];
     branchOrder: (target: string) => string[];
+    exportOrder: (target: string | null) => string[];
     exportBranch: (target: string) => string;
     canMutate: () => boolean;
+    setHidden: (target: string, v: boolean) => void;
+    isHidden: (target: string) => boolean;
+    isHiddenInTree: (target: string) => boolean;
+    hiddenAncestor: (target: string) => string | null;
 };
 export type ProjectSession = ReturnType<typeof createProjectSession>;
 /** 作品上了修改锁（graph.json readOnly）。UI 捕获后提示「先解除只读」。 */

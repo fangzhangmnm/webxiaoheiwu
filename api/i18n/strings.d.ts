@@ -2101,12 +2101,12 @@ export declare const S: {
         readonly en: "Export";
     };
     readonly "export.msgBook": {
-        readonly zh: "长图按编辑器此刻的字体和行宽排，封面和插图一起；约三屏一张，太长自动切开。";
-        readonly en: "Long images use the editor’s current font and line width, cover and illustrations included; about three screens per image, split automatically.";
+        readonly zh: "长图按编辑器此刻的字体和行宽排，封面和插图一起；尽量一张，超过单张上限才问你切几张。";
+        readonly en: "Long images use the editor’s current font and line width, cover and illustrations included; one image when possible — you’re only asked to split past the single-image limit.";
     };
     readonly "export.msgDraft": {
-        readonly zh: "长图按编辑器此刻的字体和行宽排；约三屏一张，太长自动切开。";
-        readonly en: "Long images use the editor’s current font and line width; about three screens per image, split automatically.";
+        readonly zh: "长图按编辑器此刻的字体和行宽排；尽量一张，超过单张上限才问你切几张。";
+        readonly en: "Long images use the editor’s current font and line width; one image when possible — you’re only asked to split past the single-image limit.";
     };
     readonly "export.copyText": {
         readonly zh: "复制这一页文字";
@@ -2145,8 +2145,24 @@ export declare const S: {
         readonly en: "Long image ready: {n}";
     };
     readonly "export.readyMsg": {
-        readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文 · {images} 张图";
-        readonly en: "{cjk} chars · {en} words · {pages} text pages · {images} images";
+        readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文 · {images} 张图 · 共 {size}";
+        readonly en: "{cjk} chars · {en} words · {pages} text pages · {images} images · {size} total";
+    };
+    readonly "export.tooTallTitle": {
+        readonly zh: "长图太高了";
+        readonly en: "The long image is too tall";
+    };
+    readonly "export.tooTallMsg": {
+        readonly zh: "一整张约 {screens} 屏高（{cjk} 字），超过单张上限 {max} px（约 {maxScreens} 屏；再高手机相册 / 微信可能打不开）。切成几张？";
+        readonly en: "One image would be about {screens} screens tall ({cjk} chars), past the single-image limit of {max} px (about {maxScreens} screens; taller images may not open in Photos / WeChat). Split how?";
+    };
+    readonly "export.sliceCap": {
+        readonly zh: "切成 {n} 张（每张最多约 {s} 屏）";
+        readonly en: "Split into {n} (≤ ~{s} screens each)";
+    };
+    readonly "export.sliceSocial": {
+        readonly zh: "切成 {n} 张（每张约 3 屏，朋友圈 / 小红书）";
+        readonly en: "Split into {n} (~3 screens each, for feeds)";
     };
     readonly "export.share": {
         readonly zh: "分享…";
@@ -2191,6 +2207,38 @@ export declare const S: {
     readonly "img.isCover": {
         readonly zh: "当前封面";
         readonly en: "Current cover";
+    };
+    readonly "edge.hide": {
+        readonly zh: "隐藏（不出门）";
+        readonly en: "Hide (keep out of exports)";
+    };
+    readonly "edge.unhide": {
+        readonly zh: "取消隐藏";
+        readonly en: "Unhide";
+    };
+    readonly "edge.hiddenTip": {
+        readonly zh: "隐藏：这一页和它的子节不出门（导出 / 长图 / 字数）";
+        readonly en: "Hidden: this page and its children stay out of exports and word counts";
+    };
+    readonly "edge.hiddenBy": {
+        readonly zh: "由「{name}」隐藏，到那一页取消";
+        readonly en: "Hidden by “{name}” — unhide it there";
+    };
+    readonly "edge.hiddenDone": {
+        readonly zh: "已隐藏「{name}」（连同子节不出门）";
+        readonly en: "Hidden “{name}” (with its children)";
+    };
+    readonly "edge.unhiddenDone": {
+        readonly zh: "「{name}」已取消隐藏";
+        readonly en: "“{name}” is visible again";
+    };
+    readonly "export.msgBookStats": {
+        readonly zh: "整本出门的：{cjk} 字 {en} 词 · {pages} 页（隐藏的不算）";
+        readonly en: "Whole book, exportable: {cjk} chars · {en} words · {pages} pages (hidden pages excluded)";
+    };
+    readonly "export.hiddenEmpty": {
+        readonly zh: "这一页是隐藏的，不出门";
+        readonly en: "This page is hidden — it stays out of exports";
     };
     readonly "kin.parentTitle": {
         readonly zh: "回到上一级：{name}";

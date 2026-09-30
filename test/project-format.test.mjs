@@ -171,6 +171,12 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     const { zipPack } = await import("../src/zip.ts"); const b2 = await zipPack(Object.entries({ ...entries, "graph.json": new TextEncoder().encode(JSON.stringify(g)) }).map(([path, data]) => ({ path, data })));
     const r2 = await unpackProject(b2); eq(r2.kind, "ok"); eq(r2.project.cover, null); eq(r2.warnings.filter((w) => /cover/.test(w)).length, 1, r2.warnings.join("\n")); eq(Array.from(r2.project.thumbnail).join(), "1,2,3");
   });
+  it("hidden 往返：true 才写、缺 = 出门；老书没有这个键", async () => {
+    const p = emptyProject(); createNode(p, "a.txt", "A", () => 1); createNode(p, "b.txt", "B", () => 1); p.nodes.get("b.txt").hidden = true;
+    const blob = await packProject(p); const g = JSON.parse(td.decode((await zipUnpack(blob))["graph.json"]));
+    eq("hidden" in g.pages["a.txt"], false); eq(g.pages["b.txt"].hidden, true);
+    const r = await unpackProject(blob); eq(r.kind, "ok"); eq(r.project.nodes.get("b.txt").hidden, true); eq("hidden" in r.project.nodes.get("a.txt"), false);
+  });
   it("nodeKind：txt / image / other；图片页字节往返；图片页也能进树", async () => {
     eq(nodeKind("a.txt"), "txt"); eq(nodeKind("夏音.JPG"), "image"); eq(nodeKind("x.webp"), "image"); eq(nodeKind("动.gif"), "image"); eq(nodeKind("a.md"), "other"); eq(nodeKind("noext"), "other");
     const p = emptyProject(); createNode(p, "作品.txt", "", () => 1); p.contents.set("夏音.jpg", new Uint8Array([255, 216, 255, 1, 2, 3])); p.nodes.set("夏音.jpg", { links: [], created: 1, modified: 1 });

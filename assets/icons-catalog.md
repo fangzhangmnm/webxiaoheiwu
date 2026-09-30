@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-51 icons · 提取自家族图标库 `../../../../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+53 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -51,6 +51,8 @@
 | `edit-enabled` | 可编辑:Bootstrap Icons 的 pencil(MIT) |
 | `create-folder` | 加号做成右下角徽标 |
 | `move-to-folder` | 移入文件夹(定 2 号):小 folder + 弧箭头, 箭头头部在 folder 内 · 尾巴在外 |
+| `visibility-hide` | 隐藏:同 show 撑高版+斜杠(mask 留 gap) |
+| `visibility-show` | 可见:撑高眼裂+瞳孔 r4.3(甲方实测原版太小) |
 
 ## common
 

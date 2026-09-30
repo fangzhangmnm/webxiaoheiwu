@@ -6,7 +6,7 @@
 //   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 废弃 / 彻底删 /
 //     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页（可指定位置）/ 封面 / 断入边 / 修改锁本身。删除模型 = 断开链接 / 废弃 / 彻底删除 三个显式动词，无引用计数（ADR-0014 §8）
 import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
-import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes, subtreeOrder,
+import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes, subtreeOrder, visibleOrder, visibleSubtreeOrder, isHidden as isHiddenNode, isHiddenInTree as isHiddenInTreeNode, hiddenAncestor as hiddenAncestorOf, setHidden as setHiddenNode,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 
 /** 参考窗目录的进出口（ADR-0016）：session 对目录零知识——保存前向宿主要一份，读到的整份由 mode 交出去。 */
@@ -155,8 +155,15 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const order = () => dfsOrder(project);
   /** 导出这一支：target 子树 DFS 拼接的正文（ADR-0014 §6）。 */
   const exportBranch = (target: string) => exportSubtree(project, target);
-  /** 这一支的页序（子树前序 DFS；散页 = 只有自己）。长图 / PDF 导出取序用。 */
+  /** 这一支的页序（子树前序 DFS；散页 = 只有自己）。导航 / 计数用。 */
   const branchOrder = (target: string) => subtreeOrder(project, target);
+  /** 出门的页序（hidden 的支砍掉；2026-09-30）：target 给 = 这一支，不给 = 整本。长图 / PDF / txt 导出取序用。 */
+  const exportOrder = (target: string | null) => (target == null ? visibleOrder(project) : visibleSubtreeOrder(project, target));
+  // ── hidden（每页自己的旗子；有效值看祖先）──
+  const setHidden = guard((target: string, v: boolean) => setHiddenNode(project, target, v));
+  const isHidden = (target: string) => isHiddenNode(project, target);
+  const isHiddenInTree = (target: string) => isHiddenInTreeNode(project, target);
+  const hiddenAncestor = (target: string) => hiddenAncestorOf(project, target);
 
   // ── 落盘 ──
   /** opts.force：不脏也写（推云节律用——本地 200ms 落盘已清 dirty，15s 后推云还得把同一份字节以 tryPush 再交给库，否则永远推不出去）。 */
@@ -183,7 +190,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, setTimes, remove, discard, purge, setReadOnly,
     cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail, coverPage,
     treeUp, treeDown, treeOutdent, treeIndent, treeDetach, archiveAfter, archiveUnder, archiveAtEnd, newSibling, newChild,
-    neighborhood, sidebar, backlinksOf, find, exists, pathOf, isInTree, order, branchOrder, exportBranch, canMutate,
+    neighborhood, sidebar, backlinksOf, find, exists, pathOf, isInTree, order, branchOrder, exportOrder, exportBranch, canMutate, setHidden, isHidden, isHiddenInTree, hiddenAncestor,
   };
 }
 export type ProjectSession = ReturnType<typeof createProjectSession>;

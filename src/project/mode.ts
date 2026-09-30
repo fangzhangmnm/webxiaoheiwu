@@ -613,6 +613,11 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.references?.pageChanged(session!.current()!);
     loadCurrentIntoEditor();
   });
+  // ── hidden（2026-09-30，Unity 语义：自己的旗子 + 祖先传播）──
+  const setHidden = guardEdit((target: string, v: boolean) => { session!.setHidden(target, v); });
+  const isHidden = (target: string): boolean => session?.isHidden(target) ?? false;
+  const isHiddenInTree = (target: string): boolean => session?.isHiddenInTree(target) ?? false;
+  const hiddenAncestor = (target: string): string | null => session?.hiddenAncestor(target) ?? null;
   const setThumbnail = guardEdit((png: Uint8Array | null, source?: string | null) => { session!.setThumbnail(png, source); });
   const thumbnail = (): Uint8Array | null => session?.thumbnail() ?? null;
   /** 封面来源页（graph.json cover）；没有 / 无书 = null。 */
@@ -626,7 +631,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText, commitEditor,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, setPageTime, pageTime: (n: string) => session?.project.nodes.get(n)?.modified ?? 0, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
-    cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail, coverPage,
+    cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail, coverPage, setHidden, isHidden, isHiddenInTree, hiddenAncestor,
     noteReferencesChanged,
   };
 }

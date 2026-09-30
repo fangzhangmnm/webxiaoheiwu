@@ -305,13 +305,44 @@ export function insertChild(p: Project, parent: string, newName: string, now: No
   return { name: r.name, created: r.created, placed: true };
 }
 /** 导出这一支（ADR-0014 §6）：选中页的子树前序 DFS，把 txt 页的正文用 `\n\n` 拼成一个文本（图片页 / 其他页跳过）。不在树里 → 只有它自己。 */
-/** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导出（txt / 长图）都从这里取序。 */
+// ── hidden（2026-09-30 user「和 unity 一样，parent hidden -> all child hidden，免得有奇怪的孤儿」「不帮 user 发明语义，只用最 generic 机械的，所以就 hidden」）──
+//   每页一面自己的旗子（activeSelf），有效值 = 自己 ∨ 树上任一祖先（activeInHierarchy）；只沿树（归属）传播、不沿 links（指向）。
+//   出门（导出 / 长图 / 字数）看有效值：整支砍掉；workbench（导航 / 侧栏 / 检索 / 参考窗）什么都看得见，只画灰。
+/** 这页自己的旗子。 */
+export const isHidden = (p: Project, name: string): boolean => { const n = resolveName(p, name); return !!n && p.nodes.get(n)?.hidden === true; };
+export function setHidden(p: Project, name: string, v: boolean): void {
+  const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
+  const m = meta(p, n); if (v) m.hidden = true; else delete m.hidden;
+}
+/** 最近一个自己标了 hidden 的祖先（不含自己）；没有 → null。散页 → null。 */
+export function hiddenAncestor(p: Project, name: string): string | null {
+  let cur = resolveName(p, name);
+  while (cur) { const parent = treeParent(p, cur); if (!parent) return null; if (p.nodes.get(parent)?.hidden === true) return parent; cur = parent; }
+  return null;
+}
+/** 有效值（Unity activeInHierarchy）：自己 ∨ 任一祖先。 */
+export const isHiddenInTree = (p: Project, name: string): boolean => isHidden(p, name) || hiddenAncestor(p, name) != null;
+/** 出门的页序：前序 DFS，自己标了 hidden 的节点连同整支跳过。root 不给 = 整棵树。 */
+export function visibleOrder(p: Project, root?: TreeNode[]): string[] {
+  const out: string[] = [];
+  const walk = (nodes: TreeNode[]) => { for (const n of nodes) { const name = treeNodeName(n); if (p.nodes.get(name)?.hidden === true) continue; out.push(name); walk(treeNodeChildren(n)); } };
+  walk(root ?? p.tree);
+  return out;
+}
+/** 这一支出门的页序：root 在树上被祖先藏着 → 空；否则子树 DFS 剪掉 hidden 的支。散页 = 自己没藏就只有自己。 */
+export function visibleSubtreeOrder(p: Project, name: string): string[] {
+  const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
+  if (hiddenAncestor(p, n)) return [];
+  const l = locate(p.tree, n);
+  return l ? visibleOrder(p, [l.arr[l.index]!]) : (p.nodes.get(n)?.hidden === true ? [] : [n]);
+}
+/** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导航用；导出走 visibleSubtreeOrder（hidden 的支不出门）。 */
 export function subtreeOrder(p: Project, name: string): string[] {
   const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
   const l = locate(p.tree, n);
   return l ? dfsOrder(p, [l.arr[l.index]!]) : [n];
 }
 export function exportSubtree(p: Project, name: string): string {
-  const order = subtreeOrder(p, name);
+  const order = visibleSubtreeOrder(p, name);   // hidden 的支不出门（2026-09-30）
   return order.filter((x) => nodeKind(x) === "txt").map((x) => (readNodeText(p, x) ?? "").replace(/\s+$/, "")).join("\n\n") + "\n";
 }

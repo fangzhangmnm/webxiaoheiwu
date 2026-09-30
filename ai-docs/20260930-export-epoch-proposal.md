@@ -216,7 +216,9 @@ user 原话要点：「没网的小孩和我可能也对实体感兴趣。之前
 - user「先做图片导出吧，这个今晚就能用。你需要什么？需要我找一个我能接受的字体吗？现在我们用的是什么字体？」「cover字段一起做，这种契约级别的东西越早改越好」。
 - **已落**：`cover` 字段（ADR-0012 修订）+ 长图（侧栏「导出」sheet：复制文字 / 这一页 · 这一支 · 整本 → 长图；txt 稿 = 整篇）。WYSIWYG = 编辑器此刻的 computed style；约三屏一张；分享走 Web Share API（手势内）/ 下载 / 剪贴板。细节 = WXHW CLAUDE.md v2.3.1 条；目视样张 `tmp/round0930/`（不进 git）。
 - **字体**：现在 = 系统字体栈 `--font-editor`（-apple-system / PingFang SC / Microsoft YaHei / Segoe UI / system-ui），**没有 vendor 字体**——各设备出的图字体不同（iPad 苹方、Win 微软雅黑、Quest Noto）。要固定字体：给我一个 TTF/OTF + 可再分发的许可证，vendor 进仓 `vendor/fonts/`、FontFace 装上、换 look.family 一行。
-- **未做**（等 user）：hidden 字段（§8）；切片张数 / 整张选项；封面来源三选里的另两条（现在 = `cover` 字段指的页，没有就只印书名）；PDF；markdown 树文本；实体 / 拼版下一轮。
+- **切片改「尽量一张」+ 宽 750 + 按内容压（v2.3.2，user「长图能尽量不切图吗，三屏太难受了，上限是多少。然后超上限了弹窗让用户决策吧，以及文件尺寸控制下」「我们字很大，所以px宽度可以窄一点，750或者更窄？然后用高压」「默认jpg行吗…是否用jpg你可以pushback」）**：上限 16,000 px（纹理上限 16384；750 宽 ≈ 12 屏）；超过才弹 sheet 选 N 张（≤12 屏）/ M 张（≈3 屏）；纯文字张 PNG-256、有图张 JPEG q82（pushback：文字 PNG 调色板比 JPEG 更小更锐）；「好了」报总大小。
+- **hidden 已落（v2.3.2，user「hidden为什么还没有做」）**：布尔 + Unity 语义，细节 = ADR-0014 2026-09-30 修订 + WXHW CLAUDE.md v2.3.2 条。
+- **未做**（等 user）：切片张数 / 整张选项；封面来源三选里的另两条（现在 = `cover` 字段指的页，没有就只印书名）；PDF；markdown 树文本；实体 / 拼版下一轮。
 
 
 ## 7.（作废，见 §8）原「等 user 拍板」清单

@@ -1,7 +1,7 @@
 // 图操作（ADR-0009）+ 主干树（ADR-0014）。created 2026-09-10 by Claude Fable 5.1（v2 树操作测试同日）
 import { describe, it, eq, assert } from "./runner.mjs";
 import { emptyProject } from "../src/project/format.ts";
-import { createNode, seedBook, setNodeText, link, unlink, links, backlinks, renameNode, deleteNode, search, resolveName, uniqueNodeName, createBytesNode, replaceNodeBytes, discard, purge,
+import { createNode, seedBook, setNodeText, link, unlink, links, backlinks, renameNode, deleteNode, search, resolveName, uniqueNodeName, createBytesNode, replaceNodeBytes, discard, purge, setHidden, isHidden, isHiddenInTree, hiddenAncestor, visibleOrder, visibleSubtreeOrder,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detach, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree } from "../src/project/graph.ts";
 const tick = () => { let t = 0; return () => ++t; };
 const throws = (fn, re) => { try { fn(); } catch (e) { if (re && !re.test(e.message)) throw new Error(`threw the wrong thing: ${e.message}`); return true; } throw new Error("expected a throw"); };
@@ -55,6 +55,20 @@ describe("project/graph · 撞名=链接、占位符已废、反链=查询", () 
     renameNode(p, "图.JPG", "封面.jpg", now); eq(p.cover, "封面.jpg");
     deleteNode(p, "图2.jpg"); eq(p.cover, "封面.jpg");
     deleteNode(p, "封面.jpg"); eq(p.cover, null);
+  });
+  it("hidden（2026-09-30 Unity 语义）：自己的旗子 + 祖先传播；出门的页序剪掉整支；散页只看自己；改名跟着走；取消 = 删键", () => {
+    const p = emptyProject(); const now = tick();
+    for (const n of ["一.txt", "一1.txt", "一2.txt", "一2a.txt", "二.txt", "散.txt"]) createNode(p, n, n + "正文", now);
+    p.tree = [{ name: "一.txt", children: ["一1.txt", { name: "一2.txt", children: ["一2a.txt"] }] }, "二.txt"];
+    setHidden(p, "一2.txt", true);
+    assert(isHidden(p, "一2.txt")); assert(!isHidden(p, "一2a.txt"), "孩子自己的旗子不动"); assert(isHiddenInTree(p, "一2a.txt"), "但在树上被藏"); eq(hiddenAncestor(p, "一2a.txt"), "一2.txt");
+    assert(!isHiddenInTree(p, "一1.txt")); assert(!isHiddenInTree(p, "二.txt"));
+    eq(visibleOrder(p).join("|"), "一.txt|一1.txt|二.txt");
+    eq(visibleSubtreeOrder(p, "一.txt").join("|"), "一.txt|一1.txt"); eq(visibleSubtreeOrder(p, "一2a.txt").length, 0, "被祖先藏 → 空"); eq(visibleSubtreeOrder(p, "一2.txt").length, 0, "自己藏 → 空");
+    assert(!exportSubtree(p, "一.txt").includes("一2"), "导出这一支不带 hidden 的支");
+    eq(visibleSubtreeOrder(p, "散.txt").join(), "散.txt"); setHidden(p, "散.txt", true); eq(visibleSubtreeOrder(p, "散.txt").length, 0); assert(isHiddenInTree(p, "散.txt")); eq(hiddenAncestor(p, "散.txt"), null);
+    renameNode(p, "一2.txt", "一二.txt", now); assert(isHidden(p, "一二.txt")); eq(hiddenAncestor(p, "一2a.txt"), "一二.txt");
+    setHidden(p, "一二.txt", false); assert(!("hidden" in p.nodes.get("一二.txt")), "取消 = 删键，不留 false"); eq(visibleOrder(p).length, 5);
   });
   it("deleteNode：正文没了，指向它的边一并断掉（不留悬空），树里拿掉、孩子提上来", () => {
     const p = emptyProject(); const now = tick();

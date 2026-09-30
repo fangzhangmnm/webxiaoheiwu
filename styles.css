@@ -1607,6 +1607,10 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-foot { display: flex; flex-wrap: wrap; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
 /* v2 邻域（ADR-0014 §7）：`..` 行 = 父页（顶层 = 书，不可点）；块头 = 兄弟 / 子节 / 链接 / 谁指向这里；没有第三层。 */
 .edge-row.parent .edge-main { font-weight: 600; }
+/* hidden（2026-09-30，Unity Hierarchy 同款）：自己藏的 = 眼睛 + 灰；被祖先藏的 = 只灰 */
+.edge-row.hidden-self .edge-name, .edge-row.hidden-inherited .edge-name { opacity: 0.5; }
+.edge-row .edge-hidden { width: 12px; height: 12px; flex: none; opacity: 0.6; }
+.page-hidden-badge { color: var(--ink-muted); opacity: 0.8; }
 .edge-row.parent .edge-dots { flex: none; color: var(--ink-soft); font-family: var(--font-ui); letter-spacing: 1px; }
 .edge-row.parent.root .edge-main { color: var(--ink-soft); font-weight: 500; cursor: default; }
 .edge-row.parent.root .edge-main:hover { background: transparent; }

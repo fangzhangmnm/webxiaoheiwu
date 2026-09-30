@@ -91,13 +91,15 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
 
   /** 一行 = 一页：点 = 跳；`block` 决定行菜单。 */
   function row(name: string, block: Block): HTMLLIElement {
-    const li = document.createElement("li"); li.className = "edge-row" + (name === d.mode.current() ? " current" : ""); li.dataset.block = block; li.dataset.name = name;
+    const hiddenSelf = d.mode.isHidden(name), hiddenUp = !hiddenSelf && d.mode.isHiddenInTree(name);   // hidden（2026-09-30）：自己藏的画眼睛，被祖先藏的只画灰（Unity Hierarchy 同款）
+    const li = document.createElement("li"); li.className = "edge-row" + (name === d.mode.current() ? " current" : "") + (hiddenSelf ? " hidden-self" : hiddenUp ? " hidden-inherited" : ""); li.dataset.block = block; li.dataset.name = name;
     const main = document.createElement("button"); main.type = "button"; main.className = "edge-main";
     const shown = nodeDisplayName(name);
     const meta = d.mode.session()?.project.nodes.get(name);
-    main.title = meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : shown;
+    main.title = (meta ? t("edge.times", { created: fmtTime(meta.created), modified: fmtTime(meta.modified) }) : shown) + (hiddenSelf ? " · " + t("edge.hiddenTip") : hiddenUp ? " · " + t("edge.hiddenBy", { name: nodeDisplayName(d.mode.hiddenAncestor(name) ?? "") }) : "");
     const kindIcon = nodeKind(name) === "image" ? `<svg class="ico edge-kind" aria-hidden="true"><use href="#image"/></svg>` : "";   // 图片页行首图标（2.1）
-    main.innerHTML = kindIcon + `<span class="edge-name">${esc(shown)}</span>` + (meta && meta.modified ? `<span class="edge-sub">${esc(fmtTime(meta.modified))}</span>` : "");   // 同一行小字 = 修改时间（user 2026-09-10）
+    const hiddenIcon = hiddenSelf ? `<svg class="ico edge-hidden" aria-hidden="true"><use href="#visibility-hide"/></svg>` : "";
+    main.innerHTML = kindIcon + `<span class="edge-name">${esc(shown)}</span>` + hiddenIcon + (meta && meta.modified ? `<span class="edge-sub">${esc(fmtTime(meta.modified))}</span>` : "");   // 同一行小字 = 修改时间（user 2026-09-10）
     main.addEventListener("click", () => { d.mode.jump(name); clearQuery(); d.focusEditor(); });   // 不自动收（user 2026-09-10「进节点的时候也不要自动弹回」）
     li.appendChild(main);
     const items = menuItems(name, block);
@@ -113,6 +115,8 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     const m = d.mode; const cur = m.current(); const ro = !m.canEdit();
     const grey = (items: PopupMenuItem[]) => items.map((it) => (it.id === "export" ? it : { ...it, disabled: ro }));
     const items = rawMenuItems(name, block, cur);
+    // 隐藏 / 取消隐藏（2026-09-30）：兄弟 / 子节 / 链接行有；入边行 / `..` 行 / 检索结果行（按设计只有「发到参考窗」）/ 废弃页不给
+    if (block !== "incoming" && block !== "parent" && block !== "results" && !m.isDiscarded(name)) items.push(m.isHidden(name) ? { id: "unhide", label: t("edge.unhide"), icon: "visibility-show", separatorBefore: items.length > 0 } : { id: "hide", label: t("edge.hide"), icon: "visibility-hide", separatorBefore: items.length > 0 });
     // 「发到参考窗」：每一条页行都有（链接卡进书 = 改书，锁着的书一样灰）；检索结果里只对活页给
     if (block !== "results" || !m.isDiscarded(name)) items.push({ id: "toRef", label: t("ref.sendToRef"), icon: "picture-in-picture", separatorBefore: items.length > 0 });
     return grey(items);
@@ -146,6 +150,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   async function onRowAction(id: string, name: string): Promise<void> {
     const m = d.mode;
     if (id === "cut") { if (m.cutIncoming(name)) d.setStatus(t("edge.cutDone", { name: nodeDisplayName(name) })); }
+    else if (id === "hide" || id === "unhide") { if (m.setHidden(name, id === "hide")) d.setStatus(t(id === "hide" ? "edge.hiddenDone" : "edge.unhiddenDone", { name: nodeDisplayName(name) })); }
     else if (id === "lup") m.moveLink(name, -1);
     else if (id === "ldown") m.moveLink(name, 1);
     else if (id === "up" || id === "down" || id === "outdent" || id === "indent") m.treeMove(name, id);

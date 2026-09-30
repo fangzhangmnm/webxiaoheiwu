@@ -3,7 +3,8 @@
 //   所见即所得：字体 / 字号 / 行高 / 行宽全从编辑器**此刻**的样子量来（look），只按 1080 宽等比放大——你屏幕上怎么折行，图上就怎么折行；
 //   写字线开着图上也有线。换字体（将来 vendor 自己的字体）只是换 look.family。
 //   一张图 = 封面（graph.json cover 有来源页就铺高清图，没有就只印书名 + 日期）+ 各页（章节名 + 正文 + 插图页原位）；
-//   太长按「约三屏一张」切开：只在行与行之间切、章节名不落单、一张图片不拆。
+//   尽量一张（user 2026-09-30「长图能尽量不切图吗，三屏太难受了」）：只有超过单张上限（SINGLE_IMAGE_MAX_HEIGHT）才切，切法由调用方问过 user 再定；切只在行与行之间、章节名不落单、一张图片不拆。
+//   宽 750（user「我们字很大，所以px宽度可以窄一点，750或者更窄？然后用高压」；750 也是公众号图的标准宽）；边距 / 页脚随宽度等比。
 //   输出是显示列表（SceneOp），量字宽与落像素归 image/codec.ts（app 唯一 canvas 点）。
 import type { SceneOp, TextMeasurer, TextStyle } from "../image/codec.ts";
 import { statsForText } from "../doc-model.ts";
@@ -19,21 +20,27 @@ export interface LongImageSpec {
   cover: ImageRef | null;
   sections: LongImageSection[];
   look: LongImageLook;
-  /** 图宽（默认 1080 = 手机长图的通行宽度）。 */
+  /** 图宽（默认 DEFAULT_WIDTH = 750）。 */
   width?: number;
-  /** 「一屏」多高（默认 1920）与每张最多几屏（默认 3）：超过就在行间切开。 */
-  screenHeight?: number; screensPerSlice?: number;
   /** 页脚「第 i / n 张」的文案（只在切成多张时印）。 */
   sliceLabel: (i: number, n: number) => string;
 }
-export interface LongImageSlice { w: number; h: number; ops: SceneOp[] }
-export interface LongImagePlan { slices: LongImageSlice[]; cjk: number; en: number; textPages: number; imagePages: number }
+/** hasImage：这张里有照片（封面 / 插图页）→ 调用方选 JPEG；纯文字 → 调色板 PNG（更小也更锐）。 */
+export interface LongImageSlice { w: number; h: number; ops: SceneOp[]; hasImage: boolean }
+/** totalHeight = 不切时一整张的高（决定要不要问 user 切法）。 */
+export interface LongImagePlan { slices: LongImageSlice[]; totalHeight: number; cjk: number; en: number; textPages: number; imagePages: number }
+export const DEFAULT_WIDTH = 750;
+/** 单张上限（px 高）：手机图片管线的纹理上限 16384（Android 硬件位图 / iOS Metal），iOS Safari 画布面积 ≈ 16.7M px 在 750 宽下 ≈ 22k 不是瓶颈；留余量取 16000。超过 = 问 user 切法（user 2026-09-30「超上限了弹窗让用户决策吧」）。 */
+export const SINGLE_IMAGE_MAX_HEIGHT = 16000;
+/** 「一屏」= 宽 × 16/9（手机竖屏）。 */
+export const screenHeightFor = (w: number): number => Math.round(w * 16 / 9);
+/** 社交切片：约三屏一张（朋友圈 / 小红书 feed 那种），user 明确选了才用。 */
+export const socialSliceHeightFor = (w: number): number => 3 * screenHeightFor(w);
 
 type RowKind = "text" | "heading" | "image" | "space" | "cover";
 /** 一行 = 一个不可拆的高度块；ops 在切片时才按最终 y 生成。 */
 interface Row { kind: RowKind; h: number; ops: (y: number) => SceneOp[] }
 
-const SIDE = 72, TOP = 48, BOTTOM = 40, FOOT = 44;
 /** 行首不许出现（拉上一行末尾去，宁可略出界）；行尾不许出现（推到下一行去）。 */
 // 避头尾字符表用码点拼（裸中文扫描认字面量；这些是标点不是文案）。
 const cp = (...codes: number[]): Set<string> => new Set(codes.map((c) => String.fromCodePoint(c)));
@@ -83,8 +90,10 @@ export function wrapText(text: string, maxW: number, style: TextStyle, m: TextMe
   return lines;
 }
 
-export function planLongImage(spec: LongImageSpec, m: TextMeasurer): LongImagePlan {
-  const W = spec.width ?? 1080, inner = W - SIDE * 2;
+export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxSliceHeight?: number } = {}): LongImagePlan {
+  const W = spec.width ?? DEFAULT_WIDTH, k = W / 1080;
+  const SIDE = Math.round(72 * k), TOP = Math.round(48 * k), BOTTOM = Math.round(40 * k), FOOT = Math.round(44 * k);   // 边距 / 页脚随宽度等比（1080 时 72 / 48 / 40 / 44）
+  const inner = W - SIDE * 2;
   const s = inner / Math.max(1, spec.look.innerWidth);
   const F = spec.look.fontPx * s, LH = Math.max(1, Math.round(spec.look.lineHeight * s));
   const ruleW = Math.max(1, Math.round(s)), ruleY = Math.round(spec.look.ruleY * s);
@@ -137,10 +146,11 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer): LongImagePl
     }
   }
 
-  // ── 切片：只在行间切；章节名后面至少跟两行；一张图不拆；片头片尾的空行剪掉 ──
-  const maxBody = (spec.screensPerSlice ?? 3) * (spec.screenHeight ?? 1920) - TOP - BOTTOM - FOOT;
+  // ── 切片（默认不切）：只在行间切；章节名后面至少跟两行；一张图不拆；片头片尾的空行剪掉 ──
+  const maxBody = (opts.maxSliceHeight ?? Infinity) - TOP - BOTTOM - FOOT;
   const groups: Row[][] = []; let cur: Row[] = [], curH = 0;
   const trim = (g: Row[]) => { let a = 0, b = g.length; while (a < b && g[a]!.kind === "space") a++; while (b > a && g[b - 1]!.kind === "space") b--; return g.slice(a, b); };
+  const totalHeight = TOP + trim(rows).reduce((a, r) => a + r.h, 0) + BOTTOM + FOOT;   // 不切时那一张的高
   const flush = () => { const g = trim(cur); if (g.length) groups.push(g); cur = []; curH = 0; };
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]!;
@@ -158,7 +168,7 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer): LongImagePl
     let y = TOP; for (const r of g) { ops.push(...r.ops(y)); y += r.h; }
     const foot = n > 1 ? `${spec.title} · ${spec.sliceLabel(i + 1, n)}` : spec.title;
     ops.push({ op: "text", x: W - SIDE, y: h - BOTTOM - FOOT + baseline(0, FOOT, smallM), text: foot, style: small, align: "right" });
-    return { w: W, h, ops };
+    return { w: W, h, ops, hasImage: g.some((r) => r.kind === "image" || r.kind === "cover" && r.ops(0).some((o) => o.op === "image")) };
   });
-  return { slices, cjk, en, textPages, imagePages };
+  return { slices, totalHeight, cjk, en, textPages, imagePages };
 }

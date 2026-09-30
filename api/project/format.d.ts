@@ -16,7 +16,8 @@ export declare const PINNED_MTIME: Date;
 export interface NodeMeta {
     links: string[];
     created: number;
-    modified: number;
+    modified: number; /** 这页自己的「不出门」旗子（Unity activeSelf；有效值看树上祖先，graph.ts isHiddenInTree）。缺 = 出门。 */
+    hidden?: boolean;
 }
 /** 主干树节点：名字字符串（叶）或 { name, children }（组 = 有孩子的页）。`{ name, children: [] }` 与字符串同义，写出时折成字符串。 */
 export type TreeNode = string | {

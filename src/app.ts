@@ -20,8 +20,8 @@ import { createEdgeSidebar, fmtTime } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
 import { nodeDisplayName } from "./project/naming.ts";
 import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./project/format.ts";
-import { decodeToRgba, encodePng, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
-import { planLongImage, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
+import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
+import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, DEFAULT_WIDTH, screenHeightFor, socialSliceHeightFor, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
@@ -193,7 +193,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, sheet, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
   onReplacing: (on) => setReplacing(on),
@@ -213,7 +213,7 @@ const project = createProjectMode({
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   onReplacing: (on) => setReplacing(on),
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
@@ -483,10 +483,19 @@ async function exportSheetFlow(): Promise<void> {
     if (cur && project.isInTree(cur)) choices.push({ label: t("export.branchImage"), value: "branch" });
     choices.push({ label: t("export.bookImage"), value: "book" });
   } else choices.push({ label: t("export.copyDraft"), value: "copy", primary: true }, { label: t("export.draftImage"), value: "draft" });
-  const v = await openChoiceSheet(t("export.title"), t(inBook ? "export.msgBook" : "export.msgDraft"), choices);
+  const msg = inBook ? t("export.msgBook") + "\n" + t("export.msgBookStats", visibleBookStats()) : t("export.msgDraft");   // 已发布字数 = 只数出门的页（user 2026-09-30「统计字数只看 publish 的」）
+  const v = await openChoiceSheet(t("export.title"), msg, choices);
   if (v == null) return;
   if (v === "copy") { await copyCurrentPage(); return; }
   await exportLongImageFlow(v);
+}
+/** 整本出门的字数（hidden 的支不算）：txt 页 CJK / 词 + 页数。 */
+function visibleBookStats(): { cjk: number; en: number; pages: number } {
+  const s = project.session(); if (!s) return { cjk: 0, en: 0, pages: 0 };
+  project.commitEditor();
+  let cjk = 0, en = 0, pages = 0;
+  for (const n of s.exportOrder(null)) { if (nodeKind(n) !== "txt") continue; const st = statsForText(readNodeText(s.project, n) ?? ""); cjk += st.cjk; en += st.en; pages++; }
+  return { cjk, en, pages };
 }
 /** 编辑器此刻的样子 → 长图的尺子（WYSIWYG：字体栈、字号、行高、正文框宽、纸色、墨色、写字线）。 */
 function editorLook(): LongImageLook {
@@ -511,7 +520,8 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
   }
   const s = project.session(); const cur = project.current(); if (!s || !cur) return null;
   project.commitEditor();
-  const names = scope === "page" ? [cur] : scope === "branch" ? s.branchOrder(cur) : s.order();
+  // hidden 的支不出门（2026-09-30）：这一页被藏 → 空；这一支 / 整本 = 剪掉 hidden 的支
+  const names = scope === "page" ? (s.isHiddenInTree(cur) ? [] : [cur]) : s.exportOrder(scope === "branch" ? cur : null);
   const sections: LongImageSection[] = [];
   for (const n of names) {
     const k = nodeKind(n);
@@ -523,25 +533,46 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
   const cp = project.coverPage(); const cb = cp && nodeKind(cp) === "image" ? s.bytesOf(cp) : null;
   return { title: title || stem, date, cover: cb ? await imageRef(cb) : null, sections, look: editorLook(), sliceLabel };
 }
-async function renderLongImageFiles(scope: LongImageScope): Promise<{ files: File[]; plan: LongImagePlan } | null> {
-  const spec = await collectLongImage(scope); if (!spec) return null;
-  const plan = planLongImage(spec, createTextMeasurer());
+/** 文件尺寸（user 2026-09-30「用高压」「默认jpg行吗…是否用jpg你可以pushback」）：按内容定不按阈值猜——纯文字的那张 = 调色板 PNG（256 色；纸底大面积同色，比 JPEG 更小也更锐，微信再压一次也不糊）；有照片（封面 / 插图页）的那张 = JPEG q82。 */
+const LONG_IMAGE_JPEG_QUALITY = 82;
+async function encodeSlices(spec: LongImageSpec, plan: LongImagePlan): Promise<File[]> {
   const base = (spec.title || "export").replace(/[\\/:*?"<>|]/g, "-");
   const files: File[] = [];
   for (let i = 0; i < plan.slices.length; i++) {
     const sl = plan.slices[i]!;
     const img = await paintScene(sl.w, sl.h, spec.look.paper, sl.ops);
-    const png = await encodePng(img.data, img.w, img.h, 0);
-    files.push(new File([png as unknown as BlobPart], plan.slices.length > 1 ? `${base}-${i + 1}.png` : `${base}.png`, { type: "image/png" }));
+    const bytes = sl.hasImage ? await encodeJpeg(img.data, img.w, img.h, LONG_IMAGE_JPEG_QUALITY) : await encodePng(img.data, img.w, img.h, 256);
+    const ext = sl.hasImage ? "jpg" : "png";
+    files.push(new File([bytes as unknown as BlobPart], plan.slices.length > 1 ? `${base}-${i + 1}.${ext}` : `${base}.${ext}`, { type: sl.hasImage ? "image/jpeg" : "image/png" }));
   }
-  return { files, plan };
+  return files;
+}
+/** 无交互路（探针 / 脚本）：超过单张上限就按上限切。 */
+async function renderLongImageFiles(scope: LongImageScope, opts: { maxSliceHeight?: number } = {}): Promise<{ files: File[]; plan: LongImagePlan } | null> {
+  const spec = await collectLongImage(scope); if (!spec) return null;
+  const m = createTextMeasurer();
+  let plan = planLongImage(spec, m, opts);
+  if (opts.maxSliceHeight == null && plan.totalHeight > SINGLE_IMAGE_MAX_HEIGHT) plan = planLongImage(spec, m, { maxSliceHeight: SINGLE_IMAGE_MAX_HEIGHT });
+  return { files: await encodeSlices(spec, plan), plan };
 }
 async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
-  let r: { files: File[]; plan: LongImagePlan } | null;
-  try { r = await withBusy(t("export.making"), () => renderLongImageFiles(scope)); }
+  let spec: LongImageSpec | null;
+  try { spec = await collectLongImage(scope); }
   catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); return; }
-  if (!r) { setStatus(t("export.empty")); return; }
-  const { files, plan } = r;
+  if (!spec) { const cur = project.active() ? project.current() : null; setStatus(t(cur && project.isHiddenInTree(cur) && scope !== "book" ? "export.hiddenEmpty" : "export.empty")); return; }
+  // 尽量一张（user「三屏太难受了」）：只有超过单张上限才问切法
+  const m = createTextMeasurer(); let plan = planLongImage(spec, m);
+  if (plan.totalHeight > SINGLE_IMAGE_MAX_HEIGHT) {
+    const W = spec.width ?? DEFAULT_WIDTH, screen = screenHeightFor(W), maxScreens = Math.floor(SINGLE_IMAGE_MAX_HEIGHT / screen);
+    const nCap = planLongImage(spec, m, { maxSliceHeight: SINGLE_IMAGE_MAX_HEIGHT }).slices.length, nSocial = planLongImage(spec, m, { maxSliceHeight: socialSliceHeightFor(W) }).slices.length;
+    const v = await openChoiceSheet(t("export.tooTallTitle"), t("export.tooTallMsg", { screens: Math.round(plan.totalHeight / screen), cjk: plan.cjk, max: SINGLE_IMAGE_MAX_HEIGHT, maxScreens }), [
+      { label: t("export.sliceCap", { n: nCap, s: maxScreens }), value: "cap" as const, primary: true }, { label: t("export.sliceSocial", { n: nSocial }), value: "social" as const }]);
+    if (v == null) return;
+    plan = planLongImage(spec, m, { maxSliceHeight: v === "cap" ? SINGLE_IMAGE_MAX_HEIGHT : socialSliceHeightFor(W) });
+  }
+  let files: File[];
+  try { const s = spec, p = plan; files = await withBusy(t("export.making"), () => encodeSlices(s, p)); }
+  catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); return; }
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   const canShare = typeof navigator.share === "function" && !!nav.canShare?.({ files });
   const canCopy = files.length === 1 && typeof ClipboardItem !== "undefined" && !!navigator.clipboard?.write;
@@ -549,7 +580,7 @@ async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
   if (canShare) choices.push({ label: t("export.share"), value: "share", primary: true });
   choices.push({ label: t("export.download"), value: "download", primary: !canShare });
   if (canCopy) choices.push({ label: t("export.copyPng"), value: "copy" });
-  const v = await openChoiceSheet(t("export.readyTitle", { n: files.length }), t("export.readyMsg", { cjk: plan.cjk, en: plan.en, pages: plan.textPages, images: plan.imagePages }), choices);
+  const v = await openChoiceSheet(t("export.readyTitle", { n: files.length }), t("export.readyMsg", { cjk: plan.cjk, en: plan.en, pages: plan.textPages, images: plan.imagePages, size: humanSize(files.reduce((a, f) => a + f.size, 0)) }), choices);
   if (v == null) return;
   try {
     if (v === "share") { await navigator.share({ files, title: files[0]!.name }); setStatus(t("export.shared")); }
@@ -703,7 +734,26 @@ addPageButton.addEventListener("click", (e) => {
     { id: "move", label: t("edge.moveTo"), icon: "move-to-file", separatorBefore: true },   // 挪到…（pick sheet；书的末尾 = 空树唯一入口，v2.1.6 归入主干并入）
     { id: "toRef", label: t("ref.sendToRef"), icon: "picture-in-picture", separatorBefore: true, disabled: !project.canEdit() },   // 这一页 → 参考窗（链接卡；ADR-0016）
     { id: "time", label: t("edge.setTime"), separatorBefore: true, disabled: !project.canEdit() },   // 改这一页的时间戳（整理旧书；user 2026-09-30）
-  ], onPick: (id) => { if (id === "move") { if (cur) void movePageFlow(cur); } else if (id === "toRef") { if (cur) refHost.sendPage(cur); } else if (id === "time") { if (cur) void setPageTimeFlow(cur); } else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+    { id: "hide", label: t(cur && project.isHidden(cur) ? "edge.unhide" : "edge.hide"), icon: cur && project.isHidden(cur) ? "visibility-show" : "visibility-hide", disabled: !project.canEdit() },   // 隐藏 = 不出门（导出 / 长图 / 字数），连同子节（Unity 语义；user 2026-09-30）
+  ], onPick: (id) => { if (id === "move") { if (cur) void movePageFlow(cur); } else if (id === "toRef") { if (cur) refHost.sendPage(cur); } else if (id === "time") { if (cur) void setPageTimeFlow(cur); } else if (id === "hide") { if (cur) toggleHiddenFlow(cur); } else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+});
+/** 隐藏 / 取消隐藏这一页（自己的旗子）；侧栏与纸上的眼睛跟着重画。 */
+function toggleHiddenFlow(name: string): void {
+  const v = !project.isHidden(name);
+  if (project.setHidden(name, v)) { edgeSidebar.render(); renderHiddenBadge(); setStatus(t(v ? "edge.hiddenDone" : "edge.unhiddenDone", { name: nodeDisplayName(name) })); }
+}
+/** 纸上章节名旁的眼睛（2026-09-30）：这一页在树上「不出门」才露；自己藏的 → 点了取消；被祖先藏的 → 点了说是谁藏的（去那一页取消）。 */
+function renderHiddenBadge(): void {
+  const b = $<HTMLButtonElement>("pageHiddenBadge"); const cur = project.active() ? project.current() : null;
+  const on = !!cur && project.isHiddenInTree(cur);
+  b.hidden = !on; if (!on) return;
+  const self = project.isHidden(cur!); const by = self ? null : project.hiddenAncestor(cur!);
+  b.title = self ? t("edge.hiddenTip") : t("edge.hiddenBy", { name: nodeDisplayName(by ?? "") }); b.setAttribute("aria-label", b.title);
+}
+$("pageHiddenBadge").addEventListener("click", () => {
+  const cur = project.current(); if (!cur) return;
+  if (project.isHidden(cur)) toggleHiddenFlow(cur);
+  else setStatus(t("edge.hiddenBy", { name: nodeDisplayName(project.hiddenAncestor(cur) ?? "") }));
 });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());

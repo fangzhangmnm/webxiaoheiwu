@@ -1,7 +1,9 @@
 // 书的容器格式 v2（ADR-0008 / ADR-0009 / ADR-0010 / ADR-0014）：`<名字>.webxiaoheiwu.zip` = graph.json + pages/ + .webxiaoheiwu/editor-state.json (+ Thumbnails/thumbnail.png)。
 // created 2026-09-10 by Claude Fable 5.1；v2（主干树 + links）同日由树 session 落地。硬规则：zip 内 entry 增删改名必须给 user 完整目录清单（ADR-0008 §3 是 as-of 清单）。
 //   作品.webxiaoheiwu.zip
-//   ├─ graph.json                 清单：format / version=2 / wroteWith / readOnly?（修改锁跟着作品）/ cover?（封面来源页的完整文件名，2026-09-30 user「加 cover 字段」；ADR-0012 修订）/ tree[]（主干树）/ pages{ <完整文件名>: { links[], created, modified } }
+//   ├─ graph.json                 清单：format / version=2 / wroteWith / readOnly?（修改锁跟着作品）/ cover?（封面来源页的完整文件名，2026-09-30 user「加 cover 字段」；ADR-0012 修订）/ tree[]（主干树）/ pages{ <完整文件名>: { links[], created, modified, hidden? } }
+//   │                             · hidden（2026-09-30 user「和 unity 一样，parent hidden -> all child hidden」「不帮 user 发明语义，只用最 generic 机械的，所以就 hidden」）= 这页自己的旗子（Unity activeSelf）；
+//   │                               「出不出门」看有效值 = 自己 ∨ 树上任一祖先（activeInHierarchy）：导出 / 长图 / 字数统计跳过整支；导航 / 侧栏 / 检索照走（workbench 什么都看得见，只画灰）。只写 true。
 //   │                             · tree = 整理：嵌套数组，节点 = 名字字符串 或 { name, children }；一页至多一个父亲、兄弟有序、成员资格可选（散页合法）。
 //   │                               没有 folder 类型、没有节点类型、没有 compile 标记：组 = 有孩子的页（ADR-0014 §2）。
 //   │                             · links = 指向：多对多，房间的边 / wiki 关系。一句话：兄弟 = 顺序，孩子 = 归属，link = 指向。
@@ -36,7 +38,7 @@ export type NodeKind = "txt" | "image" | "other";
 /** entry 时间戳钉死 → 同内容同字节（ADR-0008 §4/§6）。 */
 export const PINNED_MTIME = new Date(Date.UTC(1980, 0, 1));
 
-export interface NodeMeta { links: string[]; created: number; modified: number }
+export interface NodeMeta { links: string[]; created: number; modified: number; /** 这页自己的「不出门」旗子（Unity activeSelf；有效值看树上祖先，graph.ts isHiddenInTree）。缺 = 出门。 */ hidden?: boolean }
 /** 主干树节点：名字字符串（叶）或 { name, children }（组 = 有孩子的页）。`{ name, children: [] }` 与字符串同义，写出时折成字符串。 */
 export type TreeNode = string | { name: string; children: TreeNode[] };
 export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; wroteWith: string; readOnly?: boolean; cover?: string; tree: TreeNode[]; pages: Record<string, NodeMeta> }
@@ -110,7 +112,7 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
   const nodes: Record<string, NodeMeta> = {};
   for (const name of [...p.contents.keys()].sort()) {
     const m = p.nodes.get(name) ?? { links: [], created: 0, modified: 0 };
-    nodes[name] = { links: m.links.filter(has), created: m.created, modified: m.modified };
+    nodes[name] = { links: m.links.filter(has), created: m.created, modified: m.modified, ...(m.hidden ? { hidden: true } : {}) };
   }
   const graph: ProjectGraphJson = { format: PROJECT_FORMAT, version: PROJECT_FORMAT_VERSION, wroteWith: APP_VERSION, ...(p.readOnly ? { readOnly: true } : {}), ...(p.cover && has(p.cover) ? { cover: p.cover } : {}), tree: normalizeTree(pruneTree(p.tree, has)), pages: nodes };   // cover 严格写：来源页没文件就不写（不产生悬空）
   const stats: PackStats = opts.stats ?? { passThrough: 0, encoded: 0 };
@@ -203,7 +205,7 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
       if (!r) { warnings.push(`dangling link dropped: ${name} -> ${l}`); continue; }
       if (!links.some((x) => nameKey(x) === nameKey(r))) links.push(r);
     }
-    p.nodes.set(name, { links, created: Number(m?.created) || 0, modified: Number(m?.modified) || 0 });
+    p.nodes.set(name, { links, created: Number(m?.created) || 0, modified: Number(m?.modified) || 0, ...(m?.hidden === true ? { hidden: true } : {}) });
   }
   if (graph) for (const n of Object.keys(graph.pages ?? {})) { if (!resolve(n)) warnings.push(`graph.json page without pages/ file dropped: ${n}`); }
   // tree：形状错 / 重名 → corrupt；名字无文件 → 丢 + warning（孩子提到它的位置）；缺 tree 字段 → 空树 + warning

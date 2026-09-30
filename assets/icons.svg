@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  51 icons extracted from the family icon library (../../../../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  53 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
@@ -52,6 +52,10 @@
   <symbol id="create-folder" data-cat="hierarchy" data-src="own" data-note="加号做成右下角徽标" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="icCfd"><rect width="24" height="24" fill="#fff" stroke="none"/><circle cx="17.6" cy="17.6" r="4.6" fill="#000" stroke="none"/></mask><g mask="url(#icCfd)"><g transform="translate(-1.2 -1.6) scale(0.86)"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g></g><path d="M14.6 17.6 H20.6 M17.6 14.6 V20.6"/></symbol>
   <!-- move-to-folder — 移入文件夹(定 2 号):小 folder + 弧箭头, 箭头头部在 folder 内 · 尾巴在外 -->
   <symbol id="move-to-folder" data-cat="hierarchy" data-src="own" data-note="移入文件夹(定 2 号):小 folder + 弧箭头, 箭头头部在 folder 内 · 尾巴在外" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(7.46 5.6) scale(0.68)" stroke-width="2.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></g><path d="M2.6 20.6 A9.5 9.5 0 0 1 13.2 13.6"/><g transform="rotate(30 13.5 13.6)"><path d="M10.4 12.6 L13.5 13.6 L12.7 16.6"/></g></symbol>
+  <!-- visibility-hide — 隐藏:同 show 撑高版+斜杠(mask 留 gap) -->
+  <symbol id="visibility-hide" data-cat="hierarchy" data-src="own" data-note="隐藏:同 show 撑高版+斜杠(mask 留 gap)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="wbEyeHideBig"><rect width="24" height="24" fill="#fff"/><path d="M4.2 19.8 L19.8 4.2" stroke="#000" stroke-width="4"/></mask><g mask="url(#wbEyeHideBig)"><path d="M3.2 12 Q12 1.8 20.8 12" stroke-width="2.2"/><path d="M3.2 12 Q12 22.2 20.8 12"/><circle cx="12" cy="12" r="4.3" fill="currentColor" stroke="none"/></g><path d="M4.2 19.8 L19.8 4.2"/></symbol>
+  <!-- visibility-show — 可见:撑高眼裂+瞳孔 r4.3(甲方实测原版太小) -->
+  <symbol id="visibility-show" data-cat="hierarchy" data-src="own" data-note="可见:撑高眼裂+瞳孔 r4.3(甲方实测原版太小)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 12 Q12 1.8 20.8 12" stroke-width="2.2"/><path d="M3.2 12 Q12 22.2 20.8 12"/><circle cx="12" cy="12" r="4.3" fill="currentColor" stroke="none"/></symbol>
   <!-- common -->
   <!-- x — 叉 -->
   <symbol id="x" data-cat="common" data-src="own" data-note="叉" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 L17.5 17.5 M17.5 6.5 L6.5 17.5"/></symbol>

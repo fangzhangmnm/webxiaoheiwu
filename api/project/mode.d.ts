@@ -155,8 +155,13 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         isInTree: (target: string) => boolean;
         order: () => string[];
         branchOrder: (target: string) => string[];
+        exportOrder: (target: string | null) => string[];
         exportBranch: (target: string) => string;
         canMutate: () => boolean;
+        setHidden: (target: string, v: boolean) => void;
+        isHidden: (target: string) => boolean;
+        isHiddenInTree: (target: string) => boolean;
+        hiddenAncestor: (target: string) => string | null;
     } | null;
     encrypted: () => boolean;
     locked: () => boolean;
@@ -253,6 +258,10 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     setThumbnail: (png: Uint8Array<ArrayBufferLike> | null, source?: string | null | undefined) => boolean;
     thumbnail: () => Uint8Array | null;
     coverPage: () => string | null;
+    setHidden: (target: string, v: boolean) => boolean;
+    isHidden: (target: string) => boolean;
+    isHiddenInTree: (target: string) => boolean;
+    hiddenAncestor: (target: string) => string | null;
     noteReferencesChanged: () => void;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;

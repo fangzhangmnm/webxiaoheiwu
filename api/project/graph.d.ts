@@ -92,6 +92,17 @@ export declare function insertSibling(p: Project, after: string, newName: string
 /** 「+ 子节」：同 insertSibling，但放到 parent 的孩子末尾。 */
 export declare function insertChild(p: Project, parent: string, newName: string, now?: NowFn): InsertResult;
 /** 导出这一支（ADR-0014 §6）：选中页的子树前序 DFS，把 txt 页的正文用 `\n\n` 拼成一个文本（图片页 / 其他页跳过）。不在树里 → 只有它自己。 */
-/** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导出（txt / 长图）都从这里取序。 */
+/** 这页自己的旗子。 */
+export declare const isHidden: (p: Project, name: string) => boolean;
+export declare function setHidden(p: Project, name: string, v: boolean): void;
+/** 最近一个自己标了 hidden 的祖先（不含自己）；没有 → null。散页 → null。 */
+export declare function hiddenAncestor(p: Project, name: string): string | null;
+/** 有效值（Unity activeInHierarchy）：自己 ∨ 任一祖先。 */
+export declare const isHiddenInTree: (p: Project, name: string) => boolean;
+/** 出门的页序：前序 DFS，自己标了 hidden 的节点连同整支跳过。root 不给 = 整棵树。 */
+export declare function visibleOrder(p: Project, root?: TreeNode[]): string[];
+/** 这一支出门的页序：root 在树上被祖先藏着 → 空；否则子树 DFS 剪掉 hidden 的支。散页 = 自己没藏就只有自己。 */
+export declare function visibleSubtreeOrder(p: Project, name: string): string[];
+/** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导航用；导出走 visibleSubtreeOrder（hidden 的支不出门）。 */
 export declare function subtreeOrder(p: Project, name: string): string[];
 export declare function exportSubtree(p: Project, name: string): string;
