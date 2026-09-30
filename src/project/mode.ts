@@ -7,7 +7,7 @@
 //   「默认节点就叫第一章」）；新边加末尾（「节点应该加在末尾」）；显示不带扩展名（「吃书：还是不显示扩展名吧」）。
 import { PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { bookLocalDebounceMs } from "./cadence.ts";
-import { createProjectSession, type ProjectSession, type OpenResult } from "./session.ts";
+import { createProjectSession, type ProjectSession, type OpenResult, type ReferenceHooks } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc } from "../docs.ts";
 import { rescueBook } from "../rescue.ts";
 import { note as diagNote } from "../diag-log.ts";
@@ -24,7 +24,18 @@ import { t } from "../i18n/index.ts";
 import { S } from "../i18n/strings.ts";
 
 export type ProjectHome = { kind: "store"; name: string } | { kind: "local"; home: LocalHome };
+/** 参考窗（ADR-0016）：mode 只认「路径 → 字节」的目录表和几个通知；清单是库的事，宿主适配层（reference-host.ts）接。 */
+export interface ReferenceModeHooks extends ReferenceHooks {
+  /** 换了书 / 关了书：把读到的参考目录交给参考窗（空表 = 清空）。 */
+  apply(files: Map<string, Uint8Array>): void;
+  /** 某一页的正文 / 字节变了（链接卡要重取）。 */
+  pageChanged(name: string): void;
+  /** 某一页改了名（链接卡的 target 跟着改）。 */
+  pageRenamed(from: string, to: string): void;
+}
 export interface ProjectModeDeps {
+  /** 参考窗（ADR-0016）；不给 = 参考目录原样进出、无通知。 */
+  references?: ReferenceModeHooks;
   /** 云端新版正在换掉本地这一本（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待（user 2026-09-29「快进的时候就 waiting，这样稳一点」）。 */
   onReplacing?: (on: boolean) => void;
   editorEl: HTMLTextAreaElement;
@@ -103,6 +114,15 @@ export function createProjectMode(d: ProjectModeDeps) {
   });
   function syncTitle(): void { const cur = session?.current() ?? null; titleField.setValue(cur ? (nodeKind(cur) === "image" ? stemOf(cur) : nodeDisplayName(cur)) : ""); }
   /** 把章节名框里的字落成改名。返回 true = 名字已与框一致（含「没改」/ 合成中先不动）；false = 没落成（撞名/非法），框保留用户打的字让人改。 */
+  /** 参考窗（ADR-0016）：换书 / 关书时把参考目录交出去；打不开的书 / 关书 = 空表。 */
+  function applyReferences(): void { d.references?.apply(session?.project.references ?? new Map()); }
+  /** 参考窗里加 / 删 / 挪了卡（宿主适配层调）：算正经改动，标脏 + 走落盘节律。 */
+  function noteReferencesChanged(): void {
+    if (!session || locked || !canEdit()) return;
+    session.touchReferences();
+    scheduleLocalSave(); schedulePush();
+    d.setState(stateText()); d.onChanged();
+  }
   function commitTitle(): boolean {
     if (titleField.composing()) return true;   // 系统输入法正在组字：半截拼音不是名字，等它上屏（blur / Enter 再来）
     if (!canEdit()) return true;
@@ -115,7 +135,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (nn === cur) { syncTitle(); return true; }
     if (nameKey(nn) !== nameKey(cur) && session!.exists(nn)) { d.setStatus(t("edge.nameTaken"), { error: true }); return false; }
     try { session!.rename(cur, nn); } catch (e) { d.setStatus(errMsg(e), { error: true }); return false; }
-    renameInBack(cur, nn);
+    renameInBack(cur, nn); d.references?.pageRenamed(cur, nn);
     syncTitle(); scheduleLocalSave(); d.onChanged();
     return true;
   }
@@ -123,7 +143,11 @@ export function createProjectMode(d: ProjectModeDeps) {
   function focusTitle(): void { try { d.titleEl.focus(); d.titleEl.select(); } catch { /* ignore */ } }
 
   // ── 落盘节律 ──
-  function commitTextarea(): void { if (canEdit() && session!.current() && currentKind() !== "image") session!.setCurrentText(d.editorEl.value); }   // 图片页的 textarea 是空壳，绝不提交   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
+  function commitTextarea(): void {
+    if (!(canEdit() && session!.current() && currentKind() !== "image")) return;
+    const cur = session!.current()!;
+    if (session!.setCurrentText(d.editorEl.value)) d.references?.pageChanged(cur);   // 链接了这一页的参考卡要重取（ADR-0016）
+  }   // 图片页的 textarea 是空壳，绝不提交   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
   /** 切节点 / 落盘前：章节名框 + 正文都先落进内存图。force=false（定时落盘 / 推云）：章节名框还聚焦着就别碰它——半截名字不是名字，离开框自会提交（v2.1.13）。 */
   function commitEditor(force = true): void { if (force || document.activeElement !== d.titleEl) commitTitle(); commitTextarea(); }
   async function persist(push: boolean): Promise<void> {
@@ -265,7 +289,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     return false;
   }
   function enterLocked(projectName: string): void {
-    home = { kind: "store", name: projectName }; session = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
+    home = { kind: "store", name: projectName }; session = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     encrypted = true; locked = true; back = []; forward = []; pushPending = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     hideImage();
@@ -287,7 +311,7 @@ export function createProjectMode(d: ProjectModeDeps) {
       if (g !== gen) return true;
       if (!ok) return true;
     }
-    const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
+    const s = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     d.setStatus(t("st.loading"));
     const r = await s.open(projectName);
     if (g !== gen) return true;
@@ -297,6 +321,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
     const ok = reportOpen(r);
     if (ok && r.kind === "ok") d.setStatus("");   // 收掉「加载中…」
+    applyReferences();
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
     return ok;
   }
@@ -366,12 +391,13 @@ export function createProjectMode(d: ProjectModeDeps) {
   async function openLocal(lh: LocalHome): Promise<boolean> {
     d.onBeforeLoad?.(); await flushLocal();
     const g = ++gen; resetWorld();
-    const s = createProjectSession({ read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
+    const s = createProjectSession({ references: d.references, read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
     if (g !== gen) return true;
     home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; forward = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
+    applyReferences();
     loadCurrentIntoEditor(); d.setState(stateText()); d.onChanged();
     return ok;
   }
@@ -379,10 +405,11 @@ export function createProjectMode(d: ProjectModeDeps) {
   async function createInStore(projectName: string, firstNode: string): Promise<void> {
     d.onBeforeLoad?.(); await flushLocal();
     gen++; resetWorld();
-    const s = createProjectSession({ read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
+    const s = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
     home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
+    applyReferences();
     await s.flush(false);
     pushPending = true;   // 新书 = 云端还没有：待推（以前这里不标，15 s 后 pushNow 的 flush 因 session 不脏直接跳过，新书直到用户打第一个字才上云；2026-09-26 user 真机「新书一直卡在上传」链条之一）
     diagNote("book", `created "${projectName}" (local); signedIn=${d.isSignedIn()}`);
@@ -395,6 +422,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     gen++; resetWorld();
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     home = null; session = null; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
+    applyReferences();
     hideImage();
     d.editorEl.readOnly = false; d.editorEl.classList.remove("locked");
     d.titleEl.value = ""; d.titleEl.readOnly = false; d.titleEl.classList.remove("locked");
@@ -505,11 +533,11 @@ export function createProjectMode(d: ProjectModeDeps) {
   const isDiscarded = (target: string): boolean => discardPrefixes().some((pre) => target.startsWith(pre));
   /** 废弃（用户面 = 删除）：改名 `_废-`（前缀按界面语言）+ 在树里连同子树出树、子节各自改名；不删字节。回退 / 前进栈跟着改名。lastDiscarded = 改名表（toast 用）。 */
   let lastDiscarded: { from: string; to: string }[] = [];
-  const discardPage = guardEdit((target: string) => { commitEditor(); const r = session!.discard(target, t("edge.discardPrefix"), discardPrefixes()); lastDiscarded = r.renamed; for (const x of r.renamed) if (x.from !== x.to) renameInBack(x.from, x.to); });
+  const discardPage = guardEdit((target: string) => { commitEditor(); const r = session!.discard(target, t("edge.discardPrefix"), discardPrefixes()); lastDiscarded = r.renamed; for (const x of r.renamed) if (x.from !== x.to) { renameInBack(x.from, x.to); d.references?.pageRenamed(x.from, x.to); } syncTitle(); });   // 废弃 = 改名（ADR-0014 §8）→ 链接卡跟着改名，不断；syncTitle：废弃的是当前页时章节名框必须立刻回显 `_废-` 名——否则 200 ms 后的落盘 commitEditor 会把旧名字当改名落回去、静默撤销废弃（2026-09-29 参考窗 e2e 抓到）
   /** 废弃前给 sheet 的数：子树里有几个子节（不在树里 = 0）。 */
   const subtreeCount = (target: string): number => { const s = session; if (!s) return 0; const depth = s.pathOf(target).length; if (!depth) return 0; const order = s.order(); const i = order.indexOf(target); let n = 0; for (let j = i + 1; j < order.length && s.pathOf(order[j]!).length > depth; j++) n++; return n; };
   /** 彻底删除：只对 `_废-` 页（调用方先弹 sheet 写明有几页链接到它）；删文件 + 指向它的 links 条目移除；回退 / 前进栈过滤掉目标。当前页被删 → 回退或落到树首 / 任一页。 */
-  const purgePage = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.purge(target, discardPrefixes()); back = back.filter((n) => n !== target); forward = forward.filter((n) => n !== target); syncBack(); if (wasCurrent) { const next = popBack() ?? session!.order()[0] ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
+  const purgePage = guardEdit((target: string) => { commitEditor(); const wasCurrent = session!.current() === target; session!.purge(target, discardPrefixes()); d.references?.pageChanged(target); /* 彻底删除 → 链接卡重取 → 取不到 → 卡上如实写「已不在书里」 */ back = back.filter((n) => n !== target); forward = forward.filter((n) => n !== target); syncBack(); if (wasCurrent) { const next = popBack() ?? session!.order()[0] ?? [...session!.project.contents.keys()].sort()[0] ?? null; if (next) session!.jump(next); loadCurrentIntoEditor(); } });
   /** 归档到当前页之后 / 之下（散页从 links / 谁指向这里 收进主干；树里的页 = 搬家，子树跟着）。 */
   const archiveAfterCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveAfter(target, session!.current()!); });
   const archiveUnderCurrent = guardEdit((target: string) => { commitEditor(); session!.archiveUnder(target, session!.current()!); });
@@ -574,8 +602,9 @@ export function createProjectMode(d: ProjectModeDeps) {
     session!.replaceBytes(c, bytes);
     if (nodeExt(c) !== ext && !(ext === "jpg" && nodeExt(c) === "jpeg")) {
       let nn = `${stemOf(c)}.${ext}`; if (session!.exists(nn)) nn = `${stemOf(c)}-${hex4()}.${ext}`;
-      session!.rename(c, nn); renameInBack(c, nn);
+      session!.rename(c, nn); renameInBack(c, nn); d.references?.pageRenamed(c, nn);
     }
+    d.references?.pageChanged(session!.current()!);
     loadCurrentIntoEditor();
   });
   const setThumbnail = guardEdit((png: Uint8Array | null) => { session!.setThumbnail(png); });
@@ -590,6 +619,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
     cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail,
+    noteReferencesChanged,
   };
 }
 export type ProjectMode = ReturnType<typeof createProjectMode>;

@@ -11,7 +11,10 @@
 //   │   ├─ *.txt                  正文页
 //   │   └─ *.jpg|png|webp|gif      图片页（2.1，ADR-0013）：同一张 pages 表，STORE；别的扩展名合法但不打开
 //   ├─ .webxiaoheiwu/
-//   │   └─ editor-state.json      { last, back }：上次所在页 + 回退栈（≤50，旧在前）。随保存写，导航不标脏（ADR-0010）
+//   │   ├─ editor-state.json      { last, back }：上次所在页 + 回退栈（≤50，旧在前）。随保存写，导航不标脏（ADR-0010）
+//   │   └─ references/            参考窗（2026-09-29，ADR-0016；契约归 @internal/reference-window，本模块零知识：整个目录原样进出）
+//   │       ├─ manifest.json       清单（库的目录制契约；卡可以 target: "page:<页名>" 指向书里的页 = 立绘只存一次）
+//   │       └─ r<i>.<ext>          有字节的卡（外来的图 / 文字）；链接卡零字节
 //   └─ Thumbnails/thumbnail.png   封面（2.1，ADR-0012；ORA 同款路径）：**永远最后一个 entry**、STORE、≤256²、≤70 KB，可带 iTXt Description = 腰封。
 import { zipPack, zipUnpackRaw, zipReadRaw, levelForPath, type RawEntry, type ZipEntryIn } from "../zip.ts";
 import { encodeText, decodeTextBytes } from "../doc-model.ts";
@@ -22,6 +25,8 @@ export const PROJECT_FORMAT_VERSION = 2;
 export const GRAPH_ENTRY = "graph.json";
 export const CONTENTS_DIR = "pages/";   // 目录名 pages/（2026-09-10 吃书）；内存里的 Map 仍叫 contents/nodes（代码标识符不动）
 export const EDITOR_STATE_ENTRY = ".webxiaoheiwu/editor-state.json";
+/** 参考窗目录（ADR-0016）：本模块只搬字节不解释，路径必须以此开头。 */
+export const REFERENCES_DIR = ".webxiaoheiwu/references/";
 /** 封面缩略图（ORA 同款路径；ADR-0012）。写时永远最后一个 entry（store getPeek 一次尾读命中）。 */
 export const THUMBNAIL_ENTRY = "Thumbnails/thumbnail.png";
 /** 图片页扩展名（2.1）：认这些就当图片页打开；GIF 动图原字节直通。 */
@@ -34,7 +39,9 @@ export interface NodeMeta { links: string[]; created: number; modified: number }
 /** 主干树节点：名字字符串（叶）或 { name, children }（组 = 有孩子的页）。`{ name, children: [] }` 与字符串同义，写出时折成字符串。 */
 export type TreeNode = string | { name: string; children: TreeNode[] };
 export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; wroteWith: string; readOnly?: boolean; tree: TreeNode[]; pages: Record<string, NodeMeta> }
-export interface EditorState { last: string | null; back: string[] }
+/** 参考窗的窗口状态（ADR-0016）：开没开、在哪、多大。随 editor-state 走，不标脏（同 last / back）。 */
+export interface RefPanelState { open: boolean; left: number; top: number; width: number; height: number }
+export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState }
 export const BACK_STACK_MAX = 50;
 export interface Project {
   nodes: Map<string, NodeMeta>;               // key = 完整文件名（pages/ 下 entry 名）
@@ -48,6 +55,8 @@ export interface Project {
   readOnly: boolean;
   /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
   thumbnail: Uint8Array | null;
+  /** 参考窗目录（ADR-0016）：路径（含 REFERENCES_DIR 前缀）→ 字节。本模块零知识，原样进出；内容由 @internal/reference-window 编解码。 */
+  references: Map<string, Uint8Array>;
   /** 增量重打（ADR-0015）：字节对象 → 它上次进 zip 时的已压缩 entry。键是**对象身份**：页一改（writeNodeText 换新 Uint8Array）自然失效，改名 / 搬树不换对象照样命中；不用记脏页集合。 */
   rawCache: WeakMap<Uint8Array, RawEntry>;
 }
@@ -70,7 +79,7 @@ export const nodeExt = (name: string): string => { const i = name.lastIndexOf(".
 /** 页的种类（只看扩展名）：txt 正文 / image 图片页 / other（合法但不打开）。 */
 export const nodeKind = (name: string): NodeKind => { const e = nodeExt(name); return e === "txt" ? "txt" : IMAGE_EXTS.includes(e) ? "image" : "other"; };
 
-export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null, rawCache: new WeakMap() }; }
+export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null, references: new Map(), rawCache: new WeakMap() }; }
 
 // ── 树的形状工具（纯函数，graph.ts 的树操作也用）──
 export const treeNodeName = (n: TreeNode): string => (typeof n === "string" ? n : n.name);
@@ -110,7 +119,12 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
   };
   const entries: ZipEntryIn[] = [{ path: GRAPH_ENTRY, data: JSON.stringify(graph, null, 1) }];
   for (const name of [...p.contents.keys()].sort()) entries.push(bytesEntry(CONTENTS_DIR + name, p.contents.get(name)!));
-  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX) }) });
+  // 参考目录（ADR-0016）：库给什么写什么，顺序照库的（manifest.json 在前）；路径不在目录下 = 编程错误，响亮拒
+  for (const [path, bytes] of p.references) {
+    if (!path.startsWith(REFERENCES_DIR)) throw new Error(`reference entry outside ${REFERENCES_DIR}: ${path}`);
+    entries.push(bytesEntry(path, bytes));
+  }
+  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}) }) });
   if (p.thumbnail && p.thumbnail.length) entries.push(bytesEntry(THUMBNAIL_ENTRY, p.thumbnail));   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
   stats.encoded += 2;   // graph.json + editor-state
   const blob = await zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
@@ -205,10 +219,18 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
       const st = JSON.parse(new TextDecoder().decode(entries[EDITOR_STATE_ENTRY]!)) as Partial<EditorState>;
       p.editorState.last = typeof st.last === "string" ? (resolve(st.last) ?? null) : null;
       p.editorState.back = Array.isArray(st.back) ? st.back.filter((x): x is string => typeof x === "string").map((x) => resolve(x)).filter((x): x is string => !!x).slice(-BACK_STACK_MAX) : [];
+      const rp = st.refPanel;
+      if (rp && typeof rp === "object" && [rp.left, rp.top, rp.width, rp.height].every((n) => Number.isFinite(n))) p.editorState.refPanel = { open: !!rp.open, left: rp.left, top: rp.top, width: rp.width, height: rp.height };
     }
     catch { warnings.push("editor-state.json unreadable; ignored"); }
   }
   if (THUMBNAIL_ENTRY in entries && entries[THUMBNAIL_ENTRY]!.length) { p.thumbnail = entries[THUMBNAIL_ENTRY]!; p.rawCache.set(p.thumbnail, unpacked[THUMBNAIL_ENTRY]!.raw); }
+  // 参考目录（ADR-0016）：整个目录原样带走（不解释；写回时原样写），已压缩字节留住 → 没改就 passThrough
+  for (const path of names) {
+    if (!path.startsWith(REFERENCES_DIR) || path.length === REFERENCES_DIR.length) continue;
+    p.references.set(path, entries[path]!);
+    p.rawCache.set(entries[path]!, unpacked[path]!.raw);
+  }
   return { kind: "ok", project: p, warnings };
 }
 

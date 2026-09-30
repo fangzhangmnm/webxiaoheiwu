@@ -9,7 +9,14 @@ import { type Project, type UnpackResult, emptyProject, packProject, unpackProje
 import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 
+/** 参考窗目录的进出口（ADR-0016）：session 对目录零知识——保存前向宿主要一份，读到的整份由 mode 交出去。 */
+export interface ReferenceHooks {
+  /** 保存前：交出参考目录（路径 → 字节，路径在 REFERENCES_DIR 下）。 */
+  collect(): Promise<Map<string, Uint8Array>>;
+}
 export interface ProjectSessionDeps {
+  /** 参考窗目录（ADR-0016）。不给 = 目录原样带着（读到什么写回什么）。 */
+  references?: ReferenceHooks;
   read(name: string): Promise<Blob | null>;                                     // store file(name,{isZip:true}).open()
   write(name: string, blob: Blob, opts: { push: boolean }): Promise<{ pushed?: boolean; reason?: string; resolution?: "keepMine" | "takeCloud" }>;   // reason / resolution 原样透传（store SaveResult）：takeCloud = 本地 IDB 已换成云端版本，调用方必须整体重载
   now?: NowFn;
@@ -146,6 +153,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
   async function flush(push: boolean, opts: { force?: boolean } = {}): Promise<{ wrote: boolean; pushed?: boolean; reason?: string; resolution?: "keepMine" | "takeCloud" }> {
     if (!name || readOnly || (!dirty && !opts.force)) return { wrote: false };
     const g = gen, n = name, e = editEpoch;
+    if (d.references) project.references = await d.references.collect();   // 参考目录随保存捞（ADR-0016；翻页 / 滚动不标脏，这里顺手带走）
     const blob = await packProject(project);
     if (g !== gen) return { wrote: false };
     const r = await d.write(n, blob, { push });
@@ -155,10 +163,12 @@ export function createProjectSession(d: ProjectSessionDeps) {
   /** 回退栈（UI 的内存态镜像进 editor-state；不标脏，随下次保存写——ADR-0010 口径）。 */
   function setBack(list: readonly string[]): void { project.editorState.back = list.slice(-50); }
   /** 只写 editor-state 变化（跳转后想记住位置但没改正文）：不算脏、由调用方在「本来就要保存」时顺带。 */
-  const toBlob = () => packProject(project);
+  const toBlob = async () => { if (d.references) project.references = await d.references.collect(); return packProject(project); };
+  /** 参考目录的内容变了（加 / 删 / 挪卡）= 正经改动，标脏（ADR-0016；只翻页 / 滚动 / 改字号不走这里）。 */
+  function touchReferences(): void { if (!canMutate()) return; touch(); }
 
   return {
-    open, create, close, flush, toBlob, adoptName, setBack,
+    open, create, close, flush, toBlob, adoptName, setBack, touchReferences,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, remove, discard, purge, setReadOnly,
     cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail,

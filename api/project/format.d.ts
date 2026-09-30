@@ -4,6 +4,8 @@ export declare const PROJECT_FORMAT_VERSION = 2;
 export declare const GRAPH_ENTRY = "graph.json";
 export declare const CONTENTS_DIR = "pages/";
 export declare const EDITOR_STATE_ENTRY = ".webxiaoheiwu/editor-state.json";
+/** 参考窗目录（ADR-0016）：本模块只搬字节不解释，路径必须以此开头。 */
+export declare const REFERENCES_DIR = ".webxiaoheiwu/references/";
 /** 封面缩略图（ORA 同款路径；ADR-0012）。写时永远最后一个 entry（store getPeek 一次尾读命中）。 */
 export declare const THUMBNAIL_ENTRY = "Thumbnails/thumbnail.png";
 /** 图片页扩展名（2.1）：认这些就当图片页打开；GIF 动图原字节直通。 */
@@ -29,9 +31,18 @@ export interface ProjectGraphJson {
     tree: TreeNode[];
     pages: Record<string, NodeMeta>;
 }
+/** 参考窗的窗口状态（ADR-0016）：开没开、在哪、多大。随 editor-state 走，不标脏（同 last / back）。 */
+export interface RefPanelState {
+    open: boolean;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+}
 export interface EditorState {
     last: string | null;
     back: string[];
+    refPanel?: RefPanelState;
 }
 export declare const BACK_STACK_MAX = 50;
 export interface Project {
@@ -46,6 +57,8 @@ export interface Project {
     readOnly: boolean;
     /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
     thumbnail: Uint8Array | null;
+    /** 参考窗目录（ADR-0016）：路径（含 REFERENCES_DIR 前缀）→ 字节。本模块零知识，原样进出；内容由 @internal/reference-window 编解码。 */
+    references: Map<string, Uint8Array>;
     /** 增量重打（ADR-0015）：字节对象 → 它上次进 zip 时的已压缩 entry。键是**对象身份**：页一改（writeNodeText 换新 Uint8Array）自然失效，改名 / 搬树不换对象照样命中；不用记脏页集合。 */
     rawCache: WeakMap<Uint8Array, RawEntry>;
 }

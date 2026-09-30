@@ -1,4 +1,4 @@
-import { type OpenResult } from "./session.ts";
+import { type OpenResult, type ReferenceHooks } from "./session.ts";
 import { type LocalHome } from "./local-home.ts";
 import { type NodeKind } from "./format.ts";
 import type { SyncKind } from "../editor.ts";
@@ -9,7 +9,18 @@ export type ProjectHome = {
     kind: "local";
     home: LocalHome;
 };
+/** 参考窗（ADR-0016）：mode 只认「路径 → 字节」的目录表和几个通知；清单是库的事，宿主适配层（reference-host.ts）接。 */
+export interface ReferenceModeHooks extends ReferenceHooks {
+    /** 换了书 / 关了书：把读到的参考目录交给参考窗（空表 = 清空）。 */
+    apply(files: Map<string, Uint8Array>): void;
+    /** 某一页的正文 / 字节变了（链接卡要重取）。 */
+    pageChanged(name: string): void;
+    /** 某一页改了名（链接卡的 target 跟着改）。 */
+    pageRenamed(from: string, to: string): void;
+}
 export interface ProjectModeDeps {
+    /** 参考窗（ADR-0016）；不给 = 参考目录原样进出、无通知。 */
+    references?: ReferenceModeHooks;
     /** 云端新版正在换掉本地这一本（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待（user 2026-09-29「快进的时候就 waiting，这样稳一点」）。 */
     onReplacing?: (on: boolean) => void;
     editorEl: HTMLTextAreaElement;
@@ -68,6 +79,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         toBlob: () => Promise<Blob>;
         adoptName: (newName: string) => void;
         setBack: (list: readonly string[]) => void;
+        touchReferences: () => void;
         readonly name: string | null;
         readonly dirty: boolean;
         readonly readOnly: boolean;
@@ -77,7 +89,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         setCurrentText: (text: string) => boolean;
         jump: (target: string) => string;
         spawn: (newName: string, selectedText: string) => string;
-        addLink: (to: string, at?: "bottom" | "top" | undefined) => boolean;
+        addLink: (to: string, at?: "top" | "bottom" | undefined) => boolean;
         removeLink: (to: string) => boolean;
         setLinksOrder: (list: string[]) => void;
         rename: (from: string, to: string) => void;
@@ -230,6 +242,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     replaceImage: (bytes: Uint8Array<ArrayBufferLike>, ext: string) => boolean;
     setThumbnail: (png: Uint8Array<ArrayBufferLike> | null) => boolean;
     thumbnail: () => Uint8Array | null;
+    noteReferencesChanged: () => void;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;
 /** 挪到… 的落点：某页之下（孩子末尾）/ 之后（同层）/ 书的末尾（顶层）。 */

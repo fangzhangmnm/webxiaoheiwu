@@ -1905,3 +1905,10 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: 8px; }
 #galleryMount .gallery-grid:not(.list) .gallery-tile.folder .gallery-tile-meta { color: var(--ink-soft); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile.folder .gallery-tile-thumb svg { width: 46%; height: auto; margin-bottom: 18%; }
 
+
+/* ═══ 参考窗（ADR-0016，2026-09-29；本体 = @internal/reference-window，chrome / 手势 / 排版全在 shadow 里；宿主接线 src/reference-host.ts）═══
+   宿主只管三件：① 层级（band 表里的 --z-popover，压在纸面 / 侧栏之上、toast / 锁屏之下）；② define 前不闪 light DOM；③ 书库那一屏盖住时不露。
+   颜色 / 圆角 / 阴影它读的就是本仓 :root 的 --bg / --ink / --ink-soft / --line / --shadow / --radius / --void，不用另配。 */
+wp-reference-window { --z-window: var(--z-popover); }
+wp-reference-window:not(:defined) { display: none; }
+body[data-mode="gallery"] wp-reference-window { display: none !important; }

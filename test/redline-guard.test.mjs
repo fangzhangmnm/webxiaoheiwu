@@ -65,6 +65,10 @@ describe("redline-guard", () => {
         if (m[2] === "@internal/store" && rel !== "src/app-store.ts") hits.push(`${rel}: ${m[0]}`);
         if (m[2] === "@internal/encryption" && rel !== "src/encryption.ts") hits.push(`${rel}: ${m[0]}`);
       }
+      // @internal/reference-window（ADR-0016）：值级 import 只在 src/reference-host.ts（宿主适配层 = 唯一认识那个库的地方）
+      for (const m of src.matchAll(/^import\s+(type\s+)?[^;]*?from\s+["']@internal\/reference-window(\/[a-z]+)?["']/gm)) {
+        if (!m[1] && rel !== "src/reference-host.ts") hits.push(`${rel}: ${m[0]}`);
+      }
     }
     assert(hits.length === 0, "seam violations:\n" + hits.join("\n"));
   });

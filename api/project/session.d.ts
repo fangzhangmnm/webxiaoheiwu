@@ -1,6 +1,13 @@
 import { type Project, type UnpackResult } from "./format.ts";
 import { type NowFn } from "./graph.ts";
+/** 参考窗目录的进出口（ADR-0016）：session 对目录零知识——保存前向宿主要一份，读到的整份由 mode 交出去。 */
+export interface ReferenceHooks {
+    /** 保存前：交出参考目录（路径 → 字节，路径在 REFERENCES_DIR 下）。 */
+    collect(): Promise<Map<string, Uint8Array>>;
+}
 export interface ProjectSessionDeps {
+    /** 参考窗目录（ADR-0016）。不给 = 目录原样带着（读到什么写回什么）。 */
+    references?: ReferenceHooks;
     read(name: string): Promise<Blob | null>;
     write(name: string, blob: Blob, opts: {
         push: boolean;
@@ -34,6 +41,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     toBlob: () => Promise<Blob>;
     adoptName: (newName: string) => void;
     setBack: (list: readonly string[]) => void;
+    touchReferences: () => void;
     readonly name: string | null;
     readonly dirty: boolean;
     readonly readOnly: boolean;
@@ -43,7 +51,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     setCurrentText: (text: string) => boolean;
     jump: (target: string) => string;
     spawn: (newName: string, selectedText: string) => string;
-    addLink: (to: string, at?: "bottom" | "top" | undefined) => boolean;
+    addLink: (to: string, at?: "top" | "bottom" | undefined) => boolean;
     removeLink: (to: string) => boolean;
     setLinksOrder: (list: string[]) => void;
     rename: (from: string, to: string) => void;

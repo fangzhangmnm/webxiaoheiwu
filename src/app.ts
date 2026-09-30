@@ -14,6 +14,8 @@ import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./ima
 import { importPageName } from "./image/policy.ts";
 import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD, type GalleryView } from "@internal/gallery";
 import { createProjectMode } from "./project/mode.ts";
+import { createReferenceHost } from "./reference-host.ts";
+import type { WpReferenceWindow } from "@internal/reference-window";
 import { createEdgeSidebar, fmtTime } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
 import { nodeDisplayName } from "./project/naming.ts";
@@ -192,8 +194,14 @@ const editor = createEditor({
   onReplacing: (on) => setReplacing(on),
 });
 let voiceAbortHook: (() => void) | null = null;
+// ── 参考窗（ADR-0016）：宿主适配层；书模式的钩子在 createProjectMode 里接（保存前 collect / 开书后 apply / 页改动 → 链接卡重取）。──
+const refHost = createReferenceHost({
+  el: $<WpReferenceWindow>("referenceWindow"), fileInput: $<HTMLInputElement>("referenceFileInput"), setStatus,
+  topFloor: () => Math.round(document.querySelector<HTMLElement>("header.top-bar")?.getBoundingClientRect().bottom ?? 0),
+});
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
 const project = createProjectMode({
+  references: refHost.hooks,
   editorEl, titleEl: $<HTMLInputElement>("nodeTitle"), setStatus, setState,
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
@@ -204,8 +212,10 @@ const project = createProjectMode({
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
 });
+refHost.bindMode(project);
 const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
+  onReference: () => refHost.toggle(), onSendToReference: (name) => refHost.sendPage(name),
   onLibrary: () => { void galleryHost.open(); },
   onExport: () => { void copyCurrentPage(); },
   onSettings: () => showSidebarSettings(),
@@ -514,7 +524,8 @@ addPageButton.addEventListener("click", (e) => {
     { id: "sibling", label: t("edge.addSibling"), icon: "new", hidden: !inTree },
     { id: "child", label: t("edge.addChild"), icon: "new" },
     { id: "move", label: t("edge.moveTo"), icon: "move-to-file", separatorBefore: true },   // 挪到…（pick sheet；书的末尾 = 空树唯一入口，v2.1.6 归入主干并入）
-  ], onPick: (id) => { if (id === "move") { if (cur) void movePageFlow(cur); } else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
+    { id: "toRef", label: t("ref.sendToRef"), icon: "picture-in-picture", separatorBefore: true, disabled: !project.canEdit() },   // 这一页 → 参考窗（链接卡；ADR-0016）
+  ], onPick: (id) => { if (id === "move") { if (cur) void movePageFlow(cur); } else if (id === "toRef") { if (cur) refHost.sendPage(cur); } else void addPageFlow(id === "sibling" ? "sibling" : "child"); } });
 });
 const activeName = (): string | null => (project.active() ? project.name() : editor.state.name);
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());
@@ -1485,4 +1496,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

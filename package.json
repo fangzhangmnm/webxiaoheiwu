@@ -11,7 +11,8 @@
     "api": "bash scripts/gen-api.sh",
     "probe:asr": "node probe/asr/headless.mjs",
     "e2e:asr": "node test/asr-e2e.mjs",
-    "e2e:sync": "node test/e2e-sync/run.mjs"
+    "e2e:sync": "node test/e2e-sync/run.mjs",
+    "e2e:ref": "node test/e2e-reference.mjs"
   },
   "devDependencies": {
     "typescript": "5.7.3"
@@ -20,6 +21,7 @@
     "@internal/store": "file:./vendor-pkgs/internal-store-0.16.1.tgz",
     "@internal/encryption": "file:./vendor-pkgs/internal-encryption-0.1.0.tgz",
     "@internal/gallery": "file:./vendor-pkgs/internal-gallery-0.6.0.tgz",
-    "@internal/workbench-elements": "file:./vendor-pkgs/internal-workbench-elements-0.1.0.tgz"
+    "@internal/workbench-elements": "file:./vendor-pkgs/internal-workbench-elements-0.1.0.tgz",
+    "@internal/reference-window": "file:./vendor-pkgs/internal-reference-window-0.0.0.tgz"
   }
 }

@@ -10,8 +10,9 @@ export interface ParsedDocName {
     /** 去扩展名的显示名（不含夹）= title。 */
     stem: string;
 }
-/** 身份两档（2.0）：单篇 txt 稿 / zip 工程（ADR-0008 §8 并存）。 */
+/** 身份两档（2.0）：单篇 txt 稿 / zip 工程（ADR-0008 §8 并存）。种类标签 = identifiers.ts 里那张表的 kind。 */
 export type DocKind = "txt" | "project";
+/** 身份 → 种类；不是本 app 的文档 → null。（v2.1.23 起由 store 的种类表推导，此前是三个手写正则。） */
 export declare function docKind(name: string): DocKind | null;
 export declare function splitDocPath(path: string): {
     dir: string;
@@ -30,13 +31,12 @@ export declare function hex4(): string;
 export declare function makeDocName(date: string, title: string, dir?: string, suffix?: string, kind?: DocKind): string;
 /** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
 export declare function isOpaqueStem(stem: string): boolean;
-/** 名字拆成「日期前缀 + 其余」（书库封面印书名用；user 2026-09-29「对 yyyymmdd-name 和 yyyymmdd name 都识别」）。
- *  认的分隔：空格 / 连字符 / 下划线 / 全角空格。日期要像个日期（月 01–12、日 01–31）。
- *  日期码名（`yyyymmdd-hex4`，没起名的稿）整个算名字，不拆——那四位是消歧码不是书名。拆不出 → date = null、title = 原样。只管显示，身份仍是完整文件名。 */
 export declare function splitDatedName(stem: string): {
     date: string | null;
     title: string;
 };
+/** 拆出来的「其余」是不是消歧码（四位 hex，可带碰撞后缀）——也就是这份稿没起名。 */
+export declare function isCodeTitle(title: string): boolean;
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export declare function sanitizeFolderName(s: string): string;
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 `-hex4`（2.1 起；user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑。如果是四位数 hash 就不会 pile of shame」，取代 WeebPaint 式 " 1" " 2"）。 */

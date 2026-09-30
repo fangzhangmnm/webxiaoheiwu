@@ -24,6 +24,9 @@ export interface EdgeSidebarDeps {
     canLift: () => boolean;
     /** 无地的书：「下载一份」入口（store 的书不显示）。 */
     onDownload?: () => void;
+    /** 参考窗（ADR-0016）：顶部入口开 / 关；页行菜单「发到参考窗」= 推模型（user 2026-09-29「在页面上加一个 send to reference」）。 */
+    onReference: () => void;
+    onSendToReference: (name: string) => void;
 }
 /** 页时间戳的短显示：今年 → M/D HH:mm；别的年 → YYYY/M/D。0 = 不知道 → 空。 */
 export declare function fmtTime(ms: number): string;

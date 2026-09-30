@@ -2140,23 +2140,39 @@ export declare const S: {
         readonly zh: "回到文件";
         readonly en: "Back to files";
     };
+    readonly "gal.aside": {
+        readonly zh: "回收站和备份箱";
+        readonly en: "Trash and backups";
+    };
+    readonly "gal.backup": {
+        readonly zh: "备份箱";
+        readonly en: "Backups";
+    };
+    readonly "gal.empty": {
+        readonly zh: "清空";
+        readonly en: "Empty";
+    };
     readonly "gal.emptyTrash": {
         readonly zh: "清空回收站";
         readonly en: "Empty trash";
     };
-    readonly "gal.emptyTrashWhich": {
+    readonly "gal.emptyBackup": {
+        readonly zh: "清空备份箱";
+        readonly en: "Empty backups";
+    };
+    readonly "gal.emptyWhich": {
         readonly zh: "清空哪一端";
         readonly en: "Empty which side";
     };
-    readonly "gal.emptyTrashLocal": {
+    readonly "gal.emptyLocal": {
         readonly zh: "只清本机";
         readonly en: "Local only";
     };
-    readonly "gal.emptyTrashCloud": {
+    readonly "gal.emptyCloud": {
         readonly zh: "只清云端";
         readonly en: "Cloud only";
     };
-    readonly "gal.emptyTrashBoth": {
+    readonly "gal.emptyBoth": {
         readonly zh: "两端都清";
         readonly en: "Both";
     };
@@ -2191,5 +2207,101 @@ export declare const S: {
     readonly "galx.quotaCritical": {
         readonly zh: "本地存储 {pct}% 已满——立即去书库卸载不常用的稿";
         readonly en: "Local storage is {pct}% full — unload rarely used documents from the library now";
+    };
+    readonly "ref.title": {
+        readonly zh: "参考窗";
+        readonly en: "Reference window";
+    };
+    readonly "ref.sendToRef": {
+        readonly zh: "发到参考窗";
+        readonly en: "Send to reference window";
+    };
+    readonly "ref.load": {
+        readonly zh: "导入文件…";
+        readonly en: "Import file…";
+    };
+    readonly "ref.paste": {
+        readonly zh: "粘贴";
+        readonly en: "Paste";
+    };
+    readonly "ref.oneToOne": {
+        readonly zh: "原大";
+        readonly en: "Actual size";
+    };
+    readonly "ref.delete": {
+        readonly zh: "删除这张";
+        readonly en: "Remove this card";
+    };
+    readonly "ref.deleteConfirm": {
+        readonly zh: "确认删除";
+        readonly en: "Confirm remove";
+    };
+    readonly "ref.closeWin": {
+        readonly zh: "关闭参考窗";
+        readonly en: "Close reference window";
+    };
+    readonly "ref.prev": {
+        readonly zh: "上一张";
+        readonly en: "Previous";
+    };
+    readonly "ref.next": {
+        readonly zh: "下一张";
+        readonly en: "Next";
+    };
+    readonly "ref.menu": {
+        readonly zh: "参考窗菜单";
+        readonly en: "Reference menu";
+    };
+    readonly "ref.move": {
+        readonly zh: "拖动";
+        readonly en: "Move";
+    };
+    readonly "ref.resize": {
+        readonly zh: "调整大小";
+        readonly en: "Resize";
+    };
+    readonly "ref.moveEarlier": {
+        readonly zh: "往前挪一位";
+        readonly en: "Move earlier";
+    };
+    readonly "ref.moveLater": {
+        readonly zh: "往后挪一位";
+        readonly en: "Move later";
+    };
+    readonly "ref.jump": {
+        readonly zh: "跳到…";
+        readonly en: "Jump to…";
+    };
+    readonly "ref.kindImage": {
+        readonly zh: "图片";
+        readonly en: "Image";
+    };
+    readonly "ref.kindText": {
+        readonly zh: "文字";
+        readonly en: "Text";
+    };
+    readonly "ref.linkMissing": {
+        readonly zh: "这一页已不在书里";
+        readonly en: "This page is no longer in the book";
+    };
+    readonly "ref.unsupported": {
+        readonly zh: "「{name}」不是图片或文字，参考窗放不下";
+        readonly en: "“{name}” is not an image or text; the reference window can't show it";
+    };
+    readonly "ref.importFailed": {
+        readonly zh: "「{name}」导入失败";
+        readonly en: "Failed to import “{name}”";
+    };
+    readonly "ref.imported": {
+        readonly zh: "已加入参考窗（{n}）";
+        readonly en: "Added to reference window ({n})";
+    };
+    readonly "ref.pasteEmpty": {
+        readonly zh: "剪贴板里没有图片或文字";
+        readonly en: "No image or text on the clipboard";
+    };
+    readonly "ref.tooNew": {
+        readonly zh: "参考窗是新版本写的（清单 v{file}，本机只认到 v{lib}）：原样保留，本机不显示也不改";
+        readonly en: "References were written by a newer version (manifest v{file}, this build reads up to v{lib}): kept untouched, not shown or edited here";
     };
 };

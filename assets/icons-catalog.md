@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-47 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+51 icons · 提取自家族图标库 `../../../../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -12,7 +12,7 @@
 <svg width="24" height="24"><use href="#move-to-file"/></svg>
 ```
 
-> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`microphone`、`backspace`、`key-shift`、`key-enter`
+> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`one-to-one`、`microphone`、`backspace`、`key-shift`、`key-enter`
 > 见库 `index.html` 的「待过目」栏；过目后进库/打回归库 session。
 
 
@@ -22,6 +22,7 @@
 |------|------|
 | `move-to-file` | 文件+绕行箭头(移到文件) |
 | `copy` | 两个文件叠放 |
+| `paste` | 粘贴:剪贴板不缩(库尺寸)+文档探出右下角, 按 copy 的前后件比例 |
 
 ## file
 
@@ -61,6 +62,7 @@
 | `chevron-left` 👁待过目 | ‹ 小尺寸优化裸 chevron:描边 2.4、臂短(14px chip 用)；库里带杆的 back 是另一语义【WeebPaint 参考窗多图时窗底翻页 chip；fable 自画未过目】 |
 | `chevron-right` 👁待过目 | › chevron-left 的精确镜像【WeebPaint 参考窗翻页 chip；fable 自画未过目】 |
 | `chevron-down` | 下移:竖线 + 底端 ∨ 箭头 |
+| `check` | 勾 |
 
 ## cloud
 
@@ -77,6 +79,13 @@
 | `download` | 下载 |
 | `upload` | 上传 |
 | `unload-local-cache` | 卸载本地副本:database(=本地) + 斜删除线(mask 留 gap)【非垃圾桶, 云端仍保留】 |
+
+## viewport
+
+| name | 说明 |
+|------|------|
+| `picture-in-picture` | 画中画:大框(主画布) + 右下角内嵌小窗(参考小窗自己) |
+| `one-to-one` 👁待过目 | 1:1 像素:四角括号 + 中心一颗实心像素=「一图像素对一屏像素」(不写 1:1 文字)【WeebPaint 参考窗 ＋ 菜单「1:1 像素」项；fable 自画未过目】 |
 
 ## ui
 

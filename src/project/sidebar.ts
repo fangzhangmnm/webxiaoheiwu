@@ -36,6 +36,9 @@ export interface EdgeSidebarDeps {
   canLift: () => boolean;
   /** 无地的书：「下载一份」入口（store 的书不显示）。 */
   onDownload?: () => void;
+  /** 参考窗（ADR-0016）：顶部入口开 / 关；页行菜单「发到参考窗」= 推模型（user 2026-09-29「在页面上加一个 send to reference」）。 */
+  onReference: () => void;
+  onSendToReference: (name: string) => void;
 }
 type Block = "parent" | "siblings" | "children" | "links" | "incoming" | "results";
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -54,6 +57,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     <div class="edge-entries">
       <button type="button" class="edge-entry" id="edgeLibrary">${icon("bookshelf")}<span>${esc(t("sidebar.library"))}</span></button>
       <button type="button" class="edge-entry" id="edgeExport" title="${esc(t("sidebar.exportTitle"))}">${icon("export")}<span>${esc(t("sidebar.export"))}</span></button>
+      <button type="button" class="edge-entry" id="edgeReference" title="${esc(t("ref.title"))}">${icon("picture-in-picture")}<span>${esc(t("ref.title"))}</span></button>
       <button type="button" class="edge-entry" id="edgeSettings">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
     </div>
     <div class="edge-settings" id="edgeSettingsPane">
@@ -104,7 +108,10 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   function menuItems(name: string, block: Block): PopupMenuItem[] {
     const m = d.mode; const cur = m.current(); const ro = !m.canEdit();
     const grey = (items: PopupMenuItem[]) => items.map((it) => (it.id === "export" ? it : { ...it, disabled: ro }));
-    return grey(rawMenuItems(name, block, cur));
+    const items = rawMenuItems(name, block, cur);
+    // 「发到参考窗」：每一条页行都有（链接卡进书 = 改书，锁着的书一样灰）；检索结果里只对活页给
+    if (block !== "results" || !m.isDiscarded(name)) items.push({ id: "toRef", label: t("ref.sendToRef"), icon: "picture-in-picture", separatorBefore: items.length > 0 });
+    return grey(items);
   }
   function rawMenuItems(name: string, block: Block, cur: string | null): PopupMenuItem[] {
     const m = d.mode;
@@ -151,6 +158,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     else if (id === "under") { if (m.archiveUnderCurrent(name)) d.setStatus(t("edge.archived", { name: nodeDisplayName(name) })); }
     else if (id === "export") { await d.onExportBranch(name); }
     else if (id === "move") { await d.onMove(name); }
+    else if (id === "toRef") { d.onSendToReference(name); }
     else if (id === "purge") {
       if (!m.isDiscarded(name)) { d.setStatus(t("edge.notDiscarded", { prefix: t("edge.discardPrefix") }), { error: true }); }
       else { const n = m.backlinksOfPage(name).length; if (await openConfirmSheet(t("edge.purgeTitle", { name: nodeDisplayName(name) }), n ? t("edge.purgeMsg", { n }) : t("edge.purgeMsgNoLinks"), { danger: true, okLabel: t("edge.purge") })) m.purgePage(name); }
@@ -163,6 +171,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
     const m = d.mode;
     pane.hidden = !m.active();
     $("edgeTxtPane").hidden = m.active() || !d.canLift();
+    $("edgeReference").hidden = !m.active();   // txt 稿没有装参考的地方（参考永远跟着文档走，不做「只在这次有效」——user 2026-09-29）
     if (!m.active()) return;
     const cur = m.current();
     nodeEl.textContent = cur ? nodeDisplayName(cur) : "";
@@ -223,6 +232,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   $("edgeLibrary").addEventListener("click", () => d.onLibrary());
   $("edgeExport").addEventListener("click", () => d.onExport());   // 一下 = 复制（不弹菜单：导出分享要顺手，user 2026-09-26「方便的导出分享功能其实很重要」）
   $("edgeLift").addEventListener("click", () => { void d.onLift().then((ok) => { if (ok) render(); }); });
+  $("edgeReference").addEventListener("click", () => d.onReference());
   $("edgeSettings").addEventListener("click", () => d.onSettings());
   $("edgeSettingsBack").addEventListener("click", () => d.onSettingsBack());
   $("edgeBack").addEventListener("click", () => { if (d.mode.goBack()) { clearQuery(); render(); d.focusEditor(); } });   // 不自动收（user「点 return back 的时候侧栏不应自动弹回」）

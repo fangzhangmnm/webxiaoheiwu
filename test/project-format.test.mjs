@@ -2,7 +2,7 @@
 import { describe, it, eq, assert } from "./runner.mjs";
 import { ensureZipLoaded } from "./zip-node.mjs";
 ensureZipLoaded();
-const { packProject, unpackProject, emptyProject, nameKey, isValidNodeName, nodeExt, nodeKind, PROJECT_FORMAT_VERSION, THUMBNAIL_ENTRY } = await import("../src/project/format.ts");
+const { packProject, unpackProject, emptyProject, nameKey, isValidNodeName, nodeExt, nodeKind, PROJECT_FORMAT_VERSION, THUMBNAIL_ENTRY, REFERENCES_DIR } = await import("../src/project/format.ts");
 const { createNode, link, insertChild, insertSibling } = await import("../src/project/graph.ts");
 const { zipUnpack, zipPack, zipReadRaw } = await import("../src/zip.ts");
 const td = new TextDecoder();
@@ -199,5 +199,57 @@ describe("project/format · 增量重打（ADR-0015 a）：未改的 entry passT
     const { renameNode, indent } = await import("../src/project/graph.ts");
     renameNode(r.project, "b.txt", "c.txt", now); indent(r.project, "c.txt");
     const st2 = { passThrough: 0, encoded: 0 }; await packProject(r.project, { stats: st2 }); eq(st2.passThrough, 2, "改名 + 降级：两页都没重压"); eq(st2.encoded, 2);
+  });
+});
+
+describe("project/format · 参考目录 `.webxiaoheiwu/references/`（ADR-0016，2026-09-29；codec 对清单零知识）", () => {
+  const bytesOf = async (b) => new Uint8Array(await b.arrayBuffer());
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const te = new TextEncoder();
+  it("目录原样进出：manifest.json + 两张卡 + 一个不认识的种类；顺序 = pages → references（manifest 在前）→ editor-state → 封面最后", async () => {
+    const p = emptyProject(); createNode(p, "正文.txt", "字", () => 1); p.tree = ["正文.txt"]; p.thumbnail = new Uint8Array([1, 2, 3]);
+    p.references.set(`${REFERENCES_DIR}manifest.json`, te.encode('{"version":1,"index":1,"items":[]}'));
+    p.references.set(`${REFERENCES_DIR}r0.jpg`, new Uint8Array([9, 8, 7]));
+    p.references.set(`${REFERENCES_DIR}r1.holo`, new Uint8Array([4, 4]));   // 未来种类：codec 不认识也照带
+    p.references.set(`${REFERENCES_DIR}r2.txt`, te.encode("设定：东北规则"));
+    const blob = await packProject(p);
+    const order = Object.keys(await zipUnpack(blob));
+    eq(order.join("|"), `graph.json|pages/正文.txt|${REFERENCES_DIR}manifest.json|${REFERENCES_DIR}r0.jpg|${REFERENCES_DIR}r1.holo|${REFERENCES_DIR}r2.txt|.webxiaoheiwu/editor-state.json|Thumbnails/thumbnail.png`);
+    const r = await unpackProject(blob); eq(r.kind, "ok"); eq(r.warnings.length, 0);
+    eq([...r.project.references.keys()].join("|"), `${REFERENCES_DIR}manifest.json|${REFERENCES_DIR}r0.jpg|${REFERENCES_DIR}r1.holo|${REFERENCES_DIR}r2.txt`);
+    eq(Array.from(r.project.references.get(`${REFERENCES_DIR}r1.holo`)).join(","), "4,4", "不认识的种类字节保真");
+    eq(td.decode(r.project.references.get(`${REFERENCES_DIR}r2.txt`)), "设定：东北规则");
+    assert(!r.project.nodes.has("r0.jpg") && !r.project.contents.has(`${REFERENCES_DIR}r0.jpg`), "参考不是页：不进 nodes / contents");
+  });
+  it("没有参考 → 空表（不是 undefined）；目录外的路径响亮拒绝（编程错误）", async () => {
+    const p = emptyProject(); createNode(p, "a.txt", "", () => 1);
+    const r = await unpackProject(await packProject(p)); eq(r.kind, "ok"); eq(r.project.references.size, 0);
+    p.references.set("references/r0.jpg", new Uint8Array([1]));
+    let msg = ""; try { await packProject(p); } catch (e) { msg = String(e.message); }
+    assert(msg.includes("outside"), `应当拒绝，实得：${msg}`);
+  });
+  it("增量重打：没改的参考 entry passThrough（已压缩字节逐位相同）；改一张只重压那一张", async () => {
+    const p = emptyProject(); createNode(p, "a.txt", "中文正文".repeat(200), () => 1); p.tree = ["a.txt"];
+    p.references.set(`${REFERENCES_DIR}manifest.json`, te.encode('{"version":1,"index":0,"items":[{"kind":"image","src":"r0.jpg"}]}'));
+    p.references.set(`${REFERENCES_DIR}r0.jpg`, new Uint8Array(3000).map((_, i) => (i * 13) & 255));
+    const s1 = { passThrough: 0, encoded: 0 }; const b1 = await packProject(p, { stats: s1 });
+    eq(s1.passThrough, 0); eq(s1.encoded, 1 + 2 + 2, "首次：1 页 + 2 个参考 entry + graph.json + editor-state 全压");
+    const r = await unpackProject(b1); eq(r.kind, "ok");
+    const s2 = { passThrough: 0, encoded: 0 }; const b2 = await packProject(r.project, { stats: s2 });
+    eq(s2.passThrough, 3, "读回再写：1 页 + 2 个参考 entry 全部 passThrough"); eq(s2.encoded, 2);
+    assert(same(await bytesOf(b1), await bytesOf(b2)), "同内容同字节");
+    r.project.references.set(`${REFERENCES_DIR}manifest.json`, te.encode('{"version":1,"index":0,"items":[{"kind":"image","src":"r0.jpg","vp":{"tx":1,"ty":2,"scale":1,"rot":0}}]}'));
+    const s3 = { passThrough: 0, encoded: 0 }; await packProject(r.project, { stats: s3 });
+    eq(s3.passThrough, 2, "改了清单：页 + r0.jpg 仍 passThrough"); eq(s3.encoded, 3, "清单 + graph.json + editor-state 重压");
+  });
+  it("editor-state.refPanel（窗口开没开 / 在哪 / 多大）随 editor-state 走：写了才有、坏值忽略", async () => {
+    const p = emptyProject(); createNode(p, "a.txt", "", () => 1);
+    let r = await unpackProject(await packProject(p)); eq(r.project.editorState.refPanel, undefined, "没设过 → 不写不读");
+    p.editorState.refPanel = { open: true, left: 12, top: 80, width: 300, height: 240 };
+    const blob = await packProject(p);
+    eq(JSON.parse(td.decode((await zipUnpack(blob))[".webxiaoheiwu/editor-state.json"])).refPanel.width, 300);
+    r = await unpackProject(blob); eq(JSON.stringify(r.project.editorState.refPanel), JSON.stringify({ open: true, left: 12, top: 80, width: 300, height: 240 }));
+    const bad = await zipOf([{ path: "graph.json", data: graphOf({ pages: { "a.txt": { created: 1, modified: 1, links: [] } } }) }, { path: "pages/a.txt", data: "" }, { path: ".webxiaoheiwu/editor-state.json", data: JSON.stringify({ last: null, back: [], refPanel: { open: true, left: "x" } }) }]);
+    r = await unpackProject(bad); eq(r.kind, "ok"); eq(r.project.editorState.refPanel, undefined, "坏值 → 当没有");
   });
 });
