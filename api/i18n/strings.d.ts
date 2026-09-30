@@ -377,16 +377,20 @@ export declare const S: {
         readonly en: "Language";
     };
     readonly "ui.sec.reading": {
-        readonly zh: "阅读节奏";
-        readonly en: "Reading rhythm";
+        readonly zh: "行宽";
+        readonly en: "Line width";
     };
-    readonly "ui.reading.novel": {
-        readonly zh: "轻小说 · 短行";
-        readonly en: "Light novel · short lines";
+    readonly "ui.reading.chars14": {
+        readonly zh: "每行 14 字";
+        readonly en: "14 per line";
     };
-    readonly "ui.reading.classic": {
-        readonly zh: "标准 · 宽行";
-        readonly en: "Standard · wide lines";
+    readonly "ui.reading.chars20": {
+        readonly zh: "每行 20 字";
+        readonly en: "20 per line";
+    };
+    readonly "ui.reading.chars28": {
+        readonly zh: "每行 28 字";
+        readonly en: "28 per line";
     };
     readonly "ui.reading.fontScale": {
         readonly zh: "字号（本机）";
@@ -536,9 +540,17 @@ export declare const S: {
         readonly zh: "打开中";
         readonly en: "Open";
     };
+    readonly "ui.reading.hintBook": {
+        readonly zh: "这本书的行宽（跟书走，导出长图 / PDF 也用它）。只管一行放几个字，行距跟着走；字的大小看「字号」和屏幕。";
+        readonly en: "This book’s line width (saved with the book; exports use it too). Only how many characters fit on a line; line spacing follows; text size comes from “Text size” and the screen.";
+    };
+    readonly "ui.reading.hintBookDefault": {
+        readonly zh: "这本书还没定行宽，先用默认；改一下就记进这本书（导出长图 / PDF 也用它）。";
+        readonly en: "This book has no line width of its own yet — showing the default; change it and it’s saved with the book (exports use it too).";
+    };
     readonly "ui.reading.hint": {
-        readonly zh: "短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。";
-        readonly en: "Short-line mode narrows the page and opens up line spacing for web-novel dialogue rhythm.";
+        readonly zh: "默认行宽（新书和 txt 稿用；每本书可以自己改）。只管一行放几个字，行距跟着走；字的大小看「字号」和屏幕，屏幕放不下时减字数、不缩字。14 = 诗 / 小故事 / 自律篇幅，20 = 高考作文格，28 = 纸书。";
+        readonly en: "Only how many characters fit on a line; line spacing follows. Text size comes from “Text size” and the screen — when the screen is too narrow, fewer characters per line, never smaller text. 14 = poems / vignettes / disciplined length, 20 = exam essay grid, 28 = paperback.";
     };
     readonly "ui.sec.voice": {
         readonly zh: "语音输入";
@@ -2260,33 +2272,9 @@ export declare const S: {
         readonly zh: "这一页是隐藏的，不出门";
         readonly en: "This page is hidden — it stays out of exports";
     };
-    readonly "export.typeset": {
-        readonly zh: "排版…";
-        readonly en: "Typesetting…";
-    };
     readonly "export.typesetLine": {
-        readonly zh: "排版：每行 {chars} 字（图宽 {w} px）";
-        readonly en: "Typesetting: {chars} characters per line (image {w} px wide)";
-    };
-    readonly "export.charsTitle": {
-        readonly zh: "每行几个字？";
-        readonly en: "How many characters per line?";
-    };
-    readonly "export.charsMsg": {
-        readonly zh: "排版只看这个数（汉字一字一格，拉丁字母约两个算一个）；字在读者手机上的大小 = 屏宽 ÷ 这个数。14 = 诗 / 小故事的极端短行，20 = 高考作文格，28 = 纸书。";
-        readonly en: "Layout depends only on this (one CJK character per cell; roughly two Latin letters per cell); text size on the reader’s phone = screen width ÷ this number. 14 = extreme short lines for poems / vignettes, 20 = exam essay grid, 28 = paperback.";
-    };
-    readonly "export.charsPreset": {
-        readonly zh: "每行 {n} 字（图宽 {w} px）";
-        readonly en: "{n} per line ({w} px wide)";
-    };
-    readonly "export.currentMark": {
-        readonly zh: "（当前）";
-        readonly en: " (current)";
-    };
-    readonly "export.typesetSaved": {
-        readonly zh: "排版：每行 {chars} 字（图宽 {w} px），跟着这本书";
-        readonly en: "Typesetting: {chars} per line ({w} px wide), saved with this book";
+        readonly zh: "每行 {chars} 字（设置 → 行宽；图宽 {w} px）";
+        readonly en: "{chars} characters per line (Settings → Line width; image {w} px wide)";
     };
     readonly "kin.parentTitle": {
         readonly zh: "回到上一级：{name}";

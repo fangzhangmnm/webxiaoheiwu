@@ -20,7 +20,7 @@ export type LongImageSection =
   | { kind: "image"; heading: string | null; image: ImageRef };
 /** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、纸色 / 墨色、写字线颜色（null = 没开）。 */
 export interface LongImageLook { family: string; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
-/** 排版引擎的输入：每行几个字 + 像素/字 + 行距倍数。用户面只有 charsPerLine（跟书走，editor-state.json `export.charsPerLine`；没定的书 / txt 稿用账号默认），其余由档推出。 */
+/** 排版引擎的输入：每行几个字 + 像素/字 + 行距倍数。charsPerLine = 设置 → 行宽（user「导出跟编辑器的行宽走啊」），其余由档推出。 */
 export interface ExportTypeset { charsPerLine: number; pxPerChar: number; lineHeightRatio: number }
 /** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
 export const PX_PER_CHAR = 30;
@@ -29,8 +29,6 @@ export const PX_PER_CHAR = 30;
 export const CHARS_PRESETS: readonly number[] = [14, 20, 28];
 /** 每档的行距倍数（短行要松才好看；纸书密）。 */
 const LINE_HEIGHT_BY_CHARS: Readonly<Record<number, number>> = { 14: 1.9, 20: 1.75, 28: 1.6 };
-export const DEFAULT_CHARS_PER_LINE = 20;
-export const isCharsPerLine = (v: unknown): v is number => typeof v === "number" && CHARS_PRESETS.includes(v);
 export const typesetFor = (charsPerLine: number): ExportTypeset => ({ charsPerLine, pxPerChar: PX_PER_CHAR, lineHeightRatio: LINE_HEIGHT_BY_CHARS[charsPerLine] ?? 1.75 });
 /** 图宽 = 字数 × 像素/字 + 两边各 1.4 字。 */
 export const widthFor = (ts: ExportTypeset): number => Math.round(ts.charsPerLine * ts.pxPerChar) + 2 * Math.round(1.4 * ts.pxPerChar);

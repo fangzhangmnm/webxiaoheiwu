@@ -20,5 +20,5 @@
 - 名词：用户面「工程」改叫「书」（user 2026-09-10「zip 不叫工程，叫书」）；代码标识符仍是 project。
 
 
-## 修订 2026-09-30（editor-state.json 多一个 `export.charsPerLine`；edited by Claude Fable 5.1）
-- 导出排版设定（长图每行几个字，三档 14 / 20 / 28）跟书走，住 editor-state.json 顶层 `export: { charsPerLine }`：同 `last / back / refPanel` 一样**随保存写、不标脏**（改了设定但没再改正文 → 下次保存才落盘）。不进 graph.json：它是偏好不是内容（user 2026-09-30「配置跟着书」「导出只有行宽一个选项」）。读时坏值丢弃；没有 = 用账号默认（synced prefs `exportCharsPerLine`）。
+## 修订 2026-09-30（editor-state.json 多一个 `lineWidth.charsPerLine` = 这本书的行宽；edited by Claude Fable 5.1）
+- 行宽（每行几个字，三档 14 / 20 / 28）**是书的属性**（user「editor state 里面的行宽是跟着书走的吧。这个语义上确实是书的属性」），住 editor-state.json 顶层 `lineWidth: { charsPerLine }`：同 `last / back / refPanel` 一样**随保存写、不标脏**（手动保存 / Ctrl+S 顺手捞会带上）。**编辑器和导出都读它**（user「导出跟编辑器的行宽走啊」）；没有 = 账号默认（synced prefs `charsPerLine`；旧 `readingMode` 两档只当迁移来源 classic → 28、其余 → 20）。设置页「行宽」在书里改 = 改这本书的，在 txt 稿里改 = 改默认。同日早些的 `export.charsPerLine`（导出自己的 knob）撤了，未发版。不进 graph.json：它是偏好不是内容。

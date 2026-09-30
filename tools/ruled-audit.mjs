@@ -79,14 +79,14 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0 
 }
 
 const cases = [];
-for (const dpr of [1, 1.25, 1.75, 2, 3]) for (const mode of ["novel", "classic"]) for (const scale of ["1", "1.15"]) cases.push({ w: 1100, h: 900, dpr, mode, scale });
-cases.push({ w: 375, h: 667, dpr: 2, mode: "novel", scale: "1" }, { w: 744, h: 1133, dpr: 2, mode: "novel", scale: "1.15" });
+for (const dpr of [1, 1.25, 1.75, 2, 3]) for (const mode of [14, 20, 28]) for (const scale of ["1", "1.15"]) cases.push({ w: 1100, h: 900, dpr, mode, scale });
+cases.push({ w: 375, h: 667, dpr: 2, mode: 20, scale: "1" }, { w: 744, h: 1133, dpr: 2, mode: 20, scale: "1.15" });
 // GPD Win Mini：7 寸 1920×1080，系统缩放 175% → 1097×617（全屏）/ 1097×537（装成 app 的窗口）/ 1097×480（浏览器标签页）；普通档（「宽稿纸」2026-09-30 撤了）
-for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: "novel", scale: "1", shot: `winmini-1097x${h}` });
+for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: 20, scale: "1", shot: `winmini-1097x${h}` });
 // 有子节的页：正文两行 + 三条子节链接，链接行也要坐在线上
-for (const [w, h, dpr] of [[1100, 900, 1], [744, 1133, 2], [1097, 537, 1.75], [375, 667, 3]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", book: true, shot: `toc-on-lines-${w}x${h}` });
+for (const [w, h, dpr] of [[1100, 900, 1], [744, 1133, 2], [1097, 537, 1.75], [375, 667, 3]]) cases.push({ w, h, dpr, mode: 20, scale: "1", book: true, shot: `toc-on-lines-${w}x${h}` });
 // 一张纸模型（v2.1.26）：纸滚过一个不是整行的距离之后，每行「墨迹底边 → 线」的距离必须和没滚时逐行一样（字和线同层的机械证据；抖动本身归真机）
-for (const [w, h, dpr] of [[1100, 900, 1], [375, 667, 2], [1097, 537, 1.75]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", scroll: 137, invariant: true });
+for (const [w, h, dpr] of [[1100, 900, 1], [375, 667, 2], [1097, 537, 1.75]]) cases.push({ w, h, dpr, mode: 20, scale: "1", scroll: 137, invariant: true });
 let bad = 0;
 for (const c of cases) {
   const m = await measure(c);

@@ -71,7 +71,7 @@ for (const [w, h] of sizes) {
   // v2.3.1 导出 = 一张 sheet（复制文字 / 长图；user 2026-09-30「先做图片导出吧，这个今晚就能用」）：复制那条仍 = v2.1.9 的整页进剪贴板
   { const text = await page.inputValue("#editor"); await page.click("#edgeExport"); await wait(300);
     const choices = await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()));
-    probe(tag, "导出 (txt draft) → sheet: 复制全文 / 整篇 → 长图 / 排版…; message shows 每行 20 字（图宽 684 px）", choices.length === 3 && /复制全文/.test(choices[0]) && /整篇 → 长图/.test(choices[1]) && /排版/.test(choices[2]) && await page.evaluate(() => /每行 20 字（图宽 684 px）/.test(document.getElementById("sheetMessage")?.textContent ?? "")), JSON.stringify(choices) + " | " + await page.evaluate(() => document.getElementById("sheetMessage")?.textContent));
+    probe(tag, "导出 (txt draft) → sheet: 复制全文 / 整篇 → 长图; message shows 每行 20 字（图宽 684 px）(follows editor line width)", choices.length === 2 && /复制全文/.test(choices[0]) && /整篇 → 长图/.test(choices[1]) && await page.evaluate(() => /每行 20 字（.*图宽 684 px）/.test(document.getElementById("sheetMessage")?.textContent ?? "")), JSON.stringify(choices) + " | " + await page.evaluate(() => document.getElementById("sheetMessage")?.textContent));
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].find((b) => /复制/.test(b.textContent))?.click()); await wait(400);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => "ERR:" + e.message));
     probe(tag, "导出 → 复制全文 → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
@@ -528,7 +528,7 @@ for (const [w, h] of sizes) {
   probe(tag, "replace image on the cover page → cover regenerated (bytes differ), name kept", thumb2.length > 0 && thumb2.join() !== thumb1.join() && (await page.evaluate(() => window.__xhw.project.current())) === "地图.jpg", await page.textContent("#toast"));
   // v2.1.9 导出图片页 = 图片本身进剪贴板（jpg → PNG 经 codec）
   await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
-  probe(tag, "导出 sheet on an image page = 复制这张图 / 这一页 / 这一支 / 整本 / 排版…", await page.evaluate(() => { const c = [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()); return c.length === 5 && /复制这张图/.test(c[0]) && /这一页 → 长图/.test(c[1]) && /这一支 → 长图/.test(c[2]) && /整本 → 长图/.test(c[3]) && /排版/.test(c[4]); }), await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()).join("|")));
+  probe(tag, "导出 sheet on an image page = 复制这张图 / 这一页 / 这一支 / 整本", await page.evaluate(() => { const c = [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()); return c.length === 4 && /复制这张图/.test(c[0]) && /这一页 → 长图/.test(c[1]) && /这一支 → 长图/.test(c[2]) && /整本 → 长图/.test(c[3]); }), await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()).join("|")));
   await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].find((b) => /复制这张图/.test(b.textContent))?.click()); await wait(1500);
   probe(tag, "导出 on an image page → clipboard holds image/png + toast 已复制这张图", await page.evaluate(async () => { try { const items = await navigator.clipboard.read(); return items.some((it) => it.types.includes("image/png")); } catch (e) { return "ERR:" + e.message; } }) === true && /已复制这张图/.test(await page.textContent("#toast")), await page.textContent("#toast"));
   // 整本 → 长图：封面（cover 字段指的那页的高清字节）铺首屏 + 正文页 + 图片页原位
@@ -537,6 +537,13 @@ for (const [w, h] of sizes) {
   // 切片路（v2.3.2「尽量一张」：默认不切；给了上限才切，只在行间、每张 ≤ 上限）——app 内走一遍 maxSliceHeight
   { const sl = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book", { maxSliceHeight: 1500 }); const hs = []; for (const f of r.files) { const bm = await createImageBitmap(f); hs.push(bm.height); } return { n: r.files.length, hs, total: r.plan.totalHeight, names: r.files.map((f) => f.name) }; });
     probe(tag, "长图 sliced at 1500: >1 slices, each ≤ 1500 (a lone image row may exceed), every file .png or .jpg", sl.n > 1 && sl.hs.every((h) => h <= 1500 + 1125) && sl.names.every((n) => /\.(png|jpg)$/.test(n)), JSON.stringify(sl)); }
+  // 行宽跟书走（v2.3.11，user「editor state 里面的行宽是跟着书走的吧」）：书里选 28 → 这本书的 editor-state.lineWidth = 28、纸面 data-chars=28、导出 sheet 文案「每行 28 字」；回 20
+  { const lw = await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="28"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const s = window.__xhw.project.session(); return { book: s.project.editorState.lineWidth?.charsPerLine, body: document.body.dataset.chars, hint: document.getElementById("readingModeHint").textContent }; });
+    probe(tag, "line width picked inside a book → stored in the book's editor-state + body[data-chars]=28 + hint says 这本书", lw.book === 28 && lw.body === "28" && /这本书/.test(lw.hint), JSON.stringify(lw));
+    await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
+    probe(tag, "export sheet message follows the book's line width (每行 28 字)", await page.evaluate(() => /每行 28 字/.test(document.getElementById("sheetMessage")?.textContent ?? "")), await page.evaluate(() => document.getElementById("sheetMessage")?.textContent));
+    await page.click("#sheetCancel").catch(() => {}); await page.keyboard.press("Escape"); await wait(200);
+    await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="20"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }); await wait(100); }
   // hidden（v2.3.2，user 2026-09-30「和unity一样，parent hidden -> all child hidden」）：藏当前页 → 自己的旗子 + 纸上眼睛 + 侧栏行 hidden-self + 整本长图少它 + 这一页长图为空；取消 → 复原
   { const before = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book"); return r.plan.textPages + r.plan.imagePages; });
     await page.evaluate(() => window.__xhw.project.setHidden(window.__xhw.project.current(), true)); await wait(250); await ensureSidebar(true); await wait(150);

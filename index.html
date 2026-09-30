@@ -364,18 +364,22 @@
         </details>
 
         <details class="settings-section" id="readingModeSection">
-          <summary class="settings-section-title" data-i18n="ui.sec.reading">阅读节奏</summary>
+          <summary class="settings-section-title" data-i18n="ui.sec.reading">行宽</summary>
           <div class="reading-mode-picker" id="readingModePicker" role="radiogroup">
-            <label class="reading-mode-option is-selected" data-mode="novel">
-              <input type="radio" name="readingMode" value="novel" checked />
-              <span data-i18n="ui.reading.novel">轻小说 · 短行</span>
+            <label class="reading-mode-option" data-chars="14">
+              <input type="radio" name="charsPerLine" value="14" />
+              <span data-i18n="ui.reading.chars14">每行 14 字</span>
             </label>
-            <label class="reading-mode-option" data-mode="classic">
-              <input type="radio" name="readingMode" value="classic" />
-              <span data-i18n="ui.reading.classic">标准 · 宽行</span>
+            <label class="reading-mode-option is-selected" data-chars="20">
+              <input type="radio" name="charsPerLine" value="20" checked />
+              <span data-i18n="ui.reading.chars20">每行 20 字</span>
+            </label>
+            <label class="reading-mode-option" data-chars="28">
+              <input type="radio" name="charsPerLine" value="28" />
+              <span data-i18n="ui.reading.chars28">每行 28 字</span>
             </label>
           </div>
-          <p class="reading-mode-hint" data-i18n="ui.reading.hint">短行模式收窄页面、撑开行距，逼出对话独占一行的网文节奏。</p>
+          <p class="reading-mode-hint" id="readingModeHint" data-i18n="ui.reading.hint">只管一行放几个字，行距跟着走；字的大小看「字号」和屏幕，屏幕放不下时减字数、不缩字。14 = 诗 / 小故事 / 自律篇幅，20 = 高考作文格，28 = 纸书。</p>
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.reading.fontScale">字号（本机）</span>
             <select id="fontScaleSelect" class="voice-config-select">
@@ -538,6 +542,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-bcd66701c3bd.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-30420ec21178.mjs"></script>
   </body>
 </html>

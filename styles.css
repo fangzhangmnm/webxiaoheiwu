@@ -51,16 +51,16 @@
   --font-editor: -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
 
-  /* Reading mode — two presets that retune box width, font cap, line-height.
-     novel (default): narrow box + 22px cap + airy 1.9 leading. Forces short
-       lines on desktop so dialogue-per-line feels like a phone reader app.
-     classic: paperback width + 19px cap + 1.6 leading. ~30 hanzi/line on
-       desktop, matching 32开 Chinese paperback (三联/人文社) typesetting. */
-  --target-chars: 22;
-  --box-max: 520px;
-  --editor-line-height: 1.9;
+  /* 行宽（v2.3.11，user 2026-09-30「现在阅读节奏为什么还是只有两档，而且你不是说去语义化吗」）：
+     唯一 knob = 每行几个字（14 / 20 / 28，同步偏好跟人走，body[data-chars]），和导出同一套数字；
+     字号上限统一 22px（保字大），行距跟档 1.9 / 1.75 / 1.6，纸宽 = 字数 × 字号上限 + 72 边距；
+     屏幕放不下时字号只降到 16px 下限、由行宽让步（手机上自动减字数）。旧「阅读节奏」两档（短行 / 标准）退役：classic → 28、novel → 20。 */
+  --target-chars: 20;
+  --editor-line-height: 1.75;
   --editor-font-max: 22px;
 }
+/* --box-max 必须定义在 body 上：自定义属性里的 var() 在定义处就代换，写在 :root 会永远按 :root 的 --target-chars（20）算，body[data-chars] 改了也不跟（ruled-audit 2026-09-30 抓到 28 字档字号变 16px） */
+body { --box-max: calc(var(--target-chars) * var(--editor-font-max) + 72px); }
 
 :root[data-theme="night"] {
   --bg: #121110; --bg-soft: #1c1b19; --ink: #e8e3d6; --ink-soft: #998f7a; --line: #2a2926; --line-strong: #3a3833;
@@ -75,11 +75,8 @@
   }
 }
 
-body.reading-classic {
-  --box-max: 660px;
-  --editor-line-height: 1.6;
-  --editor-font-max: 19px;
-}
+body[data-chars="14"] { --target-chars: 14; --editor-line-height: 1.9; }
+body[data-chars="28"] { --target-chars: 28; --editor-line-height: 1.6; }
 
 * { box-sizing: border-box; }
 

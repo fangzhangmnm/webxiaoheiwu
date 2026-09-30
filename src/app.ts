@@ -21,7 +21,7 @@ import { pickLocalProject, triggerDownload, type LocalHome } from "./project/loc
 import { nodeDisplayName } from "./project/naming.ts";
 import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./project/format.ts";
 import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
-import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, DEFAULT_CHARS_PER_LINE, CHARS_PRESETS, isCharsPerLine, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
+import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
@@ -198,7 +198,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, sheet, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
   onReplacing: (on) => setReplacing(on),
@@ -218,7 +218,7 @@ const project = createProjectMode({
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   onReplacing: (on) => setReplacing(on),
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
@@ -481,28 +481,13 @@ async function copyCurrentImage(): Promise<void> {
 //   排版 = src/export/long-image.ts（纯函数），落像素 = image/codec.ts（唯一 canvas 点），PNG = vendored UPNG。
 //   分享必须在用户手势里调（iOS Safari）：先生成、再弹「好了」sheet，点「分享」那一下才 navigator.share；没有 share 的（Quest / 桌面）= 下载；一张时还能进剪贴板。
 type LongImageScope = "page" | "branch" | "book" | "draft";
-// ── 排版设定（2026-09-30 user「行宽应该是字数而不是px，这样只有行宽影响排版」「导出只有行宽一个选项。以及还是给离散选项」）：每行几个字 = 唯一选项（14 / 20 / 28）；像素/字定死（long-image PX_PER_CHAR）。
-//   跟书走（editor-state.json `export.charsPerLine`，随下次保存写、不标脏，同 refPanel）；txt 稿和没定过的书用账号默认（synced prefs `exportCharsPerLine`）；改了两边都记。
-const charsPref = (): number => { const v = prefs.getItem<number>("exportCharsPerLine"); return isCharsPerLine(v) ? v : DEFAULT_CHARS_PER_LINE; };
-function currentChars(): number { const b = project.active() ? project.session()?.project.editorState.export?.charsPerLine : undefined; return isCharsPerLine(b) ? b : charsPref(); }
-const currentTypeset = (): ExportTypeset => typesetFor(currentChars());
-function setChars(n: number): void {
-  const s = project.active() ? project.session() : null; if (s) s.project.editorState.export = { charsPerLine: n };
-  prefs.setItem("exportCharsPerLine", n);
-}
-/** 排版 sheet：每行几个字（14 / 20 / 28，标出当前）。返回 true = 改了。 */
-async function typesetFlow(): Promise<boolean> {
-  const cur = currentChars();
-  const cs: Choice<number>[] = CHARS_PRESETS.map((n) => ({ label: t("export.charsPreset", { n, w: widthFor(typesetFor(n)) }) + (n === cur ? t("export.currentMark") : ""), value: n, primary: n === cur }));
-  const c = await openChoiceSheet(t("export.charsTitle"), t("export.charsMsg"), cs);
-  if (c == null || !isCharsPerLine(c)) return false;
-  setChars(c); setStatus(t("export.typesetSaved", { chars: c, w: widthFor(typesetFor(c)) }));
-  return true;
-}
+// ── 导出排版跟编辑器的行宽走（user 2026-09-30「导出跟编辑器的行宽走啊」）：每行几个字 = 设置 → 行宽（同步偏好跟人走，14 / 20 / 28），像素/字定死（long-image PX_PER_CHAR），行距跟档。
+//   导出不再有自己的 knob：读 editorCharsPref()（书的 lineWidth → 账号默认）。
+const currentTypeset = (): ExportTypeset => typesetFor(editorCharsPref());
 async function exportSheetFlow(): Promise<void> {
   const inBook = project.active();
   if (inBook ? project.locked() : editor.state.locked) { setStatus(t("export.locked"), { error: true }); return; }
-  const choices: Choice<"copy" | "typeset" | LongImageScope>[] = [];
+  const choices: Choice<"copy" | LongImageScope>[] = [];
   if (inBook) {
     const cur = project.current();
     choices.push({ label: t(project.currentKind() === "image" ? "export.copyImage" : "export.copyText"), value: "copy", primary: true }, { label: t("export.pageImage"), value: "page" });
@@ -510,12 +495,10 @@ async function exportSheetFlow(): Promise<void> {
     choices.push({ label: t("export.bookImage"), value: "book" });
   } else choices.push({ label: t("export.copyDraft"), value: "copy", primary: true }, { label: t("export.draftImage"), value: "draft" });
   const ts = currentTypeset();
-  const msg = (inBook ? t("export.msgBook") + "\n" + t("export.msgBookStats", visibleBookStats()) : t("export.msgDraft")) + "\n" + t("export.typesetLine", { chars: ts.charsPerLine, w: widthFor(ts) });   // 已发布字数 = 只数出门的页（user 2026-09-30「统计字数只看 publish 的」）
-  choices.push({ label: t("export.typeset"), value: "typeset" });
+  const msg = (inBook ? t("export.msgBook") + "\n" + t("export.msgBookStats", visibleBookStats()) : t("export.msgDraft")) + "\n" + t("export.typesetLine", { chars: ts.charsPerLine, w: widthFor(ts) });   // 已发布字数 = 只数出门的页（user 2026-09-30「统计字数只看 publish 的」）；行宽跟设置走
   const v = await openChoiceSheet(t("export.title"), msg, choices);
   if (v == null) return;
   if (v === "copy") { await copyCurrentPage(); return; }
-  if (v === "typeset") { if (await typesetFlow()) await exportSheetFlow(); return; }
   await exportLongImageFlow(v);
 }
 /** 整本出门的字数（hidden 的支不算）：txt 页 CJK / 词 + 页数。 */
@@ -1284,22 +1267,37 @@ function applyPttKey(): void { pttKeySelect.value = pttKeyPref(); input.foldCaps
 pttKeySelect.addEventListener("change", () => { pttAbort(); pttArmedNoPack = false; const v = pttKeySelect.value; deviceKvSet("pttKey", v === "CapsLock" || v === "none" ? v : null); applyPttKey(); });
 applyPttKey();
 
-// ── 阅读节奏 ──
-function applyReadingMode(mode: string | undefined): void {
-  const next = mode === "classic" ? "classic" : "novel";
-  document.body.classList.toggle("reading-classic", next === "classic");
-  paper.refresh();
+// ── 行宽（每行几个字；v2.3.11 user「现在阅读节奏为什么还是只有两档，而且你不是说去语义化吗」「editor state 里面的行宽是跟着书走的吧。这个语义上确实是书的属性」）：
+//   三档 14 / 20 / 28 与导出同一张表，行距跟档（styles.css body[data-chars]）。**书的属性**：书开着 → 读 / 写这本书的 editor-state `lineWidth`（随保存写、不标脏，手动保存顺手捞）；
+//   没书（txt 稿）或这本书还没定过 → 账号默认（synced prefs charsPerLine）；旧「阅读节奏」两档（readingMode：novel / classic）只当迁移来源：classic → 28、其余 → 20。导出读同一个数。
+const EDITOR_CHARS_TIERS: readonly number[] = CHARS_PRESETS;   // 与导出同一张表
+function defaultCharsPref(): number {
+  const v = prefs.getItem<number>("charsPerLine");
+  if (typeof v === "number" && EDITOR_CHARS_TIERS.includes(v)) return v;
+  return prefs.getItem<string>("readingMode") === "classic" ? 28 : 20;
+}
+function bookChars(): number | null { const v = project.active() ? project.session()?.project.editorState.lineWidth?.charsPerLine : undefined; return typeof v === "number" && EDITOR_CHARS_TIERS.includes(v) ? v : null; }
+function editorCharsPref(): number { return bookChars() ?? defaultCharsPref(); }
+function applyEditorChars(n: number): void {
+  document.body.dataset.chars = String(n);
+  paper.refresh(); syncBodyHeight();
   for (const opt of document.querySelectorAll<HTMLElement>("#readingModePicker .reading-mode-option")) {
-    const sel = opt.dataset.mode === next; opt.classList.toggle("is-selected", sel);
+    const sel = opt.dataset.chars === String(n); opt.classList.toggle("is-selected", sel);
     const input = opt.querySelector("input"); if (input) input.checked = sel;
   }
+  $("readingModeHint").textContent = t(project.active() ? (bookChars() != null ? "ui.reading.hintBook" : "ui.reading.hintBookDefault") : "ui.reading.hint");
 }
+/** 换书 / 关书 / 打开 txt 后：行宽跟着当前文档走（值没变就不重排）。 */
+function syncEditorChars(): void { const n = editorCharsPref(); if (document.body.dataset.chars !== String(n)) applyEditorChars(n); }
 $("readingModePicker").addEventListener("change", (event) => {
-  const v = (event.target as HTMLInputElement | null)?.value;
-  if (v !== "novel" && v !== "classic") return;
-  applyReadingMode(v); prefs.setItem("readingMode", v);
+  const v = Number((event.target as HTMLInputElement | null)?.value);
+  if (!EDITOR_CHARS_TIERS.includes(v)) return;
+  const s = project.active() ? project.session() : null;
+  if (s) s.project.editorState.lineWidth = { charsPerLine: v };   // 这本书的（随下次保存 / 顺手捞落盘）
+  else prefs.setItem("charsPerLine", v);                              // 默认（txt 稿 / 新书）
+  applyEditorChars(v);
 });
-prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("readingMode")));
+prefs.onChange("charsPerLine", () => syncEditorChars());
 // 字号档位（device-kv：跟屏幕走，手机上按「每行字数」规范算出来只有 16px——user 2026-09-04 iPhone「字好小啊」；规范继续管行宽，档位只乘字号）
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
@@ -1708,7 +1706,7 @@ if (shell.isDevRoute) $("settingsBuild").textContent += " · dev";
 // ── boot ──
 async function boot(): Promise<void> {
   await initCollections();
-  applyReadingMode(prefs.getItem<string>("readingMode"));
+  applyEditorChars(editorCharsPref());
   applyRuledLines(ruledLinesPref());
   applyWordCount(wordCountPref());
   applyFontScale(fontScalePref());
