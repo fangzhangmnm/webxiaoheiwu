@@ -190,7 +190,29 @@ pixiv `[newpage]` / `[chapter:]` / `[[rb:]]`；なろう `|漢字《かんじ》
 4. **字体包 + PDF**（typeset PDF 后端；长图切到 (b)）。
 5. 方言 / 縦書き / 日文字形 —— 等真需求。
 
-## 7. 等 user 拍板（编号答我）
+## 8. user 第二轮答复（2026-09-30 晚）——**「先不要急着拍」**，以下只是记录与我的回应，无一条算拍板
+
+user 原话要点：「没网的小孩和我可能也对实体感兴趣。之前有一个latex的book binding项目，那个可以sunset，但是我们还是可以做迷你书，这个下一轮讨论，我的建议是wysiwyg，就用编辑器的行宽，我们这边导出也一样，起点的写作软件还有专门的手机阅读器模拟呢」「生态科普帮我落一下ai doc而且写的不要这么简略难懂」「如果缺省发布的话，我建议还是和unity一样，parent hidden -> all child hidden，免得有奇怪的孤儿。所以就用hidden？其实之前我们做net of text的时候也想过强边和弱边对吧」「之前的卫生是我们不帮user发明语义，只用最generic 机械的，所以就hidden?而不是用旗子？」「长文本社交不大礼貌，反而适合备份或者发AI」「一个wishlist，文本里面可以用unicode art内联插画！」「所以就是和我直觉一样，长图，pdf，文本」「文本的话可能就是markdown树呗。我们现在基本discard network use tree mode, isnt it, then orphan nodes automatically hidden? but we dont have root. so instead orphan node are also root level? i am confusing. also when export do we export the subtree of current view or full book?」「长图的话能放多少字」「pdf的话可以和之后的bookbinding项目对齐」「我们可以vendor自己的字体」「我选中插画页send to cover art的时候是做了一个copy，然后没有对插画页的引用？」「old是什么」「为什么要epub，不是没消费者吗」「实体非screen time的信道也多想想」「v2.2.0 push prod」。
+
+| 主题 | user 方向 | 我的回应（不是决定） |
+|---|---|---|
+| 旗子 → `hidden` | 不替用户发明语义，用最机械的：**一个布尔 `hidden`**，Unity 语义 parent hidden → 子孙全 hidden | 同意这是 ADR-0014 的卫生。Unity 的准确模型 = 每页存自己的 `activeSelf`（own hidden），有效值 `activeInHierarchy` = 自己 ∧ 所有祖先；父恢复时子回到各自原状；侧栏把被祖先藏掉的行画灰（Unity Hierarchy 同款）。§2 的四值 enum 撤回；草稿 / 笔记 / 旧稿的区别用页名与摆放表达。**hidden 只沿树（强边）传播，不沿 links（弱边）**——这就是当年强弱边念头的落点：2.1.0 的 `edges/dim` 被 ADR-0014 换成了 tree = 归属（强）/ links = 指向（弱）。 |
+| 「old 是什么」 | — | 就是你第一条消息里的「old version」；在 `hidden` 模型下它不存在了。 |
+| 树 / 散页 / root 的困惑 | — | 现状（ADR-0014）：**网络没有 discard**，它是第二层 `links`；书本身就是根（没有 root 页），`tree` 是一片森林（顶层节点有序）；**散页 = 不在森林里的页，不是顶层节点**，上一页 / 下一页跳过它们（chevron 灰），「导出这一支」在散页上只导它自己。所以「散页自动 hidden」在**导出意义上已经成立**（不在树 = 不在阅读顺序里），不需要旗子；在 workbench 意义上它们照样可见（links、检索、孤儿页入口）。 |
+| 导出范围 | 「导出当前 view 的子树还是整本？」 | 现在只有「这一支」（树行菜单选中的子树）和「这一页」（剪贴板）。长图 / PDF / 文本的 sheet 可以有三档：**这一页 / 这一支（当前页 + 子孙）/ 整本（森林前序 DFS，散页不含）**。哪档默认没定。 |
+| 闭集 | **长图 / PDF / 文本**；EPUB「没消费者」 | 撤 EPUB、撤 HTML。 |
+| 文本 = markdown 树 | 备份 / 喂 AI | 树深度 → `#` 级数，页名 = 标题，正文跟在后面，hidden 子树不出；links 可写成 `[[页名]]`（⚠ 方言待定）。反向（markdown 树 → 书）是同一个契约的另一半，也许比导出更值钱（AI 写回来）。粘进平台编辑器时把 `#` 剥掉即是纯文本。 |
+| unicode art 内联插画 | wishlist | = 「预格式块」：不折行、等宽、原样进长图 / PDF。它就是 2026-09-04 解禁的下一纪元「代码块」（``` 围栏）在小说里的用法——同一个机制，不另起。编辑器现在的字体是不是等宽、CJK 与 ASCII art 混排怎么对齐，做的时候量。 |
+| 长图能放多少字 | — | 1080 宽、32px 字、左右 60 边距 → 30 字 / 行、行高 1.7 ≈ 54px → 一屏（1920 高）≈ 35 行 ≈ 1000 字；**一张舒服 ≈ 3 屏 ≈ 3000 字**；单张硬上限 = iOS 老 Safari 画布面积 16.7M 像素 → 1080×~15500 ≈ 287 行 ≈ **8–9 千字**（⚠ 新 iOS 更宽；各平台自己的像素上限做时实测）。整本别做长图。 |
+| PDF 与 bookbinding 对齐 | LaTeX bookbinding 项目 sunset；迷你书下一轮；WYSIWYG = 编辑器行宽 | 记：PDF 的页面几何直接取 `paper.ts`（每行字数 / 行高 / 边距）= 所见即所得，编辑器就是阅读器模拟（起点作家助手同款）；**拼版（骑马钉 / 一纸八页折本 / 胶装）= PDF 导出的模式**，科普 doc §8.2。**下一轮再谈，本轮不动。** |
+| 字体 | 「我们可以 vendor 自己的字体」 | 物理进仓 `vendor/fonts/`（家规 vendor 一切），**不进 SW 预缓存**、第一次导出时才 fetch（[[feedback_startup_speed_first_20260919]]），运行时缓存。不走 pwa-models。字体候选与许可证照 §5.2。 |
+| 封面是 copy 没引用？ | — | **是**：ADR-0012「设为封面」把图片页字节缩到 ≤256² 写进 `Thumbnails/thumbnail.png`，graph.json 没有 cover 字段、不记来源页。所以长图 / PDF 要印高清封面时不知道该用哪张。出路：① 导出时选（默认子树第一张图片页）；② 加 `cover: "<页名>"`（当年「不要帮用户发明字段」是对 AI 猜的字段说的，这次有真需求，仍归 user）；③ 封面永远用字封面。未定。 |
+| 实体 / 非 screen-time 信道 | 「多想想」 | 科普 doc §8：打印店（墙内 / 美国图书馆 / 日本便利店打印）、一纸八页折本（零工具）、骑马钉、胶装、墨水屏（Send to Kindle）、近场传输（AirDrop / Quick Share）+ **Web Share API 让「分享」直接进系统面板**、U 盘进学习机、同人展 / 校刊 / 邮寄 / 明信片 / 书签、声音（只记）。 |
+| prod | 「v2.2.0 push prod」 | **已推**：`git push origin d144ed5:prod` + `gh workflow run deploy.yml --ref main`（environment 只放行 main，prod-ref 的 run 必红，main 上 dispatch 才合成两分支）。live 验证：`/dist/xiaoheiwu-1d046abd2f73.mjs` 200、index.html 指向它；`/dev/` = v2.3.0。WXHW v2 首次上 prod。 |
+
+**§7 的十问作废**，等下一轮 user 自己起头。
+
+## 7.（作废，见 §8）原「等 user 拍板」清单
 
 ① 旗子四个值要不要 `old`（还是「笔记」就够）；四个中文词。
 ② hierarchy 选 C（每页各自一面旗 + 出生抄父 + 批量动词）？

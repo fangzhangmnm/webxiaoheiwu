@@ -72,6 +72,6 @@ Web Speech / Groq / OpenAI 2026-09-03 sunset（语音字节永不外发）；旧
 2. `npm test`（秒级）→ `bash scripts/build.sh`（tsc 门 + 接缝 lint + sprite 对账 + 裸中文扫描 + esbuild content-hash → `dist/xiaoheiwu-<hash>.mjs`，自动改 index.html）→ `npm run smoke`（headless boot 13 项，借 WeebPaint 的 playwright）。
    改了界面 → `node tools/ui-audit.mjs`；改了输入 / 键盘 → `node tools/kb-audit.mjs`；改了稿纸 / 字号 / 行距 → `node tools/ruled-audit.mjs`；改了推 / 拉 / 重载 → `npm run e2e:sync`。
 3. 重构/大功能：`bash scripts/gen-api.sh` 重打 `api/`。
-4. `git add -A && git commit && git push origin main`。prod = `git push origin main:prod`（**先问人**）。
+4. `git add -A && git commit && git push origin main`。prod = `git push origin <sha>:prod` **然后** `gh workflow run deploy.yml --ref main`（**先问人**；github-pages environment 只放行 main，直接 push prod 触发的 run 必红，deploy job 本来就同时 checkout 两分支再合成，所以在 main 上 dispatch 一次才真上线；验证探 `/dist/xiaoheiwu-<hash>.mjs` 的 200，别只看 index.html。2026-09-30 v2.2.0 = v2 首次上 prod，edited by Claude Fable 5.1）。
 
 图标：`python3 "../20260708 SVG Icons/extract-icons.py" assets/icons.svg <ids…> --catalog` → `python3 tools/inline-sprites.py`。缺的先烤 stopgap（`tools/bake-stopgap-glyphs.py` SPECS）+ 登记图标库 `TODO.md`；**stopgap 现已清零**（2026-09-29：`microphone` `backspace` 真图标收货）；PENDING 待过目在用：`book` `forward` `chevron-left` `chevron-right` `bookshelf`（2026-09-10）+ `microphone` `backspace` + 软键盘键帽 `key-shift` `key-enter`（2026-09-29 新画）。edited by Claude Fable 5.1 2026-09-29
