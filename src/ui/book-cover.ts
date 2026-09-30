@@ -6,12 +6,13 @@
 //   （ui.tileOverlayHtml，有没有图都盖在封面上）。本文件只出两段 HTML（纯函数，无 DOM）；
 //   颜色 / 字号 / 装订线 / 把包里的名字行挪到封面下沿，全在 styles.css「书库封面」一节。
 // 排版规则：
-//   · 名字先拆日期前缀（doc-model splitDatedName）：书名印大字，日期印小字。
+//   · 名字先拆日期前缀（doc-model splitDatedName）：书名印大字，日期印小字；分隔的那根横杠 / 空格哪边都不进。
+//   · 没起名的稿（`yyyymmdd-hex4`）同一条规则：日期照样印在日期的位置，大字的位置印那四位消歧码，等宽、淡色（一眼看出没起名）。
 //   · **汉字为主 → 竖排**（从右往左一列一列）；**拉丁字母为主 → 横排**、按词折行。判据：汉字 / 假名 / 谚文的个数 × 2 ≥ 其余非空白字符的个数。
 //   · 竖排里的拉丁字母：一两个字符的小串（AI、12）立起来并排放在一格里（纵中横）；更长的串照竖排惯例侧躺。
 //   · 字号按字数分四档，单位是卡片宽度的百分比（窄屏三列和宽屏大卡片都合适）。
 //   · 书有装订线（左侧一条）；txt 稿是一张纸，没有。
-import { splitDatedName } from "../doc-model.ts";
+import { splitDatedName, isCodeTitle } from "../doc-model.ts";
 
 const CJK = /[぀-ヿ㐀-鿿가-힯豈-﫿]/;
 const esc = (x: string): string => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -25,7 +26,7 @@ export function planCover(stem: string): CoverPlan {
   const vertical = cjk > 0 && cjk * 2 >= other;
   const n = chars.length;
   const size = vertical ? (n <= 5 ? "xl" : n <= 10 ? "l" : n <= 18 ? "m" : "s") : (n <= 8 ? "xl" : n <= 20 ? "l" : n <= 40 ? "m" : "s");
-  return { date, title, vertical, size, coded: date == null && /^\d{8}-/.test(title) };
+  return { date, title, vertical, size, coded: date != null && isCodeTitle(title) };
 }
 /** 竖排正文：把一两个字符的拉丁 / 数字小串包成纵中横。 */
 function verticalRuns(title: string): string {

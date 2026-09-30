@@ -1,7 +1,7 @@
 // 书库封面的排版规则 + 名字里的日期前缀。created 2026-09-29 by Claude Fable 5.1
 //   user 2026-09-29「封面上印书名，想一想英文怎么办，以及对 yyyymmdd-name 和 yyyymmdd name 都识别」
 import { describe, it, eq, assert } from "./runner.mjs";
-const { splitDatedName } = await import("../src/doc-model.ts");
+const { splitDatedName, isCodeTitle } = await import("../src/doc-model.ts");
 const { planCover, coverHtml, paperHtml } = await import("../src/ui/book-cover.ts");
 
 describe("doc-model · splitDatedName（名字里的日期前缀）", () => {
@@ -10,8 +10,17 @@ describe("doc-model · splitDatedName（名字里的日期前缀）", () => {
       const r = splitDatedName(s); eq(r.date, "20250127", s); eq(r.title, "樱川中学科学部", s);
     }
   });
-  it("日期码名（没起名的稿）整个算名字，不拆", () => {
-    for (const s of ["20260929-5c5c", "20260929-5C5C", "20260929-5c5c-1a2b", "20260929-5c5c 2"]) { const r = splitDatedName(s); eq(r.date, null, s); eq(r.title, s, s); }
+  it("没起名的稿（日期码名）走同一条规则：日期归日期，其余是消歧码；横杠哪边都不进", () => {
+    for (const [s, code] of [["20260929-5c5c", "5c5c"], ["20260929-5C5C", "5C5C"], ["20260929-5c5c-1a2b", "5c5c-1a2b"], ["20260929-5c5c 2", "5c5c 2"]]) {
+      const r = splitDatedName(s); eq(r.date, "20260929", s); eq(r.title, code, s); assert(isCodeTitle(r.title), s);
+      assert(!r.title.startsWith("-") && !r.date.endsWith("-"), s);
+    }
+    assert(!isCodeTitle("樱川")); assert(!isCodeTitle("5c5c 冲突留底")); assert(!isCodeTitle("Station Eleven"));
+  });
+  it("各种横杠当分隔都认：全角横杠、短破折号、破折号，连着几个、两边带空格也认", () => {
+    for (const s of ["20260929\uFF0D名字", "20260929\u2013名字", "20260929\u2014名字", "20260929\u2014\u2014名字", "20260929 - 名字", "20260929 \u2014 名字", "20260929--名字"]) {
+      const r = splitDatedName(s); eq(r.date, "20260929", s); eq(r.title, "名字", s);
+    }
   });
   it("不像日期的八位数不拆；没有日期前缀原样；日期后面没有名字原样", () => {
     eq(splitDatedName("20251301 x").date, null, "13 月"); eq(splitDatedName("20250132 x").date, null, "32 日");
@@ -30,9 +39,13 @@ describe("ui/book-cover · 竖排还是横排、字号档、纵中横", () => {
     eq(planCover("20260120 Scifi").vertical, false); eq(planCover("20260301-The Long Goodbye").vertical, false);
     eq(planCover("第3章 The Beginning of Everything").vertical, false, "两个汉字压不过一长串英文");
   });
-  it("日期码名：横排、等宽、不单独印日期", () => {
-    const p = planCover("20260929-5c5c"); eq(p.vertical, false); eq(p.coded, true); eq(p.date, null);
-    assert(coverHtml("20260929-5c5c", "draft").includes("coded")); assert(!coverHtml("20260929-5c5c", "draft").includes("xhw-cover-date"));
+  it("没起名的稿：日期印在日期的位置，大字位置印消歧码（横排、等宽）；封面上没有那根横杠", () => {
+    const p = planCover("20260929-5c5c"); eq(p.vertical, false); eq(p.coded, true); eq(p.date, "20260929"); eq(p.title, "5c5c");
+    const html = coverHtml("20260929-5c5c", "draft");
+    assert(html.includes("coded")); assert(html.includes('<span class="xhw-cover-date">20260929</span>')); assert(html.includes(">5c5c<"));
+    assert(!html.replace(/<[^>]*>/g, "").includes("-"), "印出来的字里没有横杠");
+    eq(planCover("20260929-樱川").coded, false, "起了名的不算");
+    eq(planCover("5c5c").coded, false, "没有日期前缀的四位 hex 只是个普通名字");
   });
   it("字数越多字号档越小", () => {
     eq(planCover("花璃同人").size, "xl"); eq(planCover("樱川中学科学部").size, "l"); eq(planCover("一篇名字特别特别长的随笔草稿").size, "m"); eq(planCover("一篇名字特别特别长的随笔草稿标题用来看折行还要更长一点").size, "s");

@@ -1866,7 +1866,7 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: 8px; }
 .xhw-cover.h.sz-l  .xhw-cover-title { font-size: clamp(13px, 13cqw, 23px); }
 .xhw-cover.h.sz-m  .xhw-cover-title { font-size: clamp(12px, 11cqw, 19px); }
 .xhw-cover.h.sz-s  .xhw-cover-title { font-size: clamp(11px, 9.5cqw, 16px); }
-.xhw-cover.coded .xhw-cover-title { font-size: clamp(11px, 10cqw, 16px); }
+.xhw-cover.coded .xhw-cover-title { font-size: clamp(13px, 13cqw, 22px); letter-spacing: 0.04em; }   /* 没起名的稿：四位消歧码 */
 .xhw-cover-date { position: absolute; left: calc(var(--spine-w) + 9px); bottom: 24px; font-family: var(--font-ui); font-size: 10px; line-height: 1.2; letter-spacing: 0.05em; color: var(--cover-ink-soft); font-variant-numeric: tabular-nums; }
 
 /* 底下是封面图：字带一圈纸色描边（扁平：只有偏移、没有模糊），小字和徽章同理。不加底栏。 */

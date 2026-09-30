@@ -82,17 +82,22 @@ export function makeDocName(date: string, title: string, dir = "", suffix = hex4
 export function isOpaqueStem(stem: string): boolean { return /^\d{8}-[0-9a-f]{4}( \d+)?$/i.test(stem); }
 
 /** 名字拆成「日期前缀 + 其余」（书库封面印书名用；user 2026-09-29「对 yyyymmdd-name 和 yyyymmdd name 都识别」）。
- *  认的分隔：空格 / 连字符 / 下划线 / 全角空格。日期要像个日期（月 01–12、日 01–31）。
- *  日期码名（`yyyymmdd-hex4`，没起名的稿）整个算名字，不拆——那四位是消歧码不是书名。拆不出 → date = null、title = 原样。只管显示，身份仍是完整文件名。 */
+ *  **一条规则，没有特例**：八位日期 + 分隔 + 其余。分隔本身不进任何一边（封面上不会再有一根悬着的横杠）。
+ *  认的分隔：空格 / 全角空格 / 下划线 / 各种横杠（半角 - 、全角 － 、短破折号 – 、破折号 —），可以连着几个。日期要像个日期（月 01–12、日 01–31）。
+ *  没起名的稿（日期码名 `yyyymmdd-hex4`）同一条规则：日期归日期，其余就是那四位消歧码（v2.1.22；此前整个当名字印，
+ *  窄封面在横杠后面折行，user 2026-09-29「20260929-的"-"还是没有妥善处理好」）。是不是消歧码由 `isCodeTitle` 判，封面据此换一种印法。
+ *  拆不出 → date = null、title = 原样。只管显示，身份仍是完整文件名。 */
+const DATED_RE = /^(\d{4})(\d{2})(\d{2})[ \u3000_\-\uFF0D\u2013\u2014]+(\S.*)$/;
 export function splitDatedName(stem: string): { date: string | null; title: string } {
   const s = String(stem ?? "");
-  if (/^\d{8}-[0-9a-f]{4}(?:[ -][0-9a-f]{1,4})*$/i.test(s)) return { date: null, title: s };
-  const m = s.match(/^(\d{4})(\d{2})(\d{2})[ \u3000_-]+(\S.*)$/);
+  const m = s.match(DATED_RE);
   if (!m) return { date: null, title: s };
   const month = Number(m[2]), day = Number(m[3]);
   if (month < 1 || month > 12 || day < 1 || day > 31) return { date: null, title: s };
   return { date: `${m[1]}${m[2]}${m[3]}`, title: m[4]!.trim() };
 }
+/** 拆出来的「其余」是不是消歧码（四位 hex，可带碰撞后缀）——也就是这份稿没起名。 */
+export function isCodeTitle(title: string): boolean { return /^[0-9a-f]{4}(?:[ -][0-9a-f]{1,4})*$/i.test(title); }
 
 /** 文件夹名：去路径字符、压空白、去前导点、截 80；空 → ""。 */
 export function sanitizeFolderName(s: string): string {
