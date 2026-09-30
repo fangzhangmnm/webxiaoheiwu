@@ -1,5 +1,5 @@
 # ADR-0016 参考窗进书：`.webxiaoheiwu/references/` 目录（第四类 entry）+ 链接卡指向书里的页 + 窗口状态进 editor-state
-> created 20260929 · by Claude Fable 5.1 (claude-fable-5-1) · status: **proposed（等 user 点头）**。出处 = 家族根仓 `ai-docs/20260929-reference-window-tech-plan.md` §4 / §9 / §10 与同日讨论记录；user 原话见下。
+> created 20260929 · by Claude Fable 5.1 (claude-fable-5-1) · status: **accepted**（user 2026-09-29「库可以bump，然后2应该没问题，然后可以merge」——「2」= 本 ADR；库 0.3.0 同日发）。出处 = 家族根仓 `ai-docs/20260929-reference-window-tech-plan.md` §4 / §9 / §10 与同日讨论记录；user 原话见下。
 
 ## 背景
 - 家族共享库 `@internal/reference-window`（2026-09-29 出生，0.2.0 定目录制契约：`.<app>/references/manifest.json` + `r<i>.<ext>`；WeebPaint 已按 format 3 接上）。user：参考「从来都是跟着文档走」、「不做 sidecar」、去掉「只在这次有效」、「不认识的卡原样带着、保存时原样写回」。
