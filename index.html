@@ -455,7 +455,15 @@
           <summary class="settings-section-title" data-i18n="ui.sec.voice">语音输入</summary>
           <div class="voice-config-form">
             <div class="voice-config-backend" id="voiceConfigBackend">
-              <p class="voice-config-hint" data-i18n="ui.voice.localHint">识别在本机运行，声音不出设备；加密稿也能用。第一次用会先下载语音包（一次，离线可用）。按住左 Ctrl 说话，或点右下角话筒。</p>
+              <p class="voice-config-hint" data-i18n="ui.voice.localHint">识别在本机运行，声音不出设备；加密稿也能用。第一次用会先下载语音包（一次，离线可用）。按语音键说话，或点右下角话筒。</p>
+              <label class="voice-config-field">
+                <span class="voice-config-label" data-i18n="ui.voice.pttKey">语音键（本机）</span>
+                <select id="pttKeySelect" class="voice-config-select">
+                  <option value="ControlLeft" data-i18n="ui.voice.pttKey.ctrl">左 Ctrl：按住说话</option>
+                  <option value="CapsLock" data-i18n="ui.voice.pttKey.caps">CapsLock：按一下开始，再按一下停</option>
+                </select>
+              </label>
+              <p class="voice-config-hint" data-i18n="ui.voice.pttKeyHint">左 Ctrl 和 Ctrl+C 之类会撞车时换 CapsLock。CapsLock 会翻大小写锁，所以用它当语音键时实体键盘打的字母一律按小写进输入法。</p>
               <label class="voice-config-field">
                 <span class="voice-config-label" data-i18n="ui.voice.model">识别模型</span>
                 <select id="voiceModelSelect" class="voice-config-select">
@@ -529,6 +537,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-2963fa19a013.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-68cd7d571ce3.mjs"></script>
   </body>
 </html>

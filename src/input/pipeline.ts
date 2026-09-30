@@ -26,6 +26,8 @@ export interface PipelineDeps {
   onChange(): void;
 }
 export interface InputPipeline {
+  /** CapsLock 是语音键时 app 设 true：实体键盘打进内置输入法的单字母折回小写（CapsLock 翻大小写锁；2026-09-30）。 */
+  foldCapsLock: boolean;
   /** app 自己的键要打进哪个框：焦点所在的文本框；焦点丢了就回到上一个还在屏上的文本框并把焦点还给它。没有 → null。 */
   target(): TextField | null;
   /** 只看不动（画候选用）：焦点所在的文本框。 */
@@ -83,7 +85,14 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     if (e.key === "Shift") { if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat && ime.enabled) shiftCleanPress = true; return; }
     shiftCleanPress = false;
     if (!editable(el)) return;
-    const r = await ime.onKeydown(e);   // 要吃的键在它第一个 await 之前就 preventDefault（同步生效）
+    // CapsLock 当语音键时（app 设 foldCapsLock）：大小写锁被它翻来翻去，单字母一律折回小写再给输入法——不然拼音全大写进 RIME（2026-09-30）。
+    //   e.key 只读 → 代理一层只改 key，方法绑回原事件（preventDefault 要在真事件上生效）。
+    let ev = e;
+    if (api.foldCapsLock && e.key.length === 1 && e.key >= "A" && e.key <= "Z" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.getModifierState("CapsLock")) {
+      const lower = e.key.toLowerCase();
+      ev = new Proxy(e, { get: (t, prop) => { if (prop === "key") return lower; const v = Reflect.get(t, prop) as unknown; return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v; } });
+    }
+    const r = await ime.onKeydown(ev);   // 要吃的键在它第一个 await 之前就 preventDefault（同步生效）
     apply(el, r);
     d.onChange();
   }
@@ -194,5 +203,6 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     chain = p.catch((e) => { console.warn("[input] mode toggle failed", e); });
     return chain;
   }
-  return { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey };
+  const api = { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey, /** CapsLock 是语音键时开：实体键盘单字母折回小写（见 routeHardwareKey）。 */ foldCapsLock: false };
+  return api;
 }

@@ -1242,27 +1242,37 @@ micButton.addEventListener("click", () => {
 editorEl.addEventListener("input", () => { localSession?.notifyExternalInput(); });
 editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "recording") localSession.abort(); });
 
-// Left Ctrl push-to-talk（docs/20260524-push-to-talk.md 终形：keydown 立即起录，250ms 门决定留/丢，其它键 = 和弦 → 弃）
+// 语音键（docs/20260524-push-to-talk.md 终形：左 Ctrl keydown 立即起录，250ms 门决定留/丢，其它键 = 和弦 → 弃）。
+//   v2.3.6（user 2026-09-30「语音键能用 caps 吗，左 ctrl 和 ctrl c 撞车了」）：device-kv `pttKey` 可选 **CapsLock**——它是**切换式**（按一下开始、再按一下停），不是按住：
+//   macOS / iPadOS 上 CapsLock 的 keydown 只在切亮时发、keyup 只在切灭时发（按住不发连发），按住式在那边根本站不住；Windows 正常，但切换式两边一致。
+//   CapsLock 同时会翻系统大小写锁：用它当语音键时，实体键盘打进内置输入法的字母一律折回小写（pipeline foldCapsLock），不然拼音全变大写。
+type PttKey = "ControlLeft" | "CapsLock";
+const pttKeyPref = (): PttKey => (deviceKvGet("pttKey") === "CapsLock" ? "CapsLock" : "ControlLeft");
 let pttBackend: VoiceSession | null = null, pttCommitted = false, pttTimer: ReturnType<typeof setTimeout> | null = null;
-const isPttKey = (e: KeyboardEvent) => e.code === "ControlLeft";
+const isPttKey = (e: KeyboardEvent) => e.code === pttKeyPref();
+const pttIsToggle = (): boolean => pttKeyPref() === "CapsLock";
 function pttAbort(): void { if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } pttBackend?.abort(); pttBackend = null; pttCommitted = false; }
+function pttStop(): void { if (!pttBackend) return; if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } if (pttCommitted) pttBackend.stop(); else pttBackend.abort(); pttBackend = null; pttCommitted = false; }
 document.addEventListener("keydown", (event) => {
-  if (pttBackend && !isPttKey(event)) { pttAbort(); return; }
+  if (pttBackend && !isPttKey(event)) { if (!pttIsToggle()) pttAbort(); return; }   // 按住式：别的键 = 和弦（Ctrl+C）→ 弃；切换式：手是空的，打字不打断（1s 静音自动停）
   if (!isPttKey(event) || event.repeat || event.shiftKey || event.altKey || event.metaKey) return;
+  if (pttBackend) { if (pttIsToggle()) pttStop(); return; }   // 切换式：再按一下 = 停
   if (document.activeElement !== editorEl || !canEditNow()) return;
-  if (pttBackend) return;
   const backend = activeVoiceBackend();
   if (!backend || backend.state !== "idle") return;
-  pttBackend = backend; pttCommitted = false;
+  pttBackend = backend; pttCommitted = pttIsToggle();   // 切换式没有 250ms 门：按了就是要说
   void backend.start(pickSpeechLang());
-  pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; if (pttBackend?.state === "recording") onVoiceState("recording"); }, PTT_HOLD_MS);
+  if (pttIsToggle()) { if (pttBackend.state === "recording") onVoiceState("recording"); }
+  else pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; if (pttBackend?.state === "recording") onVoiceState("recording"); }, PTT_HOLD_MS);
 }, { capture: true });
 document.addEventListener("keyup", (event) => {
-  if (!isPttKey(event) || !pttBackend) return;
-  if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; }
-  if (pttCommitted) pttBackend.stop(); else pttBackend.abort();
-  pttBackend = null; pttCommitted = false;
+  if (!isPttKey(event) || !pttBackend || pttIsToggle()) return;   // 切换式不看 keyup（macOS 只在切灭时发）
+  pttStop();
 });
+const pttKeySelect = $<HTMLSelectElement>("pttKeySelect");
+function applyPttKey(): void { pttKeySelect.value = pttKeyPref(); input.foldCapsLock = pttIsToggle(); }
+pttKeySelect.addEventListener("change", () => { pttAbort(); deviceKvSet("pttKey", pttKeySelect.value === "CapsLock" ? "CapsLock" : null); applyPttKey(); });
+applyPttKey();
 
 // ── 阅读节奏 ──
 function applyReadingMode(mode: string | undefined): void {

@@ -92,7 +92,7 @@ class RimeWorkerBackend implements Backend {
   simplified = true;
   /** 会话开关：简/繁（user 2026-09-04「quest 输入法拼命出繁体」）、中文标点、关 emoji 候选（luna 方案默认开，写小说是噪音）。
    *  Quest 首次部署是异步的、deploy 完成会刷新会话——开关可能被打回方案默认（繁体）→ 除了换方案后设一次，**每次起组字前再重申一次**（一次 ccall，零成本），不赌会话状态。 */
-  pageSize = 9;
+  pageSize = 5;   // 悬浮条缺省 5（dock.ts FLOAT_PAGE_SIZE 同值；软键盘露着时 dock 改 40）
   async applyOptions(): Promise<void> {
     await this.call("setOption", "simplification", this.simplified ? 1 : 0);
     await this.call("setOption", "ascii_punct", 0);
@@ -237,7 +237,7 @@ export class NaturalCodeIME {
   }
   async setSimplified(v: boolean): Promise<void> { this.simplified = v; if (this.backend.setSimplified) { try { await this.backend.setSimplified(v); } catch (e) { console.warn("[ime] setSimplified failed", e); } } }
   /** 候选每页几个（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」）：后端换掉 / 重建也要记住，所以存在这里。 */
-  pageSize = 9;
+  pageSize = 5;   // 悬浮条缺省 5（dock.ts FLOAT_PAGE_SIZE 同值；软键盘露着时 dock 改 40）
   async setPageSize(n: number): Promise<void> { this.pageSize = n; if (this.backend.setPageSize) { try { await this.backend.setPageSize(n); } catch (e) { console.warn("[ime] setPageSize failed", e); } } }
   backend: Backend = new StarterMapBackend();
   initializeError: string | null = null;

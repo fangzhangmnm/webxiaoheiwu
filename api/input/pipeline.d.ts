@@ -14,6 +14,8 @@ export interface PipelineDeps {
     onChange(): void;
 }
 export interface InputPipeline {
+    /** CapsLock 是语音键时 app 设 true：实体键盘打进内置输入法的单字母折回小写（CapsLock 翻大小写锁；2026-09-30）。 */
+    foldCapsLock: boolean;
     /** app 自己的键要打进哪个框：焦点所在的文本框；焦点丢了就回到上一个还在屏上的文本框并把焦点还给它。没有 → null。 */
     target(): TextField | null;
     /** 只看不动（画候选用）：焦点所在的文本框。 */

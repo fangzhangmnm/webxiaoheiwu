@@ -545,8 +545,24 @@ export declare const S: {
         readonly en: "Voice input";
     };
     readonly "ui.voice.localHint": {
-        readonly zh: "识别在本机运行，声音不出设备；加密稿也能用。第一次用会先下载语音包（一次，离线可用）。按住左 Ctrl 说话，或点右下角话筒。";
-        readonly en: "Recognition runs on this device; audio never leaves it, so it works on encrypted drafts too. The first use downloads a voice pack once (works offline after). Hold Left Ctrl to talk, or tap the mic.";
+        readonly zh: "识别在本机运行，声音不出设备；加密稿也能用。第一次用会先下载语音包（一次，离线可用）。按语音键说话，或点右下角话筒。";
+        readonly en: "Recognition runs on this device; audio never leaves it, so it works on encrypted drafts too. The first use downloads a voice pack once (works offline after). Press the voice key to talk, or tap the mic.";
+    };
+    readonly "ui.voice.pttKey": {
+        readonly zh: "语音键（本机）";
+        readonly en: "Voice key (this device)";
+    };
+    readonly "ui.voice.pttKey.ctrl": {
+        readonly zh: "左 Ctrl：按住说话";
+        readonly en: "Left Ctrl: hold to talk";
+    };
+    readonly "ui.voice.pttKey.caps": {
+        readonly zh: "CapsLock：按一下开始，再按一下停";
+        readonly en: "CapsLock: press to start, press again to stop";
+    };
+    readonly "ui.voice.pttKeyHint": {
+        readonly zh: "左 Ctrl 和 Ctrl+C 之类会撞车时换 CapsLock。CapsLock 会翻大小写锁，所以用它当语音键时实体键盘打的字母一律按小写进输入法。";
+        readonly en: "Switch to CapsLock if Left Ctrl collides with Ctrl+C and friends. CapsLock toggles caps lock, so letters typed on a hardware keyboard are folded to lowercase for the IME while it is the voice key.";
     };
     readonly "ui.voice.model": {
         readonly zh: "识别模型";

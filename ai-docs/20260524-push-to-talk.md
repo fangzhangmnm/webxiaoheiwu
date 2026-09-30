@@ -208,3 +208,9 @@ device debugging) is worth keeping in mind.
   held.** The user is in charge of their hold; VAD silence-stop is fine
   as a backstop but should be generous (≥1s) and ideally only kick in
   after voice has been heard.
+
+
+## 修订 2026-09-30（edited by Claude Fable 5.1）：语音键可选 CapsLock（切换式）
+- user「语音键能用 caps 吗，左 ctrl 和 ctrl c 撞车了」。device-kv `pttKey` = `CapsLock` 时：**切换式**——按一下开始录（无 250ms 门，直接算 committed），再按一下停；不看 keyup（macOS / iPadOS 的 CapsLock 只在切亮时发 keydown、切灭时发 keyup，按住式站不住；Windows 正常，切换式两边一致）；录音中别的键不打断（手是空的；1s 静音自动停）；点纸面仍打断。左 Ctrl 仍是按住式 + 和弦即弃。
+- CapsLock 会翻系统大小写锁：pipeline `foldCapsLock` 开着时，实体键盘打进内置输入法的单字母一律折回小写（不然拼音全大写进 RIME）。
+- 「硬键盘候选只有五个方便盲打」同日：悬浮条一页 5 个（原 9），软键盘 dock 仍 40。
