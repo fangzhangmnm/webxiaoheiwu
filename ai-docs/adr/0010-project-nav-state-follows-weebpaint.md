@@ -18,3 +18,7 @@
 - **回退栈也跟着书走**：`.webxiaoheiwu/editor-state.json` = `{ last, back }`（`back` ≤ 50，旧在前，指向已删节点的条目读时丢弃）。同 `last` 的政策：导航不标脏，保存时随手捞（user 2026-09-10「navigation history 是跟着书一起持久化的？…持久化政策和 weebpaint 对齐：viewport, tool 类的都是不 mark dirty，但是 save 的时候随手捞」）。
 - zip 目录清单不变（ADR-0008 §3 三类 entry），只是 editor-state.json 多一个字段；旧版读到没有 `back` 的文件 → 空栈。
 - 名词：用户面「工程」改叫「书」（user 2026-09-10「zip 不叫工程，叫书」）；代码标识符仍是 project。
+
+
+## 修订 2026-09-30（editor-state.json 多一个 `export.charsPerLine`；edited by Claude Fable 5.1）
+- 导出排版设定（长图每行几个字，三档 14 / 20 / 28）跟书走，住 editor-state.json 顶层 `export: { charsPerLine }`：同 `last / back / refPanel` 一样**随保存写、不标脏**（改了设定但没再改正文 → 下次保存才落盘）。不进 graph.json：它是偏好不是内容（user 2026-09-30「配置跟着书」「导出只有行宽一个选项」）。读时坏值丢弃；没有 = 用账号默认（synced prefs `exportCharsPerLine`）。

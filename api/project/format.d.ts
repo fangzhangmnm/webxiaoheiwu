@@ -41,10 +41,15 @@ export interface RefPanelState {
     width: number;
     height: number;
 }
+/** 导出排版设定（2026-09-30 user「行宽应该是字数而不是px」「导出只有行宽一个选项」）：每行几个字。随 editor-state 走、不标脏（同 refPanel）；没有 = 用账号默认。 */
+export interface ExportTypesetState {
+    charsPerLine: number;
+}
 export interface EditorState {
     last: string | null;
     back: string[];
     refPanel?: RefPanelState;
+    export?: ExportTypesetState;
 }
 export declare const BACK_STACK_MAX = 50;
 export interface Project {

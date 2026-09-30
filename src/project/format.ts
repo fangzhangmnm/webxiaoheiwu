@@ -44,7 +44,9 @@ export type TreeNode = string | { name: string; children: TreeNode[] };
 export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; wroteWith: string; readOnly?: boolean; cover?: string; tree: TreeNode[]; pages: Record<string, NodeMeta> }
 /** 参考窗的窗口状态（ADR-0016）：开没开、在哪、多大。随 editor-state 走，不标脏（同 last / back）。 */
 export interface RefPanelState { open: boolean; left: number; top: number; width: number; height: number }
-export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState }
+/** 导出排版设定（2026-09-30 user「行宽应该是字数而不是px」「导出只有行宽一个选项」）：每行几个字。随 editor-state 走、不标脏（同 refPanel）；没有 = 用账号默认。 */
+export interface ExportTypesetState { charsPerLine: number }
+export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState; export?: ExportTypesetState }
 export const BACK_STACK_MAX = 50;
 export interface Project {
   nodes: Map<string, NodeMeta>;               // key = 完整文件名（pages/ 下 entry 名）
@@ -129,7 +131,7 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
     if (!path.startsWith(REFERENCES_DIR)) throw new Error(`reference entry outside ${REFERENCES_DIR}: ${path}`);
     entries.push(bytesEntry(path, bytes));
   }
-  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}) }) });
+  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}), ...(p.editorState.export ? { export: p.editorState.export } : {}) }) });
   if (p.thumbnail && p.thumbnail.length) entries.push(bytesEntry(THUMBNAIL_ENTRY, p.thumbnail));   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
   stats.encoded += 2;   // graph.json + editor-state
   const blob = await zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
@@ -231,6 +233,8 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
       p.editorState.back = Array.isArray(st.back) ? st.back.filter((x): x is string => typeof x === "string").map((x) => resolve(x)).filter((x): x is string => !!x).slice(-BACK_STACK_MAX) : [];
       const rp = st.refPanel;
       if (rp && typeof rp === "object" && [rp.left, rp.top, rp.width, rp.height].every((n) => Number.isFinite(n))) p.editorState.refPanel = { open: !!rp.open, left: rp.left, top: rp.top, width: rp.width, height: rp.height };
+      const ex = st.export;
+      if (ex && typeof ex === "object" && Number.isFinite(ex.charsPerLine)) p.editorState.export = { charsPerLine: ex.charsPerLine };
     }
     catch { warnings.push("editor-state.json unreadable; ignored"); }
   }

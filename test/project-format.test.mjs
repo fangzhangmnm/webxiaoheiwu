@@ -171,6 +171,14 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     const { zipPack } = await import("../src/zip.ts"); const b2 = await zipPack(Object.entries({ ...entries, "graph.json": new TextEncoder().encode(JSON.stringify(g)) }).map(([path, data]) => ({ path, data })));
     const r2 = await unpackProject(b2); eq(r2.kind, "ok"); eq(r2.project.cover, null); eq(r2.warnings.filter((w) => /cover/.test(w)).length, 1, r2.warnings.join("\n")); eq(Array.from(r2.project.thumbnail).join(), "1,2,3");
   });
+  it("editor-state export（排版设定，2026-09-30）：随保存写、往返；没有就没有；坏值不读", async () => {
+    const p = emptyProject(); createNode(p, "a.txt", "A", () => 1);
+    const st0 = JSON.parse(td.decode((await zipUnpack(await packProject(p)))[".webxiaoheiwu/editor-state.json"])); eq("export" in st0, false);
+    p.editorState.export = { charsPerLine: 28 };
+    const r = await unpackProject(await packProject(p)); eq(r.kind, "ok"); eq(JSON.stringify(r.project.editorState.export), JSON.stringify({ charsPerLine: 28 }));
+    p.editorState.export = { charsPerLine: "x" };
+    const r2 = await unpackProject(await packProject(p)); eq(r2.project.editorState.export, undefined);
+  });
   it("hidden 往返：true 才写、缺 = 出门；老书没有这个键", async () => {
     const p = emptyProject(); createNode(p, "a.txt", "A", () => 1); createNode(p, "b.txt", "B", () => 1); p.nodes.get("b.txt").hidden = true;
     const blob = await packProject(p); const g = JSON.parse(td.decode((await zipUnpack(blob))["graph.json"]));

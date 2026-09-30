@@ -13,27 +13,38 @@ export type LongImageSection = {
     heading: string | null;
     image: ImageRef;
 };
-/** 编辑器此刻的样子（app 层从 computed style 量来）。innerWidth = 正文框的 CSS 宽（折行的尺子）；lineHeight = paper.lineHeight()；ruleY = 写字线在一行里的位置（CSS px），rule = 线色或 null（没开写字线）。 */
+/** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、行距倍数（阅读节奏）、纸色 / 墨色、写字线颜色（null = 没开）。 */
 export interface LongImageLook {
     family: string;
-    fontPx: number;
-    lineHeight: number;
-    innerWidth: number;
+    lineHeightRatio: number;
     paper: string;
     ink: string;
     inkSoft: string;
     muted: string;
     rule: string | null;
-    ruleY: number;
 }
+/** 排版引擎的输入：每行几个字 + 像素/字。用户面只有 charsPerLine（跟书走，editor-state.json `export.charsPerLine`；没定的书 / txt 稿用账号默认）。 */
+export interface ExportTypeset {
+    charsPerLine: number;
+    pxPerChar: number;
+}
+/** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
+export declare const PX_PER_CHAR = 30;
+/** 每行字数的离散选项（user「行宽还是三档吧。我这种有阅读写作障碍的用比手机还极端的第三档」「诗歌啊小故事啊，或者需要刻意自律篇幅的时候」「随便写一点看着就蛮多=点燃引擎」）：
+ *  14 极端短行（诗 / 小故事 / 自律篇幅；user 数过「应该是 14」；800 字 ≈ 4 屏半）· 20 高考作文格 / 网文 app 默认区间（800 字 ≈ 2 屏）· 28 纸书 32 开（800 字 ≈ 1 屏）。 */
+export declare const CHARS_PRESETS: readonly number[];
+export declare const DEFAULT_CHARS_PER_LINE = 20;
+export declare const isCharsPerLine: (v: unknown) => v is number;
+export declare const typesetFor: (charsPerLine: number) => ExportTypeset;
+/** 图宽 = 字数 × 像素/字 + 两边各 1.4 字。 */
+export declare const widthFor: (ts: ExportTypeset) => number;
 export interface LongImageSpec {
     title: string;
     date: string | null;
     cover: ImageRef | null;
     sections: LongImageSection[];
     look: LongImageLook;
-    /** 图宽（默认 DEFAULT_WIDTH = 750）。 */
-    width?: number;
+    typeset: ExportTypeset;
     /** 页脚「第 i / n 张」的文案（只在切成多张时印）。 */
     sliceLabel: (i: number, n: number) => string;
 }
@@ -44,16 +55,16 @@ export interface LongImageSlice {
     ops: SceneOp[];
     hasImage: boolean;
 }
-/** totalHeight = 不切时一整张的高（决定要不要问 user 切法）。 */
+/** totalHeight = 不切时一整张的高（决定要不要问 user 切法）；width = 图宽。 */
 export interface LongImagePlan {
     slices: LongImageSlice[];
+    width: number;
     totalHeight: number;
     cjk: number;
     en: number;
     textPages: number;
     imagePages: number;
 }
-export declare const DEFAULT_WIDTH = 750;
 /** 单张上限（px 高）：手机图片管线的纹理上限 16384（Android 硬件位图 / iOS Metal），iOS Safari 画布面积 ≈ 16.7M px 在 750 宽下 ≈ 22k 不是瓶颈；留余量取 16000。超过 = 问 user 切法（user 2026-09-30「超上限了弹窗让用户决策吧」）。 */
 export declare const SINGLE_IMAGE_MAX_HEIGHT = 16000;
 /** 「一屏」= 宽 × 16/9（手机竖屏）。 */

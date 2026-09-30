@@ -597,6 +597,14 @@ export const S = {
   "edge.unhiddenDone":      { zh: "「{name}」已取消隐藏", en: "“{name}” is visible again" },
   "export.msgBookStats":    { zh: "整本出门的：{cjk} 字 {en} 词 · {pages} 页（隐藏的不算）", en: "Whole book, exportable: {cjk} chars · {en} words · {pages} pages (hidden pages excluded)" },
   "export.hiddenEmpty":     { zh: "这一页是隐藏的，不出门", en: "This page is hidden — it stays out of exports" },
+  // ── v2.3.3 排版设定（user 2026-09-30「行宽应该是字数而不是px，这样只有行宽影响排版，字大小影响缩放？这样两个都可以调」）──
+  "export.typeset":         { zh: "排版…", en: "Typesetting…" },
+  "export.typesetLine":     { zh: "排版：每行 {chars} 字（图宽 {w} px）", en: "Typesetting: {chars} characters per line (image {w} px wide)" },
+  "export.charsTitle":      { zh: "每行几个字？", en: "How many characters per line?" },
+  "export.charsMsg":        { zh: "排版只看这个数（汉字一字一格，拉丁字母约两个算一个）；字在读者手机上的大小 = 屏宽 ÷ 这个数。14 = 诗 / 小故事的极端短行，20 = 高考作文格，28 = 纸书。", en: "Layout depends only on this (one CJK character per cell; roughly two Latin letters per cell); text size on the reader’s phone = screen width ÷ this number. 14 = extreme short lines for poems / vignettes, 20 = exam essay grid, 28 = paperback." },
+  "export.charsPreset":     { zh: "每行 {n} 字（图宽 {w} px）", en: "{n} per line ({w} px wide)" },
+  "export.currentMark":     { zh: "（当前）", en: " (current)" },
+  "export.typesetSaved":    { zh: "排版：每行 {chars} 字（图宽 {w} px），跟着这本书", en: "Typesetting: {chars} per line ({w} px wide), saved with this book" },
   "kin.parentTitle":        { zh: "回到上一级：{name}", en: "Up to “{name}”" },
 
   // ── 2.0 图库屏（chrome 文案；网格内文案是包的 zh/en 默认）──

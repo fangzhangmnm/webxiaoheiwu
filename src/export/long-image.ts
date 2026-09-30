@@ -1,10 +1,15 @@
 // 长图导出的排版（纯函数：不碰 DOM、不碰 canvas）。created 2026-09-30 by Claude Fable 5.1
 //   user 2026-09-30「先做图片导出吧，这个今晚就能用」「我觉得很多时候贴长图反而朋友更可能看？包括封面和插画整合啥的」「wysiwyg，就用编辑器的行宽，我们这边导出也一样」。
-//   所见即所得：字体 / 字号 / 行高 / 行宽全从编辑器**此刻**的样子量来（look），只按 1080 宽等比放大——你屏幕上怎么折行，图上就怎么折行；
-//   写字线开着图上也有线。换字体（将来 vendor 自己的字体）只是换 look.family。
+//   三个量各管一件事（user 2026-09-30「行宽应该是字数而不是px，这样只有行宽影响排版，字大小影响缩放？这样两个都可以调」）：
+//     · charsPerLine 每行几个字 = 排版（折行只看它；高考作文格 20、纸书约 28、大字 14）；
+//     · pxPerChar 像素/字 = 缩放（图宽 = 字数 × 像素/字 + 边距；只影响清晰度 / 文件大小，不改读者看到的字大小——图贴屏宽）。
+//       不是用户选项（user「导出只有行宽一个选项」「清晰度不用用户knob。knob不要太多」「能不能更抠，或者对小行宽更抠」）：定死 PX_PER_CHAR = 30 → 14 字 504 宽、20 字 684、28 字 924——
+//       小行宽自动更抠（字在屏上大，糊一点也清楚；28 字每个字在屏上小，反而要更多像素才不糊）；
+//     · look.lineHeightRatio 行距 = 阅读节奏（沿用编辑器的短行 / 标准）。
+//   编辑器只贡献「样子」：字体 / 纸色墨色 / 写字线；不再抄它的字号档和框宽（那是每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样）。
 //   一张图 = 封面（graph.json cover 有来源页就铺高清图，没有就只印书名 + 日期）+ 各页（章节名 + 正文 + 插图页原位）；
 //   尽量一张（user 2026-09-30「长图能尽量不切图吗，三屏太难受了」）：只有超过单张上限（SINGLE_IMAGE_MAX_HEIGHT）才切，切法由调用方问过 user 再定；切只在行与行之间、章节名不落单、一张图片不拆。
-//   宽 750（user「我们字很大，所以px宽度可以窄一点，750或者更窄？然后用高压」；750 也是公众号图的标准宽）；边距 / 页脚随宽度等比。
+//   边距 / 页脚 / 标题字号全按「字」为单位（1.4 字边距……），随像素/字等比。
 //   输出是显示列表（SceneOp），量字宽与落像素归 image/codec.ts（app 唯一 canvas 点）。
 import type { SceneOp, TextMeasurer, TextStyle } from "../image/codec.ts";
 import { statsForText } from "../doc-model.ts";
@@ -13,23 +18,33 @@ export interface ImageRef { blob: Blob; w: number; h: number }
 export type LongImageSection =
   | { kind: "text"; heading: string | null; text: string }
   | { kind: "image"; heading: string | null; image: ImageRef };
-/** 编辑器此刻的样子（app 层从 computed style 量来）。innerWidth = 正文框的 CSS 宽（折行的尺子）；lineHeight = paper.lineHeight()；ruleY = 写字线在一行里的位置（CSS px），rule = 线色或 null（没开写字线）。 */
-export interface LongImageLook { family: string; fontPx: number; lineHeight: number; innerWidth: number; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null; ruleY: number }
+/** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、行距倍数（阅读节奏）、纸色 / 墨色、写字线颜色（null = 没开）。 */
+export interface LongImageLook { family: string; lineHeightRatio: number; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
+/** 排版引擎的输入：每行几个字 + 像素/字。用户面只有 charsPerLine（跟书走，editor-state.json `export.charsPerLine`；没定的书 / txt 稿用账号默认）。 */
+export interface ExportTypeset { charsPerLine: number; pxPerChar: number }
+/** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
+export const PX_PER_CHAR = 30;
+/** 每行字数的离散选项（user「行宽还是三档吧。我这种有阅读写作障碍的用比手机还极端的第三档」「诗歌啊小故事啊，或者需要刻意自律篇幅的时候」「随便写一点看着就蛮多=点燃引擎」）：
+ *  14 极端短行（诗 / 小故事 / 自律篇幅；user 数过「应该是 14」；800 字 ≈ 4 屏半）· 20 高考作文格 / 网文 app 默认区间（800 字 ≈ 2 屏）· 28 纸书 32 开（800 字 ≈ 1 屏）。 */
+export const CHARS_PRESETS: readonly number[] = [14, 20, 28];
+export const DEFAULT_CHARS_PER_LINE = 20;
+export const isCharsPerLine = (v: unknown): v is number => typeof v === "number" && CHARS_PRESETS.includes(v);
+export const typesetFor = (charsPerLine: number): ExportTypeset => ({ charsPerLine, pxPerChar: PX_PER_CHAR });
+/** 图宽 = 字数 × 像素/字 + 两边各 1.4 字。 */
+export const widthFor = (ts: ExportTypeset): number => Math.round(ts.charsPerLine * ts.pxPerChar) + 2 * Math.round(1.4 * ts.pxPerChar);
 export interface LongImageSpec {
   title: string; date: string | null;
   cover: ImageRef | null;
   sections: LongImageSection[];
   look: LongImageLook;
-  /** 图宽（默认 DEFAULT_WIDTH = 750）。 */
-  width?: number;
+  typeset: ExportTypeset;
   /** 页脚「第 i / n 张」的文案（只在切成多张时印）。 */
   sliceLabel: (i: number, n: number) => string;
 }
 /** hasImage：这张里有照片（封面 / 插图页）→ 调用方选 JPEG；纯文字 → 调色板 PNG（更小也更锐）。 */
 export interface LongImageSlice { w: number; h: number; ops: SceneOp[]; hasImage: boolean }
-/** totalHeight = 不切时一整张的高（决定要不要问 user 切法）。 */
-export interface LongImagePlan { slices: LongImageSlice[]; totalHeight: number; cjk: number; en: number; textPages: number; imagePages: number }
-export const DEFAULT_WIDTH = 750;
+/** totalHeight = 不切时一整张的高（决定要不要问 user 切法）；width = 图宽。 */
+export interface LongImagePlan { slices: LongImageSlice[]; width: number; totalHeight: number; cjk: number; en: number; textPages: number; imagePages: number }
 /** 单张上限（px 高）：手机图片管线的纹理上限 16384（Android 硬件位图 / iOS Metal），iOS Safari 画布面积 ≈ 16.7M px 在 750 宽下 ≈ 22k 不是瓶颈；留余量取 16000。超过 = 问 user 切法（user 2026-09-30「超上限了弹窗让用户决策吧」）。 */
 export const SINGLE_IMAGE_MAX_HEIGHT = 16000;
 /** 「一屏」= 宽 × 16/9（手机竖屏）。 */
@@ -91,19 +106,18 @@ export function wrapText(text: string, maxW: number, style: TextStyle, m: TextMe
 }
 
 export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxSliceHeight?: number } = {}): LongImagePlan {
-  const W = spec.width ?? DEFAULT_WIDTH, k = W / 1080;
-  const SIDE = Math.round(72 * k), TOP = Math.round(48 * k), BOTTOM = Math.round(40 * k), FOOT = Math.round(44 * k);   // 边距 / 页脚随宽度等比（1080 时 72 / 48 / 40 / 44）
-  const inner = W - SIDE * 2;
-  const s = inner / Math.max(1, spec.look.innerWidth);
-  const F = spec.look.fontPx * s, LH = Math.max(1, Math.round(spec.look.lineHeight * s));
-  const ruleW = Math.max(1, Math.round(s)), ruleY = Math.round(spec.look.ruleY * s);
-  const look = spec.look;
+  const look = spec.look, F = spec.typeset.pxPerChar;
+  const inner = Math.round(spec.typeset.charsPerLine * F);   // 折行的尺子 = 字数 × 像素/字（汉字一字一格；拉丁字母约两个算一个）
+  const SIDE = Math.round(1.4 * F), TOP = Math.round(1.4 * F), BOTTOM = Math.round(1.1 * F), FOOT = Math.round(1.3 * F);   // 边距 / 页脚以「字」为单位
+  const W = inner + 2 * SIDE;
+  const LH = Math.max(1, Math.round(F * look.lineHeightRatio));
   const body: TextStyle = { family: look.family, sizePx: F, color: look.inkSoft };
   const head: TextStyle = { family: look.family, sizePx: F * 1.25, weight: 600, color: look.ink };
   const titleStyle: TextStyle = { family: look.family, sizePx: F * 1.6, weight: 600, color: look.ink };
-  const small: TextStyle = { family: look.family, sizePx: Math.max(18, F * 0.7), color: look.muted };
+  const small: TextStyle = { family: look.family, sizePx: Math.max(12, F * 0.6), color: look.muted };
   const bodyM = m.ascent(body), headM = m.ascent(head), titleM = m.ascent(titleStyle), smallM = m.ascent(small);
   const baseline = (top: number, lh: number, met: { asc: number; desc: number }) => top + (lh - (met.asc + met.desc)) / 2 + met.asc;
+  const ruleW = Math.max(1, Math.round(F / 36)), ruleY = Math.round(baseline(0, LH, bodyM) + 0.18 * F);   // 写字线 = 基线之下 0.18 字（paper.ts 同一条规矩）
 
   const rows: Row[] = [];
   const space = (h: number) => { if (h > 0) rows.push({ kind: "space", h: Math.round(h), ops: () => [] }); };
@@ -170,5 +184,5 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
     ops.push({ op: "text", x: W - SIDE, y: h - BOTTOM - FOOT + baseline(0, FOOT, smallM), text: foot, style: small, align: "right" });
     return { w: W, h, ops, hasImage: g.some((r) => r.kind === "image" || r.kind === "cover" && r.ops(0).some((o) => o.op === "image")) };
   });
-  return { slices, totalHeight, cjk, en, textPages, imagePages };
+  return { slices, width: W, totalHeight, cjk, en, textPages, imagePages };
 }

@@ -2240,6 +2240,34 @@ export declare const S: {
         readonly zh: "这一页是隐藏的，不出门";
         readonly en: "This page is hidden — it stays out of exports";
     };
+    readonly "export.typeset": {
+        readonly zh: "排版…";
+        readonly en: "Typesetting…";
+    };
+    readonly "export.typesetLine": {
+        readonly zh: "排版：每行 {chars} 字（图宽 {w} px）";
+        readonly en: "Typesetting: {chars} characters per line (image {w} px wide)";
+    };
+    readonly "export.charsTitle": {
+        readonly zh: "每行几个字？";
+        readonly en: "How many characters per line?";
+    };
+    readonly "export.charsMsg": {
+        readonly zh: "排版只看这个数（汉字一字一格，拉丁字母约两个算一个）；字在读者手机上的大小 = 屏宽 ÷ 这个数。14 = 诗 / 小故事的极端短行，20 = 高考作文格，28 = 纸书。";
+        readonly en: "Layout depends only on this (one CJK character per cell; roughly two Latin letters per cell); text size on the reader’s phone = screen width ÷ this number. 14 = extreme short lines for poems / vignettes, 20 = exam essay grid, 28 = paperback.";
+    };
+    readonly "export.charsPreset": {
+        readonly zh: "每行 {n} 字（图宽 {w} px）";
+        readonly en: "{n} per line ({w} px wide)";
+    };
+    readonly "export.currentMark": {
+        readonly zh: "（当前）";
+        readonly en: " (current)";
+    };
+    readonly "export.typesetSaved": {
+        readonly zh: "排版：每行 {chars} 字（图宽 {w} px），跟着这本书";
+        readonly en: "Typesetting: {chars} per line ({w} px wide), saved with this book";
+    };
     readonly "kin.parentTitle": {
         readonly zh: "回到上一级：{name}";
         readonly en: "Up to “{name}”";

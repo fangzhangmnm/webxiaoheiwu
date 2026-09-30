@@ -21,7 +21,7 @@ import { pickLocalProject, triggerDownload, type LocalHome } from "./project/loc
 import { nodeDisplayName } from "./project/naming.ts";
 import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./project/format.ts";
 import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
-import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, DEFAULT_WIDTH, screenHeightFor, socialSliceHeightFor, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
+import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, DEFAULT_CHARS_PER_LINE, CHARS_PRESETS, isCharsPerLine, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
@@ -473,20 +473,41 @@ async function copyCurrentImage(): Promise<void> {
 //   排版 = src/export/long-image.ts（纯函数），落像素 = image/codec.ts（唯一 canvas 点），PNG = vendored UPNG。
 //   分享必须在用户手势里调（iOS Safari）：先生成、再弹「好了」sheet，点「分享」那一下才 navigator.share；没有 share 的（Quest / 桌面）= 下载；一张时还能进剪贴板。
 type LongImageScope = "page" | "branch" | "book" | "draft";
+// ── 排版设定（2026-09-30 user「行宽应该是字数而不是px，这样只有行宽影响排版」「导出只有行宽一个选项。以及还是给离散选项」）：每行几个字 = 唯一选项（14 / 20 / 28）；像素/字定死（long-image PX_PER_CHAR）。
+//   跟书走（editor-state.json `export.charsPerLine`，随下次保存写、不标脏，同 refPanel）；txt 稿和没定过的书用账号默认（synced prefs `exportCharsPerLine`）；改了两边都记。
+const charsPref = (): number => { const v = prefs.getItem<number>("exportCharsPerLine"); return isCharsPerLine(v) ? v : DEFAULT_CHARS_PER_LINE; };
+function currentChars(): number { const b = project.active() ? project.session()?.project.editorState.export?.charsPerLine : undefined; return isCharsPerLine(b) ? b : charsPref(); }
+const currentTypeset = (): ExportTypeset => typesetFor(currentChars());
+function setChars(n: number): void {
+  const s = project.active() ? project.session() : null; if (s) s.project.editorState.export = { charsPerLine: n };
+  prefs.setItem("exportCharsPerLine", n);
+}
+/** 排版 sheet：每行几个字（14 / 20 / 28，标出当前）。返回 true = 改了。 */
+async function typesetFlow(): Promise<boolean> {
+  const cur = currentChars();
+  const cs: Choice<number>[] = CHARS_PRESETS.map((n) => ({ label: t("export.charsPreset", { n, w: widthFor(typesetFor(n)) }) + (n === cur ? t("export.currentMark") : ""), value: n, primary: n === cur }));
+  const c = await openChoiceSheet(t("export.charsTitle"), t("export.charsMsg"), cs);
+  if (c == null || !isCharsPerLine(c)) return false;
+  setChars(c); setStatus(t("export.typesetSaved", { chars: c, w: widthFor(typesetFor(c)) }));
+  return true;
+}
 async function exportSheetFlow(): Promise<void> {
   const inBook = project.active();
   if (inBook ? project.locked() : editor.state.locked) { setStatus(t("export.locked"), { error: true }); return; }
-  const choices: Choice<"copy" | LongImageScope>[] = [];
+  const choices: Choice<"copy" | "typeset" | LongImageScope>[] = [];
   if (inBook) {
     const cur = project.current();
     choices.push({ label: t(project.currentKind() === "image" ? "export.copyImage" : "export.copyText"), value: "copy", primary: true }, { label: t("export.pageImage"), value: "page" });
     if (cur && project.isInTree(cur)) choices.push({ label: t("export.branchImage"), value: "branch" });
     choices.push({ label: t("export.bookImage"), value: "book" });
   } else choices.push({ label: t("export.copyDraft"), value: "copy", primary: true }, { label: t("export.draftImage"), value: "draft" });
-  const msg = inBook ? t("export.msgBook") + "\n" + t("export.msgBookStats", visibleBookStats()) : t("export.msgDraft");   // 已发布字数 = 只数出门的页（user 2026-09-30「统计字数只看 publish 的」）
+  const ts = currentTypeset();
+  const msg = (inBook ? t("export.msgBook") + "\n" + t("export.msgBookStats", visibleBookStats()) : t("export.msgDraft")) + "\n" + t("export.typesetLine", { chars: ts.charsPerLine, w: widthFor(ts) });   // 已发布字数 = 只数出门的页（user 2026-09-30「统计字数只看 publish 的」）
+  choices.push({ label: t("export.typeset"), value: "typeset" });
   const v = await openChoiceSheet(t("export.title"), msg, choices);
   if (v == null) return;
   if (v === "copy") { await copyCurrentPage(); return; }
+  if (v === "typeset") { if (await typesetFlow()) await exportSheetFlow(); return; }
   await exportLongImageFlow(v);
 }
 /** 整本出门的字数（hidden 的支不算）：txt 页 CJK / 词 + 页数。 */
@@ -497,15 +518,15 @@ function visibleBookStats(): { cjk: number; en: number; pages: number } {
   for (const n of s.exportOrder(null)) { if (nodeKind(n) !== "txt") continue; const st = statsForText(readNodeText(s.project, n) ?? ""); cjk += st.cjk; en += st.en; pages++; }
   return { cjk, en, pages };
 }
-/** 编辑器此刻的样子 → 长图的尺子（WYSIWYG：字体栈、字号、行高、正文框宽、纸色、墨色、写字线）。 */
+/** 编辑器贡献的「样子」（字体栈、行距倍数 = 阅读节奏、纸色墨色、写字线）；字号档 / 框宽不抄（每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样）。 */
 function editorLook(): LongImageLook {
   const cs = getComputedStyle(editorEl), root = getComputedStyle(document.documentElement), pg = getComputedStyle(pageEl);
   const v = (name: string, fallback: string): string => root.getPropertyValue(name).trim() || pg.getPropertyValue(name).trim() || fallback;
-  const lh = paper.lineHeight(); const ruleY = parseFloat(pg.getPropertyValue("--rule-y"));
+  const ratio = parseFloat(pg.getPropertyValue("--editor-line-height")) || parseFloat(root.getPropertyValue("--editor-line-height")) || 1.7;
   return {
-    family: cs.fontFamily, fontPx: parseFloat(cs.fontSize) || 20, lineHeight: lh, innerWidth: editorEl.clientWidth || 400,
+    family: cs.fontFamily, lineHeightRatio: ratio,
     paper: pg.backgroundColor || "#fff", ink: v("--ink", "#1b1b1b"), inkSoft: cs.color || "#222222", muted: v("--ink-muted", "#888888"),
-    rule: document.body.classList.contains("ruled-lines") ? v("--line", "#d8d2c4") : null, ruleY: Number.isFinite(ruleY) ? ruleY : lh * 0.8,
+    rule: document.body.classList.contains("ruled-lines") ? v("--line", "#d8d2c4") : null,
   };
 }
 async function imageRef(bytes: Uint8Array): Promise<ImageRef> { const blob = new Blob([bytes as unknown as BlobPart]); const { w, h } = await probeSize(blob); return { blob, w, h }; }
@@ -516,7 +537,7 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
     const text = editorEl.value; if (!text.trim()) return null;
     const st = editor.state; const stem = st.name ? parseDocName(st.name).stem : (st.pendingTitle || st.pendingDate || "");
     const { date, title } = splitDatedName(stem);
-    return { title: title || stem, date, cover: null, sections: [{ kind: "text", heading: null, text }], look: editorLook(), sliceLabel };
+    return { title: title || stem, date, cover: null, sections: [{ kind: "text", heading: null, text }], look: editorLook(), typeset: currentTypeset(), sliceLabel };
   }
   const s = project.session(); const cur = project.current(); if (!s || !cur) return null;
   project.commitEditor();
@@ -531,7 +552,7 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
   if (!sections.length) return null;
   const stem = parseDocName(project.name() ?? "").stem; const { date, title } = splitDatedName(stem);
   const cp = project.coverPage(); const cb = cp && nodeKind(cp) === "image" ? s.bytesOf(cp) : null;
-  return { title: title || stem, date, cover: cb ? await imageRef(cb) : null, sections, look: editorLook(), sliceLabel };
+  return { title: title || stem, date, cover: cb ? await imageRef(cb) : null, sections, look: editorLook(), typeset: currentTypeset(), sliceLabel };
 }
 /** 文件尺寸（user 2026-09-30「用高压」「默认jpg行吗…是否用jpg你可以pushback」）：按内容定不按阈值猜——纯文字的那张 = 调色板 PNG（256 色；纸底大面积同色，比 JPEG 更小也更锐，微信再压一次也不糊）；有照片（封面 / 插图页）的那张 = JPEG q82。 */
 const LONG_IMAGE_JPEG_QUALITY = 82;
@@ -563,7 +584,7 @@ async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
   // 尽量一张（user「三屏太难受了」）：只有超过单张上限才问切法
   const m = createTextMeasurer(); let plan = planLongImage(spec, m);
   if (plan.totalHeight > SINGLE_IMAGE_MAX_HEIGHT) {
-    const W = spec.width ?? DEFAULT_WIDTH, screen = screenHeightFor(W), maxScreens = Math.floor(SINGLE_IMAGE_MAX_HEIGHT / screen);
+    const W = plan.width, screen = screenHeightFor(W), maxScreens = Math.floor(SINGLE_IMAGE_MAX_HEIGHT / screen);
     const nCap = planLongImage(spec, m, { maxSliceHeight: SINGLE_IMAGE_MAX_HEIGHT }).slices.length, nSocial = planLongImage(spec, m, { maxSliceHeight: socialSliceHeightFor(W) }).slices.length;
     const v = await openChoiceSheet(t("export.tooTallTitle"), t("export.tooTallMsg", { screens: Math.round(plan.totalHeight / screen), cjk: plan.cjk, max: SINGLE_IMAGE_MAX_HEIGHT, maxScreens }), [
       { label: t("export.sliceCap", { n: nCap, s: maxScreens }), value: "cap" as const, primary: true }, { label: t("export.sliceSocial", { n: nSocial }), value: "social" as const }]);
