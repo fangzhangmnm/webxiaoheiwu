@@ -214,3 +214,4 @@ device debugging) is worth keeping in mind.
 - user「语音键能用 caps 吗，左 ctrl 和 ctrl c 撞车了」。device-kv `pttKey` = `CapsLock` 时：**切换式**——按一下开始录（无 250ms 门，直接算 committed），再按一下停；不看 keyup（macOS / iPadOS 的 CapsLock 只在切亮时发 keydown、切灭时发 keyup，按住式站不住；Windows 正常，切换式两边一致）；录音中别的键不打断（手是空的；1s 静音自动停）；点纸面仍打断。左 Ctrl 仍是按住式 + 和弦即弃。
 - CapsLock 会翻系统大小写锁：pipeline `foldCapsLock` 开着时，实体键盘打进内置输入法的单字母一律折回小写（不然拼音全大写进 RIME）。
 - 「硬键盘候选只有五个方便盲打」同日：悬浮条一页 5 个（原 9），软键盘 dock 仍 40。
+- **没包时的提示（v2.3.8，user「按 ctrl 的时候为什么还是显示需要下载语音包」）**：按住式以前在 keydown 就调 `start()`，`LocalSession` 发现没包立刻回调提示 → Ctrl+C 这种和弦每次都弹。现在：没包 → keydown 只记一个「armed」旗，别的键来了（和弦）就解除，干净松键才在状态栏提一句；切换式（CapsLock）按了就是要说 → 立刻提；首次不知道有没有包（`asr.isKnownReady` 未知）→ 只暖缓存、这一下不提示不起录。
