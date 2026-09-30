@@ -9,21 +9,18 @@
 //   · 行高取整到**设备像素**（round(字号 × 倍数 × dpr) / dpr）写进 --editor-lh；正文、子节目录、背景平铺都用这同一个数 → 逐行不漂。
 //   · 线的位置 = 实测基线 + 0.18 个字高（汉字字身底在基线下约 0.12，再留一点气），同样取整到设备像素 → 不切字脚，换字体 / 换行距自动跟。
 //     基线用 DOM 量（一个零高的 inline-block 坐在基线上），不用 canvas。
-//   · 稿纸宽窄档（body.paper-wide）：矮而宽的可用区（小横屏 / 平板横屏 + 软键盘）自动换成宽稿纸——纵向空间稀缺时拿横向换字数；
-//     上限仍是 --box-max（VR 的大窗口不会铺满）。body.paper-short：可用高度很矮（手机横屏 + 软键盘）时页脚字数统计让位、纸边收窄。
+//   · body.paper-short：可用高度很矮（手机横屏 + 软键盘）时页脚字数统计让位、纸边收窄。
+//     （「宽稿纸」档 body.paper-wide 2026-09-30 撤了：user「win mini 现在的情况不需要加宽，加宽可以撤了」——一张纸模型 + 候选条瘦身之后纵向不再稀缺。）
 //   · 一张纸模型（v2.1.26，2026-09-30 user「对的，整张纸滚」）：正文框高度 = 内容高度（contentHeight 量孪生框），自己不滚，滚的是整张纸；
 //     光标跟随的兜底用同一个孪生框量光标那一行的底边（caretBottom）。
 // 不管的事：纸面上各件怎么摆（app.ts syncBodyHeight）、正文内容、滚动本身。
 
-export type PaperWidthPref = "auto" | "mode" | "wide";
 export interface PaperDeps {
   page: HTMLElement;
   editor: HTMLTextAreaElement;
-  /** 本机的稿纸宽度偏好：auto = 矮而宽的可用区自动加宽；mode = 只跟阅读节奏；wide = 总是加宽。 */
-  widthPref(): PaperWidthPref;
   /** 屏幕底部被输入法那一块占掉的高度（px）。 */
   dockHeight(): number;
-  /** 几何变了（行高 / 线位 / 宽窄档）：纸面上的件要重排。 */
+  /** 几何变了（行高 / 线位 / 矮屏档）：纸面上的件要重排。 */
   onChanged(): void;
 }
 export interface Paper {
@@ -40,14 +37,11 @@ export interface Paper {
   alignTop(el: HTMLElement): void;
 }
 
-const WIDE_MIN_WIDTH = 700;      // 比这还窄的屏本来就铺满，谈不上加宽
-const WIDE_MAX_HEIGHT = 640;     // 可用高度不超过它、且宽高比够扁，才算「矮而宽」（GPD Win Mini 175% 全屏 = 1097×617 要算进来；iPad mini 横屏 744、Quest 默认窗口 720 不算）
-const WIDE_MIN_ASPECT = 1.5;
 const SHORT_MAX_HEIGHT = 300;
 const RULE_BELOW_BASELINE_EM = 0.18;
 
 export function createPaper(d: PaperDeps): Paper {
-  let lh = 0, ruleY = -1, ruleW = 0, wide: boolean | null = null, short: boolean | null = null;
+  let lh = 0, ruleY = -1, ruleW = 0, short: boolean | null = null;
   const probe = document.createElement("div");
   probe.setAttribute("aria-hidden", "true");
   probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;white-space:nowrap;margin:0;padding:0;border:0";
@@ -62,11 +56,8 @@ export function createPaper(d: PaperDeps): Paper {
 
   function refresh(): void {
     const availH = window.innerHeight - d.dockHeight();
-    const pref = d.widthPref();
-    const nextWide = pref === "wide" || (pref === "auto" && window.innerWidth >= WIDE_MIN_WIDTH && availH <= WIDE_MAX_HEIGHT && window.innerWidth / Math.max(1, availH) >= WIDE_MIN_ASPECT);
     const nextShort = availH <= SHORT_MAX_HEIGHT;
     let changed = false;
-    if (nextWide !== wide) { wide = nextWide; document.body.classList.toggle("paper-wide", wide); changed = true; }
     if (nextShort !== short) { short = nextShort; document.body.classList.toggle("paper-short", short); changed = true; }
 
     const cs = getComputedStyle(d.editor);
@@ -74,7 +65,11 @@ export function createPaper(d: PaperDeps): Paper {
     const ratio = parseFloat(getComputedStyle(d.page).getPropertyValue("--editor-line-height")) || 1.9;
     const dpr = window.devicePixelRatio || 1;
     const snap = (v: number): number => Math.round(v * dpr) / dpr;
-    const nextLh = Math.max(1, Math.round(font * ratio));   // 整数 CSS 像素：浏览器把每行字的基线落在整 CSS 像素上，行高带小数的话字自己就一行高一行低（2026-09-29 量到 dpr 2 / 行高 38.5 时逐行差 1 个设备像素）
+    // 行高还得是整数**设备**像素（2026-09-30，撤宽稿纸后 Win Mini dpr 1.75 上抓到：39 CSS px = 68.25 设备像素，每行的小数部分不同，
+    //   纸滚过一个不整的距离后有的行多贴 1 设备像素）：dpr 1.75 → 4 的倍数（7 设备像素）、1.25 → 4、1.5 → 2、整数 dpr → 任意；
+    //   最近的倍数（39 → 40），行距只差个位数百分比。lhStep 找不到（怪 dpr）就退回 1。
+    let lhStep = 1; for (let n = 1; n <= 8; n++) { if (Math.abs(n * dpr - Math.round(n * dpr)) < 1e-6) { lhStep = n; break; } }
+    const nextLh = Math.max(lhStep, Math.round(font * ratio / lhStep) * lhStep);   // 整数 CSS 像素：浏览器把每行字的基线落在整 CSS 像素上，行高带小数的话字自己就一行高一行低（2026-09-29 量到 dpr 2 / 行高 38.5 时逐行差 1 个设备像素）
     // 基线：孪生行框（同字体、同行高）里零高 inline-block 的位置
     probe.style.fontFamily = cs.fontFamily; probe.style.fontSize = cs.fontSize; probe.style.fontWeight = cs.fontWeight; probe.style.fontStyle = cs.fontStyle; probe.style.letterSpacing = cs.letterSpacing;
     probe.style.lineHeight = `${nextLh}px`;

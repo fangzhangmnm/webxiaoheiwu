@@ -1,12 +1,9 @@
-export type PaperWidthPref = "auto" | "mode" | "wide";
 export interface PaperDeps {
     page: HTMLElement;
     editor: HTMLTextAreaElement;
-    /** 本机的稿纸宽度偏好：auto = 矮而宽的可用区自动加宽；mode = 只跟阅读节奏；wide = 总是加宽。 */
-    widthPref(): PaperWidthPref;
     /** 屏幕底部被输入法那一块占掉的高度（px）。 */
     dockHeight(): number;
-    /** 几何变了（行高 / 线位 / 宽窄档）：纸面上的件要重排。 */
+    /** 几何变了（行高 / 线位 / 矮屏档）：纸面上的件要重排。 */
     onChanged(): void;
 }
 export interface Paper {

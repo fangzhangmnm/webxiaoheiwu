@@ -1784,13 +1784,7 @@ body.ruled-lines .body-mirror { background-image: none; }
 .child-toc-name { flex: 0 1 auto; min-width: 0; line-height: var(--editor-lh); white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .child-toc-sub { flex: none; margin-left: auto; padding-left: 0.6em; line-height: var(--editor-lh); font-family: var(--font-ui); font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 
-/* 宽稿纸（body.paper-wide）：矮而宽的可用区（GPD Win Mini 这类小横屏；平板横屏 + 软键盘）纵向空间稀缺 → 每行字数加到 34、行距 1.7、纸边收一点。
-   上限仍然有（--box-max）：再宽的窗口（VR）也不铺满。阅读节奏（轻小说 / 标准）在这一档里不起作用——这一档只在高度不够时出现。 */
-body.paper-wide { --target-chars: 34; --box-max: 760px; --editor-line-height: 1.7; --editor-font-max: 20px; }
-body.paper-wide .page { --page-pad-y: 10px; }
-body.paper-wide .node-title-row { margin-bottom: calc(var(--editor-font) * 0.25); }
-body.paper-wide .node-title { font-size: calc(var(--editor-font) * 1.1); }
-body.paper-wide .parent-link { margin-bottom: 0; }
+/* 「宽稿纸」档（body.paper-wide）2026-09-30 撤了（user「win mini 现在的情况不需要加宽，加宽可以撤了」）；矮屏档 body.paper-short 仍在。 */
 /* 矮纸（body.paper-short）：可用高度 ≤ 300（手机横屏 + 软键盘只剩一百多像素）→ 页脚字数统计让位，纸边再收 */
 body.paper-short .page { --page-pad-y: 6px; }
 body.paper-short .page:has(> .mic-button:not([hidden])) { --floater-band: 44px; }

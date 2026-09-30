@@ -26,14 +26,14 @@ const KV = "webxiaoheiwu-7c2e9a41b3d05f68:";
 
 /** 一组条件下量一次。返回每行的 { 墨迹底边, 线, 距离 }（设备像素）。
  *  scroll = 先把纸（main.surface）滚这么多 CSS px 再量（v2.1.26 一张纸模型：正文框不滚，滚的是纸；字和线同层 → 滚动前后每行的距离必须一样）。 */
-async function measure({ w, h, dpr, mode, scale, paper, shot, book = false, scroll = 0 }) {
+async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0 }) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
   await ctx.addInitScript(({ kv, scale }) => { try { localStorage.setItem(kv + "imeEnabled", "0"); if (scale !== "1") localStorage.setItem(kv + "fontScale", scale); } catch {} }, { kv: KV, scale });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: "load" });
   await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 });
-  // 走真的设置控件（阅读节奏单选 / 稿纸宽度）：行高与线位要跟着重算
-  await page.evaluate(({ mode, paper }) => { const r = document.querySelector(`#readingModePicker input[value="${mode}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const p = document.getElementById("paperWidthSelect"); p.value = paper; p.dispatchEvent(new Event("change")); const t = document.getElementById("wordCountToggle"); if (t.checked) t.click(); }, { mode, paper: paper ?? "mode" });
+  // 走真的设置控件（阅读节奏单选）：行高与线位要跟着重算
+  await page.evaluate(({ mode }) => { const r = document.querySelector(`#readingModePicker input[value="${mode}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const t = document.getElementById("wordCountToggle"); if (t.checked) t.click(); }, { mode });
   if (!book) await page.evaluate(() => { const e = document.getElementById("editor"); e.value = Array.from({ length: 60 }, () => "国国国国").join("\n"); e.dispatchEvent(new Event("input", { bubbles: true })); e.scrollTop = 0; e.blur(); });
   if (book) {
     // 有子节的页：两行正文 + 空一行 + 三条子节链接（user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）——量整个纸面容器，链接行也得坐在线上
@@ -81,12 +81,12 @@ async function measure({ w, h, dpr, mode, scale, paper, shot, book = false, scro
 const cases = [];
 for (const dpr of [1, 1.25, 1.75, 2, 3]) for (const mode of ["novel", "classic"]) for (const scale of ["1", "1.15"]) cases.push({ w: 1100, h: 900, dpr, mode, scale });
 cases.push({ w: 375, h: 667, dpr: 2, mode: "novel", scale: "1" }, { w: 744, h: 1133, dpr: 2, mode: "novel", scale: "1.15" });
-// GPD Win Mini：7 寸 1920×1080，系统缩放 175% → 1097×617（全屏）/ 1097×537（装成 app 的窗口）/ 1097×480（浏览器标签页）；稿纸宽度「自动」
-for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: "novel", scale: "1", paper: "auto", shot: `winmini-1097x${h}` });
+// GPD Win Mini：7 寸 1920×1080，系统缩放 175% → 1097×617（全屏）/ 1097×537（装成 app 的窗口）/ 1097×480（浏览器标签页）；普通档（「宽稿纸」2026-09-30 撤了）
+for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: "novel", scale: "1", shot: `winmini-1097x${h}` });
 // 有子节的页：正文两行 + 三条子节链接，链接行也要坐在线上
-for (const [w, h, dpr] of [[1100, 900, 1], [744, 1133, 2], [1097, 537, 1.75], [375, 667, 3]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", paper: "auto", book: true, shot: `toc-on-lines-${w}x${h}` });
+for (const [w, h, dpr] of [[1100, 900, 1], [744, 1133, 2], [1097, 537, 1.75], [375, 667, 3]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", book: true, shot: `toc-on-lines-${w}x${h}` });
 // 一张纸模型（v2.1.26）：纸滚过一个不是整行的距离之后，每行「墨迹底边 → 线」的距离必须和没滚时逐行一样（字和线同层的机械证据；抖动本身归真机）
-for (const [w, h, dpr] of [[1100, 900, 1], [375, 667, 2], [1097, 537, 1.75]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", paper: "auto", scroll: 137, invariant: true });
+for (const [w, h, dpr] of [[1100, 900, 1], [375, 667, 2], [1097, 537, 1.75]]) cases.push({ w, h, dpr, mode: "novel", scale: "1", scroll: 137, invariant: true });
 let bad = 0;
 for (const c of cases) {
   const m = await measure(c);
@@ -106,7 +106,7 @@ for (const c of cases) {
   const jitter = Number.isInteger(c.dpr) ? 1 : 2;   // 小数缩放比下线落在半个设备像素上，抗锯齿后「最暗的一行」会差 1
   const ok = (c.book ? gaps.length === 5 && m.box.tocRows === 3 : gaps.length >= 6) && max - min <= jitter && drift <= 0.75 && min >= 0 && max <= em * 0.34;   // 书：2 行正文 + 3 行链接 = 5 行字
   if (!ok) bad++;
-  console.log(`${ok ? "ok  " : "FAIL"} ${c.book ? "[book+toc] " : ""}${c.w}x${c.h} dpr=${c.dpr} ${c.mode}${c.paper ? "/" + c.paper : ""} scale=${c.scale} drift=${drift.toFixed(2)} font=${m.box.font.toFixed(2)}px lh=${m.box.lh} lines=${gaps.length} gap(min..max)=${min}..${max} devpx (${(min / em).toFixed(2)}..${(max / em).toFixed(2)} em) first6=${gaps.slice(0, 6).join(",")} last3=${gaps.slice(-3).join(",")}`);
+  console.log(`${ok ? "ok  " : "FAIL"} ${c.book ? "[book+toc] " : ""}${c.w}x${c.h} dpr=${c.dpr} ${c.mode} scale=${c.scale} drift=${drift.toFixed(2)} font=${m.box.font.toFixed(2)}px lh=${m.box.lh} lines=${gaps.length} gap(min..max)=${min}..${max} devpx (${(min / em).toFixed(2)}..${(max / em).toFixed(2)} em) first6=${gaps.slice(0, 6).join(",")} last3=${gaps.slice(-3).join(",")}`);
 }
 await browser.close(); srv.close();
 console.log(bad ? `${bad} FAILED` : "all ok");

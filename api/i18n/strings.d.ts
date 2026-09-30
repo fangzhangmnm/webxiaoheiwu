@@ -392,22 +392,6 @@ export declare const S: {
         readonly zh: "字号（本机）";
         readonly en: "Text size (this device)";
     };
-    readonly "ui.reading.paperWidth": {
-        readonly zh: "稿纸宽度（本机）";
-        readonly en: "Paper width (this device)";
-    };
-    readonly "ui.reading.paperWidth.auto": {
-        readonly zh: "自动（屏幕又矮又宽时加宽）";
-        readonly en: "Auto (wider when the screen is short and wide)";
-    };
-    readonly "ui.reading.paperWidth.mode": {
-        readonly zh: "只跟阅读节奏";
-        readonly en: "Follow the reading rhythm only";
-    };
-    readonly "ui.reading.paperWidth.wide": {
-        readonly zh: "总是加宽";
-        readonly en: "Always wide";
-    };
     readonly "ui.reading.fontScale.s": {
         readonly zh: "小";
         readonly en: "Small";

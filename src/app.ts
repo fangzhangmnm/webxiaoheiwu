@@ -46,7 +46,7 @@ import { setQuoteStyle } from "./zh-punct.ts";
 import { createInputPipeline } from "./input/pipeline.ts";
 import { createImeDock } from "./input/dock.ts";
 import { asTextField, type TextField } from "./input/field.ts";
-import { createPaper, type PaperWidthPref } from "./ui/paper.ts";
+import { createPaper } from "./ui/paper.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -349,20 +349,28 @@ for (const b of [pageNext, pageNextFoot]) b.addEventListener("click", () => { if
 const parentLink = $<HTMLButtonElement>("parentLink"), parentLinkName = $("parentLinkName");
 const childToc = $("childToc"), childTocList = $("childTocList"), pageEl = document.querySelector<HTMLElement>(".page")!, pageBody = $("pageBody");
 let tocChildren: string[] = [];
-// 稿纸几何（行高 / 写字线 / 宽窄档）：src/ui/paper.ts。稿纸宽度偏好跟设备走（device-kv `paperWidth`）：同一个人的 iPad 要窄稿纸、Win Mini 要宽的。
-const paperWidthPref = (): PaperWidthPref => { const v = deviceKvGet("paperWidth"); return v === "mode" || v === "wide" ? v : "auto"; };
+// 稿纸几何（行高 / 写字线 / 矮屏档）：src/ui/paper.ts。（「宽稿纸」档与 device-kv paperWidth 2026-09-30 撤了，user「加宽可以撤了」；旧值不读不删。）
 const dockHeightNow = (): number => parseFloat(document.documentElement.style.getPropertyValue("--dock-h")) || 0;
-const paper = createPaper({ page: pageEl, editor: editorEl, widthPref: paperWidthPref, dockHeight: dockHeightNow, onChanged: () => syncBodyHeight() });
+const paper = createPaper({ page: pageEl, editor: editorEl, dockHeight: dockHeightNow, onChanged: () => syncBodyHeight() });
 /** 正文框高度 = 内容行数 × 行高（量的是看不见的孪生框，paper.contentHeight），子节目录 = (1 + 子节数) × 行高紧跟其后——一切都是整行，
  *  所以目录的每一行都坐在稿纸的线上（v2.1.17，user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）。图片页正文框藏着、目录照露。 */
 /** 章节名框随内容长高（v2.1.30，user 2026-09-30「也自动加行？」「自动加行同意」）：单行起步的 textarea，量 scrollHeight 落成高度，再重算纸面（alignTop 把正文上沿补到整像素，别绕开）。 */
 const nodeTitleEl = $<HTMLTextAreaElement>("nodeTitle");
+let titleFitKey = "";
 function fitTitle(): void {
+  // 值和宽度都没变就别量（v2.1.32）：每次本地落盘都会 syncTitle → 这里；量高度要先把框压到 0 再复原，Chrome 的 scroll anchoring 把这一缩一长
+  //   算成「正文上方的东西变了」——缩时 scrollTop 被夹在 0，长回来却加上去，打字时页面每 200 ms 往下走一截（user 2026-09-30「打字的时候为什么页面会往下滚」）。
+  const key = `${nodeTitleEl.value}\u0000${nodeTitleEl.clientWidth}`;
+  if (key === titleFitKey) return;
+  titleFitKey = key;
+  const keep = sheet.scrollTop;   // 真要量的时候也把滚动位置锁住，量完放回
   nodeTitleEl.style.height = "0px";
   const h = nodeTitleEl.scrollHeight;
   nodeTitleEl.style.height = h > 0 ? `${h}px` : "";
+  if (sheet.scrollTop !== keep) sheet.scrollTop = keep;
   syncBodyHeight();
 }
+window.addEventListener("resize", () => { titleFitKey = ""; fitTitle(); });
 function syncBodyHeight(): void {
   paper.alignTop(pageBody);
   const lh = paper.lineHeight();
@@ -1066,9 +1074,6 @@ prefs.onChange("readingMode", () => applyReadingMode(prefs.getItem<string>("read
 // 字号档位（device-kv：跟屏幕走，手机上按「每行字数」规范算出来只有 16px——user 2026-09-04 iPhone「字好小啊」；规范继续管行宽，档位只乘字号）
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
-const paperWidthSelect = $<HTMLSelectElement>("paperWidthSelect");
-paperWidthSelect.value = paperWidthPref();
-paperWidthSelect.addEventListener("change", () => { const v = paperWidthSelect.value; deviceKvSet("paperWidth", v === "mode" || v === "wide" ? v : null); paper.refresh(); syncBodyHeight(); });
 const fontScalePref = (): string => { const v = deviceKvGet("fontScale"); return v && FONT_SCALES.includes(v) ? v : "1"; };
 function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; paper.refresh(); syncBodyHeight(); }   // 嵌入态的正文高度随字号变
 fontScaleSelect.addEventListener("change", () => { const v = FONT_SCALES.includes(fontScaleSelect.value) ? fontScaleSelect.value : "1"; deviceKvSet("fontScale", v === "1" ? null : v); applyFontScale(v); });
