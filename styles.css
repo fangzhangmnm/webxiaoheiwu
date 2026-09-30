@@ -1667,7 +1667,7 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
   background: var(--kb-bg); border-top: 1px solid var(--line-strong);
   padding: 0 max(3px, var(--sa-left)) max(env(safe-area-inset-bottom, 0px), 4px) max(3px, var(--sa-right));
   font-family: var(--font-ui); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-  --key-h: 46px; --strip-cand-h: 40px;
+  --key-h: 46px; --strip-cand-h: 36px;   /* v2.1.24：候选条只剩候选行、36px（原拼音 16 + 候选 40 = 56） */
 }
 .ime-dock.hidden { display: none; }
 .ime-strip { display: flex; align-items: stretch; max-width: 1000px; margin: 0 auto; border-bottom: 1px solid color-mix(in srgb, var(--line-strong) 50%, transparent); }
@@ -1680,8 +1680,7 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
 .cand.nav { min-width: 36px; padding: 0 6px; color: var(--ink-soft); }
 .cand .ico { width: 16px; height: 16px; }
 .cand .index { color: var(--ink-muted); margin-right: 5px; font-size: 11px; font-family: ui-monospace, monospace; }
-.ime-hide { flex: none; width: 46px; border: 0; border-left: 1px solid color-mix(in srgb, var(--line-strong) 50%, transparent); background: transparent; color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
-.ime-hide .ico { width: 20px; height: 20px; }
+.ime-key.hide .ico { width: 20px; height: 20px; }
 
 .ime-keys { max-width: 1000px; margin: 0 auto; padding: 3px 0 2px; touch-action: none; }
 .ime-row { display: flex; justify-content: center; }
@@ -1711,7 +1710,7 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
   .cand:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 }
 .ime-keys[data-form="tablet"] { padding-top: 4px; }
-.ime-dock:has(.ime-keys[data-form="tablet"]) { --key-h: 50px; --strip-cand-h: 42px; }
+.ime-dock:has(.ime-keys[data-form="tablet"]) { --key-h: 50px; --strip-cand-h: 38px; }
 @media (max-height: 460px) {   /* 手机横屏：纵向空间最紧，键矮一档 */
   .ime-dock { --key-h: 33px; --strip-cand-h: 32px; }
   .ime-key { margin: 2px 2.5px; font-size: 18px; }
