@@ -2140,23 +2140,39 @@ export declare const S: {
         readonly zh: "回到文件";
         readonly en: "Back to files";
     };
+    readonly "gal.aside": {
+        readonly zh: "回收站和备份箱";
+        readonly en: "Trash and backups";
+    };
+    readonly "gal.backup": {
+        readonly zh: "备份箱";
+        readonly en: "Backups";
+    };
+    readonly "gal.empty": {
+        readonly zh: "清空";
+        readonly en: "Empty";
+    };
     readonly "gal.emptyTrash": {
         readonly zh: "清空回收站";
         readonly en: "Empty trash";
     };
-    readonly "gal.emptyTrashWhich": {
+    readonly "gal.emptyBackup": {
+        readonly zh: "清空备份箱";
+        readonly en: "Empty backups";
+    };
+    readonly "gal.emptyWhich": {
         readonly zh: "清空哪一端";
         readonly en: "Empty which side";
     };
-    readonly "gal.emptyTrashLocal": {
+    readonly "gal.emptyLocal": {
         readonly zh: "只清本机";
         readonly en: "Local only";
     };
-    readonly "gal.emptyTrashCloud": {
+    readonly "gal.emptyCloud": {
         readonly zh: "只清云端";
         readonly en: "Cloud only";
     };
-    readonly "gal.emptyTrashBoth": {
+    readonly "gal.emptyBoth": {
         readonly zh: "两端都清";
         readonly en: "Both";
     };

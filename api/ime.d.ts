@@ -62,7 +62,12 @@ export declare class NaturalCodeIME {
     initialized: boolean;
     private initPromise;
     schema: ImeSchema;
+    /** 起 RIME worker 并加载方案。**不挡启动**（v2.1.24，user「启动打第一个字的时候会卡」+ 家规「启动速度优先」）：boot 不 await 它，
+     *  文档先开；RIME 后端一创建就接管，初始化是它队列里的第一项，加载期间用户打的字排在后面等它——不丢字、也不会被降级后端抢答。
+     *  加载失败才换成 starter-map（此时排着的字也交给 starter-map 重打一遍不现实：清掉组字并报错，这是罕见路径）。 */
     initialize(schema?: ImeSchema): Promise<void>;
+    /** 预热（空闲时调一次；见 RimeWorkerBackend.warmUp）。未初始化 / 降级后端 → 无事。 */
+    warmUp(): Promise<void>;
     /** 换方案（全拼 ↔ 微软双拼）；未初始化时只记下，初始化时生效。 */
     setSchema(schema: ImeSchema): Promise<void>;
     /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */

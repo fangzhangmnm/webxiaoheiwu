@@ -1,3 +1,4 @@
+import { type GalleryView, type AsideKind, type AsideScope } from "@internal/gallery";
 export interface GalleryHostDeps {
     mountEl: HTMLElement;
     fullEl: HTMLElement;
@@ -26,9 +27,10 @@ export declare function initGalleryHost(d: GalleryHostDeps): {
     /** boot 用：上次是在书库里离开的（刷新 / 关标签 / SW 更新重载）。 */
     wasInGallery: () => boolean;
     refresh: () => void | undefined;
-    setView: (v: "files" | "trash") => void;
-    getView: () => "files" | "trash";
-    emptyTrash: (scope: "local" | "cloud" | "both") => void;
+    setView: (v: GalleryView) => void;
+    getView: () => GalleryView;
+    /** 清空回收站 / 备份箱（各清各的；确认框和结果提示是图库包的）。 */
+    emptyAside: (kind: AsideKind, scope: AsideScope) => void;
     currentFolder: () => string;
     invalidateEncrypted: (name: string) => void | undefined;
     /** 封面变了（设为封面 / 替换图片）：丢掉这本书的缩略图缓存，下次露面重取。 */

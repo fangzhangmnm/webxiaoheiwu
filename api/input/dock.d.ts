@@ -21,6 +21,9 @@ export interface ImeDockDeps {
 }
 export interface ImeDock {
     render(): void;
+    /** 预热（v2.1.24，user「启动打第一个字的时候会卡」）：把候选条用几个样例候选不可见地画一次，逼浏览器先做样式计算和汉字字形整形——
+     *  量过：首键 20–30 ms、后续 7 ms，差额全在主线程首次画候选条（worker 那边只要 1 ms）；预热后首键 = 后续键。空闲时调，正在组字就不动。 */
+    warmUp(): void;
     /** 软键盘此刻露着吗。 */
     keyboardShown(): boolean;
     keyboard: ReturnType<typeof createSoftKeyboard>;
