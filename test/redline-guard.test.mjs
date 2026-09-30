@@ -52,7 +52,7 @@ describe("redline-guard", () => {
     }
     assert(hits.length === 0, "yellow-line guard hits:\n" + hits.join("\n"));
   });
-  it("@internal/store 值级 import 只在 src/app-store.ts；@internal/encryption 只在 src/encryption.ts", () => {
+  it("@internal/store 值级 import 只在 src/app-store.ts（+ src/identifiers.ts 只准拿纯函数 createIdentifiers）；@internal/encryption 只在 src/encryption.ts", () => {
     const hits = [];
     for (const p of walk("src")) {
       const rel = p.replace(/\\/g, "/");
@@ -60,6 +60,8 @@ describe("redline-guard", () => {
       for (const m of src.matchAll(/^import\s+(type\s+)?[^;]*?from\s+["'](@internal\/(store|encryption))["']/gm)) {
         const isType = !!m[1];
         if (isType) continue;
+        // src/identifiers.ts（v2.1.23，store 0.16 文档种类表）：只准值级拿 createIdentifiers（纯函数，不碰存储 / 云）——多拿一个名字就红
+        if (m[2] === "@internal/store" && rel === "src/identifiers.ts") { const names = m[0].replace(/^import\s*\{|\}[\s\S]*$/g, "").split(",").map((x) => x.trim()).filter((x) => x && !x.startsWith("type ")); if (names.join(",") !== "createIdentifiers") hits.push(`${rel}: ${m[0]}（identifiers.ts 只准拿 createIdentifiers）`); continue; }
         if (m[2] === "@internal/store" && rel !== "src/app-store.ts") hits.push(`${rel}: ${m[0]}`);
         if (m[2] === "@internal/encryption" && rel !== "src/encryption.ts") hits.push(`${rel}: ${m[0]}`);
       }

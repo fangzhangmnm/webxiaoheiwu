@@ -45,8 +45,6 @@ const GALLERY_TEXT_OVERRIDES: Record<string, Parameters<typeof t>[0]> = {
 /** 封面尾读（ADR-0012）：Thumbnails/thumbnail.png 是书 zip 的最后一个 entry；尾窗 128 KB（300 页的书 central directory 约 30 KB + 封面 ≤70 KB 一次命中）。 */
 const THUMB_PEEK_BYTES = 128 * 1024;
 const THUMB_DB = "webxiaoheiwu-thumbs";   // 派生缓存 IDB（user 2026-09-10「weebpaint 不是一直 idb 的吗」= 批）；CLAUDE.md 持久层白名单表登记
-/** 身份 = 全名（两档扩展名都进身份）；显示 = stem（ADR-0007：文件名是管理句柄，图库卡片显示去扩展名的那截）。 */
-const NAMING = { bare: (s: string) => s, full: (b: string) => b, display: (n: string) => parseDocName(n).stem };
 
 export function initGalleryHost(d: GalleryHostDeps) {
   const vue = { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } as unknown as VueRuntime;
@@ -57,15 +55,15 @@ export function initGalleryHost(d: GalleryHostDeps) {
     return s as unknown as VerbStore & DataFaceStore;   // 结构兼容（file/files 子集）；包对 store 的要求 = 提案 §2 StoreFace
   };
   const doc: GalleryDocHost = {
-    open: async (item: GItem) => { const ok = await d.openAny(item.name, { promptUnlock: true }); if (ok) close(); },
+    open: async (item: GItem) => { const ok = await d.openAny(item.identifier, { promptUnlock: true }); if (ok) close(); },
     renameActive: async () => { await d.renameActive(); return d.activeName(); },
-    setName: () => { /* 活动稿被图库移动：openAny(新名) 由 verbs 的 move 之后 reload 触发不了——这里重开 */ },
+    setIdentifier: () => { /* 活动稿被图库移动：openAny(新身份) 由 verbs 的 move 之后 reload 触发不了——这里重开 */ },
     push: async () => { await d.pushNow(); },
-    unload: async (item: GItem) => { try { await (requireStore().file(item.name, { isZip: isProjectName(item.name), mode: "existing" }) as unknown as { offload(): Promise<unknown> }).offload(); } catch (e) { reportError(e, "warning"); } },
+    unload: async (item: GItem) => { try { await requireStore().file(item.identifier, { mode: "existing" }).offload(); } catch (e) { reportError(e, "warning"); } },
     exit: async () => { await d.flushLocal(); },
     dropCheckpoint: () => {},
   };
-  const zipFile = (name: string) => requireStore().file(name, { isZip: true, mode: "existing" });
+  const zipFile = (name: string) => requireStore().zip(name, { mode: "existing" });
   const encryption: GalleryEncryption = {
     isUnlocked, onLockChange: (cb) => { onLockChange(cb); },
     // 加密书的封面 = store 封的密文 peek 尾片（makePeek 抽的），锁着只能拿密文；解锁后内存密码非交互解（抄 WeebPaint enc-thumbs）
@@ -84,7 +82,7 @@ export function initGalleryHost(d: GalleryHostDeps) {
     store: storeFace,
     doc,
     host: {
-      signedIn: () => auth.isSignedIn(), online: () => (typeof navigator === "undefined" || navigator.onLine !== false), activeName: () => d.activeName(),
+      signedIn: () => auth.isSignedIn(), online: () => (typeof navigator === "undefined" || navigator.onLine !== false), activeIdentifier: () => d.activeName(),
       confirm: (title, msg) => openConfirmSheet(title, msg),
       input: (title, def, opts) => openInputSheet(title, { defaultValue: def, placeholder: opts?.placeholder, okLabel: t("common.ok") }),
       chooseFolder: (title, msg, options) => openChoiceSheet<string>(title, msg, options.map((o) => ({ label: o.label, value: o.value }))),
@@ -98,14 +96,13 @@ export function initGalleryHost(d: GalleryHostDeps) {
       tilePlaceholderHtml: (name) => paperHtml(isProjectName(name) ? "book" : "draft"),
       tileOverlayHtml: (name) => coverHtml(parseDocName(name).stem, isProjectName(name) ? "book" : "draft"),
     },
-    naming: NAMING,
-    isZipDoc: (n) => isProjectName(n),
+    // （v2.1.23 / gallery 0.6.0：naming / isZipDoc / policy.isDoc 退役——哪些是文档、主干、是不是 zip 全由 store 的种类表说，宿主不再自己切名字。）
     policy: {
-      isDoc: (p) => docKind(p) != null, isImage: () => false, naming: NAMING,
+      isImage: () => false,
       // 缩略图（2.1，ADR-0012）：只有书有；fetch = store getPeek 按名尾读（source 必填：cloud 绝不落回本地，WeebPaint「新 token 配旧字节」学费）。
       //   store 语义：**null = 到达了但没有**（entry 不存在 / 文件不在云端；本地有副本时 Blob.slice 根本不碰网）→ 原样返 null = 确定没封面 → 包层进缓存、卡片显示书图标；
       //   **抛 = 够不着**（provider downloadRange 网络失败 reject）→ 包层不缓存、云端-only 的卡才显示云（user 2026-09-10 真机「thumb 不是用来显示 cloud status 的地方，应该是书，未知的话是另外一回事可以显示云」）。
-      thumbs: { has: isProjectName, dbName: THUMB_DB, fetch: (name, source) => zipFile(name).getPeek({ bytesLength: THUMB_PEEK_BYTES, zipEntry: THUMBNAIL_ENTRY, source }) },
+      thumbs: { kinds: ["project"], dbName: THUMB_DB, fetch: (name, source) => zipFile(name).getPeek({ bytesLength: THUMB_PEEK_BYTES, zipEntry: THUMBNAIL_ENTRY, source }) },
     },
     tile: { aspect: "2/3" },   // 竖版书封（user 2026-09-10「加 2:3 的选项…iphone se2 可以一排三本」）
     encryption,

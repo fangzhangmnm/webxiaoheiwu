@@ -39,8 +39,8 @@ fi
 #   ① @internal/store 值级 import 只准 src/app-store.ts；@internal/encryption 只准 src/encryption.ts；别处 `import type`。
 #   ② 禁 deep import 包内部（exports 门牌之外）与旧 baked 路径。
 echo "[build] seam lint…"
-HITS=$(grep -rnE "(from|import)[[:space:]]*\(?[[:space:]]*['\"]@internal/store['\"]" src --include='*.ts' | grep -v "^src/app-store.ts" | grep -v "import type" || true)
-if [ -n "$HITS" ]; then echo "[build] ✗ value-level @internal/store import outside src/app-store.ts:" >&2; echo "$HITS" >&2; exit 1; fi
+HITS=$(grep -rnE "(from|import)[[:space:]]*\(?[[:space:]]*['\"]@internal/store['\"]" src --include='*.ts' | grep -v "^src/app-store.ts" | grep -v "^src/identifiers.ts" | grep -v "import type" || true)   # identifiers.ts：只拿纯函数 createIdentifiers（0.16，见该文件头注释）
+if [ -n "$HITS" ]; then echo "[build] ✗ value-level @internal/store import outside src/app-store.ts / src/identifiers.ts:" >&2; echo "$HITS" >&2; exit 1; fi
 HITS=$(grep -rnE "(from|import)[[:space:]]*\(?[[:space:]]*['\"]@internal/encryption['\"]" src --include='*.ts' | grep -v "^src/encryption.ts" | grep -v "import type" || true)
 if [ -n "$HITS" ]; then echo "[build] ✗ value-level @internal/encryption import outside src/encryption.ts:" >&2; echo "$HITS" >&2; exit 1; fi
 HITS=$(grep -rnE "(from|import)[[:space:]]*\(?[[:space:]]*['\"](@internal/(store|encryption)/[^'\"]+|(\.{1,2}/)+store/[^'\"]*)['\"]" src test --include='*.ts' --include='*.mjs' | grep -vE "@internal/store/testing['\"]" || true)

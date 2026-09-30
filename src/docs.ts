@@ -24,9 +24,9 @@ export interface DocListItem {
 }
 export interface DocListFrame { folder: string; items: DocListItem[]; folders: string[]; complete: boolean; stale: boolean }
 
-const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => requireStore().file(name, { isZip: false, mode });
-// 2.0 工程（ADR-0008）：zip 容器走 isZip:true（store 的 ZipFile；加密透明，at-rest 追加 .zip）。字节对 store 不透明。
-const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().file(name, { isZip: true, mode });
+const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => requireStore().file(name, { mode });
+// 2.0 工程（ADR-0008）：zip 容器走 store.zip()（ZipFile：多 getPeek；是不是 zip 容器由 docKinds 表说，种类不对当场抛）。字节对 store 不透明。
+const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().zip(name, { mode });
 /** 按身份分派句柄（2.0 两档：txt = RawFile、工程 = ZipFile）。身份动词（改名/移动/回收站/判加密）一律走这里，别裸用 file()。 */
 const anyFile = (name: string) => (docKind(name) === "project" ? zipFile(name) : file(name));
 export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
@@ -42,7 +42,7 @@ export async function createProjectDoc(title: string, blob: Blob, date = formatD
   const files = requireStore().files;
   for (let n = 0; n < 200; n++) {
     const cand = collisionCandidate(base, n);
-    if (await files.nameOccupied(cand)) continue;
+    if (await files.occupied(cand)) continue;
     await zipFile(cand, "new").save(blob, { tryPush: false });
     return cand;
   }
@@ -59,12 +59,12 @@ export function watchDocs(folder: string, cb: (frame: DocListFrame) => void, opt
   const emit = (snap: FolderSnapshot) => {
     const myGen = ++gen;
     const folders = snap.folders.map((f) => (f.startsWith(prefix) ? f.slice(prefix.length) : f)).filter((f) => f && !f.includes("/")).sort(compareDocNamesDesc).reverse();   // immediate 段，自然序正排
-    const items: DocListItem[] = snap.items.filter((it) => isDocName(it.path)).map((it) => {
-      const p = parseDocName(it.path);
+    const items: DocListItem[] = snap.items.filter((it) => isDocName(it.identifier)).map((it) => {
+      const p = parseDocName(it.identifier);
       const key = `${it.lastModified ?? 0}:${it.size ?? 0}`;
-      const enc = _encCache.get(it.path);
+      const enc = _encCache.get(it.identifier);
       return {
-        name: it.path, dir: p.dir, stem: p.stem, title: p.title, date: p.date,
+        name: it.identifier, dir: p.dir, stem: p.stem, title: p.title, date: p.date,
         syncState: it.syncState, cached: isCached(it.syncState), dirty: isDirty(it.syncState),
         encrypted: enc && enc.key === key ? enc.value : null,
         lastModified: it.lastModified, size: it.size,
@@ -132,7 +132,7 @@ export async function createDoc(title: string, text: string, date = formatDate(D
   const files = requireStore().files;
   for (let n = 0; n < 200; n++) {
     const cand = collisionCandidate(base, n);
-    if (await files.nameOccupied(cand)) continue;
+    if (await files.occupied(cand)) continue;
     await file(cand, "new").save(encodeText(text), { tryPush: false });
     return cand;
   }
@@ -190,7 +190,7 @@ export function verifyDocPassword(name: string, pw: string): Promise<boolean> { 
 export interface TrashDocItem { name: string; stem: string; ts: string | null; side: TrashItem["side"]; encrypted: boolean; conflictLive: boolean; localKey: string | null; cloudRef: string | null }
 export async function listTrash(): Promise<TrashDocItem[]> {
   const items = await requireStore().files.listTrash();
-  return items.map((it) => ({ name: it.name, stem: parseDocName(it.name).stem, ts: it.ts, side: it.side, encrypted: it.encrypted, conflictLive: it.conflictLive, localKey: it.localKey, cloudRef: it.cloudRef }))
+  return items.map((it) => ({ name: it.identifier, stem: parseDocName(it.identifier).stem, ts: it.ts, side: it.side, encrypted: it.encrypted, conflictLive: it.conflictLive, localKey: it.localKey, cloudRef: it.cloudRef }))
     .sort((a, b) => (b.ts ?? "").localeCompare(a.ts ?? "") || compareDocNamesDesc(a.name, b.name));
 }
 export async function restoreDoc(it: TrashDocItem): Promise<string> {

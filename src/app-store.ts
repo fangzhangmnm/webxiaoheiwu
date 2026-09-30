@@ -12,7 +12,8 @@
 
 import { createStore, createOneDriveProvider, requestStoragePersistence, isCached, isDirty } from "@internal/store";
 import type { Store, Collection, OneDriveAuth, CloudProvider } from "@internal/store";
-import { APP_ID, CLIENT_ID, AUTHORITY, SCOPES, MSAL_URL, COLLECTIONS, DOC_EXT, PROJECT_EXT } from "./config.ts";
+import { APP_ID, CLIENT_ID, AUTHORITY, SCOPES, MSAL_URL, COLLECTIONS } from "./config.ts";
+import { DOC_KINDS } from "./identifiers.ts";
 import { storeUI } from "./store-ui.ts";
 import { appEncryption } from "./encryption.ts";
 import { getPassword } from "./crypto-state.ts";
@@ -36,19 +37,16 @@ const store: Store = createStore({
   encryption: appEncryption,
   reconcilePolicy: "app-driven",
   // peek（2.1，ADR-0012）：加密书的封面另封成密文尾片——明文是书（zip 魔数）就抽 Thumbnails/thumbnail.png；txt 稿 / 没封面 → null（空 peek 也加密，verifyPassword 靠它便宜验密码）。
-  crypt: { ext: "txt", getPassword, makePeek: async (plain) => { const head = new Uint8Array(await plain.slice(0, 4).arrayBuffer()); if (!(head.length === 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04)) return null; try { return await zipReadEntry(plain, THUMBNAIL_ENTRY); } catch { return null; } } },
+  crypt: { getPassword, makePeek: async (plain) => { const head = new Uint8Array(await plain.slice(0, 4).arrayBuffer()); if (!(head.length === 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04)) return null; try { return await zipReadEntry(plain, THUMBNAIL_ENTRY); } catch { return null; } } },
   // 2.0 两档：txt 走编码链验真；工程 zip 只看魔数 PK\x03\x04（内容在 project/format.ts 解包时再验）。挡的是 captive-portal HTML / 截断字节。
   validateAdopt: async (plain) => { const b = new Uint8Array(await plain.arrayBuffer()); return (b.length >= 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04) || looksLikeTextDoc(b); },
-  // store 0.13.0（ADR-0008 §7 前置）：云端名 → 身份。默认只去尾一个 .zip 会把明文工程 `X.webxiaoheiwu.zip` 当加密容器；
-  //   本 app 规则 = 去掉 .zip 后剩下的仍是本 app 合法身份（.txt / .webxiaoheiwu.zip）才算加密件。
-  toName: (cloudName) => (cloudName.endsWith(".zip") && /(\.txt|\.webxiaoheiwu\.zip)$/i.test(cloudName.slice(0, -4))) ? cloudName.slice(0, -4) : cloudName,
-  // 从回收站 / 备份箱恢复时原名被占，库要往名字里插时间戳：插在这两个扩展名之前（`书 [20260929-143200].webxiaoheiwu.zip`）。
-  //   不报的话库按「最后一个点」切，恢复出来是 `书.webxiaoheiwu [戳].zip`——本 app 认不出那是一本书。
-  docExts: [PROJECT_EXT, DOC_EXT],
+  // 文档种类表（store 0.16，提案 = 库仓 ai-docs/20260929-proposal-doc-types.md）：身份怎么切、云端名是不是加密容器、取回撞名戳插在哪、
+  //   哪些能 zip() / 能加密，全由这张表推导。同一张表 src/identifiers.ts 也造了一份给纯代码用。
+  docKinds: DOC_KINDS,
   autoCacheOpenedFile: true,
   offlineUploadReplay: "auto",
   signedIn: () => od.auth.isSignedIn(),
-  activeFileName: () => _activeFileName,
+  activeIdentifier: () => _activeFileName,
 });
 
 export function requireStore(): Store { return store; }

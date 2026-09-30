@@ -97,7 +97,7 @@ export async function createWorld() {
         return labels;
       },
       gateShown: () => page.evaluate(() => !document.getElementById("gateSheet").classList.contains("hidden")),
-      listBackup: () => page.evaluate(async () => (await window.__xhw.store().files.listBackup()).map((b) => ({ name: b.name, side: b.side, ts: b.ts }))),
+      listBackup: () => page.evaluate(async () => (await window.__xhw.store().files.listBackup()).map((b) => ({ name: b.identifier, side: b.side, ts: b.ts }))),
       close: () => ctx.close(),
     };
     return dev;

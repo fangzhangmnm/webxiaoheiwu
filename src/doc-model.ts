@@ -8,7 +8,7 @@
 //   · 排序 = zh-CN 自然序降序（与 WeebPaint 图库同：新日期名在上，稳定不随存盘时间跳）。
 //   · 多文件夹（ADR-0006）：身份 = `[夹/]<名>.txt`，夹只一层；根 = 默认夹。
 
-import { DOC_EXT, PROJECT_EXT } from "./config.ts";
+import { identifiers } from "./identifiers.ts";
 
 export interface ParsedDocName {
   /** 所在夹（"" = 根）。 */
@@ -23,12 +23,10 @@ export interface ParsedDocName {
   stem: string;
 }
 
-const EXT_RE = /\.txt$/i;
-const PROJECT_EXT_RE = /\.webxiaoheiwu\.zip$/i;
-/** 身份两档（2.0）：单篇 txt 稿 / zip 工程（ADR-0008 §8 并存）。 */
+/** 身份两档（2.0）：单篇 txt 稿 / zip 工程（ADR-0008 §8 并存）。种类标签 = identifiers.ts 里那张表的 kind。 */
 export type DocKind = "txt" | "project";
-export function docKind(name: string): DocKind | null { return PROJECT_EXT_RE.test(name) ? "project" : EXT_RE.test(name) ? "txt" : null; }
-const ANY_EXT_RE = /(\.webxiaoheiwu\.zip|\.txt)$/i;
+/** 身份 → 种类；不是本 app 的文档 → null。（v2.1.23 起由 store 的种类表推导，此前是三个手写正则。） */
+export function docKind(name: string): DocKind | null { const d = identifiers.parse(name); return d ? (d.kind as DocKind) : null; }
 
 export function splitDocPath(path: string): { dir: string; base: string } {
   const i = path.lastIndexOf("/");
@@ -38,14 +36,14 @@ export function joinDocPath(dir: string, base: string): string { return dir ? `$
 
 /** 稿 = 任一夹下的 *.txt（隐藏项由库滤掉；这里再挡一次空段/点头段）。 */
 export function isDocName(name: string): boolean {
-  if (!ANY_EXT_RE.test(name)) return false;
+  if (!identifiers.parse(name)) return false;
   const segs = name.split("/");
   return segs.every((seg) => seg.length > 0 && !seg.startsWith("."));
 }
 
 export function parseDocName(name: string): ParsedDocName {
   const { dir, base } = splitDocPath(name ?? "");
-  const stem = base.replace(ANY_EXT_RE, "");
+  const stem = identifiers.parse(name ?? "")?.stem ?? base;   // 不是文档（理论上不该传进来）→ 整个最后一段当主干
   const m = stem.match(/^(\d{8})(?:\D|$)/);
   return { dir, base, date: m ? m[1]! : null, title: stem, stem };
 }
@@ -75,8 +73,8 @@ export function hex4(): string {
 }
 /** 有名保名，无名日期：名 → `<名>.txt`；空 → `yyyymmdd-hex4.txt`（日期码）。dir 非空则带夹前缀（不含碰撞后缀）。 */
 export function makeDocName(date: string, title: string, dir = "", suffix = hex4(), kind: DocKind = "txt"): string {
-  const t = sanitizeTitle(title); const ext = kind === "project" ? PROJECT_EXT : DOC_EXT;
-  return joinDocPath(dir, t ? `${t}${ext}` : `${date}-${suffix}${ext}`);
+  const t = sanitizeTitle(title); const ext = identifiers.kinds.find((k) => k.kind === kind)!.suffix;
+  return identifiers.join({ folder: dir, stem: t || `${date}-${suffix}`, suffix: ext });
 }
 /** 是否已是日期码名（`yyyymmdd-hex4`，可带碰撞后缀 ` n`）——加密稿藏标题的出生名；已是则转加密时不再改名。 */
 export function isOpaqueStem(stem: string): boolean { return /^\d{8}-[0-9a-f]{4}( \d+)?$/i.test(stem); }
@@ -107,8 +105,9 @@ export function sanitizeFolderName(s: string): string {
 /** 第 n 个碰撞候选：n=0 原名，n≥1 追加 `-hex4`（2.1 起；user 2026-09-10「撞名加 hash，我最讨厌 123 这种的序号焦虑。如果是四位数 hash 就不会 pile of shame」，取代 WeebPaint 式 " 1" " 2"）。 */
 export function collisionCandidate(name: string, n: number): string {
   if (n === 0) return name;
-  const ext = PROJECT_EXT_RE.test(name) ? PROJECT_EXT : DOC_EXT;
-  return `${name.replace(ANY_EXT_RE, "")}-${hex4()}${ext}`;
+  const d = identifiers.parse(name);
+  if (!d) return `${name}-${hex4()}`;
+  return identifiers.join({ folder: d.folder, stem: `${d.stem}-${hex4()}`, suffix: d.suffix });
 }
 
 const NAME_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
