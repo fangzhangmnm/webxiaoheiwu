@@ -34,7 +34,7 @@ page.on("pageerror", (e) => pageErrors.push(String(e)));
 page.on("console", (m) => { if (m.type() === "error") pageErrors.push("console.error: " + m.text()); });
 try {
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
+  await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady);
   check("boot：window.__xhw 出现", true);
   const version = await page.evaluate(() => window.__xhw.version);
   check("版本水印", /^v\d+\.\d+\.\d+-\d{4}-\d{2}-\d{2}$/.test(version), version);
@@ -276,7 +276,7 @@ try {
   });
   check("字号档位：1.3 档字号 ×1.3、落 device-kv；行高是整数像素、写字线在行的下半截（基线之下）、线是一张重复渐变", Math.abs(fs.f1 - fs.f0 * 1.3) < 0.6 && fs.kv === "1.3" && fs.lhWhole && fs.ruleInside && fs.img.startsWith("repeating-linear-gradient"), JSON.stringify(fs));
   const resetPage = await browser.newPage();
-  await resetPage.goto(`http://127.0.0.1:${port}/index.html?reset=1`, { waitUntil: "load" }); await resetPage.waitForFunction(() => !!window.__xhw); await resetPage.waitForTimeout(1200);
+  await resetPage.goto(`http://127.0.0.1:${port}/index.html?reset=1`, { waitUntil: "load" }); await resetPage.waitForFunction(() => !!window.__xhw); await resetPage.evaluate(() => window.__xhw.fontReady); await resetPage.waitForTimeout(1200);
   const resetInfo = await resetPage.evaluate(() => ({ toast: document.getElementById("toast").textContent, search: location.search, v: window.__xhw.version }));
   await resetPage.close();
   check("强制更新回执：?reset= 启动 → toast 报版本、URL 清干净", resetInfo.toast.includes(resetInfo.v) && resetInfo.search === "", JSON.stringify(resetInfo));
@@ -312,7 +312,7 @@ try {
   const ctx2 = await browser.newContext(); const page2 = await ctx2.newPage();
   await page2.addInitScript(() => { try { localStorage.setItem("webxiaoheiwu-7c2e9a41b3d05f68:imeEnabled", "0"); } catch {} });   // 关内置 IME：reload 后 boot 不重建 RIME 库，残留检查才有意义
   await page2.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
-  await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
+  await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page2.evaluate(() => window.__xhw.fontReady);
   await page2.waitForTimeout(800);
   const frResult = await page2.evaluate(async () => {
     const p = window.__xhw.factoryReset();
@@ -329,7 +329,7 @@ try {
   check("还原出厂：跑完报「验证归零」", /归零|zero residue/.test(frResult), frResult);
   await page2.waitForTimeout(2500);   // 1.2s 后 reload
   // reload 后 app 会立刻重建一个空的 webxiaoheiwu.defaultStore（正常）；归零证据是流程内的 scanAppNamespace（上一条）。这里只看 RIME 库/前缀键/抽屉空。
-  await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
+  await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page2.evaluate(() => window.__xhw.fontReady);
   const residue = await page2.evaluate(async () => ({
     rime: (await indexedDB.databases()).map((d) => d.name).filter((n) => n === "ime" || n === "/rime"),
     docs: window.__xhw.drawer.items().length,

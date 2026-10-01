@@ -608,6 +608,10 @@ export declare const S: {
         readonly zh: "模型源（可换镜像；字节到手都先校验）";
         readonly en: "Model source (any mirror; bytes are verified on arrival)";
     };
+    readonly "ui.font.credit": {
+        readonly zh: "正文字体：思源黑体（Noto Sans SC）© Adobe，SIL 开源字体许可 1.1；随 app 附许可证全文（vendor/fonts/OFL.txt）。";
+        readonly en: "Body font: Noto Sans SC (Source Han Sans) © Adobe, SIL Open Font License 1.1; the full license ships with the app (vendor/fonts/OFL.txt).";
+    };
     readonly "ui.sec.maintenance": {
         readonly zh: "维护";
         readonly en: "Maintenance";

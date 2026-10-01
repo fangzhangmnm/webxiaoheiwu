@@ -31,7 +31,7 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0 
   await ctx.addInitScript(({ kv, scale }) => { try { localStorage.setItem(kv + "imeEnabled", "0"); if (scale !== "1") localStorage.setItem(kv + "fontScale", scale); } catch {} }, { kv: KV, scale });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady);
   // 走真的设置控件（阅读节奏单选）：行高与线位要跟着重算
   await page.evaluate(({ mode }) => { const r = document.querySelector(`#readingModePicker input[value="${mode}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const t = document.getElementById("wordCountToggle"); if (t.checked) t.click(); }, { mode });
   if (!book) await page.evaluate(() => { const e = document.getElementById("editor"); e.value = Array.from({ length: 60 }, () => "国国国国").join("\n"); e.dispatchEvent(new Event("input", { bubbles: true })); e.scrollTop = 0; e.blur(); });
@@ -58,7 +58,8 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0 
   // 线：右侧 85%–95% 宽的竖带（没有字）里，比纸面暗一截的行
   // 线：一条没有字的竖带里，比纸面暗一截的行。正文页取右侧 85%–95%；有子节目录的页右侧有修改时间的小字，改取中间 55%–70%
   const [b0, b1] = book ? [0.55, 0.7] : [0.85, 0.95];
-  const bg = lum(at(Math.floor(W * (b0 + b1) / 2), 2));
+  // 纸色 = 这条竖带头 60 行里最亮的那一行（只取第 2 行的话，滚动后刚好有条线落在那里 → 把线色当纸色、一条线都认不出；v2.3.15 换内置字体后基线挪了 1px 撞上过）
+  let bg = 0; { const bx = Math.floor(W * (b0 + b1) / 2); for (let y = 0; y < Math.min(H, 60); y++) bg = Math.max(bg, lum(at(bx, y))); }
   const lineRows = [];
   for (let y = 0; y < H; y++) { let s = 0, n = 0; for (let x = Math.floor(W * b0); x < Math.floor(W * b1); x += 3) { s += lum(at(x, y)); n++; } if (bg - s / n > 6) lineRows.push({ y, depth: bg - s / n }); }
   // 合并相邻行（一条线可能跨两个设备像素行）：取最暗的那一行

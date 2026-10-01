@@ -163,6 +163,7 @@ export const S = {
   "ui.voice.import":     { zh: "从文件导入…", en: "Import from file…" },
   "ui.voice.delete":     { zh: "删除语音包", en: "Delete voice pack" },
   "ui.voice.source":     { zh: "模型源（可换镜像；字节到手都先校验）", en: "Model source (any mirror; bytes are verified on arrival)" },
+  "ui.font.credit":      { zh: "正文字体：思源黑体（Noto Sans SC）© Adobe，SIL 开源字体许可 1.1；随 app 附许可证全文（vendor/fonts/OFL.txt）。", en: "Body font: Noto Sans SC (Source Han Sans) © Adobe, SIL Open Font License 1.1; the full license ships with the app (vendor/fonts/OFL.txt)." },
   "ui.sec.maintenance":  { zh: "维护", en: "Maintenance" },
   "ui.forceUpdate":      { zh: "强制更新（清缓存重启）", en: "Force update (clear cache & restart)" },
   "ui.diag":             { zh: "诊断日志", en: "Diagnostics" },

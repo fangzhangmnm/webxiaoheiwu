@@ -1,19 +1,20 @@
 // PDF 引擎（src/export/ttf.ts + pdf.ts）：TTF 解析 / 子集、PDF 结构。要一款真的 glyf TrueType 字体：
-//   环境变量 XHW_TEST_FONT → vendor/fonts/LXGWNeoXiHei.ttf → 开发机 OneDrive 里那份；都没有就 SKIP（字体不进测试夹具）。created 2026-09-30 by Claude Fable 5.1
+//   环境变量 XHW_TEST_FONT → 内置字体 vendor/fonts/sans.ttf.gz（v2.3.15 进仓，所以平时不会 SKIP）→ 开发机 OneDrive 里那份。created 2026-09-30 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
 const throws = (fn, re) => { try { fn(); } catch (e) { if (re && !re.test(e.message)) throw new Error(`threw the wrong thing: ${e.message}`); return true; } throw new Error("expected a throw"); };
 import { existsSync, readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { parseTtf, NotTrueTypeError } from "../src/export/ttf.ts";
 import { writePdf, jpegInfo } from "../src/export/pdf.ts";
 
-const CANDIDATES = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/sans.ttf", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p));
+const CANDIDATES = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/sans.ttf.gz", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p));
 const FONT = CANDIDATES.find((p) => existsSync(p));
 const u16 = (b, o) => (b[o] << 8) | b[o + 1], u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
 const tablesOf = (b) => { const t = {}; for (let i = 0; i < u16(b, 4); i++) { const r = 12 + 16 * i; t[String.fromCharCode(b[r], b[r + 1], b[r + 2], b[r + 3])] = { off: u32(b, r + 8), len: u32(b, r + 12) }; } return t; };
 
 describe("export/ttf + pdf" + (FONT ? "" : "（SKIP：没有可用的 TrueType 字体）"), () => {
   if (!FONT) { it("skip: no TrueType font available (set XHW_TEST_FONT)", () => {}); return; }
-  const bytes = new Uint8Array(readFileSync(FONT)); const font = parseTtf(bytes);
+  const raw = readFileSync(FONT); const bytes = new Uint8Array(FONT.endsWith(".gz") ? gunzipSync(raw) : raw); const font = parseTtf(bytes);
   it("解析：字形号 / 前进宽 / 墨迹框；没有的字 → 0", () => {
     const g = font.glyphId("国".codePointAt(0)); assert(g > 0, "国 has a glyph");
     eq(font.advance(g), font.unitsPerEm, "汉字一字一格");

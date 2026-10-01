@@ -23,7 +23,7 @@ for (const [w, h] of sizes) {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => console.log("[pageerror]", e.message));
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 });
+  await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady);
   // 造两篇稿 + 一个夹（本地物化，无云）
   await page.click("#editor"); await page.keyboard.type("第一篇 hello"); await page.waitForTimeout(700);
   await page.evaluate(async () => { await window.__xhw.editor.newDoc(); }); await page.click("#editor"); await page.keyboard.type("第二篇 world"); await page.waitForTimeout(700);

@@ -22,6 +22,7 @@ import { nodeDisplayName } from "./project/naming.ts";
 import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./project/format.ts";
 import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
 import { parseTtf, NotTrueTypeError, type TtfFont } from "./export/ttf.ts";
+import { installSansFont, loadSansBytes } from "./fonts.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
 import { planPdfBook, type PdfSection } from "./export/pdf-book.ts";
 import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
@@ -361,6 +362,8 @@ let tocChildren: string[] = [];
 // 稿纸几何（行高 / 写字线 / 矮屏档）：src/ui/paper.ts。（「宽稿纸」档与 device-kv paperWidth 2026-09-30 撤了，user「加宽可以撤了」；旧值不读不删。）
 const dockHeightNow = (): number => parseFloat(document.documentElement.style.getPropertyValue("--dock-h")) || 0;
 const paper = createPaper({ page: pageEl, editor: editorEl, dockHeight: dockHeightNow, onChanged: () => syncBodyHeight() });
+// 内置字体（兜底，src/fonts.ts）：不挡启动——没到之前 CSS 落到系统字体，到了浏览器自己重排，这里把稿纸几何重量一遍。探针等它用 __xhw.fontReady。
+const fontReady: Promise<boolean> = installSansFont().then((ok) => { if (ok) { try { paper.refresh(); syncBodyHeight(); } catch (e) { reportError(e, "log"); } } return ok; });
 /** 正文框高度 = 内容行数 × 行高（量的是看不见的孪生框，paper.contentHeight），子节目录 = (1 + 子节数) × 行高紧跟其后——一切都是整行，
  *  所以目录的每一行都坐在稿纸的线上（v2.1.17，user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）。图片页正文框藏着、目录照露。 */
 /** 章节名框随内容长高（v2.1.30，user 2026-09-30「也自动加行？」「自动加行同意」）：单行起步的 textarea，量 scrollHeight 落成高度，再重算纸面（alignTop 把正文上沿补到整像素，别绕开）。 */
@@ -579,6 +582,7 @@ async function encodeSlices(spec: LongImageSpec, plan: LongImagePlan): Promise<F
 }
 /** 无交互路（探针 / 脚本）：超过单张上限就按上限切。opts.family / pxPerChar / charsPerLine = 试字体用的覆盖（2026-09-30 字体试样：像素字要按格子的整数倍画才不糊；不进产品 UI）。 */
 async function renderLongImageFiles(scope: LongImageScope, opts: { maxSliceHeight?: number; family?: string; pxPerChar?: number; charsPerLine?: number; rubyBand?: number } = {}): Promise<{ files: File[]; plan: LongImagePlan } | null> {
+  await fontReady;   // 量字宽之前字体要到位，否则按系统字体折行、画的时候又换了字体
   const spec = await collectLongImage(scope); if (!spec) return null;
   if (opts.family) spec.look = { ...spec.look, family: opts.family };
   if (opts.pxPerChar || opts.charsPerLine || opts.rubyBand != null) spec.typeset = { ...typesetFor(opts.charsPerLine ?? spec.typeset.charsPerLine), ...(opts.pxPerChar ? { pxPerChar: opts.pxPerChar } : {}), ...(opts.rubyBand != null ? { rubyBand: opts.rubyBand } : {}) };
@@ -589,7 +593,7 @@ async function renderLongImageFiles(scope: LongImageScope, opts: { maxSliceHeigh
 }
 async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
   let spec: LongImageSpec | null;
-  try { spec = await collectLongImage(scope); }
+  try { await fontReady; spec = await collectLongImage(scope); }
   catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); return; }
   if (!spec) { const cur = project.active() ? project.current() : null; setStatus(t(cur && project.isHiddenInTree(cur) && scope !== "book" ? "export.hiddenEmpty" : "export.empty")); return; }
   // 尽量一张（user「三屏太难受了」）：只有超过单张上限才问切法
@@ -626,7 +630,7 @@ async function offerFiles(files: File[], title: string, message: string, opts: {
 }
 // ── PDF 导出（v2.3.14，user 2026-09-30「只要比高考作文和童话长一点的，导出长图都很费劲。老老实实做 pdf 吧」「先把 pdf 导出给做出来」）：
 //   引擎 = src/export/{ttf,pdf,pdf-book}.ts（纯函数）：行宽三档 + 行距跟档（同长图），嵌一款 TrueType 字体的子集，可搜索可复制，带书签。
-//   字体来源：内置字体文件（vendor/fonts/sans.ttf，**还没进仓**——新晰黑（IPA）还是思源（OFL）等 user 定）→ 拉不到就让用户选一个本机的 .ttf（只在这次会话的内存里，不落盘、不上传）。
+//   字体来源：内置字体（vendor/fonts/sans.ttf.gz = 思源黑体全量，v2.3.15 进仓）→ 拿不到（离线且没缓存）才让用户选一个本机的 .ttf（只在这次会话的内存里，不落盘、不上传）。
 //   ⚠ 页面比例（pdf-book.ts：16pt 字、宽 = 字数 × 字号 + 边距、高 = 宽 × 16/9）是临时值：user 2026-09-30「pdf 之后可能得好好 grill 一下，你给的比例都不对」。
 //   图片页 / 封面：JPEG 原字节直塞；别的格式经 codec 解码、拍平白底、转 JPEG q88。
 let pdfFont: { font: TtfFont; label: string } | null = null;
@@ -642,9 +646,9 @@ function pickOneFile(input: HTMLInputElement): Promise<File | null> {
 async function loadPdfFont(): Promise<{ font: TtfFont; label: string } | null> {
   if (pdfFont) return pdfFont;
   try {
-    const r = await fetch("./vendor/fonts/sans.ttf");   // 内置黑体（按角色起名，不带品牌；哪一款 / 许可证怎么走等 user 定，定了再进仓）
-    if (r.ok) { const font = parseTtf(new Uint8Array(await r.arrayBuffer())); pdfFont = { font, label: font.psName }; return pdfFont; }
-  } catch { /* 没有内置字体 / 离线：走本机文件 */ }
+    const b = await loadSansBytes();   // 内置字体（vendor/fonts/sans.ttf.gz，思源黑体全量）
+    if (b) { const font = parseTtf(b); pdfFont = { font, label: font.psName }; return pdfFont; }
+  } catch (e) { reportError(e, "log"); /* 内置字体坏了 / 拿不到：走本机文件 */ }
   if (!(await openConfirmSheet(t("pdf.fontTitle"), t("pdf.fontMsg"), { okLabel: t("pdf.fontPick") }))) return null;
   const file = await pickOneFile(pdfFontInput); if (!file) return null;
   try { pdfFont = { font: parseTtf(new Uint8Array(await file.arrayBuffer())), label: file.name.replace(/\.[A-Za-z0-9]+$/, "") }; return pdfFont; }
@@ -1876,4 +1880,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

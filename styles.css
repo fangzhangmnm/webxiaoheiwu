@@ -48,7 +48,8 @@
 
   --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
     "Segoe UI", system-ui, sans-serif;
-  --font-editor: -apple-system, BlinkMacSystemFont, "PingFang SC",
+  /* 第一位 = 内置字体（src/fonts.ts 装进文档的 family；思源黑体全量，v2.3.15）。没装好之前自然落到后面的系统字体；韩文等它没有的字也落下去。 */
+  --font-editor: "XHW Sans", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
 
   /* 行宽（v2.3.11，user 2026-09-30「现在阅读节奏为什么还是只有两档，而且你不是说去语义化吗」）：

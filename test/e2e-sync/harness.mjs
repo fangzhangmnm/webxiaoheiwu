@@ -81,7 +81,7 @@ export async function createWorld() {
     page.on("console", (m) => { if (m.type() === "error") errors.push(`[${tag}] console.error: ${m.text()}`); });
     const dev = {
       tag, page, ctx, errors,
-      async boot(url) { await page.goto(url, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw && (window.__xhw.editor.canEdit() || window.__xhw.project.active()), null, { timeout: 20000 }); await page.waitForTimeout(500); },
+      async boot(url) { await page.goto(url, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw && (window.__xhw.editor.canEdit() || window.__xhw.project.active()), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady); await page.waitForTimeout(500); },
       wait: (ms) => page.waitForTimeout(ms),
       eval: (fn, arg) => page.evaluate(fn, arg),
       text: () => page.evaluate(() => document.getElementById("editor").value),

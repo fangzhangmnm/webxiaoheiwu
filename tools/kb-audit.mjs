@@ -31,7 +31,7 @@ for (const [w, h, tag] of SIZES) {
   const wait = (ms) => page.waitForTimeout(ms);
   const shot = (name) => page.screenshot({ path: `tmp/ui-kb/${tag}-${name}.png` });
   await page.goto(url, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady);
   await wait(1500);   // RIME 起
   const rectOf = (sel) => page.evaluate((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height, shown: getComputedStyle(e).display !== "none" && r.height > 0 }; }, sel);
   /** 点一个键：按键帽上的字 / aria-label 找。 */
@@ -154,7 +154,7 @@ for (const [w, h, tag] of SIZES) {
   page.on("console", (m) => { if (m.type() === "error") errors.push(`[${tag}] console.error: ${m.text()}`); });
   const wait = (ms) => page.waitForTimeout(ms);
   await page.goto(url, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady);
   await wait(1500);
   await page.click("#editor"); await wait(300);
   probe(tag, "focus the paper: no soft keyboard by default, editor inputmode=none (no system keyboard either), keyboard button visible", await page.evaluate(() => document.getElementById("imeDock").classList.contains("hidden") && document.getElementById("editor").getAttribute("inputmode") === "none" && !document.getElementById("kbToggle").hidden));
@@ -181,7 +181,7 @@ for (const [w, h, tag] of SIZES) {
   page.on("console", (m) => { if (m.type() === "error") errors.push(`[${tag}] console.error: ${m.text()}`); });
   const wait = (ms) => page.waitForTimeout(ms);
   await page.goto(url, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady);
   await wait(1500);
   await page.click("#editor"); await page.keyboard.type("ni"); await wait(300); await page.keyboard.press("Space"); await wait(300);
   probe(tag, "desktop: no soft keyboard, no keyboard button; typing ni + space gives 你", await page.evaluate(() => document.getElementById("imeDock").classList.contains("hidden") && document.getElementById("kbToggle").hidden && document.getElementById("editor").value === "你"), await page.inputValue("#editor"));

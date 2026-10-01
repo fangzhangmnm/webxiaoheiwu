@@ -10,9 +10,6 @@ import { fileURLToPath } from "node:url";
 const wpRequire = createRequire(new URL("../../20260524 WeebPaint/package.json", import.meta.url));
 const { chromium } = wpRequire("playwright");
 const { default: UPNG } = await import("../vendor/upng/upng.esm.js");
-const { existsSync: _exists, readFileSync: _read } = await import("node:fs");
-const _fontPath = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/sans.ttf", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p)).find((p) => _exists(p));
-const PDF_FONT_B64 = _fontPath ? _read(_fontPath).toString("base64") : null;   // PDF 探针用的字体（不进仓；没有就跳过那条探针）
 /** 测试图：w×h 噪点 RGBA（噪点让 PNG 压不动 → 大图走 JPEG 重编码那条路；小图走只剥 metadata）。seed 决定内容，同 seed 同字节。 */
 function makePng(w, h, seed) { const px = new Uint8Array(w * h * 4); let x = seed >>> 0; for (let i = 0; i < px.length; i += 4) { x = (x * 1664525 + 1013904223) >>> 0; px[i] = x & 255; px[i + 1] = (x >>> 8) & 255; px[i + 2] = (x >>> 16) & 255; px[i + 3] = 255; } return Buffer.from(UPNG.encode([px.buffer], w, h, 0)); }
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -55,7 +52,7 @@ for (const [w, h] of sizes) {
   const ensureSidebar = async (open) => { if ((await sidebarShown()) !== open) { await page.click("#menuButton"); await wait(300); } };
   const clickEditor = async () => { if (w < 900) await ensureSidebar(false); await page.click("#editor"); };   // 窄屏浮层不再自动收：点纸面前探针自己收
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
-  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 15000 });   // boot 开出新稿后才能打字（之前在 __xhw 一出现就打，字被「不可用」守卫吞掉 → 整轮没有 txt 稿）
+  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady);   // boot 开出新稿后才能打字（之前在 __xhw 一出现就打，字被「不可用」守卫吞掉 → 整轮没有 txt 稿）
   await page.click("#editor"); await page.keyboard.type("第一篇：她推开门。他在窗边。窗外是雨。"); await wait(700);
   probe(tag, "txt doc materialized after typing", !!(await page.evaluate(() => window.__xhw.editor.state.name)));
   // 页脚字数统计（user 2026-09-10）：打字后显示「N 字 M 词」；设置 toggle 关 → 隐藏；再开 → 回来
@@ -406,7 +403,7 @@ for (const [w, h] of sizes) {
   await page.click("#lockToggle"); await wait(300);
   probe(tag, "project read-only off again", await page.evaluate(() => !document.getElementById("editor").readOnly && !window.__xhw.project.readOnly()));
   await page.click("#lockToggle"); await wait(600);   // 锁上 → 刷新后仍锁（跟着目录进 zip）
-  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady); await wait(1500);
   probe(tag, "read-only lock persisted inside the book (survives reload)", await page.evaluate(() => window.__xhw.project.readOnly() && document.getElementById("editor").readOnly));
   await page.click("#lockToggle"); await wait(600);
   probe(tag, "txt has no lock toggle", await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return false; await window.__xhw.openAny(it.name); return !window.__xhw.project.active() && document.getElementById("lockToggle").hidden; }));
@@ -424,19 +421,19 @@ for (const [w, h] of sizes) {
   if (w < 900) await ensureSidebar(false);   // 上一条探针开了侧栏；窄屏浮层盖着纸面
   await page.evaluate(() => window.__xhw.project.jump("序章.txt")); await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type("。"); await wait(700);
   // 刷新：boot 走 openAny(last) → 书回来、章节名回来、无红条
-  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady); await wait(1500);
   probe(tag, "reload → book reopened at 序章 (last saved position), title shown", await page.evaluate(() => document.body.dataset.project === "1" && document.getElementById("nodeTitle").value === "序章"), await page.inputValue("#nodeTitle"));
   probe(tag, "reload → no error state / banner", await page.evaluate(() => { const b = document.getElementById("errBanner"); return (!b || b.classList.contains("hidden")) && !document.getElementById("saveStatus").classList.contains("error"); }), await page.textContent("#saveStatus"));
   probe(tag, "reload → sidebar closed", !(await sidebarShown()));
   // 上次那本打不开 → 新稿（不是顺位下一本）
   await page.evaluate(() => { const k = Object.keys(localStorage).find((x) => /:last-open$/.test(x)); if (k) localStorage.setItem(k, "不存在的书.webxiaoheiwu.zip"); });
-  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady); await wait(1500);
   probe(tag, "last-open unopenable → fresh new draft (not the next book)", await page.evaluate(() => !window.__xhw.project.active() && !window.__xhw.editor.state.name && !!window.__xhw.editor.state.pendingDate && document.getElementById("editor").value === ""), await page.evaluate(() => `project=${window.__xhw.project.active()} name=${window.__xhw.editor.state.name}`));
   await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /webxiaoheiwu\.zip$/i.test(x.name)); if (it) await window.__xhw.openAny(it.name); }); await wait(800);
   probe(tag, "reload → back stack persisted with the book (Alt+← → 目录)", await page.evaluate(() => window.__xhw.project.canGoBack() && window.__xhw.project.goBack() && window.__xhw.project.current() === "目录.txt"), await page.evaluate(() => window.__xhw.project.current()));
   // last-open 真的生效：开一篇旧 txt 再刷新，回来的是它而不是最新的（2026-09-10 实锤：以前 JSON.parse 裸字符串永远 null）
   { const oldTxt = await page.evaluate(async () => { const it = window.__xhw.drawer.items().find((x) => /\.txt$/i.test(x.name)); if (!it) return null; await window.__xhw.editor.open(it.name); return it.name; });
-    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1500);
+    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady); await wait(1500);
     probe(tag, "reload → reopens the last-open txt, not the newest item", !!oldTxt && (await page.evaluate(() => window.__xhw.editor.state.name)) === oldTxt, `${oldTxt} vs ${await page.evaluate(() => window.__xhw.editor.state.name)}`); }
   await shot("14-after-reload");
   // 书库：工程卡片名无扩展名；卡片菜单；回收站；设置叠书库
@@ -473,11 +470,11 @@ for (const [w, h] of sizes) {
   probe(tag, "settings drawer slides in from the RIGHT", await page.evaluate(() => { const r = document.getElementById("drawer").getBoundingClientRect(); return Math.abs(r.right - innerWidth) < 2 && r.left > 0; }));
   await page.click("#drawerCloseButton"); await wait(300);
   // 场景恢复：在书库里刷新 → 回来还在书库；从书库退回编辑器再刷新 → 回来在编辑器（user 2026-09-10「书库里面 refresh 时还是会进写作」）
-  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1800);
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady); await wait(1800);
   probe(tag, "reload while in the library → comes back in the library", await page.evaluate(() => document.body.dataset.mode === "gallery" && !document.getElementById("galleryFull").classList.contains("hidden")));
   await shot("18b-library-after-reload");
   await page.click("#galleryBack"); await wait(400); await shot("19-back-to-editor");
-  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await wait(1800);
+  await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page.evaluate(() => window.__xhw.fontReady); await wait(1800);
   probe(tag, "reload after leaving the library → comes back in the editor", await page.evaluate(() => document.body.dataset.mode !== "gallery" && document.getElementById("galleryFull").classList.contains("hidden")));
   // 锁卡不串场（user 2026-09-10「一开始是 xxx 是加密稿，然后我开新书之后 editor 还是 xxx 是加密稿」）：txt 稿设密码 → 锁定 → 锁卡出现 → 书库新建书 → 锁卡必须消失
   await page.waitForFunction(() => window.__xhw.editor.canEdit(), null, { timeout: 15000 });
@@ -517,7 +514,7 @@ for (const [w, h] of sizes) {
   probe(tag, "sidebar rows for image pages carry the image icon (siblings block)", await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row[data-block='siblings']")].filter((r) => r.querySelector(".edge-kind")).length === 2), await page.evaluate(() => [...document.querySelectorAll("#edgeList .edge-row .edge-name")].map((e) => e.textContent).join("|")));
   // 设为封面
   if (w < 900) await ensureSidebar(false);   // 窄屏侧栏是浮层，盖着纸面上的钮
-  await page.click("#pageImageCover"); await page.waitForFunction(() => !!window.__xhw.project.thumbnail(), null, { timeout: 30000 }); await wait(300);
+  await page.click("#pageImageCover"); await page.waitForFunction(() => !!window.__xhw.project.thumbnail(), null, { timeout: 30000 }); await page.evaluate(() => window.__xhw.fontReady); await wait(300);
   const thumb1 = await page.evaluate(() => Array.from(window.__xhw.project.thumbnail()));
   // graph.json cover（2026-09-30 user「加 cover 字段」）：设为封面记下来源页；钮变灰「当前封面」
   probe(tag, "设为封面 → coverPage() = this page + button disabled 当前封面", await page.evaluate(() => window.__xhw.project.coverPage() === window.__xhw.project.current() && document.getElementById("pageImageCover").disabled && /当前封面/.test(document.getElementById("pageImageCover").textContent)), await page.evaluate(() => `cover=${window.__xhw.project.coverPage()} cur=${window.__xhw.project.current()}`));
@@ -537,11 +534,10 @@ for (const [w, h] of sizes) {
   // 整本 → 长图：封面（cover 字段指的那页的高清字节）铺首屏 + 正文页 + 图片页原位
   { const li = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book"); if (!r) return null; const bm = await createImageBitmap(r.files[0]); return { n: r.files.length, w: bm.width, h: bm.height, text: r.plan.textPages, images: r.plan.imagePages, cjk: r.plan.cjk, name: r.files[0].name }; });
     probe(tag, "长图 (整本): cover from graph.json cover page + ≥1 text page + ≥1 image page, 750 wide, first slice has an image → .jpg", !!li && li.n >= 1 && li.w === 684 && li.text >= 1 && li.images >= 1 && li.h > 750 && /\.jpg$/.test(li.name), JSON.stringify(li)); }
-  // PDF（v2.3.14）：整本 → 一份 PDF（封面图 + 书名页 + 正文页 + 图片页）；字体从本机拿（不进仓，没有就 SKIP）
-  if (PDF_FONT_B64) {
-    const pdf = await page.evaluate(async (b64) => { const bin = atob(b64); const font = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) font[i] = bin.charCodeAt(i); const r = await window.__xhw.exportPdf("book", { font }); if (!r) return null; const u8 = new Uint8Array(await r.file.arrayBuffer()); const head = String.fromCharCode(...u8.slice(0, 8)); const tail = String.fromCharCode(...u8.slice(-6)); return { name: r.file.name, size: r.file.size, pages: r.pages, cjk: r.cjk, missing: r.missing.length, head, tail }; }, PDF_FONT_B64);
-    probe(tag, "PDF (整本): %PDF header, %%EOF trailer, ≥ 4 pages (cover + title + text + image), .pdf name（这本测试书的图是噪声、正文没汉字——大小和字数不设门）", !!pdf && pdf.head.startsWith("%PDF-1.7") && /%%EOF/.test(pdf.tail) && pdf.pages >= 4 && /\.pdf$/.test(pdf.name) && pdf.size > 10_000, JSON.stringify(pdf));
-  } else console.log(tag, "SKIP PDF probe: no TrueType font on this machine (set XHW_TEST_FONT)");
+  // PDF（v2.3.14；v2.3.15 起内置字体在仓里，app 自己取）：整本 → 一份 PDF（封面图 + 书名页 + 正文页 + 图片页）
+  { const pdf = await page.evaluate(async () => { const r = await window.__xhw.exportPdf("book"); if (!r) return null; const u8 = new Uint8Array(await r.file.arrayBuffer()); return { name: r.file.name, size: r.file.size, pages: r.pages, font: r.fontLabel, head: String.fromCharCode(...u8.slice(0, 8)), tail: String.fromCharCode(...u8.slice(-6)) }; });
+    probe(tag, "PDF (整本) with the built-in font: %PDF header, %%EOF trailer, ≥ 4 pages, .pdf name, font = NotoSansSC-Regular", !!pdf && pdf.head.startsWith("%PDF-1.7") && /%%EOF/.test(pdf.tail) && pdf.pages >= 4 && /\.pdf$/.test(pdf.name) && pdf.size > 10_000 && /NotoSansSC/.test(pdf.font), JSON.stringify(pdf)); }
+  probe(tag, "built-in font is installed and the editor uses it (computed font-family starts with XHW Sans; document.fonts has it loaded)", await page.evaluate(async () => (await window.__xhw.fontReady) === true && /^"?XHW Sans/.test(getComputedStyle(document.getElementById("editor")).fontFamily) && document.fonts.check('20px "XHW Sans"')), await page.evaluate(() => getComputedStyle(document.getElementById("editor")).fontFamily.slice(0, 40)));
   // 切片路（v2.3.2「尽量一张」：默认不切；给了上限才切，只在行间、每张 ≤ 上限）——app 内走一遍 maxSliceHeight
   { const sl = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book", { maxSliceHeight: 1500 }); const hs = []; for (const f of r.files) { const bm = await createImageBitmap(f); hs.push(bm.height); } return { n: r.files.length, hs, total: r.plan.totalHeight, names: r.files.map((f) => f.name) }; });
     probe(tag, "长图 sliced at 1500: >1 slices, each ≤ 1500 (a lone image row may exceed), every file .png or .jpg", sl.n > 1 && sl.hs.every((h) => h <= 1500 + 1125) && sl.names.every((n) => /\.(png|jpg)$/.test(n)), JSON.stringify(sl)); }
