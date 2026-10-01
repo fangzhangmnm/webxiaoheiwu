@@ -26,7 +26,7 @@ const port = srv.address().port;
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); console.log(`${ok ? "✓" : "✗"} ${name}${ok ? "" : "  " + detail}`); };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ["--disable-gpu"] });   // 开发机的显卡可能在跑别的长任务
 const page = await browser.newPage();
   await page.addInitScript(() => { try { localStorage.setItem("webxiaoheiwu-7c2e9a41b3d05f68:imeEnabled", "0"); } catch {} });   // 内置 IME 默认开（2026-09-03）：无头打字走裸字母，先用逃生开关关掉
 const pageErrors = [];
@@ -314,6 +314,14 @@ try {
   await page2.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
   await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page2.evaluate(() => window.__xhw.fontReady);
   await page2.waitForTimeout(800);
+  // 同域名下别家的东西 + 自家的东西各放一份，看还原出厂清掉谁（只许清自己的；2026-10-01）
+  await page2.evaluate(async () => {
+    const put = async (cache, key) => (await caches.open(cache)).put(key, new Response("x"));
+    await put("jrb-keepme", "/__probe__");                                                        // 兄弟 app 的壳缓存
+    await put("xiaoheiwu-oldshell", "/__probe__");                                                // 自家的旧壳缓存
+    await put("pwa-models", "/__pwa-models__/voice-someone-else-20260101/chunk-000");              // 共享模型缓存里别的 app 下的包
+    await put("pwa-models", "/__pwa-models__/sense-voice-small-int8-20240717/chunk-000");          // 共享模型缓存里本 app 认得的识别包
+  });
   const frResult = await page2.evaluate(async () => {
     const p = window.__xhw.factoryReset();
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -327,6 +335,8 @@ try {
     return document.getElementById("toast").textContent;
   });
   check("还原出厂：跑完报「验证归零」", /归零|zero residue/.test(frResult), frResult);
+  const frCaches = await page2.evaluate(async () => ({ keys: await caches.keys(), models: (await (await caches.open("pwa-models")).keys()).map((r) => new URL(r.url).pathname) }));
+  check("还原出厂只清自己的：兄弟 app 的缓存和别的 app 的模型包留着；自家旧壳缓存和自家识别包清掉", frCaches.keys.includes("jrb-keepme") && !frCaches.keys.includes("xiaoheiwu-oldshell") && frCaches.models.length === 1 && frCaches.models[0].includes("voice-someone-else"), JSON.stringify(frCaches));
   await page2.waitForTimeout(2500);   // 1.2s 后 reload
   // reload 后 app 会立刻重建一个空的 webxiaoheiwu.defaultStore（正常）；归零证据是流程内的 scanAppNamespace（上一条）。这里只看 RIME 库/前缀键/抽屉空。
   await page2.waitForFunction(() => !!window.__xhw, null, { timeout: 15000 }); await page2.evaluate(() => window.__xhw.fontReady);

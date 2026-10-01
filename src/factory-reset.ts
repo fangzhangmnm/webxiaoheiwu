@@ -1,7 +1,10 @@
 // 还原出厂设置（抄 WeebPaint src/factory-reset.ts；store 0.7.0+ maintenance 口子）。created 2026-09-03 by Claude Fable 5.1
 //
 // 范围 = 本机全部足迹：store 命名空间（IDB `webxiaoheiwu.*` + localStorage 前缀键——库内 typed-consent 口子，报告只含库名+键计数）
-//   + device-kv 键 + RIME 自持 IDB（"ime" 词典缓存 + IDBFS "/rime"）+ **全部 Cache Storage（app 壳 + 语音模型包 pwa-models）** + 注销 SW。
+//   + device-kv 键 + RIME 自持 IDB（"ime" 词典缓存 + IDBFS "/rime"）+ **本 app 的缓存**（`xiaoheiwu-` 前缀的壳缓存整个删；
+//     家族共享的模型缓存 pwa-models 里**只删本 app 认得的包**——识别模型）+ 注销管着当前页面的 SW。
+//   **只动自己的**（user 2026-10-01「四个项目清缓存修一下」；edited by Claude Fable 5.1 2026-10-01）：同域名下还有兄弟 app 的离线壳，
+//     pwa-models 里还有别的 app 下的包（阅读器的朗读音色…）——以前「全部缓存 + 全部 SW」会一起清掉。
 // **云端永不碰**（还原出厂 ≠ 删稿——正本在 OneDrive；这是「公用电脑离开前清痕」+ 调试双用）。
 // 前置：无未同步的稿（dirty / local-only）——否则拒绝，不造逃生副本（数据安全词典序：云端不丢字 >> 便利）。
 // 持久层白名单：本文件允许 indexedDB.deleteDatabase / caches（test/storage-whitelist + redline-guard 登记）。
@@ -10,7 +13,8 @@ import { deviceKvWipeAll, deviceKvCount } from "./device-kv.ts";
 import { openConfirmSheet, openInputSheet } from "./sheets.ts";
 import { t } from "./i18n/index.ts";
 import { reportError } from "./error-badge.ts";
-import { APP_ID } from "./config.ts";
+import { APP_ID, MODEL_CACHE_NAME, SHELL_CACHE_PREFIX } from "./config.ts";
+import { PACK_MANIFESTS } from "./asr/packs.generated.ts";
 
 const RIME_DBS = new Set(["ime", "/rime"]);
 const BLOCKED_TIMEOUT_MS = 2000;
@@ -32,12 +36,26 @@ async function listRimeDbs(): Promise<string[]> {
   } catch { return []; }
 }
 
+/** 清本 app 的缓存，返回清掉了几个：自己前缀的壳缓存整个删；共享的模型缓存里只删本 app 内嵌清单认得的包（算一个）。 */
+async function wipeOwnCaches(): Promise<number> {
+  let n = 0;
+  for (const k of await caches.keys()) { if (k.startsWith(SHELL_CACHE_PREFIX) && (await caches.delete(k))) n++; }
+  if (await caches.has(MODEL_CACHE_NAME)) {
+    const cache = await caches.open(MODEL_CACHE_NAME);
+    const mine = Object.keys(PACK_MANIFESTS).map((slug) => `/__pwa-models__/${slug}/`);
+    let removed = 0;
+    for (const req of await cache.keys()) { const path = decodeURIComponent(new URL(req.url).pathname); if (mine.some((p) => path.startsWith(p)) && (await cache.delete(req))) removed++; }
+    if (removed) n++;
+  }
+  return n;
+}
+
 async function wipeAppFootprint(): Promise<{ deleted: string[]; blocked: string[]; lsRemoved: number; cachesRemoved: number }> {
   const report = { deleted: [] as string[], blocked: [] as string[], lsRemoved: 0, cachesRemoved: 0 };
   for (const name of await listRimeDbs()) ((await deleteDbOrBlocked(name)) === "deleted" ? report.deleted : report.blocked).push(name);
   report.lsRemoved = deviceKvWipeAll();
-  try { if (typeof caches !== "undefined") for (const k of await caches.keys()) { if (await caches.delete(k)) report.cachesRemoved++; } } catch { /* best-effort */ }
-  try { if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister().catch(() => {}); } catch { /* best-effort */ }
+  try { if (typeof caches !== "undefined") report.cachesRemoved = await wipeOwnCaches(); } catch { /* best-effort */ }
+  try { if (navigator.serviceWorker) { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.unregister().catch(() => {}); } } catch { /* best-effort */ }
   return report;
 }
 

@@ -72,4 +72,15 @@ describe("redline-guard", () => {
     }
     assert(hits.length === 0, "seam violations:\n" + hits.join("\n"));
   });
+  // 清缓存 / 还原出厂只许动自己的（家族 CLAUDE.md「共享模型库 · 命名与共享规矩」第 2 条；2026-10-01 by Claude Fable 5.1）：
+  //   同域名下还有兄弟 app 的离线壳、pwa-models 里还有别的 app 下的包——不许「注销全部 service worker」，整个删缓存必须先按自己的前缀筛。
+  it("src/ 里没有 getRegistrations()；caches.delete 都带自己前缀的筛子", () => {
+    const hits = [];
+    for (const p of walk("src")) readFileSync(p, "utf8").split("\n").forEach((l, i) => {
+      const code = l.replace(/\/\/.*$/, "");
+      if (/getRegistrations\s*\(/.test(code)) hits.push(`${p}:${i + 1}: getRegistrations()`);
+      if (/\bcaches\s*\.\s*delete\s*\(/.test(code) && !/startsWith\(SHELL_CACHE_PREFIX\)/.test(code)) hits.push(`${p}:${i + 1}: caches.delete without the own-prefix filter`);
+    });
+    assert(hits.length === 0, "reset scope violations:\n" + hits.join("\n"));
+  });
 });

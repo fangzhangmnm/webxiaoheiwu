@@ -37,6 +37,9 @@ export const FOREGROUND_POLL_MS = 60_000;
 export const MODEL_SOURCE_DEFAULT = "https://fangzhangmnm.github.io/pwa-models";
 /** 模型包 Cache Storage 名：**家族共享**（同 origin 兄弟 PWA 各自 SW 只清自己前缀，已核实；forceReset 也跳过它）。可再生派生缓存，user 2026-09-03 批。 */
 export const MODEL_CACHE_NAME = "pwa-models";
+/** 本 app 壳缓存的名字前缀（= service-worker.js 的 `xiaoheiwu-<hash>` / `xiaoheiwu-boot`）。清缓存 / 还原出厂只许整个删这个前缀的缓存
+ *  （家族 CLAUDE.md「共享模型库 · 命名与共享规矩」第 2 条：同域名下还有兄弟 app 的离线壳）。 */
+export const SHELL_CACHE_PREFIX = "xiaoheiwu-";
 /** sherpa-onnx WASM 运行时目录（相对 app 根；worker 里按 self.location 解析）。 */
 export const ASR_WASM_DIR = "vendor/sherpa-onnx-wasm/";
 

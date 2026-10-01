@@ -6,7 +6,7 @@
 //   onForeground **无条件挂**（不寄生在 SW 注册成功路径上——WeebPaint v409 坑）。
 //   模块顶层调用（不进 window.load：type=module 时 load 可能早已过去——RealHome 坑 #0）。
 
-import { MODEL_CACHE_NAME } from "./config.ts";
+import { SHELL_CACHE_PREFIX } from "./config.ts";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", ""]);
 
@@ -19,7 +19,7 @@ export interface PwaShell {
   readonly isDevRoute: boolean;
   /** 应用等待中的新 SW 并 reload（toast「刷新」按钮调）。 */
   reload: () => Promise<void>;
-  /** 清缓存重启（PWA 卡旧版的逃生舱）：unregister 全部 SW + 清 Cache Storage（模型包缓存 pwa-models 除外）+ reload。IDB（文档缓存）不碰。 */
+  /** 清缓存重启（PWA 卡旧版的逃生舱）：注销管着当前页面的 SW + 清自己前缀的壳缓存（模型包缓存 pwa-models 除外）+ reload。IDB（文档缓存）不碰。 */
   forceReset: () => Promise<void>;
 }
 
@@ -45,8 +45,11 @@ export function initPwaShell(opts: PwaShellOptions): PwaShell {
     const settle = (p: void | Promise<void>, ms: number) => Promise.race([Promise.resolve(p).catch(() => undefined), new Promise<void>((r) => setTimeout(r, ms))]);
     await settle(opts.onBeforeReload?.(), 4000);
     try {
-      if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister().catch(() => {});
-      if (typeof caches !== "undefined") for (const k of await caches.keys()) { if (k === MODEL_CACHE_NAME) continue; await caches.delete(k).catch(() => {}); }   // 语音包 229MB 不陪葬（设置里有专门的删除钮）
+      // 只动自己的（user 2026-10-01「四个项目清缓存修一下」；edited by Claude Fable 5.1 2026-10-01）：家族的 app 几乎都挂在同一个域名下，
+      //   缓存和 service worker 是按域名算的——以前「全部注销 + 除了模型缓存全删」会把兄弟 app 的离线壳一起清掉。
+      //   自己的 = 管着当前页面的那一个 service worker + `xiaoheiwu-` 前缀的壳缓存。模型缓存 pwa-models 照旧不碰（设置里有专门的删除钮）。
+      if (navigator.serviceWorker) { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.unregister().catch(() => {}); }
+      if (typeof caches !== "undefined") for (const k of await caches.keys()) { if (k.startsWith(SHELL_CACHE_PREFIX)) await caches.delete(k).catch(() => {}); }
     } catch { /* best-effort — reload anyway */ }
     const target = `${location.pathname}?reset=${Date.now()}`;
     setTimeout(() => location.replace(target), 150);

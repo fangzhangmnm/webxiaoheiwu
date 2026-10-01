@@ -66,9 +66,9 @@
 | `@internal/gallery`（vendor-pkgs tgz） | IDB `webxiaoheiwu-thumbs` | 书库封面缩略图派生缓存（gallery-native；key = store 身份、token = lastModified/size、全删可再生；user 2026-09-10「weebpaint 不是一直 idb 的吗」批；`src/gallery-host.ts` 只传库名） |
 | `src/device-kv.ts` | localStorage（GUID 前缀） | device 层标量唯一器官：imeEnabled / **softKeyboard**（auto · on · off）/ **softKeyboardHidden**（`hw` = 这台设备上次见过实体键盘，软键盘先不露；2026-09-29）/ ~~paperWidth~~（2026-09-30 撤，旧值不读不删）/ **pttKey**（`CapsLock` = 语音键切换式、`none` = 这台设备语音整个禁用、话筒钮也收（第一项）；缺省左 Ctrl 按住；2026-09-30）/ voiceEnabled / voiceModelSource / lang / lastOpen / gallery-folder / **last-scene**（书库里离开 → 回来在书库，2026-09-10）/ **diag-log**（黑匣子环 500 条，2026-09-09；经 deviceKvSetJson，diag-log.ts 自己不碰 localStorage） |
 | `service-worker.js` | Cache `xiaoheiwu-<hash>` | app 壳预缓存 + 运行时缓存 |
-| `src/pwa-shell.ts` | Cache（读键/删） | forceReset 清壳缓存，跳过 `pwa-models` |
+| `src/pwa-shell.ts` | Cache（读键/删） | forceReset 只清自己前缀（`xiaoheiwu-`）的壳缓存、只注销管着当前页面的 SW；兄弟 app 的缓存和 `pwa-models` 不碰（2026-10-01，家族「命名与共享规矩」第 2 条）|
 | `src/asr/worker.ts` | Cache `pwa-models`（家族共享名） | 语音模型包；可再生派生缓存（批） |
-| `src/factory-reset.ts` | IDB 删库（RIME `ime` / `/rime`）+ 清全部 Cache + 注销 SW | 还原出厂设置（store 命名空间走库 `wipeAppNamespace` typed consent；前置无未同步稿）|
+| `src/factory-reset.ts` | IDB 删库（RIME `ime` / `/rime`）+ 清本 app 的缓存（`xiaoheiwu-` 前缀的壳缓存 + `pwa-models` 里本 app 认得的识别包；别的 app 下的包留着）+ 注销管着当前页面的 SW | 还原出厂设置（store 命名空间走库 `wipeAppNamespace` typed consent；前置无未同步稿）|
 | `vendor/msal/msal-browser.min.js` | IDB / localStorage / sessionStorage | MSAL token 缓存，由库的 auth 配置驱动，app 不直接调 |
 | `vendor/my-rime/worker.js` + `vendor/my-rime/dist/rime.js` | IDB（词典缓存 + IDBFS `/rime`；rime.js 是 emscripten 胶水） | RIME 第三方派生缓存，可再生；**user 追认待记** |
 
