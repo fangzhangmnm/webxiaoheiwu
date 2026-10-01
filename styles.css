@@ -1396,6 +1396,14 @@ body {
 .sheet-seg-line .sheet-seg { flex: 1 1 auto; }
 .sheet-seg-line .sheet-seg-btn { padding: 6px 6px; line-height: 1.5; }   /* 数字和汉字的行盒不一样高：钉住行高，几条段选才一样高 */
 .sheet-seg-label { flex: none; font-size: 13px; color: var(--ink-muted); }
+.sheet-aux { align-self: flex-start; padding: 5px 10px; border: 1px dashed var(--line-strong, #c9b89a); border-radius: 8px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 13px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-aux.hidden { display: none; }
+.sheet-check-inline { margin: 0; font-size: 13px; color: var(--ink-soft); }
+@media (max-height: 460px) {   /* 手机横屏：导出面板行多，收紧一点（放不下时整个遮罩可以滚） */
+  .sheet-choices { gap: 5px; margin: 6px 0 2px; }
+  .sheet-seg-btn, .sheet-seg-line .sheet-seg-btn { padding: 4px 6px; }
+  .sheet-choice-row .sheet-choice { padding: 7px 6px; }
+}
 .sheet-seg-note { margin: 2px 0; font-size: 13px; line-height: 1.5; color: var(--ink-muted); white-space: pre-line; }
 .sheet-choice-row { display: flex; gap: 8px; }
 .sheet-choice-row .sheet-choice { flex: 1 1 0; min-width: 0; text-align: center; padding: 10px 6px; }

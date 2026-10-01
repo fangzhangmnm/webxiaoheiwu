@@ -187,6 +187,11 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     eq("exportFont" in JSON.parse(td.decode((await zipUnpack(await packProject(p)))[".webxiaoheiwu/editor-state.json"])), false);
     p.editorState.exportFont = "pinyin"; eq((await unpackProject(await packProject(p))).project.editorState.exportFont, "pinyin");
     p.editorState.exportFont = 7; eq((await unpackProject(await packProject(p))).project.editorState.exportFont, undefined); delete p.editorState.exportFont;
+    // exportCovers / exportEmbedText（2026-10-01）：这一支的封面指派两头都得是书里的页；附文字只在关掉时写 false
+    const names = [...p.nodes.keys()]; p.editorState.exportCovers = { [names[0]]: names[0], "没有这页.txt": names[0], [names[0] + "x"]: "也没有.png" };
+    eq(JSON.stringify((await unpackProject(await packProject(p))).project.editorState.exportCovers), JSON.stringify({ [names[0]]: names[0] }), "dangling entries dropped");
+    delete p.editorState.exportCovers; eq((await unpackProject(await packProject(p))).project.editorState.exportEmbedText, undefined);
+    p.editorState.exportEmbedText = false; eq((await unpackProject(await packProject(p))).project.editorState.exportEmbedText, false); delete p.editorState.exportEmbedText;
   });
   it("hidden 往返：true 才写、缺 = 出门；老书没有这个键", async () => {
     const p = emptyProject(); createNode(p, "a.txt", "A", () => 1); createNode(p, "b.txt", "B", () => 1); p.nodes.get("b.txt").hidden = true;

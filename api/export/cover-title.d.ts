@@ -7,6 +7,12 @@ export interface CoverCell {
     before?: string;
     after?: string;
 }
+export interface CoverPad {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
 export interface CoverTitleLayout {
     vertical: boolean;
     size: number;
@@ -14,6 +20,8 @@ export interface CoverTitleLayout {
     date: CoverCell | null; /** 装订线的宽（0 = 没有） */
     spineW: number;
     truncated: boolean;
+    /** 字底下垫的矩形（竖排一列一块、横排整段一块、日期一块）：书名压在封面图上时，调用方用半透明的纸色把它们先画出来（user 2026-10-01「标题的字下面还是垫一个半透明吧」）。 */
+    pads: CoverPad[];
 }
 export interface CoverTitleOpts {
     title: string;

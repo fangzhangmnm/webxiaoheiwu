@@ -52,7 +52,9 @@ export interface EditorState {
     refPanel?: RefPanelState;
     lineWidth?: LineWidthState;
     exportLineWidth?: LineWidthState; /** 这本书导出（长图 / PDF）用的字体；没有 = 黑体。目前只认 "pinyin"（萌神拼音，2026-10-01）。 */
-    exportFont?: string;
+    exportFont?: string; /** 「这一页 / 这一支」导出时用的封面：起点页名 → 图片页名（2026-10-01 user「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）。整本的封面是 graph.json 的 cover，不在这里。 */
+    exportCovers?: Record<string, string>; /** 长图里要不要附上文字（藏在图片文件的元数据里）。缺省附；只有关掉才写 false（2026-10-01 user「也可以选择不嵌入」）。 */
+    exportEmbedText?: false;
 }
 export declare const BACK_STACK_MAX = 50;
 export interface Project {

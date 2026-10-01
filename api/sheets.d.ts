@@ -83,7 +83,13 @@ export interface ScopedChoiceOpts<S, T> {
     initial: S;
     extras?: SegRow<any>[];
     note: (scope: S) => string;
-    choices: (scope: S) => Choice<T>[];
+    choices: (scope: S) => Choice<T>[]; /** 一颗跟范围走的小钮（选项行下面、动作钮上面）；点了和动作钮一样收 sheet、返回它的 value。null = 这个范围没有。 */
+    aux?: (scope: S) => Choice<T> | null; /** 一个勾（改了就 onChange，要记的话调用方自己记）。 */
+    check?: {
+        label: string;
+        checked: boolean;
+        onChange: (checked: boolean) => void;
+    };
 }
 export declare function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpts<S, T>): Promise<{
     scope: S;

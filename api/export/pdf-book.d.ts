@@ -5,7 +5,8 @@ import type { TextMeasurer } from "../image/codec.ts";
 export type PdfSection = {
     kind: "text";
     heading: string | null;
-    text: string; /** 子节目录：正文后面空一行列出来，每行链到那一节的第一页、行尾印页码。target = sections 里的序号。 */
+    text: string; /** 在目录树里的层级（0 = 最外层）：书签按它嵌套。缺省 0。 */
+    level?: number; /** 子节目录：正文后面空一行列出来，每行链到那一节的第一页、行尾印页码。target = sections 里的序号。 */
     toc?: PdfTocEntry[];
 } | {
     kind: "image";
@@ -24,16 +25,17 @@ export interface PdfBookLook {
     rule: string | null; /** 目录链接的颜色（编辑器里子节目录那种）；不给 = 墨色 */
     link?: string;
 }
-/** 封面的配色（书架封面那一套 --cover-*）。halo = 书名压在封面图上时那一圈描边。 */
+/** 封面的配色（书架封面那一套 --cover-*）。 */
 export interface CoverLook {
     paper: string;
     ink: string;
     inkSoft: string;
     spine: string;
     spineEdge: string;
-    halo: string;
 }
 export declare const DEFAULT_COVER_LOOK: CoverLook;
+/** 书名压在封面图上时，字底下那块纸的不透明度（书架封面底栏同一个数）。user 2026-10-01「标题的字下面还是垫一个半透明吧」——取代 v2.3.23 的白描边。 */
+export declare const COVER_PAD_ALPHA = 0.78;
 /** 注音字体：封面书名每个字头上给拼音留的高度（字的倍数）。 */
 export declare const COVER_RUBY = 0.42;
 export interface PdfBookSpec {
@@ -48,6 +50,10 @@ export interface PdfBookSpec {
     coverKind?: "book" | "draft";
     /** 书名是没起名的消歧码 → 用淡色印（和书架一样）。 */
     titleSoft?: boolean;
+    /** 封面上印的名字；不给 = title（「这一支」带封面时封面上只印页名）。 */
+    coverTitle?: string;
+    /** 落款（导出时间之类的一小段字）：印在最后一页的左下角。不给 = 不印。 */
+    stamp?: string;
     sections: PdfSection[];
     look: PdfBookLook;
     typeset: ExportTypeset;

@@ -84,6 +84,18 @@ describe("export/long-image · planLongImage 切片", () => {
     const tq = q.slices.flatMap((s) => s.ops.filter((o) => o.op === "text")); const row = tq.filter((o) => o.text === "甲")[0];
     eq(row.style.color, look.ink, "no link colour given → ink"); assert(row.y < tq.filter((o) => o.text === "甲")[1].y, "toc row comes before the child's own heading");
   });
+  it("落款印在页脚（书名 · 落款 · 第几张）；有封面图时书名压在图上、底下垫半透明的纸、图下面不再印书名；coverTitle 只换封面上的名字", () => {
+    const img = { blob: {}, w: 600, h: 900 };
+    const p = planLongImage(spec([{ kind: "text", heading: "一", text: "字" }], { cover: img, title: "书 · 第一章", coverTitle: "第一章", date: null, stamp: "2026-10-01 03:12 导出" }), m);
+    const ops = p.slices[0].ops; const texts = ops.filter((o) => o.op === "text").map((o) => o.text);
+    assert(texts.includes("书 · 第一章 · 2026-10-01 03:12 导出"), "footer: " + texts.join("|"));
+    const iImg = ops.findIndex((o) => o.op === "image"), pads = ops.filter((o) => o.op === "rect" && o.alpha === 0.78);
+    assert(iImg >= 0 && pads.length >= 1 && ops.indexOf(pads[0]) > iImg, "pads drawn after the image");
+    const imgOp = ops[iImg]; const onCover = ops.filter((o) => o.op === "text" && o.y > imgOp.y && o.y < imgOp.y + imgOp.h).map((o) => o.text).join("");
+    eq(onCover, "第一章", "cover carries coverTitle, one glyph per op"); eq(texts.filter((x) => x === "书 · 第一章").length, 0, "the title is not printed again under the image");
+    const sliced = planLongImage(spec([{ kind: "text", heading: null, text: Array.from({ length: 200 }, () => "行").join("\n") }], { stamp: "S" }), m, { maxSliceHeight: 2000 });
+    assert(sliced.slices.length > 1 && sliced.slices[0].ops.some((o) => o.op === "text" && o.text === `书 · S · 1/${sliced.slices.length}`), "sliced footer");
+  });
   it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同；行距跟档走", async () => {
     const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";   // 30 字 → 20 字/行 = 2 行
     const m2 = { width: (t) => [...t].reduce((a, c) => a + (c === " " ? 10 : cjkRe.test(c) ? 40 : 20), 0), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }), ink: (st) => ({ asc: st.sizePx * 0.8, desc: st.sizePx * 0.1 }) };

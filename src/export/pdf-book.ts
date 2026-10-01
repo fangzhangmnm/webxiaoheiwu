@@ -17,13 +17,15 @@ import { statsForText } from "../doc-model.ts";
 import { layoutCoverTitle } from "./cover-title.ts";
 
 export type PdfSection =
-  | { kind: "text"; heading: string | null; text: string; /** 子节目录：正文后面空一行列出来，每行链到那一节的第一页、行尾印页码。target = sections 里的序号。 */ toc?: PdfTocEntry[] }
+  | { kind: "text"; heading: string | null; text: string; /** 在目录树里的层级（0 = 最外层）：书签按它嵌套。缺省 0。 */ level?: number; /** 子节目录：正文后面空一行列出来，每行链到那一节的第一页、行尾印页码。target = sections 里的序号。 */ toc?: PdfTocEntry[] }
   | { kind: "image"; heading: null; image: PdfImage };
 export interface PdfTocEntry { label: string; target: number }
 export interface PdfBookLook { paper: string; ink: string; inkSoft: string; muted: string; rule: string | null; /** 目录链接的颜色（编辑器里子节目录那种）；不给 = 墨色 */ link?: string }
-/** 封面的配色（书架封面那一套 --cover-*）。halo = 书名压在封面图上时那一圈描边。 */
-export interface CoverLook { paper: string; ink: string; inkSoft: string; spine: string; spineEdge: string; halo: string }
-export const DEFAULT_COVER_LOOK: CoverLook = { paper: "#e9e3d5", ink: "#43382c", inkSoft: "#857b6a", spine: "#d2c9b5", spineEdge: "#c2b8a2", halo: "#ffffff" };
+/** 封面的配色（书架封面那一套 --cover-*）。 */
+export interface CoverLook { paper: string; ink: string; inkSoft: string; spine: string; spineEdge: string }
+export const DEFAULT_COVER_LOOK: CoverLook = { paper: "#e9e3d5", ink: "#43382c", inkSoft: "#857b6a", spine: "#d2c9b5", spineEdge: "#c2b8a2" };
+/** 书名压在封面图上时，字底下那块纸的不透明度（书架封面底栏同一个数）。user 2026-10-01「标题的字下面还是垫一个半透明吧」——取代 v2.3.23 的白描边。 */
+export const COVER_PAD_ALPHA = 0.78;
 /** 注音字体：封面书名每个字头上给拼音留的高度（字的倍数）。 */
 export const COVER_RUBY = 0.42;
 export interface PdfBookSpec {
@@ -36,6 +38,10 @@ export interface PdfBookSpec {
   coverKind?: "book" | "draft";
   /** 书名是没起名的消歧码 → 用淡色印（和书架一样）。 */
   titleSoft?: boolean;
+  /** 封面上印的名字；不给 = title（「这一支」带封面时封面上只印页名）。 */
+  coverTitle?: string;
+  /** 落款（导出时间之类的一小段字）：印在最后一页的左下角。不给 = 不印。 */
+  stamp?: string;
   sections: PdfSection[]; look: PdfBookLook; typeset: ExportTypeset; font: TtfFont;
 }
 export interface PdfBookPlan { doc: PdfDoc; cjk: number; en: number; textPages: number; imagePages: number; pageCount: number; pageW: number; pageH: number }
@@ -140,14 +146,13 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
     newPage(false);
     if (spec.cover) fill(spec.cover, 0, 0, W, H);   // 铺满整页（靠页面边界裁）；图片页仍是完整放进版心
     else ops.push({ op: "rect", x: 0, y: 0, w: W, h: H, color: parseCssColor(cl.paper) });
-    const lay = layoutCoverTitle({ title: spec.title, date: spec.date, W, H, spine: !hasImg && spec.coverKind !== "draft", width: (t, s) => m.width(t, st(s)), ink: (s) => m.ink(st(s)), wrap: (t, maxW, s) => wrapText(t, maxW, st(s), m), ruby: font.contextual ? COVER_RUBY : 0 });
+    const lay = layoutCoverTitle({ title: spec.coverTitle ?? spec.title, date: spec.date, W, H, spine: !hasImg && spec.coverKind !== "draft", width: (t, s) => m.width(t, st(s)), ink: (s) => m.ink(st(s)), wrap: (t, maxW, s) => wrapText(t, maxW, st(s), m), ruby: font.contextual ? COVER_RUBY : 0 });
     if (lay.spineW) { ops.push({ op: "rect", x: 0, y: 0, w: lay.spineW, h: H, color: parseCssColor(cl.spine) }); ops.push({ op: "line", x1: lay.spineW, y1: 0, x2: lay.spineW, y2: H, color: parseCssColor(cl.spineEdge), width: W * 0.004 }); }
-    const stroke = hasImg ? { stroke: { color: parseCssColor(cl.halo), width: W * 0.006 } } : {};
     const cTitle = parseCssColor(spec.titleSoft ? cl.inkSoft : cl.ink);
     const cellOp = (c: typeof lay.cells[number], color: Rgb): PdfOp => ({ op: "text", x: c.x, y: c.y, text: c.text, size: c.size, color, ...(c.rotate ? { rotate: c.rotate } : {}), ...(c.before ? { before: c.before } : {}), ...(c.after ? { after: c.after } : {}) });
     const cDate = parseCssColor(hasImg ? cl.ink : cl.inkSoft);
-    // 有图：先把所有字的描边画完，再画所有字的填充——抽字时书名是连着的一串（描边那一遍抽出来是零宽空格，见 pdf.ts /F2）
-    if (hasImg) { for (const c of lay.cells) ops.push({ ...cellOp(c, cTitle), ...stroke, noFill: true } as PdfOp); if (lay.date) ops.push({ ...cellOp(lay.date, cDate), ...stroke, noFill: true } as PdfOp); }
+    // 有图：字底下先垫半透明的纸（一列一块 / 一段一块 / 日期一块），字才看得清；没图的封面本来就是纸，不垫
+    if (hasImg) for (const r of lay.pads) ops.push({ op: "rect", x: r.x, y: r.y, w: r.w, h: r.h, color: parseCssColor(cl.paper), alpha: COVER_PAD_ALPHA });
     for (const c of lay.cells) ops.push(cellOp(c, cTitle));
     if (lay.date) ops.push(cellOp(lay.date, cDate));
   }
@@ -161,7 +166,7 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
     newPage(); sectionPage[si] = pages.length - 1;   // 章起新页
     y = lineTop;
     if (sec.heading != null) {
-      outline.push({ title: sec.heading, page: pages.length - 1 });
+      outline.push({ title: sec.heading, page: pages.length - 1, ...(sec.level ? { level: sec.level } : {}) });
       // 章节名占整数行（正文行格不乱）：每行章节名 = 2 个正文行，底下再空 1 行
       const size = 1.25 * F; const hl = wrapText(sec.heading, inner, st(size), m);
       for (const line of hl) { centered(line, size, y + LH * 1.5, cInk); y += 2 * LH; }
@@ -208,5 +213,7 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
   // ── 页码（正文 / 图片页；封面与书名页不印）──
   numbered.forEach((pi, i) => { const p = pages[pi]!; const label = String(i + 1), size = 0.75 * F; p.ops.push({ op: "text", x: (W - m.width(label, st(size))) / 2, y: H - 1.0 * F, text: label, size, color: cMuted }); });
 
+  // 落款：最后一页左下角一行小字（页码在正中，小字占不到那里：14 字档最窄，0.55 字号的二十来个字符 ≈ 55 pt，离中线还有余）
+  if (spec.stamp && pages.length) pages[pages.length - 1]!.ops.push({ op: "text", x: SIDE, y: H - 1.0 * F, text: spec.stamp, size: 0.55 * F, color: cMuted });
   return { doc: { title: spec.title, pages, outline }, cjk, en, textPages, imagePages, pageCount: pages.length, pageW: W, pageH: H };
 }

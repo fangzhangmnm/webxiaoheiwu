@@ -32,3 +32,8 @@
 ## 修订 2026-10-01 之二（editor-state.json 多一个 `exportFont` = 这本书导出用的字体；edited by Claude Fable 5.1）
 - user 原话：「萌神拼音也vendor进去吧，导出的时候还蛮需要的（需要导出和编辑分开配置吗？）」。答法 = 不用分开配置，因为编辑器不给选字体（永远黑体）；只有导出有这个选项。
 - `exportFont: "pinyin"`（可选字符串；目前只认这一个值，别的值原样带着、当黑体用）：长图和 PDF 用萌神拼音。**没有 = 黑体**。同 `exportLineWidth`：随保存写、不标脏，入口只有导出面板，选回黑体 = 删掉字段，txt 稿只记到这次打开为止。
+
+## 修订 2026-10-01 之三（editor-state.json 多两个导出用的字段；edited by Claude Fable 5.1）
+- `exportCovers: { "<起点页>": "<图片页>" }`（可选）：「这一页 / 这一支」导出时用的封面（user「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）。两头都得是书里真有的页，悬空的读时丢；改名跟着改、彻底删除跟着删（`graph.ts renameNode / deleteNode`）。整本的封面仍是 graph.json 的 `cover`，不在这里。
+- `exportEmbedText: false`（可选，只在关掉时写）：长图里不附文字（user「也可以选择不嵌入」）。缺省 = 附。
+- 都同 `exportLineWidth`：随保存写、不标脏，入口只有导出面板。

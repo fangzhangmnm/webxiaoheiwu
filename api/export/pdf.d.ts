@@ -13,7 +13,8 @@ export type PdfOp = {
     y: number;
     w: number;
     h: number;
-    color: Rgb;
+    color: Rgb; /** 不透明度 0..1（缺省 1）。封面图上书名底下那块半透明的纸。 */
+    alpha?: number;
 } | {
     op: "line";
     x1: number;
@@ -31,12 +32,7 @@ export type PdfOp = {
     color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */
     before?: string;
     after?: string; /** 顺时针转 90°（以 x, y 为轴；竖排里侧躺的拉丁串 / 括号） */
-    rotate?: 90; /** 先描一圈边再填（封面图上的书名：一圈纸色，字才看得清）。描边那一遍用另一个字体名 /F2（同一份字形，但它的 ToUnicode 全映到零宽空格）——否则阅读器抽字 / 复制时每个字出现两次。 */
-    stroke?: {
-        color: Rgb;
-        width: number;
-    }; /** 只描边不填（调用方想把一组字的描边排在前、填充排在后，让抽出来的字连在一起） */
-    noFill?: boolean;
+    rotate?: 90;
 } | {
     op: "image";
     x: number;
@@ -61,13 +57,15 @@ export interface PdfPage {
 }
 export interface PdfOutlineItem {
     title: string;
-    page: number;
+    page: number; /** 层级（0 = 最外层；按先序排列，下一条比上一条深 = 它的孩子）。缺省 0。 */
+    level?: number;
 }
 export interface PdfDoc {
     title: string;
     pages: PdfPage[];
     outline?: PdfOutlineItem[];
-    producer?: string;
+    producer?: string; /** 生成时间（写进文档信息的 CreationDate）。不给 = 不写（同内容同字节）。 */
+    created?: Date;
 }
 export interface PdfStats {
     glyphs: number;

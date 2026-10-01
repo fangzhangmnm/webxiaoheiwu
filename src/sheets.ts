@@ -198,7 +198,7 @@ export function openChoiceSheet<T>(title: string, message: string, choices: Choi
 /** 第二条段选（可选）：一个和范围无关的小选项（导出的行宽）。带一个行首小标签；一点就 onChange（要记住的话调用方在这里记）。 */
 export interface SegRow<X> { label: string; options: { label: string; value: X }[]; initial: X; onChange?: (value: X) => void }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 每条段选的值类型各不相同，结果经各自的 onChange 交出去
-export interface ScopedChoiceOpts<S, T> { scopes: { label: string; value: S }[]; initial: S; extras?: SegRow<any>[]; note: (scope: S) => string; choices: (scope: S) => Choice<T>[] }
+export interface ScopedChoiceOpts<S, T> { scopes: { label: string; value: S }[]; initial: S; extras?: SegRow<any>[]; note: (scope: S) => string; choices: (scope: S) => Choice<T>[]; /** 一颗跟范围走的小钮（选项行下面、动作钮上面）；点了和动作钮一样收 sheet、返回它的 value。null = 这个范围没有。 */ aux?: (scope: S) => Choice<T> | null; /** 一个勾（改了就 onChange，要记的话调用方自己记）。 */ check?: { label: string; checked: boolean; onChange: (checked: boolean) => void } }
 export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpts<S, T>): Promise<{ scope: S; value: T } | null> {
   _assertNotBusy("scoped-choice");
   return new Promise((resolve) => {
@@ -211,9 +211,13 @@ export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpt
     const seg = document.createElement("div"); seg.className = "sheet-seg"; seg.setAttribute("role", "radiogroup");
     const note = document.createElement("p"); note.className = "sheet-seg-note";
     const row = document.createElement("div"); row.className = "sheet-choice-row";
+    const auxBtn = document.createElement("button"); auxBtn.type = "button"; auxBtn.className = "sheet-aux hidden";
     const render = (): void => {
       Array.from(seg.children).forEach((b, i) => b.setAttribute("aria-checked", String(opts.scopes[i]!.value === scope)));
       note.textContent = opts.note(scope);
+      const ax = opts.aux?.(scope) ?? null;
+      auxBtn.classList.toggle("hidden", !ax); auxBtn.textContent = ax?.label ?? "";
+      auxBtn.onclick = ax ? () => { g.cancel().removeEventListener("click", onCancel); _hide(); ax.onPick?.(); resolve({ scope, value: ax.value }); } : null;
       row.replaceChildren();
       for (const c of opts.choices(scope)) {
         const btn = document.createElement("button");
@@ -244,6 +248,13 @@ export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpt
         seg2.appendChild(b);
       }
       mark(); line.append(lab, seg2); box.appendChild(line);
+    }
+    box.append(auxBtn);
+    if (opts.check) {
+      const ck = opts.check, lab = document.createElement("label"), inp = document.createElement("input"), sp = document.createElement("span");
+      lab.className = "sheet-check sheet-check-inline"; inp.type = "checkbox"; inp.checked = ck.checked; sp.textContent = ck.label;
+      inp.addEventListener("change", () => ck.onChange(inp.checked));
+      lab.append(inp, sp); box.appendChild(lab);
     }
     box.append(note, row);
     render();

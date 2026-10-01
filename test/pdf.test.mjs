@@ -153,14 +153,20 @@ describe("export/pdf-book 页面几何", () => {
     const withImg = mk({ cover: img }), paper = mk({}), draft = mk({ coverKind: "draft" });
     for (const p of [withImg, paper, draft]) eq(p.pageCount, 2);
     const t = (p) => p.doc.pages[0].ops.filter((o) => o.op === "text");
-    const outline = t(withImg).filter((o) => o.noFill), cells = t(withImg).filter((o) => !o.noFill && o.text !== "20250829");
-    eq(cells.map((o) => o.text).join(""), title, "one op per character, in reading order"); assert(outline.length === cells.length + 1 && outline.every((o) => o.stroke && o.stroke.width > 0), "outlined over the image (title + date), outline pass first");
-    assert(t(withImg).findIndex((o) => !o.noFill) > t(withImg).map((o) => !!o.noFill).lastIndexOf(true), "all outlines come before all fills");
-    { const bytes = new TextDecoder("latin1").decode(writePdf(withImg.doc, font)); assert(/\/F2 \d+ 0 R/.test(bytes), "outline pass uses its own font name"); assert(!/\/F2 \d+ 0 R/.test(new TextDecoder("latin1").decode(writePdf(paper.doc, font))), "no /F2 when nothing is outlined"); }
+    const cells = t(withImg).filter((o) => o.text !== "20250829");
+    eq(cells.map((o) => o.text).join(""), title, "one op per character, in reading order");
+    // 有图：字底下垫半透明的纸（书名一列一块 + 日期一块），画在图之后、字之前；没有描边
+    { const ops = withImg.doc.pages[0].ops, pads = ops.filter((o) => o.op === "rect" && o.alpha != null);
+      eq(pads.length, 2, "one pad for the title column, one for the date"); assert(pads.every((o) => o.alpha === 0.78));
+      const iImg = ops.findIndex((o) => o.op === "image"), iPad = ops.findIndex((o) => o.op === "rect" && o.alpha != null), iTxt = ops.findIndex((o) => o.op === "text");
+      assert(iImg < iPad && iPad < iTxt, "image, then pads, then text");
+      const col = pads[0]; for (const c of cells) assert(c.x >= col.x - 0.01 && c.x + c.size <= col.x + col.w + 0.01 && c.y <= col.y + col.h && c.y - c.size * 0.9 >= col.y - 0.01, "every title glyph sits on the pad");
+      const bytes = new TextDecoder("latin1").decode(writePdf(withImg.doc, font)); assert(/\/ExtGState << \/GS78 << \/ca 0\.78 >> >>/.test(bytes), "transparency state declared on the page");
+      assert(!/\/ExtGState/.test(new TextDecoder("latin1").decode(writePdf(paper.doc, font))), "no transparency when there is no image"); }
     assert(cells.every((o, i) => i === 0 || (Math.abs(o.x - cells[0].x) < 0.01 && o.y > cells[i - 1].y)), "one column, top to bottom");
     assert(cells[0].x > geo.w * 0.7, "the column sits at the right");
-    eq(t(withImg).filter((o) => o.text === "20250829" && !o.noFill).length, 1); assert(withImg.doc.pages[0].ops.some((o) => o.op === "image"));
-    assert(t(paper).every((o) => !o.stroke), "no outline on paper"); assert(!paper.doc.pages[0].ops.some((o) => o.op === "image"));
+    eq(t(withImg).filter((o) => o.text === "20250829").length, 1); assert(withImg.doc.pages[0].ops.some((o) => o.op === "image"));
+    assert(!paper.doc.pages[0].ops.some((o) => o.op === "image") && !paper.doc.pages[0].ops.some((o) => o.op === "rect" && o.alpha != null), "paper cover: no image, no pads");
     const rects = (p) => p.doc.pages[0].ops.filter((o) => o.op === "rect");
     eq(rects(paper).length, 3, "page bg + cover paper + spine"); assert(rects(paper)[2].w < geo.w * 0.06 && rects(paper)[2].x === 0, "spine on the left");
     eq(rects(draft).length, 2, "a draft is a plain sheet: no spine");
@@ -188,6 +194,31 @@ describe("export/pdf-book 页面几何", () => {
     const real = planPdfBook({ title: "t", date: null, cover: null, front: true, sections: [{ kind: "text", heading: "混排", text: mixed }], look, typeset: ts, font }).pageCount;
     const est = estimatePdfPages([{ kind: "text", heading: "混排", text: mixed }], ts, true);
     assert(Math.abs(est - real) <= Math.max(1, real * 0.1), `est ${est} vs real ${real}`);
+  });
+  it("落款（导出时间）印在最后一页左下角；coverTitle 只换封面上的名字；created 写进文档信息", () => {
+    const ts = typesetFor(14), geo = pdfPageGeometry(ts); const img = { jpeg: new Uint8Array([0xff, 0xd8]), w: 600, h: 900, components: 3 };
+    const plan = planPdfBook({ title: "书 · 第一章", coverTitle: "第一章", date: null, cover: img, stamp: "2026-10-01 03:12 导出", sections: [{ kind: "text", heading: null, text: guo.repeat(14 * geo.linesPerPage * 2) }], look, typeset: ts, font });
+    const last = plan.doc.pages.at(-1).ops.filter((o) => o.op === "text"); const st = last.find((o) => o.text === "2026-10-01 03:12 导出");
+    assert(st && Math.abs(st.x - geo.side) < 0.01 && st.y > geo.h - geo.bottom && st.size < PDF_FONT_PT, JSON.stringify(st));
+    const num = last.find((o) => /^\d+$/.test(o.text)); const stEnd = st.x + [...st.text].length * st.size; assert(stEnd < num.x || [...st.text].length * st.size * 0.6 + st.x < num.x, "does not run into the page number");
+    for (const pg of plan.doc.pages.slice(0, -1)) assert(!pg.ops.some((o) => o.op === "text" && /导出/.test(o.text)), "only on the last page");
+    eq(plan.doc.pages[0].ops.filter((o) => o.op === "text").map((o) => o.text).join(""), "第一章", "cover prints coverTitle"); eq(plan.doc.title, "书 · 第一章");
+    const d = new Date(2026, 9, 1, 3, 12, 5); plan.doc.created = d;
+    assert(/\/CreationDate \(D:20261001031205[+-]\d\d'\d\d'\)/.test(new TextDecoder("latin1").decode(writePdf(plan.doc, font))), "CreationDate");
+  });
+  it("书签有层级：按 level 嵌套（父 / 子 / 兄弟链 + Count），和目录树同一个结构；不给 level = 平铺", () => {
+    const ts = typesetFor(20); const mk = (levels) => planPdfBook({ title: "t", date: null, cover: null, front: false, sections: levels.map((lv, i) => ({ kind: "text", heading: "H" + i, text: guo, ...(lv ? { level: lv } : {}) })), look, typeset: ts, font });
+    const plan = mk([0, 1, 2, 1, 0, 1]);   // H0 > (H1 > H2, H3), H4 > H5
+    eq(plan.doc.outline.map((o) => o.level ?? 0).join(), "0,1,2,1,0,1");
+    const pdf = new TextDecoder("latin1").decode(writePdf(plan.doc, font));
+    const objs = [...pdf.matchAll(/\n(\d+) 0 obj\n<< \/Title <([0-9A-F]+)> \/Parent (\d+) 0 R([^\n]*)>>/g)].map((m) => ({ id: +m[1], title: m[2], parent: +m[3], rest: m[4] }));
+    eq(objs.length, 6); const title = (i) => "FEFF" + [..."H" + i].map((c) => c.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")).join("");
+    const by = (i) => objs.find((o) => o.title === title(i)); const root = by(0).parent;
+    eq(by(4).parent, root); eq(by(1).parent, by(0).id); eq(by(2).parent, by(1).id); eq(by(3).parent, by(0).id); eq(by(5).parent, by(4).id);
+    assert(new RegExp(`/First ${by(1).id} 0 R /Last ${by(3).id} 0 R /Count 3`).test(by(0).rest), by(0).rest); assert(new RegExp(`/Next ${by(4).id} 0 R`).test(by(0).rest));
+    assert(new RegExp(`/Next ${by(3).id} 0 R`).test(by(1).rest) && new RegExp(`/Prev ${by(1).id} 0 R`).test(by(3).rest) && !/\/First/.test(by(3).rest));
+    assert(new RegExp(`${root} 0 obj\\n<< /Type /Outlines /First ${by(0).id} 0 R /Last ${by(4).id} 0 R /Count 6`).test(pdf), "root links the two top-level items");
+    const flat = new TextDecoder("latin1").decode(writePdf(mk([0, 0, 0]).doc, font)); assert(!/\/Title <[0-9A-F]+> \/Parent \d+ 0 R[^\n]*\/First/.test(flat), "no level → flat");
   });
   it("章节名占整数行：有章节名的页少 3 行", () => {
     const ts = typesetFor(20), geo = pdfPageGeometry(ts);

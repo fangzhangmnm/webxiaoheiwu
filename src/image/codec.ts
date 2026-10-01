@@ -55,9 +55,9 @@ export async function encodePng(rgba: Uint8ClampedArray, w: number, h: number, c
 //   字体 = 调用方给的 family 字符串（此刻是编辑器的系统字体栈；将来 vendor 自己的字体 = 先 FontFace 装上再给名字），本模块不认识字体文件。
 export interface TextStyle { family: string; sizePx: number; weight?: number | string; color: string }
 export type SceneOp =
-  | { op: "rect"; x: number; y: number; w: number; h: number; color: string }
+  | { op: "rect"; x: number; y: number; w: number; h: number; color: string; /** 不透明度 0..1（缺省 1） */ alpha?: number }
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: string; width: number }
-  | { op: "text"; x: number; y: number; text: string; style: TextStyle; align?: "left" | "center" | "right"; /** 顺时针转 90°（以 x, y 为轴） */ rotate?: 90; /** 先描一圈边再填 */ stroke?: { color: string; width: number } }   // y = 基线
+  | { op: "text"; x: number; y: number; text: string; style: TextStyle; align?: "left" | "center" | "right"; /** 顺时针转 90°（以 x, y 为轴） */ rotate?: 90 }   // y = 基线
   | { op: "image"; x: number; y: number; w: number; h: number; blob: Blob; crop?: { sx: number; sy: number; sw: number; sh: number } };
 export interface TextMeasurer { width(text: string, style: TextStyle): number; ascent(style: TextStyle): { asc: number; desc: number }; /** 汉字本体的墨迹上下伸（量「国」；不看字体自报的 ascent——注音字体会把拼音带算进去，各平台取的表还不一样）。 */ ink(style: TextStyle): { asc: number; desc: number } }
 const fontString = (st: TextStyle): string => `${st.weight ?? 400} ${st.sizePx}px ${st.family}`;
@@ -98,15 +98,12 @@ export async function paintScene(w: number, h: number, bg: string, ops: SceneOp[
   cx.fillStyle = bg; cx.fillRect(0, 0, w, h);
   cx.imageSmoothingEnabled = true; (cx as CanvasRenderingContext2D & { imageSmoothingQuality?: string }).imageSmoothingQuality = "high";
   for (const o of ops) {
-    if (o.op === "rect") { cx.fillStyle = o.color; cx.fillRect(o.x, o.y, o.w, o.h); }
+    if (o.op === "rect") { cx.fillStyle = o.color; if (o.alpha != null && o.alpha < 1) { cx.save(); cx.globalAlpha = Math.max(0, o.alpha); cx.fillRect(o.x, o.y, o.w, o.h); cx.restore(); } else cx.fillRect(o.x, o.y, o.w, o.h); }
     else if (o.op === "line") { cx.strokeStyle = o.color; cx.lineWidth = o.width; cx.beginPath(); cx.moveTo(o.x1, o.y1); cx.lineTo(o.x2, o.y2); cx.stroke(); }
     else if (o.op === "text") {
       cx.font = fontString(o.style); cx.fillStyle = o.style.color; cx.textAlign = o.align ?? "left"; cx.textBaseline = "alphabetic";
-      if (o.rotate || o.stroke) {
-        cx.save(); cx.translate(o.x, o.y); if (o.rotate === 90) cx.rotate(Math.PI / 2);
-        if (o.stroke) { cx.lineJoin = "round"; cx.lineWidth = o.stroke.width * 2; cx.strokeStyle = o.stroke.color; cx.strokeText(o.text, 0, 0); }
-        cx.fillText(o.text, 0, 0); cx.restore();
-      } else cx.fillText(o.text, o.x, o.y);
+      if (o.rotate === 90) { cx.save(); cx.translate(o.x, o.y); cx.rotate(Math.PI / 2); cx.fillText(o.text, 0, 0); cx.restore(); }
+      else cx.fillText(o.text, o.x, o.y);
     }
     else {
       const src = await decodeBlob(o.blob);

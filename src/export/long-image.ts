@@ -40,10 +40,16 @@ export interface LongImageSpec {
   cover: ImageRef | null;
   /** 封面 + 书名 + 日期那一段。整本 / 整篇才有；false = 从第一页的章节名直接开始（这一页 / 这一支；user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）。缺省 true。 */
   front?: boolean;
-  /** 封面图上那层字的颜色（书架封面那一套）：墨色 + 一圈描边。不给 = 深褐字、白描边。 */
-  coverLook?: { ink: string; halo: string };
+  /** 封面图上那层字（书架封面那一套）：墨色的字，底下垫一块半透明的纸。不给 = 深褐字、米色纸。 */
+  coverLook?: { ink: string; paper: string };
   /** 正文字体是注音字体 → 封面书名每个字头上给拼音留位置。 */
   ruby?: boolean;
+  /** 要藏进图片文件里的文字（和「复制文字」同一份）。排版不用它；调用方落完像素之后塞进文件的元数据（image/embed-text.ts）。不给 = 不嵌。 */
+  embedText?: string;
+  /** 落款（导出时间之类的一小段字）：印在页脚，书名后面。不给 = 不印。 */
+  stamp?: string;
+  /** 封面上印的名字；不给 = title（「这一支」带封面时：页脚 / 文件名用「书名 · 页名」，封面上只印页名）。 */
+  coverTitle?: string;
   /** 注音字体：把一行字换成「带读音标记」的同一行（多音字后面补变体选择符，见 ttf.ts annotate）。折行、量宽都用原文，只有画的时候用它的结果；
    *  before / after = 同一段里上一行的尾、下一行的头（词被折行拆开时靠它选对读音）。不给 = 原样画。 */
   annotate?: (before: string, line: string, after: string) => string;
@@ -159,12 +165,12 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
     // 有封面图：书名和日期压在图上（和书架上那张封面同一套排法，cover-title.ts；user 2026-10-01「封面要不要和书架的封面对齐？就是也有字」「好，两个做」）
     const img = spec.cover; let h = Math.round(W * img.h / img.w); let crop: { sx: number; sy: number; sw: number; sh: number } | undefined;
     const cap = Math.round(W * 1.5); if (h > cap) { const sh = img.w * cap / W; crop = { sx: 0, sy: (img.h - sh) / 2, sw: img.w, sh }; h = cap; }
-    const cl = spec.coverLook ?? { ink: "#43382c", halo: "#ffffff" }; const cs = (sizePx: number): TextStyle => ({ family: look.family, sizePx, color: cl.ink });
-    const lay = layoutCoverTitle({ title: spec.title, date: spec.date, W, H: h, spine: false, width: (t, s) => m.width(t, cs(s)), ink: (s) => m.ink(cs(s)), wrap: (t, maxW, s) => wrapText(t, maxW, cs(s), m), ruby: spec.ruby ? 0.42 : 0 });
-    const stroke = { color: cl.halo, width: Math.max(1.5, W * 0.006) };
+    const cl = spec.coverLook ?? { ink: "#43382c", paper: "#e9e3d5" }; const cs = (sizePx: number): TextStyle => ({ family: look.family, sizePx, color: cl.ink });
+    const lay = layoutCoverTitle({ title: spec.coverTitle ?? spec.title, date: spec.date, W, H: h, spine: false, width: (t, s) => m.width(t, cs(s)), ink: (s) => m.ink(cs(s)), wrap: (t, maxW, s) => wrapText(t, maxW, cs(s), m), ruby: spec.ruby ? 0.42 : 0 });
     rows.push({ kind: "cover", h, ops: (y) => [
       { op: "image", x: 0, y, w: W, h, blob: img.blob, ...(crop ? { crop } : {}) },
-      ...[...lay.cells, ...(lay.date ? [lay.date] : [])].map((c): SceneOp => ({ op: "text", x: c.x, y: y + c.y, text: spec.annotate ? spec.annotate(c.before ?? "", c.text, c.after ?? "") : c.text, style: cs(c.size), ...(c.rotate ? { rotate: c.rotate } : {}), stroke })),
+      ...lay.pads.map((r): SceneOp => ({ op: "rect", x: Math.round(r.x), y: Math.round(y + r.y), w: Math.round(r.w), h: Math.round(r.h), color: cl.paper, alpha: 0.78 })),
+      ...[...lay.cells, ...(lay.date ? [lay.date] : [])].map((c): SceneOp => ({ op: "text", x: c.x, y: y + c.y, text: spec.annotate ? spec.annotate(c.before ?? "", c.text, c.after ?? "") : c.text, style: cs(c.size), ...(c.rotate ? { rotate: c.rotate } : {}) })),
     ] });
     space(40);
   } else if (spec.front !== false) {
@@ -221,7 +227,7 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
     const h = TOP + g.reduce((a, r) => a + r.h, 0) + BOTTOM + FOOT;
     const ops: SceneOp[] = [];
     let y = TOP; for (const r of g) { ops.push(...r.ops(y)); y += r.h; }
-    const foot = n > 1 ? `${spec.title} · ${spec.sliceLabel(i + 1, n)}` : spec.title;
+    const foot = [spec.title, spec.stamp, n > 1 ? spec.sliceLabel(i + 1, n) : ""].filter((x) => !!x).join(" · ");
     ops.push({ op: "text", x: W - SIDE, y: h - BOTTOM - FOOT + baseline(0, FOOT, smallM), text: foot, style: small, align: "right" });
     return { w: W, h, ops, hasImage: g.some((r) => r.kind === "image" || r.kind === "cover" && r.ops(0).some((o) => o.op === "image")) };
   });

@@ -23,7 +23,8 @@ export type SceneOp = {
     y: number;
     w: number;
     h: number;
-    color: string;
+    color: string; /** 不透明度 0..1（缺省 1） */
+    alpha?: number;
 } | {
     op: "line";
     x1: number;
@@ -39,11 +40,7 @@ export type SceneOp = {
     text: string;
     style: TextStyle;
     align?: "left" | "center" | "right"; /** 顺时针转 90°（以 x, y 为轴） */
-    rotate?: 90; /** 先描一圈边再填 */
-    stroke?: {
-        color: string;
-        width: number;
-    };
+    rotate?: 90;
 } | {
     op: "image";
     x: number;

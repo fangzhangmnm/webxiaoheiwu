@@ -23,10 +23,11 @@ import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./pr
 import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
 import { parseTtf, NotTrueTypeError, type TtfFont } from "./export/ttf.ts";
 import { installSansFont, installFont, loadFontBytes, FONT_FAMILY, type FontId } from "./fonts.ts";
+import { embedTextPng, embedTextJpeg } from "./image/embed-text.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
 import { planPdfBook, estimatePdfPages, type PdfSection, type CoverLook } from "./export/pdf-book.ts";
 import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
-import { seedBook, treeChildren } from "./project/graph.ts";
+import { seedBook, treeChildren, treePath } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
@@ -526,7 +527,7 @@ async function ensureExportFont(): Promise<boolean> {
   if (!ok) setStatus(t("export.fontFailed"), { error: true });
   return ok;
 }
-type ExportFormat = "text" | "image" | "pdf";
+type ExportFormat = "text" | "image" | "pdf" | "cover";
 /** 导出 sheet（v2.3.17，user 2026-10-01「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：范围和格式是两条正交的轴——
  *  一条段选定范围（这一页 / 这一支 / 整本；txt 稿只有整篇，不画段选）+ 一条段选定长图 / PDF 的行宽（v2.3.19）+ 三个钮定格式（复制文字 / 长图 / PDF）。一层 sheet。
  *  以前是五个钮（复制只有这一页、长图三个范围各一个钮、PDF 再弹第二层选范围）。「这一支」只在这页底下真有子页时才露（否则和这一页是同一件事）。
@@ -554,11 +555,54 @@ async function exportSheetFlow(): Promise<void> {
   const choices = (scope: LongImageScope): Choice<ExportFormat>[] => [
     { label: t(scope === "page" && inBook && project.currentKind() === "image" ? "export.fmt.copyImage" : "export.fmt.text"), value: "text", primary: true },
     { label: t("export.fmt.image"), value: "image" }, { label: t("export.fmt.pdf"), value: "pdf" }];
-  const r = await openScopedChoiceSheet<LongImageScope, ExportFormat>(t("export.title"), { scopes, initial: inBook ? "page" : "draft", extras, note, choices });
+  // 这一页 / 这一支可以另指一张图片页当封面（v2.3.25，user 2026-10-01「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）：书里有图片页才露这颗钮；选完回到这张 sheet
+  const hasImages = !!s && [...s.project.nodes.keys()].some((n) => nodeKind(n) === "image");
+  const aux = (scope: LongImageScope): Choice<ExportFormat> | null => {
+    if (!cur || !hasImages || (scope !== "page" && scope !== "branch")) return null;
+    const pc = partCoverOf(cur);
+    return { label: pc ? t("export.partCover", { name: nodeDisplayName(pc) }) : t("export.partCoverNone"), value: "cover" };
+  };
+  let scope0: LongImageScope = inBook ? "page" : "draft";
+  for (;;) {
+    extras[0]!.initial = exportCharsPref(); extras[1]!.initial = exportFontPref();
+    const check = { label: t("export.embedText"), checked: exportEmbedPref(), onChange: (v: boolean) => setExportEmbed(v) };
+    const r: { scope: LongImageScope; value: ExportFormat } | null = await openScopedChoiceSheet<LongImageScope, ExportFormat>(t("export.title"), { scopes, initial: scope0, extras, note, choices, aux, check });
+    if (!r) return;
+    if (r.value === "cover") { if (cur) await pickPartCoverFlow(cur); scope0 = r.scope; continue; }
+    if (r.value === "text") await copyScopeText(r.scope);
+    else if (r.value === "image") await exportLongImageFlow(r.scope);
+    else await exportPdfFlow(r.scope);
+    return;
+  }
+}
+/** 「这一页 / 这一支」导出用的封面：起点页 → 图片页，记在这本书的 editor-state（exportCovers；随保存写、不标脏）。指的页没了 / 不是图片 → 当没有。 */
+function partCoverOf(root: string): string | null {
+  const s = project.session(); const v = s?.project.editorState.exportCovers?.[root];
+  return v && s!.project.contents.has(v) && nodeKind(v) === "image" ? v : null;
+}
+function setPartCover(root: string, img: string | null): void {
+  const s = project.session(); if (!s) return;
+  const m = { ...(s.project.editorState.exportCovers ?? {}) };
+  if (img) m[root] = img; else delete m[root];
+  if (Object.keys(m).length) s.project.editorState.exportCovers = m; else delete s.project.editorState.exportCovers;
+}
+const PART_COVER_NONE = "\u0000none";
+async function pickPartCoverFlow(root: string): Promise<void> {
+  const s = project.session(); if (!s) return;
+  const inBranch = new Set(s.branchOrder(root));
+  const images = [...s.project.nodes.keys()].filter((n) => nodeKind(n) === "image").sort((x, y) => Number(inBranch.has(y)) - Number(inBranch.has(x)));   // 这一支里的图排前面
+  const r = await openPickSheet<string, "use" | "none">(t("export.partCoverTitle", { name: nodeDisplayName(root) }), {
+    message: t("export.partCoverMsg"), placeholder: t("export.partCoverPh"), emptyText: t("edge.noResults"),
+    search: (q) => [{ value: PART_COVER_NONE, label: t("export.partCoverNoneRow") }, ...images.filter((n) => !q.trim() || nodeDisplayName(n).toLowerCase().includes(q.trim().toLowerCase())).map((n) => ({ value: n, label: nodeDisplayName(n), icon: "image" }))],
+    actions: (row) => (row.value === PART_COVER_NONE ? [{ id: "none", label: t("export.partCoverClear"), primary: true }] : [{ id: "use", label: t("export.partCoverUse"), primary: true }]),
+  });
   if (!r) return;
-  if (r.value === "text") await copyScopeText(r.scope);
-  else if (r.value === "image") await exportLongImageFlow(r.scope);
-  else await exportPdfFlow(r.scope);
+  setPartCover(root, r.action === "use" ? r.value : null);
+}
+/** 落款：导出时间（本机时间，到分钟）。user 2026-10-01「导出图片和pdf应该能写一下导出时间」。 */
+function exportStamp(): string {
+  const d = new Date(), p2 = (v: number): string => String(v).padStart(2, "0");
+  return t("export.stamp", { time: `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}` });
 }
 /** 这个范围出门的量（hidden 的支不算）：正文页的字 / 词、正文页数、图片页数。没有可导出的 → null。 */
 function scopeStats(scope: LongImageScope): { cjk: number; en: number; pages: number; images: number; /** 出 PDF 大约多少页（估的，不排版） */ pdfPages: number } | null {
@@ -567,14 +611,26 @@ function scopeStats(scope: LongImageScope): { cjk: number; en: number; pages: nu
   for (const it of src.items) { if (it.kind === "image") { images++; continue; } const st = statsForText(it.text); cjk += st.cjk; en += st.en; pages++; }
   return { cjk, en, pages, images, pdfPages: estimatePdfPages(src.items, currentTypeset(), src.front) };
 }
+/** 这份东西的纯文字：正文页按顺序拼，页与页之间空一行（「复制文字」和嵌进长图的是同一份）。 */
+function plainTextOf(src: ExportSource): string {
+  return src.items.flatMap((it) => (it.kind === "text" ? [it.text.replace(/\s+$/, "")] : [])).join("\n\n") + "\n";
+}
+/** 长图里附不附文字（藏在图片文件的元数据里；v2.3.25，user 2026-10-01「能不能把文字给顺便嵌入到png里面，jpeg能嵌入吗」「就是导出剪切板的文字，然后也可以选择不嵌入」）。
+ *  缺省附。关掉记进这本书 editor-state 的 exportEmbedText: false；txt 稿只记到这次打开。 */
+let draftExportEmbed = true;
+function exportEmbedPref(): boolean { return project.active() ? project.session()?.project.editorState.exportEmbedText !== false : draftExportEmbed; }
+function setExportEmbed(on: boolean): void {
+  const s = project.active() ? project.session() : null;
+  if (s) { if (on) delete s.project.editorState.exportEmbedText; else s.project.editorState.exportEmbedText = false; }
+  else draftExportEmbed = on;
+}
 /** 「复制文字」：这一页 / 整篇 = v2.1.9 那一下（图片页 = 图片本身）；这一支 / 整本 = 正文页按目录顺序拼成一篇（和「导出这一支」的 txt 同一种拼法：只拼正文、页与页之间空一行）。 */
 async function copyScopeText(scope: LongImageScope): Promise<void> {
   if (scope === "page" || scope === "draft") { await copyCurrentPage(); return; }
-  const src = collectExport(scope);
-  const texts = (src?.items ?? []).flatMap((it) => (it.kind === "text" ? [it.text.replace(/\s+$/, "")] : []));
-  if (!texts.length) { setStatus(t("export.empty")); return; }
-  const text = texts.join("\n\n") + "\n";
-  try { await writeClipboardText(text); const st = statsForText(text); setStatus(t("copy.doneScope", { cjk: st.cjk, en: st.en, pages: texts.length })); }
+  const src = collectExport(scope); const pages = (src?.items ?? []).filter((it) => it.kind === "text").length;
+  if (!src || !pages) { setStatus(t("export.empty")); return; }
+  const text = plainTextOf(src);
+  try { await writeClipboardText(text); const st = statsForText(text); setStatus(t("copy.doneScope", { cjk: st.cjk, en: st.en, pages })); }
   catch (e) { reportError(e, "log"); setStatus(t("copy.failed", { e: errText(e) }), { error: true }); }
 }
 /** 编辑器贡献的「样子」（字体栈、纸色墨色、写字线）；字号档 / 框宽 / 行距不抄（字号档是每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样；行距跟导出档走）。 */
@@ -591,7 +647,7 @@ function editorLook(): LongImageLook {
 /** 封面的配色 = 书架封面那一套（styles.css --cover-*，跟主题走）；txt 稿是一张纸（--cover-sheet*）。 */
 function coverLook(kind: "book" | "draft"): CoverLook {
   const root = getComputedStyle(document.documentElement); const c = (name: string, fb: string): string => resolveCssColor(root.getPropertyValue(name).trim() || fb, fb);
-  return { paper: kind === "draft" ? c("--cover-sheet", "#f4f2ec") : c("--cover-paper", "#e9e3d5"), ink: kind === "draft" ? c("--cover-sheet-ink", "#4d4a44") : c("--cover-ink", "#43382c"), inkSoft: c("--cover-ink-soft", "#857b6a"), spine: c("--cover-spine", "#d2c9b5"), spineEdge: c("--cover-spine-edge", "#c2b8a2"), halo: "#ffffff" };
+  return { paper: kind === "draft" ? c("--cover-sheet", "#f4f2ec") : c("--cover-paper", "#e9e3d5"), ink: kind === "draft" ? c("--cover-sheet-ink", "#4d4a44") : c("--cover-ink", "#43382c"), inkSoft: c("--cover-ink-soft", "#857b6a"), spine: c("--cover-spine", "#d2c9b5"), spineEdge: c("--cover-spine-edge", "#c2b8a2") };
 }
 /** 让浏览器把一个 CSS 颜色写法（变量里可能是 color-mix() 之类）算成具体的颜色串。 */
 function resolveCssColor(value: string, fallback: string): string {
@@ -601,8 +657,8 @@ function resolveCssColor(value: string, fallback: string): string {
 }
 async function imageRef(bytes: Uint8Array): Promise<ImageRef> { const blob = new Blob([bytes as unknown as BlobPart]); const { w, h } = await probeSize(blob); return { blob, w, h }; }
 /** 导出的原料（长图 / PDF 共用）：txt 稿 = 整篇；书 = 这一页 / 这一支（子树 DFS）/ 整本（全树 DFS，散页不含；hidden 的支剪掉）；图片页原位；封面 = graph.json cover 指的那页的高清字节。 */
-type ExportItem = { kind: "text"; heading: string | null; text: string; /** 子节目录：这次一起出门的直接子页（target = items 里的序号） */ toc?: { label: string; target: number }[] } | { kind: "image"; bytes: Uint8Array };
-interface ExportSource { title: string; date: string | null; cover: Uint8Array | null; /** 封面 + 书名那一段：整本 / 整篇才有 */ front: boolean; /** 封面按书还是按 txt 稿画 */ kind: "book" | "draft"; /** 书名是没起名的消歧码（封面上用淡色印） */ soft: boolean; items: ExportItem[] }
+type ExportItem = { kind: "text"; heading: string | null; text: string; /** 在目录树里的层级，相对这次导出的起点（PDF 书签按它嵌套） */ level?: number; /** 子节目录：这次一起出门的直接子页（target = items 里的序号） */ toc?: { label: string; target: number }[] } | { kind: "image"; bytes: Uint8Array };
+interface ExportSource { title: string; date: string | null; cover: Uint8Array | null; /** 封面 + 书名那一段：整本 / 整篇才有 */ front: boolean; /** 封面上印的名字（不给 = title） */ coverTitle?: string; /** 封面按书还是按 txt 稿画 */ kind: "book" | "draft"; /** 书名是没起名的消歧码（封面上用淡色印） */ soft: boolean; items: ExportItem[] }
 function collectExport(scope: LongImageScope): ExportSource | null {
   if (scope === "draft") {
     const text = editorEl.value; if (!text.trim()) return null;
@@ -615,9 +671,10 @@ function collectExport(scope: LongImageScope): ExportSource | null {
   // hidden（2026-09-30；2026-10-01 user「导出当前支和本页的时候忽视本页的visibility，只看子叶的」）：点名的这一页一定出门——它自己藏没藏不看；这一支 = 它 + 底下没藏的；整本 = 剪掉所有 hidden 的支
   const names = scope === "page" ? [cur] : s.exportOrder(scope === "branch" ? cur : null);
   const items: ExportItem[] = []; const at = new Map<string, number>();   // 页名 → items 里的序号
+  const baseDepth = scope === "book" ? 1 : Math.max(1, treePath(s.project, cur).length);   // 层级从这次导出的起点算（整本 = 最外层的页是 0）
   for (const n of names) {
     const k = nodeKind(n);
-    if (k === "txt") { at.set(n, items.length); items.push({ kind: "text", heading: nodeDisplayName(n), text: readNodeText(s.project, n) ?? "" }); }
+    if (k === "txt") { at.set(n, items.length); const lv = Math.max(0, treePath(s.project, n).length - baseDepth); items.push({ kind: "text", heading: nodeDisplayName(n), text: readNodeText(s.project, n) ?? "", ...(lv ? { level: lv } : {}) }); }
     else if (k === "image") { const b = s.bytesOf(n); if (b) { at.set(n, items.length); items.push({ kind: "image", bytes: b }); } }
   }
   if (!items.length) return null;
@@ -630,7 +687,8 @@ function collectExport(scope: LongImageScope): ExportSource | null {
   }
   const stem = parseDocName(project.name() ?? "").stem; const { date, title } = splitDatedName(stem);
   // 书名和封面只属于整本（user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）：这一页 / 这一支从章节名直接开始；出处留在页脚小字和文件名里（书名 · 页名）
-  if (scope !== "book") return { title: `${title || stem} · ${nodeDisplayName(cur)}`, date: null, cover: null, front: false, kind: "book", soft: false, items };
+  //   v2.3.25：这一页 / 这一支可以另指一张图片页当封面（partCoverOf）——指了才有封面那一段，封面上印的是这一页的名字
+  if (scope !== "book") { const pc = partCoverOf(cur), pb = pc ? s.bytesOf(pc) : null; return { title: `${title || stem} · ${nodeDisplayName(cur)}`, date: null, cover: pb ?? null, front: !!pb, coverTitle: nodeDisplayName(cur), kind: "book", soft: false, items }; }
   const cp = project.coverPage(); const cb = cp && nodeKind(cp) === "image" ? s.bytesOf(cp) : null;
   return { title: title || stem, date, cover: cb ?? null, front: true, kind: "book", soft: date != null && isCodeTitle(title), items };
 }
@@ -642,7 +700,7 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
   if (pin) look.family = `"${FONT_FAMILY.pinyin}", ${look.family}`;   // 拼音字体里没有的字落回黑体 / 系统字体
   // canvas 画字不做「按词选读音」那一步（实测）→ 用自己的排字结果把读音写成变体选择符，canvas 认这个
   const ctxOf = pin ? { annotate: (before: string, line: string, after: string): string => pin.font.annotate(line, before, after) } : {};
-  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, coverLook: { ink: "#43382c", halo: "#ffffff" }, ruby: !!pin, ...ctxOf, sections, look, typeset: currentTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
+  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, ...(src.coverTitle ? { coverTitle: src.coverTitle } : {}), stamp: exportStamp(), ...(exportEmbedPref() ? { embedText: plainTextOf(src) } : {}), coverLook: { ink: coverLook("book").ink, paper: coverLook("book").paper }, ruby: !!pin, ...ctxOf, sections, look, typeset: currentTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
 }
 /** 文件尺寸（user 2026-09-30「用高压」「默认jpg行吗…是否用jpg你可以pushback」）：按内容定不按阈值猜——纯文字的那张 = 调色板 PNG（256 色；纸底大面积同色，比 JPEG 更小也更锐，微信再压一次也不糊）；有照片（封面 / 插图页）的那张 = JPEG q82。 */
 const LONG_IMAGE_JPEG_QUALITY = 82;
@@ -652,7 +710,9 @@ async function encodeSlices(spec: LongImageSpec, plan: LongImagePlan): Promise<F
   for (let i = 0; i < plan.slices.length; i++) {
     const sl = plan.slices[i]!;
     const img = await paintScene(sl.w, sl.h, spec.look.paper, sl.ops);
-    const bytes = sl.hasImage ? await encodeJpeg(img.data, img.w, img.h, LONG_IMAGE_JPEG_QUALITY) : await encodePng(img.data, img.w, img.h, 256);
+    let bytes = sl.hasImage ? await encodeJpeg(img.data, img.w, img.h, LONG_IMAGE_JPEG_QUALITY) : await encodePng(img.data, img.w, img.h, 256);
+    // 文字藏进第一张的文件里（PNG = iTXt，JPEG = 注释段）：拿到原图的人能把字取出来；平台转存会剥掉
+    if (i === 0 && spec.embedText) bytes = sl.hasImage ? embedTextJpeg(bytes, spec.embedText) : embedTextPng(bytes, [{ keyword: "Title", text: spec.title }, { keyword: "Software", text: `WebXiaoHeiWu ${APP_VERSION}` }, { keyword: "Description", text: spec.embedText }]);
     const ext = sl.hasImage ? "jpg" : "png";
     files.push(new File([bytes as unknown as BlobPart], plan.slices.length > 1 ? `${base}-${i + 1}.${ext}` : `${base}.${ext}`, { type: sl.hasImage ? "image/jpeg" : "image/png" }));
   }
@@ -760,8 +820,8 @@ async function renderPdfFile(scope: LongImageScope, opts: { font?: Uint8Array } 
   const sections: PdfSection[] = [];
   for (const it of src.items) sections.push(it.kind === "text" ? it : { kind: "image", heading: null, image: await pdfImage(it.bytes) });
   const lk = editorLook();
-  const plan = planPdfBook({ title: src.title, date: src.date, cover: src.cover ? await pdfImage(src.cover) : null, front: src.front, coverLook: coverLook(src.kind), coverKind: src.kind, titleSoft: src.soft, sections, look: { paper: lk.paper, ink: lk.ink, inkSoft: lk.inkSoft, muted: lk.muted, rule: lk.rule, ...(lk.link ? { link: lk.link } : {}) }, typeset: currentTypeset(), font: f.font });
-  plan.doc.producer = `WebXiaoHeiWu ${APP_VERSION}`;
+  const plan = planPdfBook({ title: src.title, date: src.date, cover: src.cover ? await pdfImage(src.cover) : null, front: src.front, ...(src.coverTitle ? { coverTitle: src.coverTitle } : {}), stamp: exportStamp(), coverLook: coverLook(src.kind), coverKind: src.kind, titleSoft: src.soft, sections, look: { paper: lk.paper, ink: lk.ink, inkSoft: lk.inkSoft, muted: lk.muted, rule: lk.rule, ...(lk.link ? { link: lk.link } : {}) }, typeset: currentTypeset(), font: f.font });
+  plan.doc.producer = `WebXiaoHeiWu ${APP_VERSION}`; plan.doc.created = new Date();
   const stats: PdfStats = { glyphs: 0, missing: [], fontBytes: 0 };
   const bytes = writePdf(plan.doc, f.font, { stats });
   const name = (src.title || "export").replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
@@ -1973,4 +2033,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

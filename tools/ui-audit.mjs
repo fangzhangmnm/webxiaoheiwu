@@ -602,6 +602,37 @@ for (const [w, h] of sizes) {
       const back = await page.evaluate(async () => { const s = [...document.querySelectorAll("#sheetCancel")][0]; s?.click(); await new Promise((r) => setTimeout(r, 200)); const pdf = await window.__xhw.exportPdf("page"); return pdf?.fontLabel ?? null; });
       probe(tag, "back on 黑体: PDF embeds NotoSansSC again", /NotoSansSC/.test(back ?? ""), String(back));
       await ensureSidebar(true); await page.click("#edgeExport"); await wait(300); }
+    // v2.3.25：落款（导出时间）+ 文字藏进图片（可关，记进书）+ 这一页 / 这一支另指封面（记进书）
+    { const sheetState = () => page.evaluate(() => ({ aux: document.querySelector("#sheetChoices .sheet-aux:not(.hidden)")?.textContent ?? null, check: document.querySelector("#sheetChoices .sheet-check-inline input")?.checked ?? null, scope: [...document.querySelectorAll("#sheetChoices > .sheet-seg .sheet-seg-btn")].find((b) => b.getAttribute("aria-checked") === "true")?.textContent ?? "" }));
+      const pickScope = async (re) => { await page.evaluate((r) => [...document.querySelectorAll("#sheetChoices > .sheet-seg .sheet-seg-btn")].find((b) => new RegExp(r).test(b.textContent))?.click(), re.source); await wait(150); };
+      const a = await sheetState();
+      probe(tag, "export sheet (book with image pages): 这一页 shows a 封面：无 button and a checked 附上文字 box; 整本 has no cover button", a.scope === "这一页" && /封面：无/.test(a.aux ?? "") && a.check === true && await (async () => { await pickScope(/整本/); const b = await sheetState(); await pickScope(/这一页/); return b.aux === null; })(), JSON.stringify(a));
+      const head = (f) => page.evaluate(async (font) => { window.__xhw.setExportFont(font); const r = await window.__xhw.exportLongImage("page"); const b = new Uint8Array(await r.files[0].arrayBuffer()); const txt = new TextDecoder("latin1").decode(b.subarray(0, Math.min(b.length, 200000))); const foot = r.plan.slices.at(-1).ops.filter((o) => o.op === "text").at(-1).text; return { type: r.files[0].type, embedded: /iTXtDescription/.test(txt) || (b[0] === 0xff && [...txt.matchAll(/\xff\xfe/g)].length > 0), foot, coverOps: r.plan.slices[0].ops.filter((o) => o.op === "image").length, h: r.plan.totalHeight }; }, f);
+      await page.click("#sheetCancel"); await wait(200);
+      const cur = await page.evaluate(() => window.__xhw.project.current());
+      const txtPage = await page.evaluate(() => { const p = window.__xhw.project, s = p.session(); return [...s.project.nodes.keys()].find((k) => /\.txt$/i.test(k) && (s.project.contents.get(k)?.length ?? 0) > 0) ?? null; });
+      if (txtPage) { await page.evaluate((n) => window.__xhw.project.jump(n), txtPage); await wait(250); }
+      const on = await head("sans");
+      probe(tag, "long image carries the export time in its footer and the text inside the file (default on)", /\d{4}-\d\d-\d\d \d\d:\d\d 导出$/.test(on.foot) && on.embedded, JSON.stringify(on));
+      await page.evaluate(() => window.__xhw.setExportEmbed(false));
+      const off = await head("sans");
+      probe(tag, "附上文字 off → stored in the book (exportEmbedText:false) and the file carries no text", !off.embedded && await page.evaluate(() => window.__xhw.project.session().project.editorState.exportEmbedText) === false, JSON.stringify(off));
+      await page.evaluate(() => window.__xhw.setExportEmbed(true));
+      probe(tag, "附上文字 back on → the field is dropped", await page.evaluate(() => !("exportEmbedText" in window.__xhw.project.session().project.editorState)));
+      // 另指封面：用真的 pick sheet 走一遍
+      await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
+      await page.click("#sheetChoices .sheet-aux"); await wait(350);
+      const rows = await page.evaluate(() => [...document.querySelectorAll("#sheetPick li[role=option] span")].map((e) => e.textContent));
+      await page.evaluate(() => [...document.querySelectorAll("#sheetPick li[role=option]")].find((li) => /\.(png|jpe?g)$/i.test(li.querySelector("span")?.textContent ?? ""))?.querySelector("button")?.click()); await wait(200);
+      await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].find((b) => /用作封面/.test(b.textContent))?.click()); await wait(400);
+      const b2 = await sheetState(); const pageNow = await page.evaluate(() => window.__xhw.project.current());
+      probe(tag, "封面 button → pick sheet lists 不要封面 + the image pages; picking one stores it for this page and returns to the export sheet showing 封面：<页名>", rows[0] === "不要封面" && rows.length >= 2 && /封面：.+\.(png|jpe?g)/i.test(b2.aux ?? "") && await page.evaluate((n) => !!window.__xhw.partCoverOf(n), pageNow), JSON.stringify({ rows, b2 }));
+      await page.click("#sheetCancel"); await wait(200);
+      const withCover = await head("sans");
+      const pdfN = await page.evaluate(async () => { const a = await window.__xhw.exportPdf("page"); window.__xhw.setPartCover(window.__xhw.project.current(), null); const b = await window.__xhw.exportPdf("page"); return { with: a.pages, without: b.pages }; });
+      probe(tag, "with a cover picked: the 这一页 long image starts with the cover image and is taller; its PDF gains exactly one cover page; clearing it restores both", withCover.coverOps >= 1 && withCover.h > on.h && pdfN.with === pdfN.without + 1 && await page.evaluate(() => !window.__xhw.project.session().project.editorState.exportCovers), JSON.stringify({ withCover, pdfN, onH: on.h }));
+      await page.evaluate((n) => window.__xhw.project.jump(n), cur); await wait(200);
+      await ensureSidebar(true); await page.click("#edgeExport"); await wait(300); }
     await page.click("#sheetCancel").catch(() => {}); await page.keyboard.press("Escape"); await wait(200);
     await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="20"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }); await wait(100); }
   // hidden（v2.3.2，user 2026-09-30「和unity一样，parent hidden -> all child hidden」）：藏当前页 → 自己的旗子 + 纸上眼睛 + 侧栏行 hidden-self + 整本长图少它 + 这一页长图为空；取消 → 复原

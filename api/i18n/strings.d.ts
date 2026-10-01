@@ -2192,6 +2192,46 @@ export declare const S: {
         readonly zh: "这款字体有一部分选读音的规则本 app 不认识，个别多音字的拼音可能不对";
         readonly en: "Some of this font’s reading-selection rules aren’t supported here; a few polyphone readings may be wrong";
     };
+    readonly "export.stamp": {
+        readonly zh: "{time} 导出";
+        readonly en: "exported {time}";
+    };
+    readonly "export.partCover": {
+        readonly zh: "封面：{name}";
+        readonly en: "Cover: {name}";
+    };
+    readonly "export.partCoverNone": {
+        readonly zh: "封面：无（可以选一张图片页）";
+        readonly en: "Cover: none (pick an image page)";
+    };
+    readonly "export.partCoverTitle": {
+        readonly zh: "导出「{name}」时的封面";
+        readonly en: "Cover for exporting “{name}”";
+    };
+    readonly "export.partCoverMsg": {
+        readonly zh: "只在导出这一页 / 这一支时用，长图和 PDF 都有效；封面上印这一页的名字。整本的封面还是在图片页上点「设为封面」。";
+        readonly en: "Used only when exporting this page / this branch, for both long image and PDF; the cover carries this page’s name. The whole book’s cover is still set on an image page.";
+    };
+    readonly "export.partCoverPh": {
+        readonly zh: "找图片页…";
+        readonly en: "Find an image page…";
+    };
+    readonly "export.partCoverNoneRow": {
+        readonly zh: "不要封面";
+        readonly en: "No cover";
+    };
+    readonly "export.partCoverUse": {
+        readonly zh: "用作封面";
+        readonly en: "Use as cover";
+    };
+    readonly "export.partCoverClear": {
+        readonly zh: "不要封面";
+        readonly en: "No cover";
+    };
+    readonly "export.embedText": {
+        readonly zh: "长图里附上文字（和「复制文字」同一份，藏在图片文件里）";
+        readonly en: "Attach the text inside the long image file (same as Copy text)";
+    };
     readonly "export.scopeStats": {
         readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文";
         readonly en: "{cjk} chars · {en} words · {pages} text pages";

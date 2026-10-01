@@ -22,6 +22,11 @@ describe("export/cover-title", () => {
     assert(L.cells[0].x + 34 <= 200 && L.cells[0].x > 200 * 0.7 && L.cells.at(-1).y < 283 - 200 * 0.15, "inside the cover, at the right");
     assert(L.date && L.date.text === "20261001" && L.date.x > L.spineW && L.date.y > 283 * 0.85); assert(L.spineW > 5 && L.spineW < 15);
     eq(lay(title, { spine: false }).spineW, 0);
+    // 垫底的矩形：书名这一列一块（比字宽一圈、从列首到列尾）+ 日期一块
+    eq(L.pads.length, 2); const col = L.pads[0]; assert(col.w > L.size && col.w < L.size * 1.6 && col.x < L.cells[0].x && col.y < L.cells[0].y - L.size * 0.7 && col.y + col.h > L.cells.at(-1).y, JSON.stringify(col));
+    assert(L.pads[1].x < L.date.x && L.pads[1].y < L.date.y && L.pads[1].y + L.pads[1].h > L.date.y, "date pad wraps the date");
+    eq(lay(s(0x56fd).repeat(14)).pads.length, [...new Set(lay(s(0x56fd).repeat(14)).cells.map((c) => c.x.toFixed(1)))].length + 1, "one pad per column + date");
+    eq(lay("The Balloon Adventurer", { date: null }).pads.length, 1, "horizontal title: one block");
   });
   it("排不下一列 → 往左换列；再排不下 → 缩字号；实在不行才截断", () => {
     const long = s(0x56fd).repeat(14); const L = lay(long);
