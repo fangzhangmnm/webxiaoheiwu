@@ -72,7 +72,7 @@ for (const [w, h] of sizes) {
   { const text = await page.inputValue("#editor"); await page.click("#edgeExport"); await wait(300);
     const choices = await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((b) => b.textContent.trim()));
     const note = await page.evaluate(() => document.querySelector("#sheetChoices .sheet-seg-note")?.textContent ?? "");
-    probe(tag, "导出 (txt draft) → one sheet, no scope row, three buttons in one row: 复制文字 / 长图 / PDF; note = 字数 + 每行 20 字", choices.join("|") === "复制文字|长图|PDF" && await page.evaluate(() => !document.querySelector("#sheetChoices .sheet-seg") && (() => { const b = [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((x) => x.getBoundingClientRect()); return b.every((r) => Math.abs(r.top - b[0].top) < 1); })()) && /\d+ 字 \d+ 词/.test(note) && /每行 20 字/.test(note), JSON.stringify(choices) + " | " + note);
+    probe(tag, "导出 (txt draft) → one sheet, no scope row, three buttons in one row: 复制文字 / 长图 / PDF; note = 字数; a line-width row 14 / 20* / 28 (follows the editor)", choices.join("|") === "复制文字|长图|PDF" && await page.evaluate(() => !document.querySelector("#sheetChoices > .sheet-seg") && (() => { const b = [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((x) => x.getBoundingClientRect()); return b.every((r) => Math.abs(r.top - b[0].top) < 1); })()) && /\d+ 字 \d+ 词/.test(note) && await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-line .sheet-seg-btn")].map((b) => b.textContent + (b.getAttribute("aria-checked") === "true" ? "*" : "")).join("|")) === "14|20*|28", JSON.stringify(choices) + " | " + note);
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-choice")].find((b) => /复制/.test(b.textContent))?.click()); await wait(400);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => "ERR:" + e.message));
     probe(tag, "导出 → 复制全文 → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
@@ -529,7 +529,7 @@ for (const [w, h] of sizes) {
   probe(tag, "replace image on the cover page → cover regenerated (bytes differ), name kept", thumb2.length > 0 && thumb2.join() !== thumb1.join() && (await page.evaluate(() => window.__xhw.project.current())) === "地图.jpg", await page.textContent("#toast"));
   // v2.1.9 导出图片页 = 图片本身进剪贴板（jpg → PNG 经 codec）
   await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
-  { const sh = () => page.evaluate(() => ({ seg: [...document.querySelectorAll("#sheetChoices .sheet-seg-btn")].map((b) => b.textContent.trim() + (b.getAttribute("aria-checked") === "true" ? "*" : "")), btn: [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((b) => b.textContent.trim()), note: document.querySelector("#sheetChoices .sheet-seg-note")?.textContent ?? "" }));
+  { const sh = () => page.evaluate(() => ({ seg: [...document.querySelectorAll("#sheetChoices > .sheet-seg .sheet-seg-btn")].map((b) => b.textContent.trim() + (b.getAttribute("aria-checked") === "true" ? "*" : "")), btn: [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((b) => b.textContent.trim()), note: document.querySelector("#sheetChoices .sheet-seg-note")?.textContent ?? "" }));
     const a = await sh();
     probe(tag, "导出 sheet in a book (v2.3.17): scope row 这一页* / … / 整本 + three buttons; on an image page the first button = 复制图片", a.seg[0] === "这一页*" && a.seg[a.seg.length - 1] === "整本" && a.btn.join("|") === "复制图片|长图|PDF" && /1 张图/.test(a.note), JSON.stringify(a));
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-btn")].find((b) => /整本/.test(b.textContent))?.click()); await wait(150);
@@ -552,7 +552,20 @@ for (const [w, h] of sizes) {
   { const lw = await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="28"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const s = window.__xhw.project.session(); return { book: s.project.editorState.lineWidth?.charsPerLine, body: document.body.dataset.chars, hint: document.getElementById("readingModeHint").textContent }; });
     probe(tag, "line width picked inside a book → stored in the book's editor-state + body[data-chars]=28 + hint says 这本书", lw.book === 28 && lw.body === "28" && /这本书/.test(lw.hint), JSON.stringify(lw));
     await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
-    probe(tag, "export sheet message follows the book's line width (每行 28 字)", await page.evaluate(() => /每行 28 字/.test(document.querySelector("#sheetChoices .sheet-seg-note")?.textContent ?? "")), await page.evaluate(() => document.querySelector("#sheetChoices .sheet-seg-note")?.textContent));
+    const wrow = () => page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-line .sheet-seg-btn")].map((b) => b.textContent + (b.getAttribute("aria-checked") === "true" ? "*" : "")).join("|"));
+    const pickW = async (n) => { await page.evaluate((n) => [...document.querySelectorAll("#sheetChoices .sheet-seg-line .sheet-seg-btn")].find((b) => b.textContent === String(n))?.click(), n); await wait(120); };
+    const stored = () => page.evaluate(() => window.__xhw.project.session().project.editorState.exportLineWidth?.charsPerLine ?? null);
+    const imgW = () => page.evaluate(async () => (await window.__xhw.exportLongImage("page")).plan.width);
+    probe(tag, "export sheet line-width row follows the book's line width by default (28 selected, nothing stored)", await wrow() === "14|20|28*" && await stored() === null, await wrow());
+    // v2.3.19（user「写的时候用14…20导出」「好，同意。加」）：导出另选 20 → 记进这本书的 editor-state.exportLineWidth、长图按 20 排（684 宽）、编辑器仍是 28
+    await pickW(20);
+    probe(tag, "pick 20 in the export sheet → stored in the book (exportLineWidth = 20), editor stays 28, row shows 20*", await stored() === 20 && await wrow() === "14|20*|28" && await page.evaluate(() => document.body.dataset.chars) === "28", JSON.stringify({ stored: await stored(), row: await wrow() }));
+    await page.click("#sheetCancel"); await wait(200);
+    probe(tag, "long image now uses the export width (684 px = 20 per line) while the editor is at 28", await imgW() === 684, String(await imgW()));
+    await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
+    probe(tag, "reopening the export sheet remembers 20", await wrow() === "14|20*|28", await wrow());
+    await pickW(28);
+    probe(tag, "picking the editor's own width (28) drops the override (follows again)", await stored() === null && await wrow() === "14|20|28*", JSON.stringify({ stored: await stored(), row: await wrow() }));
     await page.click("#sheetCancel").catch(() => {}); await page.keyboard.press("Escape"); await wait(200);
     await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="20"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }); await wait(100); }
   // hidden（v2.3.2，user 2026-09-30「和unity一样，parent hidden -> all child hidden」）：藏当前页 → 自己的旗子 + 纸上眼睛 + 侧栏行 hidden-self + 整本长图少它 + 这一页长图为空；取消 → 复原

@@ -195,8 +195,10 @@ export function openChoiceSheet<T>(title: string, message: string, choices: Choi
 /** 「范围 + 动作」sheet（created 2026-10-01 by Claude Fable 5.1；user「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：
  *  一条段选（scopes，只有一项就不画）+ 一行小字（note(scope)，范围一换就重算）+ 一排动作钮（choices(scope)）。
  *  范围 × 动作是两条正交的轴：m + n 个控件，不是 m × n 个钮，也不用两层 sheet。取消 / Esc / 点空白 = null。 */
-export interface ScopedChoiceOpts<S, T> { scopes: { label: string; value: S }[]; initial: S; note: (scope: S) => string; choices: (scope: S) => Choice<T>[] }
-export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpts<S, T>): Promise<{ scope: S; value: T } | null> {
+/** 第二条段选（可选）：一个和范围无关的小选项（导出的行宽）。带一个行首小标签；一点就 onChange（要记住的话调用方在这里记）。 */
+export interface SegRow<X> { label: string; options: { label: string; value: X }[]; initial: X; onChange?: (value: X) => void }
+export interface ScopedChoiceOpts<S, T, X = never> { scopes: { label: string; value: S }[]; initial: S; extra?: SegRow<X>; note: (scope: S) => string; choices: (scope: S) => Choice<T>[] }
+export function openScopedChoiceSheet<S, T, X = never>(title: string, opts: ScopedChoiceOpts<S, T, X>): Promise<{ scope: S; value: T; extra: X | undefined } | null> {
   _assertNotBusy("scoped-choice");
   return new Promise((resolve) => {
     _reset();
@@ -204,6 +206,7 @@ export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpt
     const box = g.choices(); box.classList.remove("hidden");
     g.confirm().classList.add("hidden");
     let scope = opts.initial;
+    const ex = opts.extra; let extra: X | undefined = ex?.initial;
     const onCancel = () => { g.cancel().removeEventListener("click", onCancel); _hide(); resolve(null); };
     const seg = document.createElement("div"); seg.className = "sheet-seg"; seg.setAttribute("role", "radiogroup");
     const note = document.createElement("p"); note.className = "sheet-seg-note";
@@ -217,7 +220,7 @@ export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpt
         btn.type = "button";
         btn.className = "sheet-choice" + (c.primary ? " primary" : "") + (c.danger ? " danger" : "");
         btn.textContent = c.label;
-        btn.addEventListener("click", () => { g.cancel().removeEventListener("click", onCancel); _hide(); c.onPick?.(); resolve({ scope, value: c.value }); });
+        btn.addEventListener("click", () => { g.cancel().removeEventListener("click", onCancel); _hide(); c.onPick?.(); resolve({ scope, value: c.value, extra }); });
         row.appendChild(btn);
       }
     };
@@ -228,6 +231,19 @@ export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpt
       seg.appendChild(b);
     }
     if (opts.scopes.length > 1) box.appendChild(seg);
+    if (ex) {
+      const line = document.createElement("div"); line.className = "sheet-seg-line";
+      const lab = document.createElement("span"); lab.className = "sheet-seg-label"; lab.textContent = ex.label;
+      const seg2 = document.createElement("div"); seg2.className = "sheet-seg"; seg2.setAttribute("role", "radiogroup"); seg2.setAttribute("aria-label", ex.label);
+      const mark = (): void => Array.from(seg2.children).forEach((b, i) => b.setAttribute("aria-checked", String(ex.options[i]!.value === extra)));
+      for (const o of ex.options) {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "sheet-seg-btn"; b.setAttribute("role", "radio"); b.textContent = o.label;
+        b.addEventListener("click", () => { extra = o.value; mark(); ex.onChange?.(o.value); render(); });
+        seg2.appendChild(b);
+      }
+      mark(); line.append(lab, seg2); box.appendChild(line);
+    }
     box.append(note, row);
     render();
     g.cancel().addEventListener("click", onCancel);

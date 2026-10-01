@@ -45,11 +45,13 @@ export interface RefPanelState {
 export interface LineWidthState {
     charsPerLine: number;
 }
+/** `exportLineWidth`（2026-10-01）= 这本书导出（长图 / PDF）用的行宽；没有 = 跟 `lineWidth` 走。user「所以轻小说我写的时候用14来逼对话和节奏，20导出？」「好，同意。加」。同样随保存写、不标脏。 */
 export interface EditorState {
     last: string | null;
     back: string[];
     refPanel?: RefPanelState;
     lineWidth?: LineWidthState;
+    exportLineWidth?: LineWidthState;
 }
 export declare const BACK_STACK_MAX = 50;
 export interface Project {

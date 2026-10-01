@@ -489,11 +489,24 @@ async function copyCurrentImage(): Promise<void> {
 //   分享必须在用户手势里调（iOS Safari）：先生成、再弹「好了」sheet，点「分享」那一下才 navigator.share；没有 share 的（Quest / 桌面）= 下载；一张时还能进剪贴板。
 type LongImageScope = "page" | "branch" | "book" | "draft";
 // ── 导出排版跟编辑器的行宽走（user 2026-09-30「导出跟编辑器的行宽走啊」）：每行几个字 = 设置 → 行宽（同步偏好跟人走，14 / 20 / 28），像素/字定死（long-image PX_PER_CHAR），行距跟档。
-//   导出不再有自己的 knob：读 editorCharsPref()（书的 lineWidth → 账号默认）。
-const currentTypeset = (): ExportTypeset => typesetFor(editorCharsPref());
+//   v2.3.19（user 2026-10-01「所以轻小说我写的时候用14来逼对话和节奏，20导出？那么导出是否还是需要一个随着书持久化的另外的节奏选项？」「好，同意。加」）：
+//   导出可以另有一个行宽——只在导出面板里选，**默认跟编辑器**；选过就记进这本书 editor-state 的 `exportLineWidth`（随保存写、不标脏）；txt 稿没有 editor-state → 只记到这次打开为止（不为它新开持久化的键）。
+//   选回和编辑器一样的那一档 = 撤掉另选（重新跟着走）。只管长图和 PDF，复制文字不看它。
+let draftExportChars: number | null = null;   // txt 稿的另选（只在内存里）
+function exportCharsPref(): number {
+  const v = project.active() ? project.session()?.project.editorState.exportLineWidth?.charsPerLine : draftExportChars;
+  return typeof v === "number" && CHARS_PRESETS.includes(v) ? v : editorCharsPref();
+}
+function setExportChars(n: number): void {
+  const follow = n === editorCharsPref();
+  const s = project.active() ? project.session() : null;
+  if (s) { if (follow) delete s.project.editorState.exportLineWidth; else s.project.editorState.exportLineWidth = { charsPerLine: n }; }
+  else draftExportChars = follow ? null : n;
+}
+const currentTypeset = (): ExportTypeset => typesetFor(exportCharsPref());
 type ExportFormat = "text" | "image" | "pdf";
 /** 导出 sheet（v2.3.17，user 2026-10-01「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：范围和格式是两条正交的轴——
- *  一条段选定范围（这一页 / 这一支 / 整本；txt 稿只有整篇，不画段选）+ 三个钮定格式（复制文字 / 长图 / PDF）。3 + 3 个控件，一层 sheet。
+ *  一条段选定范围（这一页 / 这一支 / 整本；txt 稿只有整篇，不画段选）+ 一条段选定长图 / PDF 的行宽（v2.3.19）+ 三个钮定格式（复制文字 / 长图 / PDF）。一层 sheet。
  *  以前是五个钮（复制只有这一页、长图三个范围各一个钮、PDF 再弹第二层选范围）。「这一支」只在这页底下真有子页时才露（否则和这一页是同一件事）。
  *  书名和封面只属于整本：这一页 / 这一支不带（collectExport 的 front）。 */
 async function exportSheetFlow(): Promise<void> {
@@ -506,17 +519,16 @@ async function exportSheetFlow(): Promise<void> {
     if (cur && s && project.isInTree(cur) && s.branchOrder(cur).length > 1) scopes.push({ label: t("export.scope.branch"), value: "branch" });
     scopes.push({ label: t("export.scope.book"), value: "book" });
   }
-  const chars = currentTypeset().charsPerLine;
   const note = (scope: LongImageScope): string => {
     const st = scopeStats(scope);
-    const head = st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "")
-      : t("export.empty");
-    return head + "\n" + t("export.typesetLine", { chars });   // 行宽跟书 / 跟设置走（长图和 PDF 用）
+    return st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") : t("export.empty");
   };
+  // 第二条段选 = 导出的行宽（长图 / PDF）：默认跟编辑器，点了就记（setExportChars）
+  const extra = { label: t("export.widthLabel"), options: CHARS_PRESETS.map((n) => ({ label: String(n), value: n })), initial: exportCharsPref(), onChange: (n: number) => setExportChars(n) };
   const choices = (scope: LongImageScope): Choice<ExportFormat>[] => [
     { label: t(scope === "page" && inBook && project.currentKind() === "image" ? "export.fmt.copyImage" : "export.fmt.text"), value: "text", primary: true },
     { label: t("export.fmt.image"), value: "image" }, { label: t("export.fmt.pdf"), value: "pdf" }];
-  const r = await openScopedChoiceSheet<LongImageScope, ExportFormat>(t("export.title"), { scopes, initial: inBook ? "page" : "draft", note, choices });
+  const r = await openScopedChoiceSheet<LongImageScope, ExportFormat, number>(t("export.title"), { scopes, initial: inBook ? "page" : "draft", extra, note, choices });
   if (!r) return;
   if (r.value === "text") await copyScopeText(r.scope);
   else if (r.value === "image") await exportLongImageFlow(r.scope);

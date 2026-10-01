@@ -65,18 +65,30 @@ export declare function openChoiceSheet<T>(title: string, message: string, choic
 /** 「范围 + 动作」sheet（created 2026-10-01 by Claude Fable 5.1；user「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：
  *  一条段选（scopes，只有一项就不画）+ 一行小字（note(scope)，范围一换就重算）+ 一排动作钮（choices(scope)）。
  *  范围 × 动作是两条正交的轴：m + n 个控件，不是 m × n 个钮，也不用两层 sheet。取消 / Esc / 点空白 = null。 */
-export interface ScopedChoiceOpts<S, T> {
+/** 第二条段选（可选）：一个和范围无关的小选项（导出的行宽）。带一个行首小标签；一点就 onChange（要记住的话调用方在这里记）。 */
+export interface SegRow<X> {
+    label: string;
+    options: {
+        label: string;
+        value: X;
+    }[];
+    initial: X;
+    onChange?: (value: X) => void;
+}
+export interface ScopedChoiceOpts<S, T, X = never> {
     scopes: {
         label: string;
         value: S;
     }[];
     initial: S;
+    extra?: SegRow<X>;
     note: (scope: S) => string;
     choices: (scope: S) => Choice<T>[];
 }
-export declare function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpts<S, T>): Promise<{
+export declare function openScopedChoiceSheet<S, T, X = never>(title: string, opts: ScopedChoiceOpts<S, T, X>): Promise<{
     scope: S;
     value: T;
+    extra: X | undefined;
 } | null>;
 /** 通用「搜索 + 选一项」sheet（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」「通用件同意」「不用原生 select」；created 2026-09-10 by Claude Fable 5.1）。
  *  首用 = 挪到…（app.ts movePageFlow）；「链接到已有页」「移到夹」之类以后同一个件。列表自绘（iOS 原生 select 是滚轮、Quest 更糟）。

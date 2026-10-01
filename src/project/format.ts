@@ -46,7 +46,8 @@ export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: numb
 export interface RefPanelState { open: boolean; left: number; top: number; width: number; height: number }
 /** 这本书的行宽（每行几个字；2026-09-30 user「editor state 里面的行宽是跟着书走的吧。这个语义上确实是书的属性」）。编辑器和导出都读它；没有 = 用账号默认。随 editor-state 走、不标脏（同 refPanel；手动保存顺手捞）。 */
 export interface LineWidthState { charsPerLine: number }
-export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState; lineWidth?: LineWidthState }
+/** `exportLineWidth`（2026-10-01）= 这本书导出（长图 / PDF）用的行宽；没有 = 跟 `lineWidth` 走。user「所以轻小说我写的时候用14来逼对话和节奏，20导出？」「好，同意。加」。同样随保存写、不标脏。 */
+export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState; lineWidth?: LineWidthState; exportLineWidth?: LineWidthState }
 export const BACK_STACK_MAX = 50;
 export interface Project {
   nodes: Map<string, NodeMeta>;               // key = 完整文件名（pages/ 下 entry 名）
@@ -131,7 +132,7 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
     if (!path.startsWith(REFERENCES_DIR)) throw new Error(`reference entry outside ${REFERENCES_DIR}: ${path}`);
     entries.push(bytesEntry(path, bytes));
   }
-  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}), ...(p.editorState.lineWidth ? { lineWidth: p.editorState.lineWidth } : {}) }) });
+  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}), ...(p.editorState.lineWidth ? { lineWidth: p.editorState.lineWidth } : {}), ...(p.editorState.exportLineWidth ? { exportLineWidth: p.editorState.exportLineWidth } : {}) }) });
   if (p.thumbnail && p.thumbnail.length) entries.push(bytesEntry(THUMBNAIL_ENTRY, p.thumbnail));   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
   stats.encoded += 2;   // graph.json + editor-state
   const blob = await zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
@@ -235,6 +236,8 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
       if (rp && typeof rp === "object" && [rp.left, rp.top, rp.width, rp.height].every((n) => Number.isFinite(n))) p.editorState.refPanel = { open: !!rp.open, left: rp.left, top: rp.top, width: rp.width, height: rp.height };
       const lw = st.lineWidth;
       if (lw && typeof lw === "object" && Number.isFinite(lw.charsPerLine)) p.editorState.lineWidth = { charsPerLine: lw.charsPerLine };
+      const ew = st.exportLineWidth;
+      if (ew && typeof ew === "object" && Number.isFinite(ew.charsPerLine)) p.editorState.exportLineWidth = { charsPerLine: ew.charsPerLine };
     }
     catch { warnings.push("editor-state.json unreadable; ignored"); }
   }

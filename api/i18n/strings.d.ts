@@ -541,12 +541,12 @@ export declare const S: {
         readonly en: "Open";
     };
     readonly "ui.reading.hintBook": {
-        readonly zh: "这本书的行宽（跟书走，导出长图 / PDF 也用它）。只管一行最多放几个字，行距跟着走；字多大只看「字号」。";
-        readonly en: "This book’s line width (saved with the book; exports use it too). Only the most characters a line may hold; line spacing follows; text size comes from “Text size” alone.";
+        readonly zh: "这本书的行宽（跟书走；导出长图 / PDF 默认也用它，导出面板里可以另选）。只管一行最多放几个字，行距跟着走；字多大只看「字号」。";
+        readonly en: "This book’s line width (saved with the book; exports use it by default — the export sheet can pick another). Only the most characters a line may hold; line spacing follows; text size comes from “Text size” alone.";
     };
     readonly "ui.reading.hintBookDefault": {
-        readonly zh: "这本书还没定行宽，先用默认；改一下就记进这本书（导出长图 / PDF 也用它）。";
-        readonly en: "This book has no line width of its own yet — showing the default; change it and it’s saved with the book (exports use it too).";
+        readonly zh: "这本书还没定行宽，先用默认；改一下就记进这本书（导出长图 / PDF 默认也用它，导出面板里可以另选）。";
+        readonly en: "This book has no line width of its own yet — showing the default; change it and it’s saved with the book (exports use it by default — the export sheet can pick another).";
     };
     readonly "ui.reading.hint": {
         readonly zh: "默认行宽（新书和 txt 稿用；每本书可以自己改）。只管一行最多放几个字，行距跟着走；字多大只看「字号」，两者互不相干。屏幕放不下时一行少排几个字，不缩字。14 = 诗 / 小故事 / 自律篇幅，20 = 高考作文格，28 = 纸书。";
@@ -2164,6 +2164,10 @@ export declare const S: {
         readonly zh: "PDF";
         readonly en: "PDF";
     };
+    readonly "export.widthLabel": {
+        readonly zh: "长图 / PDF 每行字数";
+        readonly en: "Long image / PDF characters per line";
+    };
     readonly "export.scopeStats": {
         readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文";
         readonly en: "{cjk} chars · {en} words · {pages} text pages";
@@ -2171,10 +2175,6 @@ export declare const S: {
     readonly "export.scopeStatsImages": {
         readonly zh: " · {images} 张图";
         readonly en: " · {images} images";
-    };
-    readonly "export.typesetLine": {
-        readonly zh: "长图和 PDF 每行 {chars} 字（设置 → 行宽）";
-        readonly en: "Long image and PDF: {chars} characters per line (Settings → Line width)";
     };
     readonly "copy.doneScope": {
         readonly zh: "已复制 {pages} 页：{cjk} 字 {en} 词";

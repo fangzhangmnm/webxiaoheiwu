@@ -22,3 +22,9 @@
 
 ## 修订 2026-09-30（editor-state.json 多一个 `lineWidth.charsPerLine` = 这本书的行宽；edited by Claude Fable 5.1）
 - 行宽（每行几个字，三档 14 / 20 / 28）**是书的属性**（user「editor state 里面的行宽是跟着书走的吧。这个语义上确实是书的属性」），住 editor-state.json 顶层 `lineWidth: { charsPerLine }`：同 `last / back / refPanel` 一样**随保存写、不标脏**（手动保存 / Ctrl+S 顺手捞会带上）。**编辑器和导出都读它**（user「导出跟编辑器的行宽走啊」）；没有 = 账号默认（synced prefs `charsPerLine`；旧 `readingMode` 两档只当迁移来源 classic → 28、其余 → 20）。设置页「行宽」在书里改 = 改这本书的，在 txt 稿里改 = 改默认。同日早些的 `export.charsPerLine`（导出自己的 knob）撤了，未发版。不进 graph.json：它是偏好不是内容。
+
+## 修订 2026-10-01（editor-state.json 多一个 `exportLineWidth.charsPerLine` = 这本书导出用的行宽；edited by Claude Fable 5.1）
+- user 原话：「所以轻小说我写的时候用14来逼对话和节奏，20导出？那么导出是否还是需要一个随着书持久化的另外的节奏选项？还是这样太麻烦了」→（我的建议：只加在导出面板里、默认跟编辑器、选过记进书）→「好，同意。加」。
+- `exportLineWidth: { charsPerLine }`（可选，三档 14 / 20 / 28）：长图和 PDF 用它；**没有 = 跟 `lineWidth` 走**（09-30 那条「编辑器和导出都读它」仍是缺省行为）。同 `lineWidth / refPanel`：随保存写、不标脏。两个字段互不依赖（可以只有 `exportLineWidth`）。
+- 入口只有导出面板的那条段选；选回和编辑器一样的那一档 = 删掉这个字段。txt 稿没有 editor-state，另选只留到这次打开为止。
+- zip 目录清单不变；旧版读到这个字段会忽略、下次保存时丢掉它（editor-state 是整个重写的），不影响内容。

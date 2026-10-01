@@ -178,6 +178,11 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     const r = await unpackProject(await packProject(p)); eq(r.kind, "ok"); eq(JSON.stringify(r.project.editorState.lineWidth), JSON.stringify({ charsPerLine: 28 }));
     p.editorState.lineWidth = { charsPerLine: "x" };
     const r2 = await unpackProject(await packProject(p)); eq(r2.project.editorState.lineWidth, undefined);
+    // exportLineWidth（2026-10-01）：导出另选的行宽，同一套规矩；和 lineWidth 互不依赖（可以只有它）
+    delete p.editorState.lineWidth; p.editorState.exportLineWidth = { charsPerLine: 20 };
+    const r3 = await unpackProject(await packProject(p)); eq(JSON.stringify(r3.project.editorState.exportLineWidth), JSON.stringify({ charsPerLine: 20 })); eq(r3.project.editorState.lineWidth, undefined);
+    p.editorState.exportLineWidth = { charsPerLine: null };
+    eq((await unpackProject(await packProject(p))).project.editorState.exportLineWidth, undefined);
   });
   it("hidden 往返：true 才写、缺 = 出门；老书没有这个键", async () => {
     const p = emptyProject(); createNode(p, "a.txt", "A", () => 1); createNode(p, "b.txt", "B", () => 1); p.nodes.get("b.txt").hidden = true;
