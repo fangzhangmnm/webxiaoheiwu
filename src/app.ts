@@ -363,7 +363,7 @@ let tocChildren: string[] = [];
 const dockHeightNow = (): number => parseFloat(document.documentElement.style.getPropertyValue("--dock-h")) || 0;
 const paper = createPaper({ page: pageEl, editor: editorEl, dockHeight: dockHeightNow, onChanged: () => syncBodyHeight() });
 // 内置字体（兜底，src/fonts.ts）：不挡启动——没到之前 CSS 落到系统字体，到了浏览器自己重排，这里把稿纸几何重量一遍。探针等它用 __xhw.fontReady。
-const fontReady: Promise<boolean> = installSansFont().then((ok) => { if (ok) { try { paper.refresh(); syncBodyHeight(); } catch (e) { reportError(e, "log"); } } return ok; });
+const fontReady: Promise<boolean> = installSansFont().then((ok) => { if (ok) { try { titleFitKey = ""; fitTitle(); paper.refresh(); syncBodyHeight(); } catch (e) { reportError(e, "log"); } } return ok; });
 /** 正文框高度 = 内容行数 × 行高（量的是看不见的孪生框，paper.contentHeight），子节目录 = (1 + 子节数) × 行高紧跟其后——一切都是整行，
  *  所以目录的每一行都坐在稿纸的线上（v2.1.17，user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）。图片页正文框藏着、目录照露。 */
 /** 章节名框随内容长高（v2.1.30，user 2026-09-30「也自动加行？」「自动加行同意」）：单行起步的 textarea，量 scrollHeight 落成高度，再重算纸面（alignTop 把正文上沿补到整像素，别绕开）。 */
@@ -372,7 +372,8 @@ let titleFitKey = "";
 function fitTitle(): void {
   // 值和宽度都没变就别量（v2.1.32）：每次本地落盘都会 syncTitle → 这里；量高度要先把框压到 0 再复原，Chrome 的 scroll anchoring 把这一缩一长
   //   算成「正文上方的东西变了」——缩时 scrollTop 被夹在 0，长回来却加上去，打字时页面每 200 ms 往下走一截（user 2026-09-30「打字的时候为什么页面会往下滚」）。
-  const key = `${nodeTitleEl.value}\u0000${nodeTitleEl.clientWidth}`;
+  //   字号也进判据（v2.3.18）：改字号档时值和宽度可以都不变（手机上纸宽受屏限制），框却留着旧字号的高度 → 大字被裁、小字留空（user 2026-10-01「超大字的情况下标题行被裁了」）。
+  const key = `${nodeTitleEl.value}\u0000${nodeTitleEl.clientWidth}\u0000${getComputedStyle(nodeTitleEl).fontSize}`;
   if (key === titleFitKey) return;
   titleFitKey = key;
   const keep = sheet.scrollTop;   // 真要量的时候也把滚动位置锁住，量完放回
@@ -1381,7 +1382,7 @@ function bookChars(): number | null { const v = project.active() ? project.sessi
 function editorCharsPref(): number { return bookChars() ?? defaultCharsPref(); }
 function applyEditorChars(n: number): void {
   document.body.dataset.chars = String(n);
-  paper.refresh(); syncBodyHeight();
+  fitTitle(); paper.refresh(); syncBodyHeight();   // 行宽变 = 纸宽变 = 章节名可能换了折行
   for (const opt of document.querySelectorAll<HTMLElement>("#readingModePicker .reading-mode-option")) {
     const sel = opt.dataset.chars === String(n); opt.classList.toggle("is-selected", sel);
     const input = opt.querySelector("input"); if (input) input.checked = sel;
@@ -1403,7 +1404,7 @@ prefs.onChange("charsPerLine", () => syncEditorChars());
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
 const fontScalePref = (): string => { const v = deviceKvGet("fontScale"); return v && FONT_SCALES.includes(v) ? v : "1"; };
-function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; paper.refresh(); syncBodyHeight(); }   // 嵌入态的正文高度随字号变
+function applyFontScale(v: string): void { document.documentElement.style.setProperty("--font-scale", v); fontScaleSelect.value = v; fitTitle(); paper.refresh(); syncBodyHeight(); }   // 嵌入态的正文高度随字号变
 fontScaleSelect.addEventListener("change", () => { const v = FONT_SCALES.includes(fontScaleSelect.value) ? fontScaleSelect.value : "1"; deviceKvSet("fontScale", v === "1" ? null : v); applyFontScale(v); });
 // 写字线（synced prefs，与阅读节奏同席：视觉偏好跟人走；缺省开）
 const ruledLinesToggle = $<HTMLInputElement>("ruledLinesToggle");

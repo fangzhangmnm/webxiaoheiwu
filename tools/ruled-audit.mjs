@@ -126,6 +126,28 @@ for (const c of cases) {
   if (!c.book) console.log(`${sz.ok ? "ok  " : "FAIL"} [size] ${c.w}x${c.h} ${c.mode} scale=${c.scale} ${sz.text}`);
   console.log(`${ok ? "ok  " : "FAIL"} ${c.book ? "[book+toc] " : ""}${c.w}x${c.h} dpr=${c.dpr} ${c.mode} scale=${c.scale} drift=${drift.toFixed(2)} font=${m.box.font.toFixed(2)}px lh=${m.box.lh} lines=${gaps.length} gap(min..max)=${min}..${max} devpx (${(min / em).toFixed(2)}..${(max / em).toFixed(2)} em) first6=${gaps.slice(0, 6).join(",")} last3=${gaps.slice(-3).join(",")}`);
 }
+// 章节名框跟着字号走（v2.3.18，user 2026-10-01「超大字的情况下标题行被裁了」）：起一个会折行的章节名，字号档来回切，框高必须 = 内容高（不裁、不留空）
+for (const [w, h, dpr] of [[375, 667, 2], [1100, 900, 1]]) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
+  await ctx.addInitScript(({ kv }) => { try { localStorage.setItem(kv + "imeEnabled", "0"); } catch {} }, { kv: KV });
+  const page = await ctx.newPage(); await page.goto(url, { waitUntil: "load" });
+  await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady);
+  await page.evaluate(() => { const e = document.getElementById("editor"); e.focus(); e.value = "\u56fd\u56fd"; e.dispatchEvent(new Event("input", { bubbles: true })); }); await page.waitForTimeout(500);
+  await page.click("#menuButton"); await page.waitForTimeout(300); await page.click("#edgeLift"); await page.waitForTimeout(300); await page.click("#sheetConfirm"); await page.waitForTimeout(1200);
+  await page.evaluate(() => window.__xhw.setSidebar(false)); await page.waitForTimeout(300);
+  await page.click(".node-title"); await page.keyboard.press("Control+A"); await page.keyboard.type("Chapter one the polar star leaves warp"); await page.keyboard.press("Enter"); await page.waitForTimeout(700);
+  const got = [];
+  for (const scale of ["1", "1.5", "0.85", "1.3", "1"]) {
+    await page.evaluate((v) => { const s = document.getElementById("fontScaleSelect"); s.value = v; s.dispatchEvent(new Event("change")); }, scale); await page.waitForTimeout(250);
+    got.push(await page.evaluate((scale) => { const el = document.querySelector(".node-title"); return { scale, client: el.clientHeight, scroll: el.scrollHeight }; }, scale));
+  }
+  await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="14"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }); await page.waitForTimeout(250);
+  got.push(await page.evaluate(() => { const el = document.querySelector(".node-title"); return { scale: "1 @14", client: el.clientHeight, scroll: el.scrollHeight }; }));
+  await ctx.close();
+  const ok = got.every((g) => Math.abs(g.client - g.scroll) <= 1) && new Set(got.map((g) => g.client)).size > 1;
+  if (!ok) bad++;
+  console.log(`${ok ? "ok  " : "FAIL"} [title-fit] ${w}x${h} ${got.map((g) => `${g.scale}:${g.client}/${g.scroll}`).join(" ")}`);
+}
 await browser.close(); srv.close();
 console.log(bad ? `${bad} FAILED` : "all ok");
 process.exit(bad ? 1 : 0);
