@@ -535,6 +535,12 @@ for (const [w, h] of sizes) {
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-btn")].find((b) => /整本/.test(b.textContent))?.click()); await wait(150);
     const b = await sh();
     probe(tag, "picking 整本 in the scope row: selection moves, first button becomes 复制文字, the note recounts (more pages than 这一页)", b.seg[b.seg.length - 1] === "整本*" && b.btn.join("|") === "复制文字|长图|PDF" && b.note !== a.note && /页正文/.test(b.note), JSON.stringify(b));
+    // v2.3.24 导出前报「PDF 约 N 页」（user「导出 PDF 前先报「约 N 页」 做」）：整本那一档报的数和真导出来的页数差不出 1
+    { const est = Number((b.note.match(/PDF 约 (\d+) 页/) ?? [])[1] ?? NaN);
+      await page.click("#sheetCancel"); await wait(200);
+      const real = await page.evaluate(async () => (await window.__xhw.exportPdf("book")).pages);
+      probe(tag, "export sheet says 「PDF 约 N 页」 for the picked scope, within one page of the real PDF", Number.isFinite(est) && Math.abs(est - real) <= 1, `est=${est} real=${real} note=${JSON.stringify(b.note)}`);
+      await ensureSidebar(true); await page.click("#edgeExport"); await wait(300); }
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-btn")].find((x) => /这一页/.test(x.textContent))?.click()); await wait(150); }
   await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-choice")].find((b) => /复制图片/.test(b.textContent))?.click()); await wait(1500);
   probe(tag, "导出 on an image page → clipboard holds image/png + toast 已复制这张图", await page.evaluate(async () => { try { const items = await navigator.clipboard.read(); return items.some((it) => it.types.includes("image/png")); } catch (e) { return "ERR:" + e.message; } }) === true && /已复制这张图/.test(await page.textContent("#toast")), await page.textContent("#toast"));

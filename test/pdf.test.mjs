@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { parseTtf, NotTrueTypeError } from "../src/export/ttf.ts";
 import { writePdf, jpegInfo } from "../src/export/pdf.ts";
-import { planPdfBook, pdfPageGeometry, parseCssColor, PDF_FONT_PT } from "../src/export/pdf-book.ts";
+import { planPdfBook, pdfPageGeometry, parseCssColor, estimatePdfPages, PDF_FONT_PT } from "../src/export/pdf-book.ts";
 import { typesetFor, CHARS_PRESETS } from "../src/export/long-image.ts";
 
 const CANDIDATES = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/sans.ttf.gz", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p));
@@ -167,6 +167,27 @@ describe("export/pdf-book 页面几何", () => {
     // 写成 PDF：描边 + 旋转的指令不让写出器出错
     const rot = mk({ title: title + "\uff08ABCDEF\uff09", cover: img }); assert(t(rot).some((o) => o.rotate === 90), "brackets / long latin runs are rotated");
     assert(writePdf(rot.doc, font).length > 1000);
+  });
+  it("estimatePdfPages（导出前报「约 N 页」）：纯汉字和真排的页数一样（三档、带章节名 / 目录 / 图片页 / 封面）；夹英文的差不出一成", () => {
+    const img = { jpeg: new Uint8Array([0xff, 0xd8]), w: 10, h: 10, components: 3 };
+    for (const chars of CHARS_PRESETS) {
+      const ts = typesetFor(chars), geo = pdfPageGeometry(ts);
+      const sections = [
+        { kind: "text", heading: "目录", text: "", toc: [{ label: "甲", target: 1 }, { label: "乙", target: 3 }] },
+        { kind: "text", heading: "甲", text: (guo.repeat(chars * 3 + 5) + "\n").repeat(geo.linesPerPage), toc: [{ label: "乙", target: 3 }] },
+        { kind: "image", heading: null, image: img },
+        { kind: "text", heading: "乙", text: guo.repeat(7) + "\n\n" + guo.repeat(chars * geo.linesPerPage * 2) },
+        { kind: "text", heading: null, text: guo },
+      ];
+      for (const front of [true, false]) {
+        const real = planPdfBook({ title: "t", date: null, cover: null, front, sections, look, typeset: ts, font }).pageCount;
+        eq(estimatePdfPages(sections, ts, front), real, `${chars} 字档 front=${front}`);
+      }
+    }
+    const ts = typesetFor(20); const mixed = ("这是一段夹着 English words 和数字 12345 的正文，标点，也不少。Another sentence follows here. ").repeat(60);
+    const real = planPdfBook({ title: "t", date: null, cover: null, front: true, sections: [{ kind: "text", heading: "混排", text: mixed }], look, typeset: ts, font }).pageCount;
+    const est = estimatePdfPages([{ kind: "text", heading: "混排", text: mixed }], ts, true);
+    assert(Math.abs(est - real) <= Math.max(1, real * 0.1), `est ${est} vs real ${real}`);
   });
   it("章节名占整数行：有章节名的页少 3 行", () => {
     const ts = typesetFor(20), geo = pdfPageGeometry(ts);

@@ -85,6 +85,27 @@ export function fontMeasurer(font: TtfFont): TextMeasurer {
   };
 }
 
+/** 不排版、不要字体，估一下这份东西出 PDF 大约多少页（导出面板在生成之前报给用户：user 2026-10-01「导出 PDF 前先报「约 N 页」 做」）。
+ *  算法 = 和 planPdfBook 同一套行数规矩，只是字宽靠估：汉字 / 全角 1 格，其余半格；每段 ⌈格数 ÷ 每行字数⌉ 行；章节名每行占 2 行 + 空 1 行；
+ *  子节目录正文后空 1 行、一节一行；每节另起一页，⌈行数 ÷ 每页行数⌉ 页；图片页一页；整本 / 整篇加 1 页封面。
+ *  纯汉字的稿子和真排出来一样；夹英文、避头尾会差一点，所以界面上写「约」。 */
+export function estimatePdfPages(sections: { kind: "text" | "image"; heading?: string | null; text?: string; toc?: { label: string }[] }[], typeset: ExportTypeset, front: boolean): number {
+  const per = pdfPageGeometry(typeset).linesPerPage, chars = typeset.charsPerLine;
+  const cells = (t: string): number => { let n = 0; for (const ch of t) n += (ch.codePointAt(0)! >= 0x2e80 ? 1 : 0.5); return n; };
+  const linesOf = (t: string, width: number): number => Math.max(1, Math.ceil(cells(t) / Math.max(1, width) - 1e-9));
+  let pages = front ? 1 : 0;
+  for (const sec of sections) {
+    if (sec.kind === "image") { pages++; continue; }
+    const text = sec.text ?? "", toc = sec.toc ?? [];
+    let lines = sec.heading != null ? 2 * linesOf(sec.heading, chars / 1.25) + 1 : 0;
+    const tocOnly = text.trim() === "" && toc.length > 0;
+    if (!tocOnly) for (const para of text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) lines += linesOf(para, chars);
+    if (toc.length) { if (!tocOnly) lines++; for (const e of toc) lines += linesOf(e.label, chars - 3); }
+    pages += Math.max(1, Math.ceil(lines / per));
+  }
+  return pages;
+}
+
 export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
   const { font, look } = spec; const m = fontMeasurer(font);
   const F = PDF_FONT_PT, inner = spec.typeset.charsPerLine * F, geo = pdfPageGeometry(spec.typeset);

@@ -22,6 +22,6 @@
     "@internal/encryption": "file:./vendor-pkgs/internal-encryption-0.1.0.tgz",
     "@internal/gallery": "file:./vendor-pkgs/internal-gallery-0.6.4.tgz",
     "@internal/workbench-elements": "file:./vendor-pkgs/internal-workbench-elements-0.1.2.tgz",
-    "@internal/reference-window": "file:./vendor-pkgs/internal-reference-window-0.3.1.tgz"
+    "@internal/reference-window": "file:./vendor-pkgs/internal-reference-window-0.3.2.tgz"
   }
 }

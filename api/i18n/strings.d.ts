@@ -2196,6 +2196,10 @@ export declare const S: {
         readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文";
         readonly en: "{cjk} chars · {en} words · {pages} text pages";
     };
+    readonly "export.pdfPages": {
+        readonly zh: "PDF 约 {n} 页";
+        readonly en: "PDF ≈ {n} pages";
+    };
     readonly "export.scopeStatsImages": {
         readonly zh: " · {images} 张图";
         readonly en: " · {images} images";

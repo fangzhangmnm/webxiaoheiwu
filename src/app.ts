@@ -24,7 +24,7 @@ import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, pai
 import { parseTtf, NotTrueTypeError, type TtfFont } from "./export/ttf.ts";
 import { installSansFont, installFont, loadFontBytes, FONT_FAMILY, type FontId } from "./fonts.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
-import { planPdfBook, type PdfSection, type CoverLook } from "./export/pdf-book.ts";
+import { planPdfBook, estimatePdfPages, type PdfSection, type CoverLook } from "./export/pdf-book.ts";
 import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook, treeChildren } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
@@ -154,6 +154,7 @@ function applyInputModeTo(el: TextField): void { if (ime.enabled) el.setAttribut
 function applyInputModeAll(): void { for (const n of document.querySelectorAll("textarea, input")) { const f = asTextField(n); if (f) applyInputModeTo(f); } }
 document.addEventListener("pointerdown", (e) => { const f = asTextField(e.target); if (f) applyInputModeTo(f); }, true);   // 后来才生出来的框：赶在聚焦之前
 document.addEventListener("focusin", (e) => { const f = asTextField(e.target); if (f) applyInputModeTo(f); }, true);
+let onKeyboardFloor: (() => void) | null = null;   // 键盘那一块的高度变了 → 浮窗（参考窗）让位；参考窗宿主建好之后才接上
 if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset，纸面整体缩到键盘上方（styles .page height）；iOS 若把视口顶上去，拉回 0 让固定顶栏别被推出屏
   const vv = window.visualViewport;
   const upd = (follow: boolean) => {
@@ -161,6 +162,7 @@ if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset�
     const next = `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`;
     if (document.documentElement.style.getPropertyValue("--kb-offset") === next) return;
     document.documentElement.style.setProperty("--kb-offset", next);
+    onKeyboardFloor?.();
     if (follow) followCaret();   // 键盘那一块变了：光标所在行别留在它底下
   };
   vv.addEventListener("resize", () => upd(true)); vv.addEventListener("scroll", () => upd(true)); upd(false);
@@ -212,6 +214,7 @@ let voiceAbortHook: (() => void) | null = null;
 const refHost = createReferenceHost({
   el: $<WpReferenceWindow>("referenceWindow"), fileInput: $<HTMLInputElement>("referenceFileInput"), setStatus,
   topFloor: () => Math.round(document.querySelector<HTMLElement>("header.top-bar")?.getBoundingClientRect().bottom ?? 0),
+  bottomFloor: () => { const st = document.documentElement.style; return Math.round((parseFloat(st.getPropertyValue("--dock-h")) || 0) + (parseFloat(st.getPropertyValue("--kb-offset")) || 0)); },
   focusEditor: () => editorEl.focus(),
 });
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
@@ -229,6 +232,7 @@ const project = createProjectMode({
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
 });
 refHost.bindMode(project);
+onKeyboardFloor = () => refHost.relayout();
 const edgeSidebar = createEdgeSidebar({
   el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
   onReference: () => refHost.toggle(), onSendToReference: (name) => refHost.sendPage(name),
@@ -539,7 +543,7 @@ async function exportSheetFlow(): Promise<void> {
   }
   const note = (scope: LongImageScope): string => {
     const st = scopeStats(scope);
-    return st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") : t("export.empty");
+    return st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") + "\n" + t("export.pdfPages", { n: st.pdfPages }) : t("export.empty");   // 页数跟着范围和行宽那两条段选变（点一下就重算）
   };
   // 第二条段选 = 导出的行宽（长图 / PDF）：默认跟编辑器，点了就记（setExportChars）
   // 第三条 = 导出的字体：黑体 / 拼音（萌神）。点了就记（setExportFont）；字体本身到真导出时才取
@@ -557,11 +561,11 @@ async function exportSheetFlow(): Promise<void> {
   else await exportPdfFlow(r.scope);
 }
 /** 这个范围出门的量（hidden 的支不算）：正文页的字 / 词、正文页数、图片页数。没有可导出的 → null。 */
-function scopeStats(scope: LongImageScope): { cjk: number; en: number; pages: number; images: number } | null {
+function scopeStats(scope: LongImageScope): { cjk: number; en: number; pages: number; images: number; /** 出 PDF 大约多少页（估的，不排版） */ pdfPages: number } | null {
   const src = collectExport(scope); if (!src) return null;
   let cjk = 0, en = 0, pages = 0, images = 0;
   for (const it of src.items) { if (it.kind === "image") { images++; continue; } const st = statsForText(it.text); cjk += st.cjk; en += st.en; pages++; }
-  return { cjk, en, pages, images };
+  return { cjk, en, pages, images, pdfPages: estimatePdfPages(src.items, currentTypeset(), src.front) };
 }
 /** 「复制文字」：这一页 / 整篇 = v2.1.9 那一下（图片页 = 图片本身）；这一支 / 整本 = 正文页按目录顺序拼成一篇（和「导出这一支」的 txt 同一种拼法：只拼正文、页与页之间空一行）。 */
 async function copyScopeText(scope: LongImageScope): Promise<void> {
@@ -1268,7 +1272,7 @@ const imeDock = createImeDock({
   keyboardWanted,
   onHideRequest: () => { kbHiddenBy = "user"; kbSummoned = false; },
   onLayout: () => {
-    paper.refresh(); syncBodyHeight(); renderKbToggle(); followCaret();
+    paper.refresh(); syncBodyHeight(); renderKbToggle(); followCaret(); refHost.relayout();
     const f = input.focused(); if (f && f !== editorEl && f.closest(".crypto-modal")) f.scrollIntoView({ block: "nearest" });   // sheet 里的框：键盘露出来之后别被它挡住
   },
 });

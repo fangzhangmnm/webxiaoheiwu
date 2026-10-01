@@ -89,4 +89,16 @@ export declare function pdfPageGeometry(typeset: ExportTypeset): {
 export declare function parseCssColor(s: string): Rgb;
 /** 用字体自己的度量量字宽（给 wrapText）。没有的字按 .notdef 的宽算。 */
 export declare function fontMeasurer(font: TtfFont): TextMeasurer;
+/** 不排版、不要字体，估一下这份东西出 PDF 大约多少页（导出面板在生成之前报给用户：user 2026-10-01「导出 PDF 前先报「约 N 页」 做」）。
+ *  算法 = 和 planPdfBook 同一套行数规矩，只是字宽靠估：汉字 / 全角 1 格，其余半格；每段 ⌈格数 ÷ 每行字数⌉ 行；章节名每行占 2 行 + 空 1 行；
+ *  子节目录正文后空 1 行、一节一行；每节另起一页，⌈行数 ÷ 每页行数⌉ 页；图片页一页；整本 / 整篇加 1 页封面。
+ *  纯汉字的稿子和真排出来一样；夹英文、避头尾会差一点，所以界面上写「约」。 */
+export declare function estimatePdfPages(sections: {
+    kind: "text" | "image";
+    heading?: string | null;
+    text?: string;
+    toc?: {
+        label: string;
+    }[];
+}[], typeset: ExportTypeset, front: boolean): number;
 export declare function planPdfBook(spec: PdfBookSpec): PdfBookPlan;

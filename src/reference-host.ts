@@ -33,6 +33,8 @@ export interface ReferenceHostDeps {
   setStatus: (text: string, opts?: { error?: boolean }) => void;
   /** 顶栏下缘（浮窗的出血区地板）。 */
   topFloor: () => number;
+  /** 屏底被占掉的高度（app 内软键盘那一块 + iOS 键盘把视口顶起的那一截）。浮窗的拖 / 缩放 / 钳制都留出它（库 0.3.2）。 */
+  bottomFloor: () => number;
   /** 关窗后把焦点还给正文（可选）。 */
   focusEditor?: () => void;
 }
@@ -55,7 +57,8 @@ export function createReferenceHost(d: ReferenceHostDeps) {
     kindNames: { image: t("ref.kindImage"), text: t("ref.kindText") },
     linkMissing: t("ref.linkMissing"),
   };
-  const syncFloor = () => { el.topFloor = d.topFloor(); };
+  // 地板（顶栏下缘 / 键盘上沿）变了：告诉窗，并把它钳回可见区——右下角的缩放把手不许躲到键盘底下（user 2026-09-30「参考窗或者任何浮窗需要保证 move 和 resize 能点到」）
+  const syncFloor = () => { el.topFloor = d.topFloor(); el.bottomFloor = d.bottomFloor(); if (el.open) el.reclamp(); };
   window.addEventListener("resize", syncFloor);
 
   // ── 链接卡：内容从书里现取 ──
@@ -195,6 +198,6 @@ export function createReferenceHost(d: ReferenceHostDeps) {
     },
   };
 
-  return { hooks, bindMode: (m: ProjectMode) => { mode = m; }, sendPage, toggle, isOpen: () => el.open };
+  return { hooks, bindMode: (m: ProjectMode) => { mode = m; }, sendPage, toggle, isOpen: () => el.open, /** 键盘露 / 收、视口变了之后宿主调 */ relayout: syncFloor };
 }
 export type ReferenceHost = ReturnType<typeof createReferenceHost>;

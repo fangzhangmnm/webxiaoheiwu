@@ -585,6 +585,7 @@ export const S = {
   "export.fontFailed":      { zh: "拼音字体没取到：第一次用要联网", en: "Couldn’t fetch the pinyin font: the first use needs a connection" },
   "pdf.readyShapeSkipped":  { zh: "这款字体有一部分选读音的规则本 app 不认识，个别多音字的拼音可能不对", en: "Some of this font’s reading-selection rules aren’t supported here; a few polyphone readings may be wrong" },
   "export.scopeStats":      { zh: "{cjk} 字 {en} 词 · {pages} 页正文", en: "{cjk} chars · {en} words · {pages} text pages" },
+  "export.pdfPages":        { zh: "PDF 约 {n} 页", en: "PDF ≈ {n} pages" },
   "export.scopeStatsImages": { zh: " · {images} 张图", en: " · {images} images" },
   "copy.doneScope":         { zh: "已复制 {pages} 页：{cjk} 字 {en} 词", en: "Copied {pages} pages: {cjk} chars · {en} words" },
   "export.making":          { zh: "生成长图…", en: "Making the long image…" },

@@ -173,6 +173,20 @@ try {
   check("侧栏「参考窗」入口打开 → 窗开且有焦点", (await refState(A)).open && (await A.eval(() => document.getElementById("referenceWindow").hasFocus)));
   await A.eval(() => window.__xhw.setSidebar(false));
 
+  // ── 底边地板（库 0.3.2 + 宿主接线，v2.3.24）：键盘那一块露出来 → 参考窗钳到它上面；缩放把手够得着 ──
+  { const r = await A.eval(async () => {
+      const el = document.getElementById("referenceWindow"), vh = innerHeight; el.open = true;
+      el.rect = { left: 40, top: vh - 240, width: 300, height: 220 }; await new Promise((x) => setTimeout(x, 50));
+      const before = el.getBoundingClientRect().bottom;
+      document.documentElement.style.setProperty("--dock-h", "280px"); window.__xhw.reference.relayout(); await new Promise((x) => setTimeout(x, 50));
+      const withDock = el.getBoundingClientRect();
+      document.documentElement.style.setProperty("--kb-offset", "60px"); window.__xhw.reference.relayout(); await new Promise((x) => setTimeout(x, 50));
+      const withBoth = el.getBoundingClientRect().bottom;
+      document.documentElement.style.setProperty("--dock-h", "0px"); document.documentElement.style.setProperty("--kb-offset", "0px"); window.__xhw.reference.relayout(); await new Promise((x) => setTimeout(x, 50));
+      return { vh, before, dock: withDock.bottom, top: withDock.top, both: withBoth, floor: el.bottomFloor, after: el.getBoundingClientRect().bottom };
+    });
+    check("键盘那一块（--dock-h 280）露出来 → 参考窗整个在它上面（右下角把手够得着），又叠 --kb-offset 60 → 再让 60；键盘收了地板归零、窗不乱跳", r.before > r.vh - 280 && r.dock <= r.vh - 280 + 0.5 && r.both <= r.vh - 340 + 0.5 && r.floor === 0 && Math.abs(r.after - r.both) < 0.5, JSON.stringify(r)); }
+
   const errs = [...A.errors];
   check("零页面错误", errs.length === 0, errs.join("\n"));
   await A.close();
