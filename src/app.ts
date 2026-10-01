@@ -631,7 +631,7 @@ async function offerFiles(files: File[], title: string, message: string, opts: {
 // ── PDF 导出（v2.3.14，user 2026-09-30「只要比高考作文和童话长一点的，导出长图都很费劲。老老实实做 pdf 吧」「先把 pdf 导出给做出来」）：
 //   引擎 = src/export/{ttf,pdf,pdf-book}.ts（纯函数）：行宽三档 + 行距跟档（同长图），嵌一款 TrueType 字体的子集，可搜索可复制，带书签。
 //   字体来源：内置字体（vendor/fonts/sans.ttf.gz = 思源黑体全量，v2.3.15 进仓）→ 拿不到（离线且没缓存）才让用户选一个本机的 .ttf（只在这次会话的内存里，不落盘、不上传）。
-//   ⚠ 页面比例（pdf-book.ts：16pt 字、宽 = 字数 × 字号 + 边距、高 = 宽 × 16/9）是临时值：user 2026-09-30「pdf 之后可能得好好 grill 一下，你给的比例都不对」。
+//   页面几何在 pdf-book.ts（v2.3.16：1 : √2、9 pt 实体字号、每页行数由比例推出；user 2026-09-30「同意sqrt2」，提案 §10.5）。
 //   图片页 / 封面：JPEG 原字节直塞；别的格式经 codec 解码、拍平白底、转 JPEG q88。
 let pdfFont: { font: TtfFont; label: string } | null = null;
 const pdfFontInput = $<HTMLInputElement>("pdfFontInput");

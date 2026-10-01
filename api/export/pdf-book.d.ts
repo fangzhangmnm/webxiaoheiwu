@@ -37,8 +37,26 @@ export interface PdfBookPlan {
     pageW: number;
     pageH: number;
 }
-/** 正文字号（pt）。PDF 是矢量：阅读器贴屏宽显示，这个数只定页面比例和打印出来的大小。 */
-export declare const PDF_FONT_PT = 16;
+/** 正文字号（pt）= 实体字号：按 100% 打印出来就是这么大（屏上阅读器贴屏宽显示，20 字档的页宽 78 mm ≈ 手机屏宽）。 */
+export declare const PDF_FONT_PT = 9;
+/** 页面宽高比（宽 : 高 = 1 : √2）。 */
+export declare const PDF_PAGE_RATIO: number;
+/** 留白（单位 = 字）：左右各 SIDE，上 TOP，下 BOTTOM（含页码）。 */
+export declare const PDF_MARGIN_EM: {
+    readonly side: 2.2;
+    readonly top: 2.4;
+    readonly bottom: 2.6;
+};
+/** 这一档的页面几何（pt）与每页行数。纯算术，不要字体。 */
+export declare function pdfPageGeometry(typeset: ExportTypeset): {
+    w: number;
+    h: number;
+    side: number;
+    top: number;
+    bottom: number;
+    lineHeight: number;
+    linesPerPage: number;
+};
 /** CSS 颜色串（`#rgb` / `#rrggbb` / `rgb()` / `rgba()`）→ 0..1 的 RGB；认不出 → 黑。 */
 export declare function parseCssColor(s: string): Rgb;
 /** 用字体自己的度量量字宽（给 wrapText）。没有的字按 .notdef 的宽算。 */

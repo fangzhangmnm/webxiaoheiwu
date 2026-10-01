@@ -2,8 +2,12 @@
 //   user 2026-09-30「只要比高考作文和童话长一点的，导出长图都很费劲。老老实实做 pdf 吧」「先把 pdf 导出给做出来」。
 //   和长图同一套规矩：每行几个字（行宽三档）定排版，行距跟档，折行 / 避头尾复用 long-image.wrapText，正文以汉字墨迹定基线、坐在写字线上；
 //   不同的只有两件事：量字宽用**嵌进去的那款字体自己的前进宽**（不是 canvas 量系统字体——否则折行和 PDF 里的字对不上），以及按页切。
-//   页面 = 手机比例的「掌中书」：宽 = 字数 × 字号 + 两边各 1.6 字，高 = 宽 × 16/9；字号 16 pt（PDF 是矢量，读的时候贴屏宽，字号只定比例）。
-//   ⚠ 这组比例是临时值，user 2026-09-30「pdf 之后可能得好好 grill 一下，你给的比例都不对。等会讨论」——定了再改这里，别当成已拍板。
+//   页面（v2.3.16，user 2026-09-30「同意sqrt2」「pdf出单页，拼版是以后的问题」；提案 §10.5）：
+//     三档共用一个比例 **1 : √2**（文库本 / 32 开 / A 系列；v2.3.14 的 16 : 9 错在把 PDF 当手机屏——手机那条信道是长图）。
+//     宽 = (字数 + 两边各 2.2 字) × 字号，高 = 宽 × √2；上 2.4 字、下 2.6 字（含页码）——留白是 bookmaker micro 开本折成字数。
+//     字号 = **9 pt 实体字号**（micro 的字号；直接打印就是书的大小）→ 页面 58 × 83 / 78 × 110 / 103 × 146 mm，相邻两档正好差一次对折。
+//     每页行数不是 knob，由比例推出：版心高 = (行数 − 1) × 行距 + 1 字（bookmaker 同一条式子）→ 11 / 17 / 25 行。
+//     单页、左右对称（不分订口 / 切口）；拼版是以后的事。
 //   版式：封面图一页（有的话）→ 书名页 → 每个正文页另起一页（章起新页）、图片页独占一页；页脚页码；每个有名字的正文页一条书签。
 import type { PdfDoc, PdfImage, PdfOp, PdfPage, PdfOutlineItem, Rgb } from "./pdf.ts";
 import type { TtfFont } from "./ttf.ts";
@@ -18,8 +22,21 @@ export interface PdfBookLook { paper: string; ink: string; inkSoft: string; mute
 export interface PdfBookSpec { title: string; date: string | null; cover: PdfImage | null; sections: PdfSection[]; look: PdfBookLook; typeset: ExportTypeset; font: TtfFont }
 export interface PdfBookPlan { doc: PdfDoc; cjk: number; en: number; textPages: number; imagePages: number; pageCount: number; pageW: number; pageH: number }
 
-/** 正文字号（pt）。PDF 是矢量：阅读器贴屏宽显示，这个数只定页面比例和打印出来的大小。 */
-export const PDF_FONT_PT = 16;
+/** 正文字号（pt）= 实体字号：按 100% 打印出来就是这么大（屏上阅读器贴屏宽显示，20 字档的页宽 78 mm ≈ 手机屏宽）。 */
+export const PDF_FONT_PT = 9;
+/** 页面宽高比（宽 : 高 = 1 : √2）。 */
+export const PDF_PAGE_RATIO = Math.SQRT2;
+/** 留白（单位 = 字）：左右各 SIDE，上 TOP，下 BOTTOM（含页码）。 */
+export const PDF_MARGIN_EM = { side: 2.2, top: 2.4, bottom: 2.6 } as const;
+/** 这一档的页面几何（pt）与每页行数。纯算术，不要字体。 */
+export function pdfPageGeometry(typeset: ExportTypeset): { w: number; h: number; side: number; top: number; bottom: number; lineHeight: number; linesPerPage: number } {
+  const F = PDF_FONT_PT, r1 = (v: number): number => Math.round(v * 10) / 10;
+  const side = r1(PDF_MARGIN_EM.side * F), w = r1(typeset.charsPerLine * F + 2 * side), h = r1(w * PDF_PAGE_RATIO);
+  const top = r1(PDF_MARGIN_EM.top * F), bottom = r1(PDF_MARGIN_EM.bottom * F);
+  const lineHeight = F * (typeset.lineHeightRatio + (typeset.rubyBand ?? 0));
+  const linesPerPage = Math.max(1, Math.floor((h - top - bottom - F) / lineHeight + 1e-6) + 1);
+  return { w, h, side, top, bottom, lineHeight, linesPerPage };
+}
 
 /** CSS 颜色串（`#rgb` / `#rrggbb` / `rgb()` / `rgba()`）→ 0..1 的 RGB；认不出 → 黑。 */
 export function parseCssColor(s: string): Rgb {
@@ -47,10 +64,10 @@ export function fontMeasurer(font: TtfFont): TextMeasurer {
 
 export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
   const { font, look } = spec; const m = fontMeasurer(font);
-  const F = PDF_FONT_PT, inner = spec.typeset.charsPerLine * F, SIDE = Math.round(1.6 * F * 10) / 10;
-  const W = inner + 2 * SIDE, H = Math.round(W * 16 / 9);
-  const TOP = 2.2 * F, BOTTOM = 2.6 * F, bodyBottom = H - BOTTOM;
-  const LHbase = F * spec.typeset.lineHeightRatio, LH = LHbase + F * (spec.typeset.rubyBand ?? 0);
+  const F = PDF_FONT_PT, inner = spec.typeset.charsPerLine * F, geo = pdfPageGeometry(spec.typeset);
+  const W = geo.w, H = geo.h, SIDE = geo.side, TOP = geo.top, bodyBottom = H - geo.bottom;
+  const LHbase = F * spec.typeset.lineHeightRatio, LH = geo.lineHeight;
+  const HALF_LEAD = (LH - F) / 2;   // 行盒里字上下各半个行间；一页的头一行把上半个行间让给天头、末一行把下半个让给地脚（版心高 = (行数 − 1) × 行距 + 1 字）
   const st = (size: number): TextStyle => ({ family: "", sizePx: size, color: "" });
   const ink = m.ink(st(F));
   const bodyBase = LH - (LHbase - (ink.asc + ink.desc)) / 2 - ink.desc;   // 汉字墨迹在基准行高里居中、整体贴行底（和长图同一条规矩）
@@ -59,7 +76,10 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
 
   const pages: PdfPage[] = []; const outline: PdfOutlineItem[] = []; const numbered: number[] = [];   // numbered = 印页码的页
   let ops: PdfOp[] = [], y = 0;
-  const newPage = (withNumber = true): void => { ops = [{ op: "rect", x: 0, y: 0, w: W, h: H, color: paper }]; pages.push({ w: W, h: H, ops }); if (withNumber) numbered.push(pages.length - 1); y = TOP; };
+  let lineTop = 0;   // 这一页正文行盒的起点（y 从这里起每行加 LH）；一页最多 geo.linesPerPage 行
+  const newPage = (withNumber = true): void => { ops = [{ op: "rect", x: 0, y: 0, w: W, h: H, color: paper }]; pages.push({ w: W, h: H, ops }); if (withNumber) numbered.push(pages.length - 1); y = TOP; lineTop = TOP - HALF_LEAD; };
+  /** 行盒 [y, y + LH) 的字（去掉下半个行间）还在版心里吗。 */
+  const fits = (): boolean => y + LH - HALF_LEAD <= bodyBottom + 0.01;
   const centered = (text: string, size: number, baseY: number, color: Rgb): void => { ops.push({ op: "text", x: (W - m.width(text, st(size))) / 2, y: baseY, text, size, color }); };
   /** 图片放进一个框里（等比，居中）。 */
   const contain = (img: PdfImage, bx: number, by: number, bw: number, bh: number): void => { const s = Math.min(bw / img.w, bh / img.h); const w = img.w * s, h = img.h * s; ops.push({ op: "image", x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h, image: img }); };
@@ -77,23 +97,25 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
     if (sec.kind === "image") { imagePages++; newPage(); contain(sec.image, SIDE, TOP, inner, bodyBottom - TOP); continue; }
     textPages++; const s = statsForText(sec.text); cjk += s.cjk; en += s.en;
     newPage();   // 章起新页
+    y = lineTop;
     if (sec.heading != null) {
       outline.push({ title: sec.heading, page: pages.length - 1 });
-      const size = 1.25 * F, lh = size * 1.4; y += 0.6 * F;
-      for (const line of wrapText(sec.heading, inner, st(size), m)) { centered(line, size, y + lh * 0.75, cInk); y += lh; }
-      y += 0.9 * F;
+      // 章节名占整数行（正文行格不乱）：每行章节名 = 2 个正文行，底下再空 1 行
+      const size = 1.25 * F; const hl = wrapText(sec.heading, inner, st(size), m);
+      for (const line of hl) { centered(line, size, y + LH * 1.5, cInk); y += 2 * LH; }
+      y += LH;
     }
     for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) {
       for (const line of wrapText(para, inner, st(F), m)) {
-        if (y + LH > bodyBottom) newPage();
-        if (cRule) ops.push({ op: "line", x1: SIDE, y1: y + ruleY, x2: W - SIDE, y2: y + ruleY, color: cRule, width: 0.5 });
+        if (!fits()) { newPage(); y = lineTop; }
+        if (cRule) ops.push({ op: "line", x1: SIDE, y1: y + ruleY, x2: W - SIDE, y2: y + ruleY, color: cRule, width: 0.03 * F });
         if (line !== "") ops.push({ op: "text", x: SIDE, y: y + bodyBase, text: line, size: F, color: cBody });
         y += LH;
       }
     }
   }
   // ── 页码（正文 / 图片页；封面与书名页不印）──
-  numbered.forEach((pi, i) => { const p = pages[pi]!; const label = String(i + 1), size = 0.65 * F; p.ops.push({ op: "text", x: (W - m.width(label, st(size))) / 2, y: H - 1.1 * F, text: label, size, color: cMuted }); });
+  numbered.forEach((pi, i) => { const p = pages[pi]!; const label = String(i + 1), size = 0.75 * F; p.ops.push({ op: "text", x: (W - m.width(label, st(size))) / 2, y: H - 1.0 * F, text: label, size, color: cMuted }); });
 
   return { doc: { title: spec.title, pages, outline }, cjk, en, textPages, imagePages, pageCount: pages.length, pageW: W, pageH: H };
 }
