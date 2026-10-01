@@ -4,7 +4,7 @@ import { wrapText, planLongImage } from "../src/export/long-image.ts";
 
 const cjkRe = /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef\u2018-\u201f\u2026]/;
 const widthOf = (text) => [...text].reduce((a, c) => a + (c === " " ? 5 : cjkRe.test(c) ? 20 : 10), 0);
-const m = { width: (text) => widthOf(text), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }) };
+const m = { width: (text) => widthOf(text), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }), ink: (st) => ({ asc: st.sizePx * 0.8, desc: st.sizePx * 0.1 }) };
 const style = { family: "x", sizePx: 20, color: "#000" };
 
 describe("export/long-image · wrapText", () => {
@@ -54,7 +54,7 @@ describe("export/long-image · planLongImage 切片", () => {
   });
   it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同；行距跟档走", async () => {
     const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";   // 30 字 → 20 字/行 = 2 行
-    const m2 = { width: (t) => [...t].reduce((a, c) => a + (c === " " ? 10 : cjkRe.test(c) ? 40 : 20), 0), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }) };
+    const m2 = { width: (t) => [...t].reduce((a, c) => a + (c === " " ? 10 : cjkRe.test(c) ? 40 : 20), 0), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }), ink: (st) => ({ asc: st.sizePx * 0.8, desc: st.sizePx * 0.1 }) };
     const a = planLongImage(spec([{ kind: "text", heading: null, text }]), m);
     const b = planLongImage(spec([{ kind: "text", heading: null, text }], { typeset: { charsPerLine: 20, pxPerChar: 40, lineHeightRatio: 2 } }), m2);
     const bodyLines = (p) => p.slices[0].ops.filter((o) => o.op === "text" && /^[一二三四五六七八九十]+$/.test(o.text)).length;
@@ -62,6 +62,12 @@ describe("export/long-image · planLongImage 切片", () => {
     const c = planLongImage(spec([{ kind: "text", heading: null, text }], { typeset: { charsPerLine: 10, pxPerChar: 20, lineHeightRatio: 2 } }), m);
     const { typesetFor } = await import("../src/export/long-image.ts");
     eq(typesetFor(14).lineHeightRatio, 1.9); eq(typesetFor(20).lineHeightRatio, 1.75); eq(typesetFor(28).lineHeightRatio, 1.6, "行距跟档走（user 2026-09-30）");
+    // 注音带只往上加：行高 +0.5 字，汉字离行底的距离不变（基线 = 行底 − 同一个数）
+    const plain = planLongImage(spec([{ kind: "text", heading: null, text: "一二三\n四五六" }]), m), ruby = planLongImage(spec([{ kind: "text", heading: null, text: "一二三\n四五六" }], { typeset: { charsPerLine: 20, pxPerChar: 20, lineHeightRatio: 2, rubyBand: 0.5 } }), m);
+    const ys = (p) => p.slices[0].ops.filter((o) => o.op === "text" && /^[一二三四五六]+$/.test(o.text)).map((o) => o.y);
+    eq(ys(plain)[1] - ys(plain)[0], 40); eq(ys(ruby)[1] - ys(ruby)[0], 50, "行高 = 基准 40 + 注音带 10");
+    const lines = (p) => p.slices[0].ops.filter((o) => o.op === "line").map((o) => o.y1);
+    eq(lines(plain)[0] - ys(plain)[0], lines(ruby)[0] - ys(ruby)[0], "写字线离基线的距离不变");
     eq(bodyLines(c), 3, "10 字/行 → 3 行");
   });
 });

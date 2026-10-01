@@ -59,7 +59,7 @@ export type SceneOp =
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: string; width: number }
   | { op: "text"; x: number; y: number; text: string; style: TextStyle; align?: "left" | "center" | "right" }   // y = 基线
   | { op: "image"; x: number; y: number; w: number; h: number; blob: Blob; crop?: { sx: number; sy: number; sw: number; sh: number } };
-export interface TextMeasurer { width(text: string, style: TextStyle): number; ascent(style: TextStyle): { asc: number; desc: number } }
+export interface TextMeasurer { width(text: string, style: TextStyle): number; ascent(style: TextStyle): { asc: number; desc: number }; /** 汉字本体的墨迹上下伸（量「国」；不看字体自报的 ascent——注音字体会把拼音带算进去，各平台取的表还不一样）。 */ ink(style: TextStyle): { asc: number; desc: number } }
 const fontString = (st: TextStyle): string => `${st.weight ?? 400} ${st.sizePx}px ${st.family}`;
 /** 量字宽（一个 8×8 的量尺 canvas，单字宽度有缓存）。ascent = 字体的上下伸（浏览器不给 fontBoundingBox 就按 CJK 常见比例估）。 */
 export function createTextMeasurer(): TextMeasurer {
@@ -79,6 +79,14 @@ export function createTextMeasurer(): TextMeasurer {
       const mt = cx.measureText(String.fromCharCode(0x56fd) + "Ag") as TextMetrics & { fontBoundingBoxAscent?: number; fontBoundingBoxDescent?: number };
       const asc = mt.fontBoundingBoxAscent, desc = mt.fontBoundingBoxDescent;
       return asc && desc ? { asc, desc } : { asc: style.sizePx * 0.88, desc: style.sizePx * 0.24 };
+    },
+    ink(style) {
+      cx.font = fontString(style);
+      const mt = cx.measureText(String.fromCharCode(0x56fd));
+      const asc = mt.actualBoundingBoxAscent, desc = mt.actualBoundingBoxDescent;
+      // 「国」是方框字：上沿 = 汉字本体的顶。注音字体量到的上沿含拼音带 → 高过 0.95 em 就按常见本体高 0.8 em 截
+      const a = Number.isFinite(asc) && asc > 0 ? Math.min(asc, style.sizePx * 0.8 + (asc > style.sizePx * 0.95 ? 0 : asc - style.sizePx * 0.8)) : style.sizePx * 0.8;
+      return { asc: a, desc: Number.isFinite(desc) ? Math.max(0, desc) : style.sizePx * 0.07 };
     },
   };
 }

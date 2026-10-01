@@ -21,7 +21,7 @@ export type LongImageSection =
 /** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、纸色 / 墨色、写字线颜色（null = 没开）。 */
 export interface LongImageLook { family: string; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
 /** 排版引擎的输入：每行几个字 + 像素/字 + 行距倍数。charsPerLine = 设置 → 行宽（user「导出跟编辑器的行宽走啊」），其余由档推出。 */
-export interface ExportTypeset { charsPerLine: number; pxPerChar: number; lineHeightRatio: number }
+export interface ExportTypeset { charsPerLine: number; pxPerChar: number; lineHeightRatio: number; /** 注音带（em）：加在行距上面的那一截——汉字照旧坐在线上、离行底不变，拼音往上长（2026-09-30 萌神对齐）。缺省 0。 */ rubyBand?: number }
 /** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
 export const PX_PER_CHAR = 30;
 /** 每行字数的离散选项（user「行宽还是三档吧。我这种有阅读写作障碍的用比手机还极端的第三档」「诗歌啊小故事啊，或者需要刻意自律篇幅的时候」「随便写一点看着就蛮多=点燃引擎」）：
@@ -110,22 +110,26 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
   const inner = Math.round(spec.typeset.charsPerLine * F);   // 折行的尺子 = 字数 × 像素/字（汉字一字一格；拉丁字母约两个算一个）
   const SIDE = Math.round(1.4 * F), TOP = Math.round(1.4 * F), BOTTOM = Math.round(1.1 * F), FOOT = Math.round(1.3 * F);   // 边距 / 页脚以「字」为单位
   const W = inner + 2 * SIDE;
-  const LH = Math.max(1, Math.round(F * spec.typeset.lineHeightRatio));
+  const LHbase = Math.max(1, Math.round(F * spec.typeset.lineHeightRatio));
+  const LH = LHbase + Math.round(F * (spec.typeset.rubyBand ?? 0));   // 注音带只往上加
   const body: TextStyle = { family: look.family, sizePx: F, color: look.inkSoft };
   const head: TextStyle = { family: look.family, sizePx: F * 1.25, weight: 600, color: look.ink };
   const titleStyle: TextStyle = { family: look.family, sizePx: F * 1.6, weight: 600, color: look.ink };
   const small: TextStyle = { family: look.family, sizePx: Math.max(12, F * 0.6), color: look.muted };
   const bodyM = m.ascent(body), headM = m.ascent(head), titleM = m.ascent(titleStyle), smallM = m.ascent(small);
   const baseline = (top: number, lh: number, met: { asc: number; desc: number }) => top + (lh - (met.asc + met.desc)) / 2 + met.asc;
-  const ruleW = Math.max(1, Math.round(F / 36)), ruleY = Math.round(baseline(0, LH, bodyM) + 0.18 * F);   // 写字线 = 基线之下 0.18 字（paper.ts 同一条规矩）
+  // 正文基线以**汉字墨迹**为准（user 2026-09-30「萌神的话字体高度要重新算」）：墨迹框在基准行高里上下居中、整体贴行底——换字体汉字位置不变，注音带在上面
+  const ink = m.ink(body);
+  const bodyBase = LH - Math.round((LHbase - (ink.asc + ink.desc)) / 2) - Math.round(ink.desc);
+  const ruleW = Math.max(1, Math.round(F / 36)), ruleY = Math.round(bodyBase + 0.18 * F);   // 写字线 = 基线之下 0.18 字（paper.ts 同一条规矩）
 
   const rows: Row[] = [];
   const space = (h: number) => { if (h > 0) rows.push({ kind: "space", h: Math.round(h), ops: () => [] }); };
-  const textRow = (line: string, style: TextStyle, met: { asc: number; desc: number }, lh: number, align: "left" | "center", ruled: boolean, kind: RowKind = "text") =>
+  const textRow = (line: string, style: TextStyle, met: { asc: number; desc: number }, lh: number, align: "left" | "center", ruled: boolean, kind: RowKind = "text", baseOff?: number) =>
     rows.push({ kind, h: lh, ops: (y) => {
       const ops: SceneOp[] = [];
       if (ruled && look.rule) ops.push({ op: "line", x1: SIDE, y1: y + ruleY + 0.5, x2: W - SIDE, y2: y + ruleY + 0.5, color: look.rule, width: ruleW });
-      if (line !== "") ops.push({ op: "text", x: align === "center" ? Math.round(W / 2) : SIDE, y: Math.round(baseline(y, lh, met)), text: line, style, align });   // 基线落整像素：像素字不糊，普通字也更实
+      if (line !== "") ops.push({ op: "text", x: align === "center" ? Math.round(W / 2) : SIDE, y: baseOff != null ? y + baseOff : Math.round(baseline(y, lh, met)), text: line, style, align });   // 基线落整像素：像素字不糊，普通字也更实
       return ops;
     } });
   const imageRow = (img: ImageRef, kind: RowKind, fullBleed: boolean) => {
@@ -154,7 +158,7 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
     first = false;
     if (sec.kind === "text") {
       textPages++; const st = statsForText(sec.text); cjk += st.cjk; en += st.en;
-      for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) for (const line of wrapText(para, inner, body, m)) textRow(line, body, bodyM, LH, "left", true);
+      for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) for (const line of wrapText(para, inner, body, m)) textRow(line, body, bodyM, LH, "left", true, "text", bodyBase);
     } else {
       imagePages++; space(LH * 0.5); imageRow(sec.image, "image", false); space(LH * 0.5);
     }

@@ -26,7 +26,8 @@ export interface LongImageLook {
 export interface ExportTypeset {
     charsPerLine: number;
     pxPerChar: number;
-    lineHeightRatio: number;
+    lineHeightRatio: number; /** 注音带（em）：加在行距上面的那一截——汉字照旧坐在线上、离行底不变，拼音往上长（2026-09-30 萌神对齐）。缺省 0。 */
+    rubyBand?: number;
 }
 /** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
 export declare const PX_PER_CHAR = 30;

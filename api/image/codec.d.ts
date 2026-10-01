@@ -58,6 +58,10 @@ export interface TextMeasurer {
     ascent(style: TextStyle): {
         asc: number;
         desc: number;
+    }; /** 汉字本体的墨迹上下伸（量「国」；不看字体自报的 ascent——注音字体会把拼音带算进去，各平台取的表还不一样）。 */
+    ink(style: TextStyle): {
+        asc: number;
+        desc: number;
     };
 }
 /** 量字宽（一个 8×8 的量尺 canvas，单字宽度有缓存）。ascent = 字体的上下伸（浏览器不给 fontBoundingBox 就按 CJK 常见比例估）。 */
