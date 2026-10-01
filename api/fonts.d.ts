@@ -1,6 +1,7 @@
-export type FontId = "sans" | "pinyin";
+export type FontId = "sans" | "pinyin" | "pixel";
 /** CSS / canvas 里用的 family 名。按角色起名，不带品牌。 */
 export declare const FONT_FAMILY: Record<FontId, string>;
+export declare const FONT_IDS: readonly FontId[];
 export declare const SANS_FAMILY: string;
 /** 取字体字节（TTF）。拿不到（文件不在 / 离线且没缓存）→ null。每次调用都重新取——调用方自己决定留不留。 */
 export declare function loadFontBytes(id: FontId): Promise<Uint8Array | null>;

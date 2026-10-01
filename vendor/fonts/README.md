@@ -10,6 +10,8 @@ app 的正文字体：编辑器、长图、PDF 嵌字共用这一份。**定位 
 | `OFL.txt` | 许可证全文（SIL Open Font License 1.1；版权行在文件头） |
 | `pinyin.ttf.gz` | **萌神手写体 Mengshen-Handwritten 2.0**（汉字头上带拼音的注音字体，64,762 字形）的 gzip。**只给导出用**（长图 / PDF），选了才取 |
 | `OFL-pinyin.txt` | 萌神的许可证全文（SIL OFL 1.1；文件头抄了字体 name 表里的版权行） |
+| `pixel.ttf.gz` | **Mono8px**（user 自己整理的 8×8 像素字体，11,600 字形、汉字 10,464）的 gzip。编辑器和导出都能选，选了才取 |
+| `LICENSE-pixel.txt` | 像素字体的出处链和许可声明 |
 
 ## 出处与制作（可复现）
 
@@ -48,3 +50,15 @@ user 2026-10-01「萌神拼音也vendor进去吧，导出的时候还蛮需要�
 - 读音对不对取决于字体自带的词表：表里有的词（银行、音乐、朝阳、首都…）选得对，没有的多音字用缺省读音，**可能是错的**（实测「头发很长」的长标成 zhǎng、「重庆」标成 zhòng）。导出给孩子看之前要人过一遍。手动指定读音（在字后面打变体选择符）以后可以做，现在没有入口。
 
 升级这份字体：换文件后跑 `npm test`（`test/pdf.test.mjs` 里有一组 HarfBuzz 录的期望字形号——字形号变了要重录：开发机 `pip install uharfbuzz` 后照测试文件头的说明）。
+
+## 像素字体 Mono8px（`pixel.ttf.gz`，2026-10-01 进仓；by Claude Fable 5.1）
+
+user 2026-10-01「先用我做的那个大的字体可以吗」「字体进」。
+
+1. 文件：`OneDrive/2D/20250823_pixel_fonts/20250808_font/workbench/Mono8px.ttf`（user 的工作文件，name 表：family `Mono8px`、版权栏 `fangzhangmnm`、`Version 3`、FontForge 12-8-2025）。2,467,188 字节，sha256 `1d735cbc6ccceaa1f3051c3603a41576f5764890f40ac79cb96e56881f7c815f`。**没有改动**，`gzip -9 -n` → `pixel.ttf.gz` 453,420 字节，sha256 `64f79786e51ae646ff926a55dabb94ab9275e339c2069b773ea33cf86b0f5c25`。
+2. 形状：glyf 轮廓（PDF 引擎直接能用）、1024 units/em（8 格 × 128）、汉字一格宽、拉丁半格宽（等宽）、有假名；没有 GSUB。
+3. **字形从哪来（进仓前核的，2026-10-01）**：它的汉字集合和「观致 8×8 像素字体」逐字相同（10,464 对 10,464，互相都不多不少）；抽 201 个常用字把两边的轮廓各栅成 8×8 点阵，**201 个全部相同**；和寒蝉点阵体 7px 一个都不同。所以汉字来自观致，轮廓是 user 重新描的（点阵 → 矢量），另加了 user 自己画的 toki pona。user 的说法是「三个 7x7 的（8x8=7x7）其实是互相抄，我自己做了个精简然后修了 metadata」「我的许可应该就是继承寒蝉的最开放开源的选择，加上我自己画的toki pona」。
+4. 许可：观致 8px 基于日文的美咲フォント（Misaki）补了 GB2312 汉字；字体站的说明是「授权与美咲一致：不论是否修改、是否商用，都可以无限制地使用、复制、分发」（来源：猫啃网收录页，二手说明——**没找到观致作者本人的声明原文**，字体 name 表版权栏只写了 `Misaki`）。美咲フォント的许可原文是「These fonts are free software. Unlimited permission is granted to use, copy, and distribute them, with or without modification, either commercially or noncommercially. THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.」。按这条链，本文件可以随 app 再分发；出处链和这段原文在 `LICENSE-pixel.txt`，设置页「维护」有署名。
+5. 用它的注意：字号要是 8 的整数倍才不糊——编辑器基准 24px（手机 16px），长图一个字 32 像素；字号档不是「标准」时会有点糊。它没有的字落回黑体。
+
+要精修这款字体：换文件、改上面的哈希，跑 `npm test` 和 ruled-audit。每换一版 git 多存约 0.45 MB。

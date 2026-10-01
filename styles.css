@@ -89,6 +89,9 @@ body {
 /* 编辑器字体 = 书的属性（v2.3.26，user 2026-10-01「编辑器换字体 做，书的属性，导出默认跟随」）：body[data-font]。拼音字体（萌神，12 MB）选了才取；没到之前、和它没有的字，落回黑体。
    网页正文的排字自己会按词给多音字选读音（只有 canvas 不会），所以这里不用做任何标注。 */
 body[data-font="pinyin"] { --font-editor: "XHW Pinyin", "XHW Sans", var(--font-fallback); }
+/* 像素字体（v2.3.27，user 的 Mono8px：8×8 的格子）：字号要是 8 的整数倍才不糊——桌面基准 24px（3 格），手机 16px（2 格）。字号档不是 1 的时候会有点糊，认了。 */
+body[data-font="pixel"] { --font-editor: "XHW Pixel", "XHW Sans", var(--font-fallback); --editor-font-base: 24px; }
+@media (max-device-width: 499px), (max-device-height: 499px) { body[data-font="pixel"] { --editor-font-base: 16px; } }
 body[data-chars="14"] { --target-chars: 14; --editor-line-height: 1.9; }
 body[data-chars="28"] { --target-chars: 28; --editor-line-height: 1.6; }
 
@@ -1883,9 +1886,6 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 #galleryMount .gallery-grid:not(.list) img.gallery-tile-thumb { object-fit: cover; background: var(--cover-paper); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder { position: relative; align-items: stretch; justify-content: stretch; background: var(--cover-paper); color: var(--cover-ink-soft); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-ph-icon { display: block; width: 100%; height: 100%; color: inherit; }
-/* 竖版书封的比例：1 : √2，和导出 PDF 的页面同一个比例（v2.3.26，user 2026-10-01「书架对齐」）。图库包的竖版档是 2:3（--tile-aspect），
-   比例本身是排版，宿主在这里盖掉那个变量；包的选项闭集没动（要让包直接收任意比例 = 改包的接口，另议）。 */
-#galleryMount .gallery-grid.tall { --tile-aspect: 1000 / 1414; }
 .xhw-paper { display: block; width: 100%; height: 100%; background: var(--cover-paper); border-radius: inherit; }
 .xhw-paper.draft { background: var(--cover-sheet); }
 /* 锁着 / 还在云端：纸上一枚小图标，放在封面左下、日期上方，不和书名抢地方 */

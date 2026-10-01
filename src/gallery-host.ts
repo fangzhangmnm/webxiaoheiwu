@@ -109,7 +109,7 @@ export function initGalleryHost(d: GalleryHostDeps) {
       //   **抛 = 够不着**（provider downloadRange 网络失败 reject）→ 包层不缓存、云端-only 的卡才显示云（user 2026-09-10 真机「thumb 不是用来显示 cloud status 的地方，应该是书，未知的话是另外一回事可以显示云」）。
       thumbs: { kinds: ["project"], dbName: THUMB_DB, fetch: (name, source) => zipFile(name).getPeek({ bytesLength: THUMB_PEEK_BYTES, zipEntry: THUMBNAIL_ENTRY, source }) },
     },
-    tile: { aspect: "2/3" },   // 竖版书封（user 2026-09-10「加 2:3 的选项…iphone se2 可以一排三本」）。v2.3.26 起实际比例在 styles.css 里改成 1 : √2（包的选项是闭集 1/1 | 2/3，这里仍报「竖版」那一档）   // 竖版书封（user 2026-09-10「加 2:3 的选项…iphone se2 可以一排三本」）
+    tile: { aspect: 1 / Math.SQRT2 },   // 竖版书封 1 : √2，和导出 PDF 的页面同一个比例（gallery 0.7.0 起比例是一个数；竖版自动一排三本，user 2026-09-10「iphone se2 可以一排三本」）
     encryption,
     folderMemory: { get: () => deviceKvGet(KV_FOLDER) ?? "", set: (p) => deviceKvSet(KV_FOLDER, p || null) },
     isGalleryVisible: () => document.body.dataset.mode === "gallery",

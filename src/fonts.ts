@@ -3,12 +3,14 @@
 //            一份字节三处用：编辑器（FontFace，CSS `--font-editor` 第一位）、长图（canvas 认同一个 family）、PDF（ttf.ts 取子集嵌进去）。开机就装，不挡启动。
 //   pinyin = 萌神手写体（汉字头上带拼音的注音字体；user 2026-10-01「萌神拼音也vendor进去吧，导出的时候还蛮需要的」）。**只给导出用**（长图 / PDF），
 //            编辑器不用它；12 MB，选了才取、才装。
+//   pixel  = user 自己的 8×8 像素字体 Mono8px（2026-10-01 user「字体进」）。编辑器和导出都能选；0.45 MB，选了才取。
 //   不留字节：装进文档那一路用完就放手；PDF 要字节时再取一次（SW / HTTP 缓存里有）。
 import { gunzipSync } from "../vendor/fflate/fflate.esm.js";
 
-export type FontId = "sans" | "pinyin";
+export type FontId = "sans" | "pinyin" | "pixel";
 /** CSS / canvas 里用的 family 名。按角色起名，不带品牌。 */
-export const FONT_FAMILY: Record<FontId, string> = { sans: "XHW Sans", pinyin: "XHW Pinyin" };
+export const FONT_FAMILY: Record<FontId, string> = { sans: "XHW Sans", pinyin: "XHW Pinyin", pixel: "XHW Pixel" };
+export const FONT_IDS: readonly FontId[] = ["sans", "pinyin", "pixel"];
 export const SANS_FAMILY = FONT_FAMILY.sans;
 
 async function gunzip(b: Uint8Array): Promise<Uint8Array> {
@@ -21,7 +23,7 @@ async function gunzip(b: Uint8Array): Promise<Uint8Array> {
 /** 取字体字节（TTF）。拿不到（文件不在 / 离线且没缓存）→ null。每次调用都重新取——调用方自己决定留不留。 */
 export async function loadFontBytes(id: FontId): Promise<Uint8Array | null> {
   try {
-    const r = id === "pinyin" ? await fetch("./vendor/fonts/pinyin.ttf.gz") : await fetch("./vendor/fonts/sans.ttf.gz");   // 相对路径写成字面量（红线守卫认这个）
+    const r = id === "pinyin" ? await fetch("./vendor/fonts/pinyin.ttf.gz") : id === "pixel" ? await fetch("./vendor/fonts/pixel.ttf.gz") : await fetch("./vendor/fonts/sans.ttf.gz");   // 相对路径写成字面量（红线守卫认这个）
     if (!r.ok) return null;
     const b = new Uint8Array(await r.arrayBuffer());
     return b[0] === 0x1f && b[1] === 0x8b ? await gunzip(b) : b;   // 有的主机会替 .gz 加 Content-Encoding 先解掉：看魔数，别解两次

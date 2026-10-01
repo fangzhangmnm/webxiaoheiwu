@@ -404,9 +404,13 @@ export declare const S: {
         readonly zh: "拼音";
         readonly en: "Pinyin";
     };
+    readonly "ui.reading.fontPixel": {
+        readonly zh: "像素";
+        readonly en: "Pixel";
+    };
     readonly "ui.reading.fontHint": {
-        readonly zh: "字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音字体 12 MB，选了才取。";
-        readonly en: "The font is saved with the book; exports use the same one by default (the export sheet can pick another). The pinyin font is 12 MB and is fetched only when chosen.";
+        readonly zh: "字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音 12 MB、像素 0.5 MB，选了才取。";
+        readonly en: "The font is saved with the book; exports use the same one by default (the export sheet can pick another). Pinyin is 12 MB and pixel 0.5 MB, fetched only when chosen.";
     };
     readonly "ui.reading.fontScale": {
         readonly zh: "字号（本机）";
@@ -625,8 +629,8 @@ export declare const S: {
         readonly en: "Model source (any mirror; bytes are verified on arrival)";
     };
     readonly "ui.font.credit": {
-        readonly zh: "正文字体：思源黑体（Noto Sans SC）© Adobe。导出可选的拼音字体：萌神手写体 © 萌神 PROJECT / LXGW。两款都是 SIL 开源字体许可 1.1，随 app 附许可证全文（vendor/fonts/OFL.txt、OFL-pinyin.txt）。";
-        readonly en: "Body font: Noto Sans SC (Source Han Sans) © Adobe. Optional pinyin font for exports: Mengshen-Handwritten © mengshen project / LXGW. Both under the SIL Open Font License 1.1; the full licenses ship with the app (vendor/fonts/OFL.txt, OFL-pinyin.txt).";
+        readonly zh: "正文字体：思源黑体（Noto Sans SC）© Adobe，SIL OFL 1.1。拼音字体：萌神手写体 © 萌神 PROJECT / LXGW，SIL OFL 1.1。像素字体：Mono8px（fangzhangmnm 整理；汉字取自观致 8px，观致基于美咲フォント），可自由使用、修改、再分发。许可证全文随 app 附带（vendor/fonts/）。";
+        readonly en: "Body font: Noto Sans SC (Source Han Sans) © Adobe, SIL OFL 1.1. Pinyin font: Mengshen-Handwritten © mengshen project / LXGW, SIL OFL 1.1. Pixel font: Mono8px (assembled by fangzhangmnm; hanzi from GuanZhi 8px, itself based on Misaki), free to use, modify and redistribute. Full license texts ship with the app (vendor/fonts/).";
     };
     readonly "ui.sec.maintenance": {
         readonly zh: "维护";
@@ -2196,13 +2200,17 @@ export declare const S: {
         readonly zh: "拼音";
         readonly en: "Pinyin";
     };
+    readonly "export.font.pixel": {
+        readonly zh: "像素";
+        readonly en: "Pixel";
+    };
     readonly "export.fontLoading": {
-        readonly zh: "取拼音字体（12 MB，取过就不用再取）…";
-        readonly en: "Fetching the pinyin font (12 MB, cached afterwards)…";
+        readonly zh: "取字体（拼音 12 MB、像素 0.5 MB，取过就不用再取）…";
+        readonly en: "Fetching the font (pinyin 12 MB, pixel 0.5 MB; cached afterwards)…";
     };
     readonly "export.fontFailed": {
-        readonly zh: "拼音字体没取到：第一次用要联网";
-        readonly en: "Couldn’t fetch the pinyin font: the first use needs a connection";
+        readonly zh: "字体没取到：第一次用要联网";
+        readonly en: "Couldn’t fetch the font: the first use needs a connection";
     };
     readonly "pdf.readyShapeSkipped": {
         readonly zh: "这款字体有一部分选读音的规则本 app 不认识，个别多音字的拼音可能不对";

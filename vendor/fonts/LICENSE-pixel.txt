@@ -1,0 +1,16 @@
+Mono8px — 8x8 pixel font
+Assembled by fangzhangmnm (re-vectorised outlines, metadata, toki pona glyphs).
+
+Provenance of the glyphs
+  - Hanzi: identical bitmaps to "GuanZhi 8px" (观致 8×8 像素字体), which is based on Misaki
+    (美咲フォント, by Num Kadoma / Little Limit) with GB2312 hanzi added.
+  - GuanZhi is distributed under the same terms as Misaki (as stated on the font
+    listing pages; the font file itself only names "Misaki" in its copyright field).
+
+Misaki font license (original text):
+  These fonts are free software.
+  Unlimited permission is granted to use, copy, and distribute them, with or without
+  modification, either commercially or noncommercially.
+  THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
+
+The additions by fangzhangmnm are released under the same terms.

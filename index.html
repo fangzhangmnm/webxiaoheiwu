@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="asr-worker" content="./dist/asr-worker-76fcf2257015.js" />
+    <meta name="asr-worker" content="./dist/asr-worker-f08d70c84fd4.js" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#d8c8a8" />
     <meta name="color-scheme" content="light" />
@@ -390,8 +390,12 @@
               <input type="radio" name="editorFont" value="pinyin" />
               <span data-i18n="ui.reading.fontPinyin">拼音</span>
             </label>
+            <label class="reading-mode-option" data-font="pixel">
+              <input type="radio" name="editorFont" value="pixel" />
+              <span data-i18n="ui.reading.fontPixel">像素</span>
+            </label>
           </div>
-          <p class="reading-mode-hint" data-i18n="ui.reading.fontHint">字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音字体 12 MB，选了才取。</p>
+          <p class="reading-mode-hint" data-i18n="ui.reading.fontHint">字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音 12 MB、像素 0.5 MB，选了才取。</p>
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.reading.fontScale">字号（本机）</span>
             <select id="fontScaleSelect" class="voice-config-select">
@@ -509,7 +513,7 @@
 
         <details class="settings-section">
           <summary class="settings-section-title" data-i18n="ui.sec.maintenance">维护</summary>
-          <p class="voice-config-hint" data-i18n="ui.font.credit">正文字体：思源黑体（Noto Sans SC）© Adobe。导出可选的拼音字体：萌神手写体 © 萌神 PROJECT / LXGW。两款都是 SIL 开源字体许可 1.1，随 app 附许可证全文（vendor/fonts/OFL.txt、OFL-pinyin.txt）。</p>
+          <p class="voice-config-hint" data-i18n="ui.font.credit">正文字体：思源黑体（Noto Sans SC）© Adobe，SIL OFL 1.1。拼音字体：萌神手写体 © 萌神 PROJECT / LXGW，SIL OFL 1.1。像素字体：Mono8px（fangzhangmnm 整理；汉字取自观致 8px，观致基于美咲フォント），可自由使用、修改、再分发。许可证全文随 app 附带（vendor/fonts/）。</p>
           <div class="settings-row">
             <button class="auth-action" id="forceUpdateButton" type="button" data-i18n="ui.forceUpdate">强制更新（清缓存重启）</button>
             <button class="auth-action danger" id="factoryResetButton" type="button" data-i18n="ui.factoryReset">还原出厂设置（清本机全部数据）…</button>
@@ -555,6 +559,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-d381b35fc7d9.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-bcb7ed39eaf9.mjs"></script>
   </body>
 </html>

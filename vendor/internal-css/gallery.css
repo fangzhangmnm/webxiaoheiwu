@@ -117,7 +117,7 @@
 .gallery-tile-thumb {
   /* 大厂现行做法：aspect-ratio 让缩略图随卡片宽变成方块（块布局里 width:100% 先定宽、aspect 求等高）。
    * 同一行卡片等宽→等高。object-fit:contain：方图整张可见、比例正确。 */
-  width: 100%; aspect-ratio: var(--tile-aspect, 1 / 1); height: auto;   /* 0.2.0：比例由 .gallery-grid 的 --tile-aspect 定（方图 / 2:3 书封） */
+  width: 100%; aspect-ratio: var(--tile-aspect, 1 / 1); height: auto;   /* 比例由 .gallery-grid 的 --tile-aspect 定（默认方图；宿主可给任意比例） */
   display: block;
   object-fit: contain;
   border-radius: 7px 7px 0 0;   /* v0.5.39：卡片放开 overflow 后圆角自理（8px 外框内贴 1px 边） */
@@ -423,7 +423,7 @@
   gap: 16px;
   align-content: start;
 }
-.gallery-grid.tall { --tile-min: 120px; --tile-min-narrow: calc(33.333% - 10.667px); --tile-aspect: 2 / 3; }
+.gallery-grid.tall { --tile-min: 120px; --tile-min-narrow: calc(33.333% - 10.667px); }   /* 竖版（宿主给的比例 < 1）：卡片窄一档、窄屏一排三张。比例本身 = 宿主给的数，写在这个元素的 style 里（--tile-aspect） */
 /* ── 0.3.0 列表视图（tile.layout:"list"，JRB 第三消费者；提案 ai-docs/20260919-proposal-list-view.md）：一行一件，名字整行最多折两行，副标题一行，右侧 ⋯。默认 cards 规则一字不动。 ── */
 .gallery-grid.list { display: flex; flex-direction: column; gap: 0; padding: 0 0 16px; }
 .gallery-grid.list .gallery-tile { display: grid; grid-template-columns: 40px minmax(0, 1fr) 30px; grid-template-areas: "thumb name menu"; align-items: center; column-gap: 10px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }

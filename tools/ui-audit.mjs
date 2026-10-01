@@ -587,18 +587,18 @@ for (const [w, h] of sizes) {
       const pickF = async (re) => { await page.evaluate((r) => [...[...document.querySelectorAll("#sheetChoices .sheet-seg-line")].at(-1).querySelectorAll(".sheet-seg-btn")].find((b) => new RegExp(r).test(b.textContent))?.click(), re.source); await wait(120); };
       const storedF = () => page.evaluate(() => window.__xhw.project.session().project.editorState.exportFont ?? null);
       const hasFace = () => page.evaluate(() => [...document.fonts].some((f) => /XHW Pinyin/.test(f.family)));
-      probe(tag, "export sheet has a font row 黑体* | 拼音 (two option rows in all); the pinyin font is not loaded yet", await frow() === "黑体*|拼音" && await page.evaluate(() => document.querySelectorAll("#sheetChoices .sheet-seg-line").length) === 2 && await storedF() === null, JSON.stringify({ row: await frow(), face: await hasFace() }));
+      probe(tag, "export sheet has a font row 黑体* | 拼音 | 像素 (two option rows in all); the pinyin font is not loaded yet", await frow() === "黑体*|拼音|像素" && await page.evaluate(() => document.querySelectorAll("#sheetChoices .sheet-seg-line").length) === 2 && await storedF() === null, JSON.stringify({ row: await frow(), face: await hasFace() }));
       const faceBefore = await hasFace();
       await pickF(/拼音/);
-      probe(tag, "pick 拼音 → stored in the book (exportFont = pinyin), row shows 拼音*, still nothing fetched (lazy)", await storedF() === "pinyin" && await frow() === "黑体|拼音*" && await hasFace() === faceBefore, JSON.stringify({ stored: await storedF(), row: await frow() }));
+      probe(tag, "pick 拼音 → stored in the book (exportFont = pinyin), row shows 拼音*, still nothing fetched (lazy)", await storedF() === "pinyin" && await frow() === "黑体|拼音*|像素" && await hasFace() === faceBefore, JSON.stringify({ stored: await storedF(), row: await frow() }));
       await page.click("#sheetCancel"); await wait(200);
       const out = await page.evaluate(async () => { const li = await window.__xhw.exportLongImage("page"); const pdf = await window.__xhw.exportPdf("page"); return { img: !!li && li.files.length >= 1, font: pdf?.fontLabel ?? null, missing: pdf?.missing?.length ?? -1, pages: pdf?.pages ?? 0 }; });
       probe(tag, "exporting with 拼音: long image renders, the pinyin face is now installed, PDF embeds Mengshen with no missing glyphs", out.img && await hasFace() && /Mengshen/.test(out.font ?? "") && out.pages >= 1, JSON.stringify(out));
       probe(tag, "the editor itself stays on the body font (pinyin is export-only)", await page.evaluate(() => /^"?XHW Sans/.test(getComputedStyle(document.getElementById("editor")).fontFamily)));
       await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
-      probe(tag, "reopening the export sheet remembers 拼音", await frow() === "黑体|拼音*", await frow());
+      probe(tag, "reopening the export sheet remembers 拼音", await frow() === "黑体|拼音*|像素", await frow());
       await pickF(/黑体/);
-      probe(tag, "picking 黑体 drops the override", await storedF() === null && await frow() === "黑体*|拼音", JSON.stringify({ stored: await storedF(), row: await frow() }));
+      probe(tag, "picking 黑体 drops the override", await storedF() === null && await frow() === "黑体*|拼音|像素", JSON.stringify({ stored: await storedF(), row: await frow() }));
       const back = await page.evaluate(async () => { const s = [...document.querySelectorAll("#sheetCancel")][0]; s?.click(); await new Promise((r) => setTimeout(r, 200)); const pdf = await window.__xhw.exportPdf("page"); return pdf?.fontLabel ?? null; });
       probe(tag, "back on 黑体: PDF embeds NotoSansSC again", /NotoSansSC/.test(back ?? ""), String(back));
       await ensureSidebar(true); await page.click("#edgeExport"); await wait(300); }
@@ -610,6 +610,11 @@ for (const [w, h] of sizes) {
       probe(tag, "font picked in settings inside a book → stored in the book (editorState.font), editor switches to the pinyin font, export follows without touching the export sheet (PDF embeds Mengshen)", st.body === "pinyin" && st.stored === "pinyin" && st.exportStored === null && st.exportPref === "pinyin" && /Mengshen/.test(st.pdfFont ?? "") && /XHW Pinyin/.test(st.family), JSON.stringify(st));
       const ov = await page.evaluate(async () => { window.__xhw.setExportFont("sans"); const s = window.__xhw.project.session().project.editorState; const a = { stored: s.exportFont ?? null, pdf: (await window.__xhw.exportPdf("page"))?.fontLabel ?? null }; window.__xhw.setExportFont("pinyin"); return { ...a, cleared: !("exportFont" in s) }; });
       probe(tag, "export can still differ: picking 黑体 for export while the editor is on 拼音 stores exportFont=sans (PDF embeds Noto); picking 拼音 again drops the override", ov.stored === "sans" && /NotoSansSC/.test(ov.pdf ?? "") && ov.cleared, JSON.stringify(ov));
+      await pickFont("sans"); await wait(300);
+      // v2.3.27 像素字体（user「字体进」）：第三个选项；编辑器字号落在 8 的倍数（桌面 24 / 手机 16），长图一个字 32 像素，PDF 嵌 Mono8px
+      await pickFont("pixel"); await page.waitForFunction(() => [...document.fonts].some((f) => /XHW Pixel/.test(f.family) && f.status === "loaded"), null, { timeout: 30000 }).catch(() => {});
+      { const px = await page.evaluate(async () => { const cs = getComputedStyle(document.getElementById("editor")); const li = await window.__xhw.exportLongImage("page"); const pdf = await window.__xhw.exportPdf("page"); const chars = Number(document.body.dataset.chars); return { opts: [...document.querySelectorAll("#editorFontPicker input")].map((i) => i.value).join(), family: cs.fontFamily.slice(0, 12), size: parseFloat(cs.fontSize), expect: Math.min(screen.width, screen.height) < 500 ? 16 : 24, imgW: li.plan.width, wantW: chars * 32 + 2 * Math.round(1.4 * 32), pdfFont: pdf?.fontLabel ?? null, stored: window.__xhw.project.session().project.editorState.font }; });
+        probe(tag, "pixel font: third option in settings; editor uses it at a multiple of 8 px; long image is drawn at 32 px per character; PDF embeds Mono8px; stored in the book", px.opts === "sans,pinyin,pixel" && /XHW Pixel/.test(px.family) && px.size === px.expect && px.imgW === px.wantW && /Mono8px/.test(px.pdfFont ?? "") && px.stored === "pixel", JSON.stringify(px)); }
       await pickFont("sans"); await wait(300);
       probe(tag, "back to 黑体: editor font and export both return", await page.evaluate(() => document.body.dataset.font === "sans" && window.__xhw.exportFontPref() === "sans" && /^"?XHW Sans/.test(getComputedStyle(document.getElementById("editor")).fontFamily)));
       await ensureSidebar(true); await page.click("#edgeExport"); await wait(300); }

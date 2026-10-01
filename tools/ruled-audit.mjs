@@ -36,7 +36,7 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0,
   // 走真的设置控件（阅读节奏单选）：行高与线位要跟着重算
   await page.evaluate(({ mode }) => { const r = document.querySelector(`#readingModePicker input[value="${mode}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const t = document.getElementById("wordCountToggle"); if (t.checked) t.click(); }, { mode });
   // 编辑器字体（v2.3.26）：走真的设置控件选拼音字体，等它装进文档再量——字头上多了拼音，线还得在字脚下面、逐行不漂
-  if (font) { await page.evaluate((f) => { const r = document.querySelector(`#editorFontPicker input[value="${f}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }, font); await page.waitForFunction(() => [...document.fonts].some((f) => /XHW Pinyin/.test(f.family) && f.status === "loaded"), null, { timeout: 30000 }); await page.waitForTimeout(400); }
+  if (font) { await page.evaluate((f) => { const r = document.querySelector(`#editorFontPicker input[value="${f}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }, font); await page.waitForFunction((fam) => [...document.fonts].some((f) => f.family.includes(fam) && f.status === "loaded"), font === "pixel" ? "XHW Pixel" : "XHW Pinyin", { timeout: 30000 }); await page.waitForTimeout(400); }
   if (!book) await page.evaluate(() => { const e = document.getElementById("editor"); e.value = Array.from({ length: 60 }, () => "国国国国").join("\n"); e.dispatchEvent(new Event("input", { bubbles: true })); e.scrollTop = 0; e.blur(); });
   if (book) {
     // 有子节的页：两行正文 + 空一行 + 三条子节链接（user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）——量整个纸面容器，链接行也得坐在线上
@@ -88,7 +88,7 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0,
 // 字号绝对（v2.3.17，user 2026-10-01「字号应该是绝对的，不是相对于行宽的」）：字号 = 设备基准（22；屏短边 < 500 → 16）× 字号档，不看行宽；
 //   每行字数 = 行宽档，不看字号档（屏够宽时）；屏不够宽 → 少排几个字（fit < 档），字号不变。
 function sizeCheck(c, box) {
-  const scr = c.screen ?? { width: c.w, height: c.h }; const base = Math.min(scr.width, scr.height) < 500 ? 16 : 22, want = base * Number(c.scale);
+  const scr = c.screen ?? { width: c.w, height: c.h }; const base = Math.min(scr.width, scr.height) < 500 ? 16 : c.font === "pixel" ? 24 : 22, want = base * Number(c.scale);
   const pad = Math.min(32, Math.max(18, c.w * 0.035));   // styles.css --page-pad-x
   const roomy = c.w >= c.mode * want + 2 * pad + 8;   // 纸宽上限放得进屏 → 行宽必须严格（手机也一样：user 2026-10-01「不超屏幕范围的话我希望手机也是严格行宽。现在14档普通字变成15了」「20档也变成21」）
   const okFont = Math.abs(box.font - want) < 0.06, okFit = roomy ? box.fit === c.mode : box.fit <= c.mode && box.fit >= 1;
@@ -98,7 +98,8 @@ const cases = [];
 for (const dpr of [1, 1.25, 1.75, 2, 3]) for (const mode of [14, 20, 28]) for (const scale of ["1", "1.15"]) cases.push({ w: 1100, h: 900, dpr, mode, scale });
 cases.push({ w: 375, h: 667, dpr: 2, mode: 20, scale: "1" }, { w: 744, h: 1133, dpr: 2, mode: 20, scale: "1.15" });
 for (const mode of [14, 28]) for (const scale of ["1", "1.3"]) cases.push({ w: 375, h: 667, dpr: 2, mode, scale });   // 手机上换行宽：字号不许跟着变
-for (const [w, h, dpr, mode] of [[1100, 900, 1, 20], [1100, 900, 2, 28], [375, 667, 2, 14]]) cases.push({ w, h, dpr, mode, scale: "1", font: "pinyin", shot: `pinyin-${w}x${h}-${mode}` });   // 拼音字体：最挤的 28 档也要对得上
+for (const [w, h, dpr, mode] of [[1100, 900, 1, 20], [1100, 900, 2, 28], [375, 667, 2, 14]]) cases.push({ w, h, dpr, mode, scale: "1", font: "pinyin", shot: `pinyin-${w}x${h}-${mode}` });
+cases.push({ w: 1100, h: 900, dpr: 1, mode: 20, scale: "1", font: "pixel", shot: "pixel-1100x900-20" }, { w: 375, h: 667, dpr: 2, mode: 20, scale: "1", font: "pixel" });   // 像素字体：桌面基准 24px、手机 16px   // 拼音字体：最挤的 28 档也要对得上
 // GPD Win Mini：7 寸 1920×1080，系统缩放 175% → 1097×617（全屏）/ 1097×537（装成 app 的窗口）/ 1097×480（浏览器标签页）；普通档（「宽稿纸」2026-09-30 撤了）
 const WINMINI_SCREEN = { width: 1097, height: 617 };
 for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: 20, scale: "1", shot: `winmini-1097x${h}`, screen: WINMINI_SCREEN });
