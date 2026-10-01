@@ -601,6 +601,8 @@ export const S = {
   "export.partCoverClear":  { zh: "不要封面", en: "No cover" },
   "export.embedText":       { zh: "长图里附上文字（和「复制文字」同一份，藏在图片文件里）", en: "Attach the text inside the long image file (same as Copy text)" },
   "export.scopeStats":      { zh: "{cjk} 字 {en} 词 · {pages} 页正文", en: "{cjk} chars · {en} words · {pages} text pages" },
+  "export.imageSize":       { zh: "长图约 {h} px 高（{screens} 屏）", en: "Long image ≈ {h} px tall ({screens} screens)" },
+  "export.imageSizeOver":   { zh: "长图约 {h} px 高（{screens} 屏，超过单张上限，会问你怎么切）", en: "Long image ≈ {h} px tall ({screens} screens — over the single-image limit, you’ll be asked how to split)" },
   "export.pdfPages":        { zh: "PDF 约 {n} 页", en: "PDF ≈ {n} pages" },
   "export.scopeStatsImages": { zh: " · {images} 张图", en: " · {images} images" },
   "copy.doneScope":         { zh: "已复制 {pages} 页：{cjk} 字 {en} 词", en: "Copied {pages} pages: {cjk} chars · {en} words" },

@@ -50,3 +50,27 @@ export function importPageName(originalName: string | null, ext: string, fallbac
   const sameFamily = gotExt === ext || (ext === "jpg" && gotExt === "jpeg") || (ext === "jpeg" && gotExt === "jpg");
   return sameFamily && gotExt ? `${stem}.${gotExt}` : `${stem}.${ext}`;
 }
+
+/** 不解码，只从文件头读图片的宽高（PNG / JPEG / GIF / WebP）。读不出 → null。估长图高度用（导出面板要当场给数，等不了异步解码）。created 2026-10-01 by Claude Fable 5.1 */
+export function sniffImageSize(b: Uint8Array): { w: number; h: number } | null {
+  const be16 = (o: number): number => (b[o]! << 8) | b[o + 1]!, le16 = (o: number): number => b[o]! | (b[o + 1]! << 8), le24 = (o: number): number => b[o]! | (b[o + 1]! << 8) | (b[o + 2]! << 16);
+  const ok = (w: number, h: number): { w: number; h: number } | null => (w > 0 && h > 0 ? { w, h } : null);
+  if (b.length >= 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return ok(((b[16]! << 24) | (b[17]! << 16) | (b[18]! << 8) | b[19]!) >>> 0, ((b[20]! << 24) | (b[21]! << 16) | (b[22]! << 8) | b[23]!) >>> 0);
+  if (b.length >= 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return ok(le16(6), le16(8));
+  if (b.length >= 30 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) {
+    const fourcc = String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!);
+    if (fourcc === "VP8X") return ok(le24(24) + 1, le24(27) + 1);
+    if (fourcc === "VP8 ") return ok(le16(26) & 0x3fff, le16(28) & 0x3fff);
+    if (fourcc === "VP8L") { const v = (b[21]! | (b[22]! << 8) | (b[23]! << 16) | (b[24]! << 24)) >>> 0; return ok((v & 0x3fff) + 1, ((v >>> 14) & 0x3fff) + 1); }
+    return null;
+  }
+  if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
+    for (let o = 2; o + 9 < b.length && b[o] === 0xff;) {
+      const m = b[o + 1]!;
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return ok(be16(o + 7), be16(o + 5));   // SOFn：高在前、宽在后
+      if (m === 0xd8 || (m >= 0xd0 && m <= 0xd7)) { o += 2; continue; }
+      o += 2 + be16(o + 2);
+    }
+  }
+  return null;
+}

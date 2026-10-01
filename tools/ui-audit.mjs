@@ -539,6 +539,9 @@ for (const [w, h] of sizes) {
     { const est = Number((b.note.match(/PDF 约 (\d+) 页/) ?? [])[1] ?? NaN);
       await page.click("#sheetCancel"); await wait(200);
       const real = await page.evaluate(async () => (await window.__xhw.exportPdf("book")).pages);
+      { const estH = Number(((b.note.match(/长图约 ([\d,]+) px/) ?? [])[1] ?? "").replace(/,/g, "")); const realH = await page.evaluate(async () => (await window.__xhw.exportLongImage("book")).plan.slices.reduce((a, s) => a + s.h, 0));
+        const single = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book"); return r.plan.slices.length === 1 ? r.plan.totalHeight : null; });
+        probe(tag, "export sheet says 「长图约 N px 高（几屏）」 for the picked scope, within 3% of the real long image", Number.isFinite(estH) && estH > 0 && (single == null || Math.abs(estH - single) <= Math.max(60, single * 0.03)), `est=${estH} real=${single ?? realH} note=${JSON.stringify(b.note)}`); }
       probe(tag, "export sheet says 「PDF 约 N 页」 for the picked scope, within one page of the real PDF", Number.isFinite(est) && Math.abs(est - real) <= 1, `est=${est} real=${real} note=${JSON.stringify(b.note)}`);
       await ensureSidebar(true); await page.click("#edgeExport"); await wait(300); }
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-btn")].find((x) => /这一页/.test(x.textContent))?.click()); await wait(150); }

@@ -1,6 +1,7 @@
 // 把文字藏进图片文件（src/image/embed-text.ts）。created 2026-10-01 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
 import { embedTextPng, embedTextJpeg, readEmbeddedText } from "../src/image/embed-text.ts";
+import { sniffImageSize } from "../src/image/policy.ts";
 import UPNG from "../vendor/upng/upng.esm.js";
 import { encode as jpegEncode } from "../vendor/jpeg-js/jpeg-encoder.mjs";
 
@@ -28,5 +29,15 @@ describe("image/embed-text", () => {
     let segs = 0; for (let p = 2; p + 4 <= big.length && big[p] === 0xff && big[p + 1] !== 0xda;) { const len = (big[p + 2] << 8) | big[p + 3]; if (big[p + 1] === 0xfe) { segs++; assert(len <= 65535); new TextDecoder("utf-8", { fatal: true }).decode(big.subarray(p + 4, p + 2 + len)); } p += 2 + len; }
     eq(segs, 3);
     eq(embedTextJpeg(jpg, ""), jpg); eq(embedTextJpeg(png, "x"), png, "not a JPEG → untouched"); eq(embedTextPng(jpg, [{ keyword: "Description", text: "x" }]), jpg, "not a PNG → untouched");
+  });
+  it("sniffImageSize：不解码，从文件头读宽高（PNG / JPEG / GIF / WebP）；读不出 → null；嵌了文字的图照样读得出", () => {
+    eq(JSON.stringify(sniffImageSize(png)), JSON.stringify({ w: 8, h: 8 })); eq(JSON.stringify(sniffImageSize(jpg)), JSON.stringify({ w: 8, h: 8 }));
+    const big = new Uint8Array(jpegEncode({ data: new Uint8Array(300 * 120 * 4).fill(90), width: 300, height: 120 }, 70).data);
+    eq(JSON.stringify(sniffImageSize(big)), JSON.stringify({ w: 300, h: 120 })); eq(JSON.stringify(sniffImageSize(embedTextJpeg(big, "x".repeat(70000)))), JSON.stringify({ w: 300, h: 120 }));
+    eq(JSON.stringify(sniffImageSize(embedTextPng(png, [{ keyword: "Description", text: "x" }]))), JSON.stringify({ w: 8, h: 8 }));
+    const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x40, 0x01, 0xf0, 0x00, 0, 0, 0]); eq(JSON.stringify(sniffImageSize(gif)), JSON.stringify({ w: 320, h: 240 }));
+    const webp = new Uint8Array(30); webp.set([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58]); webp.set([0x1f, 0x03, 0x00], 24); webp.set([0x57, 0x02, 0x00], 27);
+    eq(JSON.stringify(sniffImageSize(webp)), JSON.stringify({ w: 800, h: 600 }));
+    eq(sniffImageSize(new Uint8Array([1, 2, 3, 4])), null); eq(sniffImageSize(new TextEncoder().encode("not an image at all, just text")), null);
   });
 });

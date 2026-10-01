@@ -11,7 +11,7 @@ import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary } from "./docs.ts";
 import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate, splitDatedName, isCodeTitle } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
-import { importPageName } from "./image/policy.ts";
+import { sniffImageSize, importPageName } from "./image/policy.ts";
 import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD, type GalleryView } from "@internal/gallery";
 import { createProjectMode } from "./project/mode.ts";
 import { createReferenceHost } from "./reference-host.ts";
@@ -26,7 +26,7 @@ import { installSansFont, installFont, loadFontBytes, FONT_FAMILY, FONT_IDS, typ
 import { embedTextPng, embedTextJpeg } from "./image/embed-text.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
 import { planPdfBook, estimatePdfPages, type PdfSection, type CoverLook } from "./export/pdf-book.ts";
-import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
+import { estimateLongImageHeight, planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook, treeChildren, treePath } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
@@ -548,9 +548,11 @@ async function exportSheetFlow(): Promise<void> {
   }
   const note = (scope: LongImageScope): string => {
     const st = scopeStats(scope);
-    return st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") + "\n" + t("export.pdfPages", { n: st.pdfPages }) : t("export.empty");   // 页数跟着范围和行宽那两条段选变（点一下就重算）
+    return st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") + "\n" + imageLine(st.img) + " · " + t("export.pdfPages", { n: st.pdfPages }) : t("export.empty");   // 页数跟着范围和行宽那两条段选变（点一下就重算）
   };
   // 第二条段选 = 导出的行宽（长图 / PDF）：默认跟编辑器，点了就记（setExportChars）
+  // 长图约多高：像素 + 折成几屏；超过单张上限的提前说会问怎么切
+  const imageLine = (img: { width: number; height: number }): string => t(img.height > SINGLE_IMAGE_MAX_HEIGHT ? "export.imageSizeOver" : "export.imageSize", { h: img.height.toLocaleString("en-US"), screens: Math.max(1, Math.round(img.height / screenHeightFor(img.width))) });
   // 第三条 = 导出的字体：黑体 / 拼音（萌神）。点了就记（setExportFont）；字体本身到真导出时才取
   const extras = [
     { label: t("export.widthLabel"), options: CHARS_PRESETS.map((n) => ({ label: String(n), value: n })), initial: exportCharsPref(), onChange: (n: number) => setExportChars(n) },
@@ -609,12 +611,16 @@ function exportStamp(): string {
   return t("export.stamp", { time: `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}` });
 }
 /** 这个范围出门的量（hidden 的支不算）：正文页的字 / 词、正文页数、图片页数。没有可导出的 → null。 */
-function scopeStats(scope: LongImageScope): { cjk: number; en: number; pages: number; images: number; /** 出 PDF 大约多少页（估的，不排版） */ pdfPages: number } | null {
+function scopeStats(scope: LongImageScope): { cjk: number; en: number; pages: number; images: number; /** 出 PDF 大约多少页（估的，不排版） */ pdfPages: number; /** 不切时长图大约多高 / 多宽（估的） */ img: { width: number; height: number } } | null {
   const src = collectExport(scope); if (!src) return null;
   let cjk = 0, en = 0, pages = 0, images = 0;
   for (const it of src.items) { if (it.kind === "image") { images++; continue; } const st = statsForText(it.text); cjk += st.cjk; en += st.en; pages++; }
-  return { cjk, en, pages, images, pdfPages: estimatePdfPages(src.items, currentTypeset(), src.front) };
+  const dim = (b: Uint8Array): { w: number; h: number } => sniffImageSize(b) ?? { w: 3, h: 4 };
+  const img = estimateLongImageHeight({ title: src.coverTitle ?? src.title, date: src.date, front: src.front, cover: src.cover ? dim(src.cover) : null, sections: src.items.map((it) => (it.kind === "text" ? it : { kind: "image" as const, ...dim(it.bytes) })) }, longImageTypeset());
+  return { cjk, en, pages, images, pdfPages: estimatePdfPages(src.items, currentTypeset(), src.front), img };
 }
+/** 长图用的排版：像素字体一个字 32 像素（8 的倍数才不糊），别的 30。 */
+function longImageTypeset(): ExportTypeset { return exportFontPref() === "pixel" ? { ...currentTypeset(), pxPerChar: PIXEL_FONT_PX } : currentTypeset(); }
 /** 这份东西的纯文字：正文页按顺序拼，页与页之间空一行（「复制文字」和嵌进长图的是同一份）。 */
 function plainTextOf(src: ExportSource): string {
   return src.items.flatMap((it) => (it.kind === "text" ? [it.text.replace(/\s+$/, "")] : [])).join("\n\n") + "\n";
@@ -705,7 +711,7 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
   const pin = custom && custom.font.contextual ? custom : null;   // 注音字体（按词选读音）才要标注
   // canvas 画字不做「按词选读音」那一步（实测）→ 用自己的排字结果把读音写成变体选择符，canvas 认这个
   const ctxOf = pin ? { annotate: (before: string, line: string, after: string): string => pin.font.annotate(line, before, after) } : {};
-  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, ...(src.coverTitle ? { coverTitle: src.coverTitle } : {}), stamp: exportStamp(), ...(exportEmbedPref() ? { embedText: plainTextOf(src) } : {}), coverLook: { ink: coverLook("book").ink, paper: coverLook("book").paper }, ruby: !!pin, ...ctxOf, sections, look, typeset: fid === "pixel" ? { ...currentTypeset(), pxPerChar: PIXEL_FONT_PX } : currentTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
+  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, ...(src.coverTitle ? { coverTitle: src.coverTitle } : {}), stamp: exportStamp(), ...(exportEmbedPref() ? { embedText: plainTextOf(src) } : {}), coverLook: { ink: coverLook("book").ink, paper: coverLook("book").paper }, ruby: !!pin, ...ctxOf, sections, look, typeset: longImageTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
 }
 /** 文件尺寸（user 2026-09-30「用高压」「默认jpg行吗…是否用jpg你可以pushback」）：按内容定不按阈值猜——纯文字的那张 = 调色板 PNG（256 色；纸底大面积同色，比 JPEG 更小也更锐，微信再压一次也不糊）；有照片（封面 / 插图页）的那张 = JPEG q82。 */
 const LONG_IMAGE_JPEG_QUALITY = 82;

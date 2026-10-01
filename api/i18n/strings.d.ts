@@ -2260,6 +2260,14 @@ export declare const S: {
         readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文";
         readonly en: "{cjk} chars · {en} words · {pages} text pages";
     };
+    readonly "export.imageSize": {
+        readonly zh: "长图约 {h} px 高（{screens} 屏）";
+        readonly en: "Long image ≈ {h} px tall ({screens} screens)";
+    };
+    readonly "export.imageSizeOver": {
+        readonly zh: "长图约 {h} px 高（{screens} 屏，超过单张上限，会问你怎么切）";
+        readonly en: "Long image ≈ {h} px tall ({screens} screens — over the single-image limit, you’ll be asked how to split)";
+    };
     readonly "export.pdfPages": {
         readonly zh: "PDF 约 {n} 页";
         readonly en: "PDF ≈ {n} pages";

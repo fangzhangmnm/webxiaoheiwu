@@ -123,6 +123,36 @@ export function wrapText(text: string, maxW: number, style: TextStyle, m: TextMe
   return lines;
 }
 
+/** 不排版、不量字体，估一下不切时这张长图有多高（导出面板在生成之前报给用户：user 2026-10-01「长图也加一个估算高度」）。
+ *  和 planLongImage 同一套行数和间距，只是字宽靠估（汉字 / 全角 1 格，其余半格）；图片用文件头里的宽高（读不出按 3 : 4）。
+ *  纯汉字的稿子和真排出来一样；夹英文、避头尾会差一点，所以界面上写「约」。 */
+export interface LongImageEstimateInput {
+  title: string; date: string | null; front: boolean; cover: { w: number; h: number } | null;
+  sections: ({ kind: "text"; heading: string | null; text: string; toc?: { label: string }[] } | { kind: "image"; w: number; h: number })[];
+}
+export function estimateLongImageHeight(src: LongImageEstimateInput, typeset: ExportTypeset): { width: number; height: number } {
+  const F = typeset.pxPerChar, chars = typeset.charsPerLine, inner = Math.round(chars * F);
+  const SIDE = Math.round(1.4 * F), TOP = Math.round(1.4 * F), BOTTOM = Math.round(1.1 * F), FOOT = Math.round(1.3 * F), W = inner + 2 * SIDE;
+  const LH = Math.max(1, Math.round(F * typeset.lineHeightRatio)) + Math.round(F * (typeset.rubyBand ?? 0));
+  const cells = (t: string): number => { let n = 0; for (const ch of t) n += (ch.codePointAt(0)! >= 0x2e80 ? 1 : 0.5); return n; };
+  const linesOf = (t: string, width: number): number => Math.max(1, Math.ceil(cells(t) / Math.max(1, width) - 1e-9));
+  const rows: { h: number; space: boolean }[] = []; const add = (h: number, space = false): void => { if (h > 0) rows.push({ h: Math.round(h), space }); };
+  if (src.front && src.cover) { add(Math.min(Math.round(W * src.cover.h / src.cover.w), Math.round(W * 1.5))); add(40, true); }
+  else if (src.front) { add(72, true); add(linesOf(src.title, chars / 1.6) * Math.round(F * 1.6 * 1.4)); if (src.date) { add(8, true); add(Math.round(Math.max(12, F * 0.6) * 1.6)); } add(56, true); }
+  else add(24, true);
+  let first = true;
+  for (const sec of src.sections) {
+    if (sec.kind === "image") { add(LH * 0.5, true); add(Math.min(Math.round(inner * sec.h / sec.w), Math.round(W * 2.4))); add(LH * 0.5, true); first = false; continue; }
+    if (sec.heading != null) { if (!first) add(LH * 0.5, true); add(linesOf(sec.heading, chars / 1.25) * Math.round(F * 1.25 * 1.4)); add(F * 0.5, true); }
+    first = false;
+    const toc = sec.toc ?? [], tocOnly = sec.text.trim() === "" && toc.length > 0;
+    if (!tocOnly) for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) add(linesOf(para, chars) * LH);
+    if (toc.length) { if (!tocOnly) add(LH); for (const e of toc) add(linesOf(e.label, chars) * LH); }
+  }
+  let a = 0, b = rows.length; while (a < b && rows[a]!.space) a++; while (b > a && rows[b - 1]!.space) b--;   // 片头片尾的空行会被剪掉（和 planLongImage 一样）
+  return { width: W, height: TOP + rows.slice(a, b).reduce((s, r) => s + r.h, 0) + BOTTOM + FOOT };
+}
+
 export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxSliceHeight?: number } = {}): LongImagePlan {
   const look = spec.look, F = spec.typeset.pxPerChar;
   const inner = Math.round(spec.typeset.charsPerLine * F);   // 折行的尺子 = 字数 × 像素/字（汉字一字一格；拉丁字母约两个算一个）

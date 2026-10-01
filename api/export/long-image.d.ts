@@ -94,6 +94,34 @@ export declare const screenHeightFor: (w: number) => number;
 export declare const socialSliceHeightFor: (w: number) => number;
 /** 按编辑器的规矩折一行：CJK 逐字可断、拉丁按词、超宽的词按字符断、断点处的空格丢掉、避头尾。 */
 export declare function wrapText(text: string, maxW: number, style: TextStyle, m: TextMeasurer): string[];
+/** 不排版、不量字体，估一下不切时这张长图有多高（导出面板在生成之前报给用户：user 2026-10-01「长图也加一个估算高度」）。
+ *  和 planLongImage 同一套行数和间距，只是字宽靠估（汉字 / 全角 1 格，其余半格）；图片用文件头里的宽高（读不出按 3 : 4）。
+ *  纯汉字的稿子和真排出来一样；夹英文、避头尾会差一点，所以界面上写「约」。 */
+export interface LongImageEstimateInput {
+    title: string;
+    date: string | null;
+    front: boolean;
+    cover: {
+        w: number;
+        h: number;
+    } | null;
+    sections: ({
+        kind: "text";
+        heading: string | null;
+        text: string;
+        toc?: {
+            label: string;
+        }[];
+    } | {
+        kind: "image";
+        w: number;
+        h: number;
+    })[];
+}
+export declare function estimateLongImageHeight(src: LongImageEstimateInput, typeset: ExportTypeset): {
+    width: number;
+    height: number;
+};
 export declare function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts?: {
     maxSliceHeight?: number;
 }): LongImagePlan;

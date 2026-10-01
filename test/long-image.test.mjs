@@ -1,6 +1,6 @@
 // 长图排版纯函数（src/export/long-image.ts）：折行规矩 + 切片规矩，用假量尺（CJK 20 宽、拉丁 10 宽、空格 5 宽）。created 2026-09-30 by Claude Fable 5.1
 import { describe, it, eq, assert } from "./runner.mjs";
-import { wrapText, planLongImage } from "../src/export/long-image.ts";
+import { estimateLongImageHeight, wrapText, planLongImage } from "../src/export/long-image.ts";
 
 const cjkRe = /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef\u2018-\u201f\u2026]/;
 const widthOf = (text) => [...text].reduce((a, c) => a + (c === " " ? 5 : cjkRe.test(c) ? 20 : 10), 0);
@@ -95,6 +95,22 @@ describe("export/long-image · planLongImage 切片", () => {
     eq(onCover, "第一章", "cover carries coverTitle, one glyph per op"); eq(texts.filter((x) => x === "书 · 第一章").length, 0, "the title is not printed again under the image");
     const sliced = planLongImage(spec([{ kind: "text", heading: null, text: Array.from({ length: 200 }, () => "行").join("\n") }], { stamp: "S" }), m, { maxSliceHeight: 2000 });
     assert(sliced.slices.length > 1 && sliced.slices[0].ops.some((o) => o.op === "text" && o.text === `书 · S · 1/${sliced.slices.length}`), "sliced footer");
+  });
+  it("estimateLongImageHeight（导出前报「长图约多高」）：纯汉字的稿子和真排的高度一样——有 / 无封面图、不带书名段、章节名、目录、图片页、片尾空行", () => {
+    const ts = { charsPerLine: 20, pxPerChar: 20, lineHeightRatio: 2 };
+    const text = ("国".repeat(47) + "\n").repeat(9) + "\n" + "国".repeat(20);
+    const img = { blob: {}, w: 1000, h: 500 }, tall = { blob: {}, w: 500, h: 2000 };
+    const cases = [
+      { front: true, cover: null, sections: [{ kind: "text", heading: "一", text }, { kind: "text", heading: null, text: "国" }] },
+      { front: true, cover: tall, sections: [{ kind: "text", heading: "目录", text: "", toc: [{ label: "甲" }, { label: "乙" }] }, { kind: "text", heading: "甲", text, toc: [{ label: "乙" }] }, { kind: "image", heading: null, image: img }] },
+      { front: false, cover: null, sections: [{ kind: "text", heading: "一", text }, { kind: "image", heading: null, image: tall }, { kind: "text", heading: "二", text: "国" }] },
+      { front: false, cover: null, sections: [{ kind: "text", heading: null, text }] },
+    ];
+    for (const [k, c] of cases.entries()) {
+      const real = planLongImage(spec(c.sections, { cover: c.cover, front: c.front, typeset: ts }), m);
+      const est = estimateLongImageHeight({ title: "书", date: "20260930", front: c.front, cover: c.cover ? { w: c.cover.w, h: c.cover.h } : null, sections: c.sections.map((s) => (s.kind === "text" ? s : { kind: "image", w: s.image.w, h: s.image.h })) }, ts);
+      eq(est.width, real.width, `case ${k} width`); eq(est.height, real.totalHeight, `case ${k} height`);
+    }
   });
   it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同；行距跟档走", async () => {
     const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";   // 30 字 → 20 字/行 = 2 行

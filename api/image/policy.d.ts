@@ -27,3 +27,8 @@ export declare function planImageImport(o: {
 export declare const isFatGif: (bytes: number) => boolean;
 /** 进门页名：有名保名（去路径字符），扩展名以**实际字节类型**为准（改名 IMG.jpeg → 仍 .jpeg 保留；无扩展名 / 扩展名不符 → 补真实的）；无名（粘贴位图）→ `<date>-<hex4>.<ext>`。撞名由 graph 层 hex4。 */
 export declare function importPageName(originalName: string | null, ext: string, fallbackStem: string): string;
+/** 不解码，只从文件头读图片的宽高（PNG / JPEG / GIF / WebP）。读不出 → null。估长图高度用（导出面板要当场给数，等不了异步解码）。created 2026-10-01 by Claude Fable 5.1 */
+export declare function sniffImageSize(b: Uint8Array): {
+    w: number;
+    h: number;
+} | null;
