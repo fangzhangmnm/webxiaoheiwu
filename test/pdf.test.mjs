@@ -157,7 +157,7 @@ describe("export/pdf-book 页面几何", () => {
     eq(cells.map((o) => o.text).join(""), title, "one op per character, in reading order");
     // 有图：字底下垫半透明的纸（书名一列一块 + 日期一块），画在图之后、字之前；没有描边
     { const ops = withImg.doc.pages[0].ops, pads = ops.filter((o) => o.op === "rect" && o.alpha != null);
-      eq(pads.length, 2, "one pad for the title column, one for the date"); assert(pads.every((o) => o.alpha === 0.78));
+      eq(pads.length, 2, "one pad for the title, one for the date"); assert(pads.every((o) => o.alpha === 0.78 && o.radius > 0), "translucent and rounded");
       const iImg = ops.findIndex((o) => o.op === "image"), iPad = ops.findIndex((o) => o.op === "rect" && o.alpha != null), iTxt = ops.findIndex((o) => o.op === "text");
       assert(iImg < iPad && iPad < iTxt, "image, then pads, then text");
       const col = pads[0]; for (const c of cells) assert(c.x >= col.x - 0.01 && c.x + c.size <= col.x + col.w + 0.01 && c.y <= col.y + col.h && c.y - c.size * 0.9 >= col.y - 0.01, "every title glyph sits on the pad");

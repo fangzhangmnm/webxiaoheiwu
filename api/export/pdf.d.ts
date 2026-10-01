@@ -14,7 +14,8 @@ export type PdfOp = {
     w: number;
     h: number;
     color: Rgb; /** 不透明度 0..1（缺省 1）。封面图上书名底下那块半透明的纸。 */
-    alpha?: number;
+    alpha?: number; /** 圆角半径（缺省 0） */
+    radius?: number;
 } | {
     op: "line";
     x1: number;

@@ -52,7 +52,8 @@ export interface EditorState {
     refPanel?: RefPanelState;
     lineWidth?: LineWidthState;
     exportLineWidth?: LineWidthState; /** 这本书导出（长图 / PDF）用的字体；没有 = 黑体。目前只认 "pinyin"（萌神拼音，2026-10-01）。 */
-    exportFont?: string; /** 「这一页 / 这一支」导出时用的封面：起点页名 → 图片页名（2026-10-01 user「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）。整本的封面是 graph.json 的 cover，不在这里。 */
+    exportFont?: string; /** 这本书在编辑器里用的字体（2026-10-01 user「编辑器换字体 做，书的属性，导出默认跟随」）："sans" / "pinyin"；没有 = 账号默认。导出没另选（exportFont）时跟它走。 */
+    font?: string; /** 「这一页 / 这一支」导出时用的封面：起点页名 → 图片页名（2026-10-01 user「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）。整本的封面是 graph.json 的 cover，不在这里。 */
     exportCovers?: Record<string, string>; /** 长图里要不要附上文字（藏在图片文件的元数据里）。缺省附；只有关掉才写 false（2026-10-01 user「也可以选择不嵌入」）。 */
     exportEmbedText?: false;
 }

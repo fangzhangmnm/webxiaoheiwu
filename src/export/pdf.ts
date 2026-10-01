@@ -12,7 +12,7 @@ export type Rgb = [number, number, number];   // 0..1
 export interface PdfImage { jpeg: Uint8Array; w: number; h: number; components: 1 | 3 | 4 }
 /** 一页上的东西（页面坐标：左上原点，单位 pt）。text 的 y = 基线。 */
 export type PdfOp =
-  | { op: "rect"; x: number; y: number; w: number; h: number; color: Rgb; /** 不透明度 0..1（缺省 1）。封面图上书名底下那块半透明的纸。 */ alpha?: number }
+  | { op: "rect"; x: number; y: number; w: number; h: number; color: Rgb; /** 不透明度 0..1（缺省 1）。封面图上书名底下那块半透明的纸。 */ alpha?: number; /** 圆角半径（缺省 0） */ radius?: number }
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: Rgb; width: number }
   | { op: "text"; x: number; y: number; text: string; size: number; color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */ before?: string; after?: string; /** 顺时针转 90°（以 x, y 为轴；竖排里侧躺的拉丁串 / 括号） */ rotate?: 90 }
   | { op: "image"; x: number; y: number; w: number; h: number; image: PdfImage };
@@ -73,7 +73,11 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
     const H = page.h; let c = ""; const xobj: string[] = []; const alphas = new Set<number>();
     for (const o of page.ops) {
       if (o.op === "rect") {
-        const fillRect = `${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} rg ${num(o.x)} ${num(H - o.y - o.h)} ${num(o.w)} ${num(o.h)} re f`;
+        const X = o.x, Y = H - o.y - o.h, r = Math.max(0, Math.min(o.radius ?? 0, o.w / 2, o.h / 2)), k = r * 0.5523;   // 圆角 = 四段三次贝塞尔（0.5523 = 四分之一圆的控制点比例）
+        const path = r > 0
+          ? `${num(X + r)} ${num(Y)} m ${num(X + o.w - r)} ${num(Y)} l ${num(X + o.w - r + k)} ${num(Y)} ${num(X + o.w)} ${num(Y + r - k)} ${num(X + o.w)} ${num(Y + r)} c ${num(X + o.w)} ${num(Y + o.h - r)} l ${num(X + o.w)} ${num(Y + o.h - r + k)} ${num(X + o.w - r + k)} ${num(Y + o.h)} ${num(X + o.w - r)} ${num(Y + o.h)} c ${num(X + r)} ${num(Y + o.h)} l ${num(X + r - k)} ${num(Y + o.h)} ${num(X)} ${num(Y + o.h - r + k)} ${num(X)} ${num(Y + o.h - r)} c ${num(X)} ${num(Y + r)} l ${num(X)} ${num(Y + r - k)} ${num(X + r - k)} ${num(Y)} ${num(X + r)} ${num(Y)} c h`
+          : `${num(X)} ${num(Y)} ${num(o.w)} ${num(o.h)} re`;
+        const fillRect = `${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} rg ${path} f`;
         if (o.alpha != null && o.alpha < 1) { const a = Math.round(Math.max(0, o.alpha) * 100); alphas.add(a); c += `q /GS${a} gs ${fillRect} Q\n`; } else c += fillRect + "\n";
       }
       else if (o.op === "line") c += `${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} RG ${num(o.width)} w ${num(o.x1)} ${num(H - o.y1)} m ${num(o.x2)} ${num(H - o.y2)} l S\n`;

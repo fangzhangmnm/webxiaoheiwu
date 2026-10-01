@@ -12,9 +12,10 @@
 import { coverTypo } from "../ui/book-cover.ts";
 
 export interface CoverCell { text: string; x: number; y: number; size: number; /** 顺时针转 90°（以 x, y 为轴） */ rotate?: 90; /** 这段字在书名里的前文 / 后文（注音字体按词选读音用） */ before?: string; after?: string }
-export interface CoverPad { x: number; y: number; w: number; h: number }
+export interface CoverPad { x: number; y: number; w: number; h: number; /** 圆角半径 */ r: number }
 export interface CoverTitleLayout { vertical: boolean; size: number; cells: CoverCell[]; date: CoverCell | null; /** 装订线的宽（0 = 没有） */ spineW: number; truncated: boolean;
-  /** 字底下垫的矩形（竖排一列一块、横排整段一块、日期一块）：书名压在封面图上时，调用方用半透明的纸色把它们先画出来（user 2026-10-01「标题的字下面还是垫一个半透明吧」）。 */
+  /** 字底下垫的圆角矩形：**书名整段一块**（所有列的包围盒——一列一块的话相邻两块叠在一起的地方颜色会加深，user 2026-10-01「两列字的交接处半透明overlap了，你能不能算一个bbox然后用圆角矩形」）+ 日期一块。
+   *  书名压在封面图上时，调用方用半透明的纸色把它们先画出来（user「标题的字下面还是垫一个半透明吧」）。 */
   pads: CoverPad[] }
 export interface CoverTitleOpts {
   title: string; date: string | null; W: number; H: number;
@@ -63,7 +64,7 @@ export function layoutCoverTitle(o: CoverTitleOpts): CoverTitleLayout {
   };
   const dateSize = W * 0.05;
   const date: CoverCell | null = o.date ? { text: o.date, x: left, y: H - W * 0.055, size: dateSize } : null;
-  const datePad: CoverPad[] = date ? [{ x: date.x - dateSize * 0.4, y: date.y - dateSize * 1.05, w: o.width(date.text, dateSize) + dateSize * 0.8, h: dateSize * 1.5 }] : [];
+  const datePad: CoverPad[] = date ? [{ x: date.x - dateSize * 0.4, y: date.y - dateSize * 1.05, w: o.width(date.text, dateSize) + dateSize * 0.8, h: dateSize * 1.5, r: dateSize * 0.3 }] : [];
   const tier0 = ORDER.indexOf(typo.size);
   const sizes: number[] = []; const pct = typo.vertical ? V_PCT : H_PCT;
   for (let t = tier0; t < ORDER.length; t++) sizes.push(pct[ORDER[t]!] * W);
@@ -78,16 +79,17 @@ export function layoutCoverTitle(o: CoverTitleOpts): CoverTitleLayout {
       const { asc, desc } = o.ink(S);
       const cells: CoverCell[] = use.map((line, i) => ({ text: line, x: left, y: top + i * lh + ruby * S + (S - (asc + desc)) / 2 + asc, size: S, ...(i > 0 ? { before: lines[i - 1]!.slice(-CONTEXT) } : {}), ...(i + 1 < lines.length ? { after: lines[i + 1]!.slice(0, CONTEXT) } : {}) }));
       const pw = Math.max(...use.map((l) => o.width(l, S))), pd = S * 0.22;
-      return { vertical: false, size: S, cells, date, spineW, truncated: use.length < lines.length, pads: [{ x: left - pd, y: top - pd, w: pw + 2 * pd, h: use.length * lh + 2 * pd }, ...datePad] };
+      return { vertical: false, size: S, cells, date, spineW, truncated: use.length < lines.length, pads: [{ x: left - pd, y: top - pd, w: pw + 2 * pd, h: use.length * lh + 2 * pd, r: S * 0.22 }, ...datePad] };
     }
   }
 
   const toks = tokenize(o.title); const tierCount = ORDER.length - tier0; let fallback: CoverTitleLayout | null = null;
   for (let si = 0; si < sizes.length; si++) {
     const S = sizes[si]!, pitch = S * (1.08 + ruby), colPitch = S * 1.25, yMax = H - bottom; const last = si === sizes.length - 1;
-    const { asc, desc } = o.ink(S); const cells: CoverCell[] = []; const pads: CoverPad[] = []; const pd = S * 0.18;
+    const { asc, desc } = o.ink(S); const cells: CoverCell[] = []; const pd = S * 0.18;
     let cx = right - S / 2, y = top, overflow = false, truncated = false;
-    const closeColumn = (): void => { if (y > top + 0.01) pads.push({ x: cx - S / 2 - pd, y: top - pd, w: S + 2 * pd, h: y - top + 2 * pd }); };
+    let boxL = Infinity, boxB = top;   // 所有列的包围盒：右边界 = 第一列的右沿，左边界 = 最后一列的左沿，下边界 = 最长的那一列
+    const closeColumn = (): void => { if (y > top + 0.01) { boxL = Math.min(boxL, cx - S / 2); boxB = Math.max(boxB, y); } };
     const needOf = (tk: Tok): number => (tk.kind === "space" ? S * 0.5 : tk.kind === "side" ? Math.min(o.width(tk.text, S), yMax - top) + S * 0.15 : tk.kind === "ur" ? S * 0.55 : pitch);
     for (let ti = 0; ti < toks.length; ti++) {
       const tk = toks[ti]!; const need = needOf(tk);
@@ -109,7 +111,8 @@ export function layoutCoverTitle(o: CoverTitleOpts): CoverTitleLayout {
     // 孤字：最后一列只剩一个字（「气球冒险 / 家」）不好看——还有更小的字号就再试一档；试到底都这样才认
     const lastX = cells.length ? cells[cells.length - 1]!.x : 0, firstX = cells.length ? cells[0]!.x : 0;
     const orphan = cells.length >= 3 && Math.abs(lastX - firstX) > S * 0.5 && cells.filter((c) => Math.abs(c.x - lastX) < S * 0.5).length === 1;
-    const result: CoverTitleLayout = { vertical: true, size: S, cells, date, spineW, truncated, pads: [...pads, ...datePad] };
+    const titlePad: CoverPad[] = boxL < Infinity ? [{ x: boxL - pd, y: top - pd, w: right - boxL + 2 * pd, h: boxB - top + 2 * pd, r: S * 0.22 }] : [];
+    const result: CoverTitleLayout = { vertical: true, size: S, cells, date, spineW, truncated, pads: [...titlePad, ...datePad] };
     if (orphan && !last && si < tierCount + 1) { fallback ??= result; continue; }
     return orphan && fallback ? fallback : result;
   }

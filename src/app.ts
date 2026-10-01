@@ -205,7 +205,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, sheet, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); syncEditorFont(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
   onReplacing: (on) => setReplacing(on),
@@ -226,7 +226,7 @@ const project = createProjectMode({
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); syncEditorFont(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   onReplacing: (on) => setReplacing(on),
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
@@ -513,11 +513,13 @@ const currentTypeset = (): ExportTypeset => typesetFor(exportCharsPref());
 //   编辑器永远是黑体，不给选；**只有导出**（长图 / PDF）可以换成萌神拼音（汉字头上带拼音）。和导出行宽同一套：导出面板里选，记进这本书 editor-state 的 `exportFont`
 //   （没有 = 黑体；随保存写、不标脏），txt 稿只记到这次打开为止。拼音字体 12 MB，选了、真要导出时才取。
 let draftExportFont: FontId | null = null;
-function exportFontPref(): FontId { const v = project.active() ? project.session()?.project.editorState.exportFont : draftExportFont; return v === "pinyin" ? "pinyin" : "sans"; }
+//   v2.3.26：导出**默认跟编辑器的字体走**（editorFontPref）；在导出面板另选了才分开，选回和编辑器一样的那一款 = 撤掉另选（同导出行宽）。
+const asFontId = (v: unknown): FontId | null => (v === "pinyin" || v === "sans" ? v : null);
+function exportFontPref(): FontId { return asFontId(project.active() ? project.session()?.project.editorState.exportFont : draftExportFont) ?? editorFontPref(); }
 function setExportFont(id: FontId): void {
-  const s = project.active() ? project.session() : null;
-  if (s) { if (id === "sans") delete s.project.editorState.exportFont; else s.project.editorState.exportFont = id; }
-  else draftExportFont = id === "sans" ? null : id;
+  const follow = id === editorFontPref(); const s = project.active() ? project.session() : null;
+  if (s) { if (follow) delete s.project.editorState.exportFont; else s.project.editorState.exportFont = id; }
+  else draftExportFont = follow ? null : id;
 }
 /** 导出用的字体到位：黑体 = 开机就在装的那一款；拼音 = 现在取、现在装（盖一层「取字体」）。拿不到 → 说清楚、返回 false。 */
 async function ensureExportFont(): Promise<boolean> {
@@ -1525,6 +1527,30 @@ function applyEditorChars(n: number): void {
   }
   $("readingModeHint").textContent = t(project.active() ? (bookChars() != null ? "ui.reading.hintBook" : "ui.reading.hintBookDefault") : "ui.reading.hint");
 }
+// ── 编辑器字体（v2.3.26，user 2026-10-01「编辑器换字体 做，书的属性，导出默认跟随」）：和行宽同形——书开着 = 这本书 editor-state 的 `font`，
+//   没书 / 没定过 = 账号默认（synced prefs `font`）。styles.css body[data-font]；拼音字体选了才取，取到之后把稿纸几何重量一遍。
+function defaultFontPref(): FontId { return asFontId(prefs.getItem<string>("font")) ?? "sans"; }
+function bookFont(): FontId | null { return project.active() ? asFontId(project.session()?.project.editorState.font) : null; }
+function editorFontPref(): FontId { return bookFont() ?? defaultFontPref(); }
+function applyEditorFont(id: FontId): void {
+  document.body.dataset.font = id;
+  for (const opt of document.querySelectorAll<HTMLElement>("#editorFontPicker .reading-mode-option")) {
+    const sel = opt.dataset.font === id; opt.classList.toggle("is-selected", sel);
+    const input = opt.querySelector("input"); if (input) input.checked = sel;
+  }
+  const relayout = (): void => { titleFitKey = ""; fitTitle(); paper.refresh(); syncBodyHeight(); };
+  relayout();
+  if (id === "pinyin") void installFont("pinyin").then((ok) => { if (ok) relayout(); else setStatus(t("export.fontFailed"), { error: true }); });
+}
+function syncEditorFont(): void { const id = editorFontPref(); if (document.body.dataset.font !== id) applyEditorFont(id); }
+$("editorFontPicker").addEventListener("change", (event) => {
+  const v = asFontId((event.target as HTMLInputElement | null)?.value); if (!v) return;
+  const s = project.active() ? project.session() : null;
+  if (s) s.project.editorState.font = v;   // 这本书的（随下次保存 / 顺手捞落盘）
+  else prefs.setItem("font", v);            // 默认（txt 稿 / 新书）
+  applyEditorFont(v);
+});
+prefs.onChange("font", () => syncEditorFont());
 /** 换书 / 关书 / 打开 txt 后：行宽跟着当前文档走（值没变就不重排）。 */
 function syncEditorChars(): void { const n = editorCharsPref(); if (document.body.dataset.chars !== String(n)) applyEditorChars(n); }
 $("readingModePicker").addEventListener("change", (event) => {
@@ -1945,6 +1971,7 @@ if (shell.isDevRoute) $("settingsBuild").textContent += " · dev";
 async function boot(): Promise<void> {
   await initCollections();
   applyEditorChars(editorCharsPref());
+  applyEditorFont(editorFontPref());
   applyRuledLines(ruledLinesPref());
   applyWordCount(wordCountPref());
   applyFontScale(fontScalePref());
@@ -2033,4 +2060,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

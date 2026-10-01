@@ -37,3 +37,7 @@
 - `exportCovers: { "<起点页>": "<图片页>" }`（可选）：「这一页 / 这一支」导出时用的封面（user「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）。两头都得是书里真有的页，悬空的读时丢；改名跟着改、彻底删除跟着删（`graph.ts renameNode / deleteNode`）。整本的封面仍是 graph.json 的 `cover`，不在这里。
 - `exportEmbedText: false`（可选，只在关掉时写）：长图里不附文字（user「也可以选择不嵌入」）。缺省 = 附。
 - 都同 `exportLineWidth`：随保存写、不标脏，入口只有导出面板。
+
+## 修订 2026-10-01 之四（editor-state.json 的 `font` = 这本书在编辑器里用的字体；edited by Claude Fable 5.1）
+- user 原话：「编辑器换字体 做，书的属性，导出默认跟随」。`font: "sans" | "pinyin"`（可选；没有 = 账号默认，synced prefs `font`）。同 `lineWidth`：随保存写、不标脏，入口在设置。
+- `exportFont` 的语义随之改成：**没有 = 跟 `font` 走**；只有导出面板另选了才写（值 "sans" / "pinyin"），选回和编辑器一样 = 删掉。之前（同日之二）写的「没有 = 黑体」作废。

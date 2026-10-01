@@ -24,7 +24,8 @@ export type SceneOp = {
     w: number;
     h: number;
     color: string; /** 不透明度 0..1（缺省 1） */
-    alpha?: number;
+    alpha?: number; /** 圆角半径（缺省 0） */
+    radius?: number;
 } | {
     op: "line";
     x1: number;

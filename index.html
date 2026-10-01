@@ -381,6 +381,17 @@
             </label>
           </div>
           <p class="reading-mode-hint" id="readingModeHint" data-i18n="ui.reading.hint">只管一行最多放几个字，行距跟着走；字多大只看「字号」，两者互不相干。屏幕放不下时一行少排几个字，不缩字。14 = 诗 / 小故事 / 自律篇幅，20 = 高考作文格，28 = 纸书。</p>
+          <div class="reading-mode-picker" id="editorFontPicker" role="radiogroup" aria-label="字体" data-i18n-aria="ui.reading.font">
+            <label class="reading-mode-option is-selected" data-font="sans">
+              <input type="radio" name="editorFont" value="sans" checked />
+              <span data-i18n="ui.reading.fontSans">黑体</span>
+            </label>
+            <label class="reading-mode-option" data-font="pinyin">
+              <input type="radio" name="editorFont" value="pinyin" />
+              <span data-i18n="ui.reading.fontPinyin">拼音</span>
+            </label>
+          </div>
+          <p class="reading-mode-hint" data-i18n="ui.reading.fontHint">字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音字体 12 MB，选了才取。</p>
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.reading.fontScale">字号（本机）</span>
             <select id="fontScaleSelect" class="voice-config-select">
@@ -544,6 +555,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-952ee983ffe8.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-d381b35fc7d9.mjs"></script>
   </body>
 </html>

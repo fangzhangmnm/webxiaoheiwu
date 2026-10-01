@@ -55,7 +55,7 @@ export async function encodePng(rgba: Uint8ClampedArray, w: number, h: number, c
 //   字体 = 调用方给的 family 字符串（此刻是编辑器的系统字体栈；将来 vendor 自己的字体 = 先 FontFace 装上再给名字），本模块不认识字体文件。
 export interface TextStyle { family: string; sizePx: number; weight?: number | string; color: string }
 export type SceneOp =
-  | { op: "rect"; x: number; y: number; w: number; h: number; color: string; /** 不透明度 0..1（缺省 1） */ alpha?: number }
+  | { op: "rect"; x: number; y: number; w: number; h: number; color: string; /** 不透明度 0..1（缺省 1） */ alpha?: number; /** 圆角半径（缺省 0） */ radius?: number }
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: string; width: number }
   | { op: "text"; x: number; y: number; text: string; style: TextStyle; align?: "left" | "center" | "right"; /** 顺时针转 90°（以 x, y 为轴） */ rotate?: 90 }   // y = 基线
   | { op: "image"; x: number; y: number; w: number; h: number; blob: Blob; crop?: { sx: number; sy: number; sw: number; sh: number } };
@@ -98,7 +98,13 @@ export async function paintScene(w: number, h: number, bg: string, ops: SceneOp[
   cx.fillStyle = bg; cx.fillRect(0, 0, w, h);
   cx.imageSmoothingEnabled = true; (cx as CanvasRenderingContext2D & { imageSmoothingQuality?: string }).imageSmoothingQuality = "high";
   for (const o of ops) {
-    if (o.op === "rect") { cx.fillStyle = o.color; if (o.alpha != null && o.alpha < 1) { cx.save(); cx.globalAlpha = Math.max(0, o.alpha); cx.fillRect(o.x, o.y, o.w, o.h); cx.restore(); } else cx.fillRect(o.x, o.y, o.w, o.h); }
+    if (o.op === "rect") {
+      cx.fillStyle = o.color; cx.save(); if (o.alpha != null && o.alpha < 1) cx.globalAlpha = Math.max(0, o.alpha);
+      const r = Math.max(0, Math.min(o.radius ?? 0, o.w / 2, o.h / 2));
+      if (r > 0) { cx.beginPath(); cx.moveTo(o.x + r, o.y); cx.arcTo(o.x + o.w, o.y, o.x + o.w, o.y + o.h, r); cx.arcTo(o.x + o.w, o.y + o.h, o.x, o.y + o.h, r); cx.arcTo(o.x, o.y + o.h, o.x, o.y, r); cx.arcTo(o.x, o.y, o.x + o.w, o.y, r); cx.closePath(); cx.fill(); }
+      else cx.fillRect(o.x, o.y, o.w, o.h);
+      cx.restore();
+    }
     else if (o.op === "line") { cx.strokeStyle = o.color; cx.lineWidth = o.width; cx.beginPath(); cx.moveTo(o.x1, o.y1); cx.lineTo(o.x2, o.y2); cx.stroke(); }
     else if (o.op === "text") {
       cx.font = fontString(o.style); cx.fillStyle = o.style.color; cx.textAlign = o.align ?? "left"; cx.textBaseline = "alphabetic";

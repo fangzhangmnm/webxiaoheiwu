@@ -49,8 +49,8 @@
   --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
     "Segoe UI", system-ui, sans-serif;
   /* 第一位 = 内置字体（src/fonts.ts 装进文档的 family；思源黑体全量，v2.3.15）。没装好之前自然落到后面的系统字体；韩文等它没有的字也落下去。 */
-  --font-editor: "XHW Sans", -apple-system, BlinkMacSystemFont, "PingFang SC",
-    "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  --font-fallback: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  --font-editor: "XHW Sans", var(--font-fallback);
 
   /* 行宽（v2.3.11，user 2026-09-30「现在阅读节奏为什么还是只有两档，而且你不是说去语义化吗」）：
      唯一 knob = 每行几个字（14 / 20 / 28，同步偏好跟人走，body[data-chars]），和导出同一套数字；
@@ -86,6 +86,9 @@ body {
   }
 }
 
+/* 编辑器字体 = 书的属性（v2.3.26，user 2026-10-01「编辑器换字体 做，书的属性，导出默认跟随」）：body[data-font]。拼音字体（萌神，12 MB）选了才取；没到之前、和它没有的字，落回黑体。
+   网页正文的排字自己会按词给多音字选读音（只有 canvas 不会），所以这里不用做任何标注。 */
+body[data-font="pinyin"] { --font-editor: "XHW Pinyin", "XHW Sans", var(--font-fallback); }
 body[data-chars="14"] { --target-chars: 14; --editor-line-height: 1.9; }
 body[data-chars="28"] { --target-chars: 28; --editor-line-height: 1.6; }
 
@@ -1880,6 +1883,9 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 #galleryMount .gallery-grid:not(.list) img.gallery-tile-thumb { object-fit: cover; background: var(--cover-paper); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-thumb.placeholder { position: relative; align-items: stretch; justify-content: stretch; background: var(--cover-paper); color: var(--cover-ink-soft); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile-ph-icon { display: block; width: 100%; height: 100%; color: inherit; }
+/* 竖版书封的比例：1 : √2，和导出 PDF 的页面同一个比例（v2.3.26，user 2026-10-01「书架对齐」）。图库包的竖版档是 2:3（--tile-aspect），
+   比例本身是排版，宿主在这里盖掉那个变量；包的选项闭集没动（要让包直接收任意比例 = 改包的接口，另议）。 */
+#galleryMount .gallery-grid.tall { --tile-aspect: 1000 / 1414; }
 .xhw-paper { display: block; width: 100%; height: 100%; background: var(--cover-paper); border-radius: inherit; }
 .xhw-paper.draft { background: var(--cover-sheet); }
 /* 锁着 / 还在云端：纸上一枚小图标，放在封面左下、日期上方，不和书名抢地方 */
@@ -1902,10 +1908,12 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 #galleryMount .gallery-grid:not(.list) .gallery-tile-lockmark { left: 9px; top: 6px; width: 24px; height: 24px; color: var(--enc); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-lockmark { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(.xhw-cover.book) .gallery-tile-lockmark { left: 15px; }
-.xhw-cover-title { display: block; max-width: 100%; max-height: 100%; overflow: hidden; font-weight: 700; letter-spacing: 0.04em; font-family: "Songti SC", "STSongti-SC-Bold", "Noto Serif CJK SC", "Source Han Serif SC", "Noto Serif SC", var(--font-editor), serif; }
+/* v2.3.26 书架封面向导出封面对齐（user 2026-10-01「书架对齐。不过书架用内置黑体这点小divergent没事吧」）：比例 1:√2（gallery-host tile.aspect）、
+   字体 = 内置黑体常规体（导出嵌的就是它；书架不知道每本书选了什么字体——要解开 zip 才知道——所以拼音的书在书架上也是黑体）、书名压在封面图上时垫半透明纸（不描边）。 */
+.xhw-cover-title { display: block; max-width: 100%; max-height: 100%; overflow: hidden; font-weight: 400; letter-spacing: 0.04em; font-family: "XHW Sans", var(--font-fallback); }
 .xhw-cover.v .xhw-cover-title { writing-mode: vertical-rl; text-orientation: mixed; height: 100%; margin-left: auto; letter-spacing: 0.08em; }
 .xhw-cover.v .tcy { text-combine-upright: all; -webkit-text-combine: horizontal; letter-spacing: 0; }
-.xhw-cover.h .xhw-cover-title { font-family: "Iowan Old Style", Georgia, "Times New Roman", serif; letter-spacing: 0.01em; overflow-wrap: anywhere; hyphens: auto; -webkit-hyphens: auto; line-height: 1.18; }
+.xhw-cover.h .xhw-cover-title { letter-spacing: 0.01em; overflow-wrap: anywhere; hyphens: auto; -webkit-hyphens: auto; line-height: 1.18; }
 .xhw-cover.draft .xhw-cover-title { font-weight: 400; }
 .xhw-cover.coded .xhw-cover-title { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 400; letter-spacing: 0; color: var(--cover-ink-soft); }
 /* 字号四档：卡片宽度的百分比（cqw），两头夹住 */
@@ -1923,17 +1931,13 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 .xhw-cover-size { margin-left: auto; }
 .xhw-cover-date { flex: none; }
 
-/* 底下是封面图：字带一圈纸色描边（扁平：只有偏移、没有模糊），小字和徽章同理。不加底栏。 */
-#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) {
-  /* 2026-09-30 user「有封面图的时候黑字的描边能不能用白色，然后稍微细一点。没封面图的时候可以不描边」：白、1px 八向；纸面上没有这条规则 = 不描边 */
-  --halo-ink: #fff;
-  --halo: 1px 0 0 var(--halo-ink), -1px 0 0 var(--halo-ink), 0 1px 0 var(--halo-ink), 0 -1px 0 var(--halo-ink),
-          1px 1px 0 var(--halo-ink), -1px -1px 0 var(--halo-ink), 1px -1px 0 var(--halo-ink), -1px 1px 0 var(--halo-ink);
-}
-#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title { text-shadow: var(--halo); color: var(--cover-ink); }   /* 只有书名描边；底栏靠垫底不描边 */
+/* 底下是封面图：书名底下垫一块半透明的纸（和导出封面同一个做法，user 2026-10-01「标题的字下面还是垫一个半透明吧」；09-30 的白描边退役）。
+   竖排的书名块只有字那么长（不再撑满整列高），垫的就是字占的那一块。 */
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title { color: var(--cover-ink); background: color-mix(in srgb, var(--cover-paper) 78%, transparent); padding: 0.18em; border-radius: 0.22em; box-sizing: border-box; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover.v .xhw-cover-title { height: fit-content; }
+#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover.h .xhw-cover-title { width: fit-content; }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-bar,
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .gallery-tile-meta { color: var(--cover-ink); }
-#galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover-title { padding: 3px; }   /* 描边不被裁掉 */
 /* 有封面图的书不画装订线（user 2026-09-30「有封面的时候左边不应该有 binding 的那一条」）：--spine-w 归零，书名 / 日期 / 锁标的让位一起收回 */
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover.book { --spine-w: 0px; }
 #galleryMount .gallery-grid:not(.list) .gallery-tile:has(img.gallery-tile-thumb) .xhw-cover.book::before { display: none; }

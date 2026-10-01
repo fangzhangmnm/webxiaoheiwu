@@ -152,7 +152,7 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
     const cellOp = (c: typeof lay.cells[number], color: Rgb): PdfOp => ({ op: "text", x: c.x, y: c.y, text: c.text, size: c.size, color, ...(c.rotate ? { rotate: c.rotate } : {}), ...(c.before ? { before: c.before } : {}), ...(c.after ? { after: c.after } : {}) });
     const cDate = parseCssColor(hasImg ? cl.ink : cl.inkSoft);
     // 有图：字底下先垫半透明的纸（一列一块 / 一段一块 / 日期一块），字才看得清；没图的封面本来就是纸，不垫
-    if (hasImg) for (const r of lay.pads) ops.push({ op: "rect", x: r.x, y: r.y, w: r.w, h: r.h, color: parseCssColor(cl.paper), alpha: COVER_PAD_ALPHA });
+    if (hasImg) for (const r of lay.pads) ops.push({ op: "rect", x: r.x, y: r.y, w: r.w, h: r.h, color: parseCssColor(cl.paper), alpha: COVER_PAD_ALPHA, radius: r.r });
     for (const c of lay.cells) ops.push(cellOp(c, cTitle));
     if (lay.date) ops.push(cellOp(lay.date, cDate));
   }

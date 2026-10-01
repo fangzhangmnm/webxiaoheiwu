@@ -11,7 +11,8 @@ export interface CoverPad {
     x: number;
     y: number;
     w: number;
-    h: number;
+    h: number; /** 圆角半径 */
+    r: number;
 }
 export interface CoverTitleLayout {
     vertical: boolean;
@@ -20,7 +21,8 @@ export interface CoverTitleLayout {
     date: CoverCell | null; /** 装订线的宽（0 = 没有） */
     spineW: number;
     truncated: boolean;
-    /** 字底下垫的矩形（竖排一列一块、横排整段一块、日期一块）：书名压在封面图上时，调用方用半透明的纸色把它们先画出来（user 2026-10-01「标题的字下面还是垫一个半透明吧」）。 */
+    /** 字底下垫的圆角矩形：**书名整段一块**（所有列的包围盒——一列一块的话相邻两块叠在一起的地方颜色会加深，user 2026-10-01「两列字的交接处半透明overlap了，你能不能算一个bbox然后用圆角矩形」）+ 日期一块。
+     *  书名压在封面图上时，调用方用半透明的纸色把它们先画出来（user「标题的字下面还是垫一个半透明吧」）。 */
     pads: CoverPad[];
 }
 export interface CoverTitleOpts {

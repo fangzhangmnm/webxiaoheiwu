@@ -392,6 +392,22 @@ export declare const S: {
         readonly zh: "每行 28 字";
         readonly en: "28 per line";
     };
+    readonly "ui.reading.font": {
+        readonly zh: "字体";
+        readonly en: "Font";
+    };
+    readonly "ui.reading.fontSans": {
+        readonly zh: "黑体";
+        readonly en: "Sans";
+    };
+    readonly "ui.reading.fontPinyin": {
+        readonly zh: "拼音";
+        readonly en: "Pinyin";
+    };
+    readonly "ui.reading.fontHint": {
+        readonly zh: "字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音字体 12 MB，选了才取。";
+        readonly en: "The font is saved with the book; exports use the same one by default (the export sheet can pick another). The pinyin font is 12 MB and is fetched only when chosen.";
+    };
     readonly "ui.reading.fontScale": {
         readonly zh: "字号（本机）";
         readonly en: "Text size (this device)";

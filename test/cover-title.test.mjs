@@ -25,7 +25,11 @@ describe("export/cover-title", () => {
     // 垫底的矩形：书名这一列一块（比字宽一圈、从列首到列尾）+ 日期一块
     eq(L.pads.length, 2); const col = L.pads[0]; assert(col.w > L.size && col.w < L.size * 1.6 && col.x < L.cells[0].x && col.y < L.cells[0].y - L.size * 0.7 && col.y + col.h > L.cells.at(-1).y, JSON.stringify(col));
     assert(L.pads[1].x < L.date.x && L.pads[1].y < L.date.y && L.pads[1].y + L.pads[1].h > L.date.y, "date pad wraps the date");
-    eq(lay(s(0x56fd).repeat(14)).pads.length, [...new Set(lay(s(0x56fd).repeat(14)).cells.map((c) => c.x.toFixed(1)))].length + 1, "one pad per column + date");
+    // 多列：书名整段只有一块（所有列的包围盒），不是一列一块——相邻的块叠在一起颜色会加深
+    { const M = lay(s(0x56fd).repeat(14)); const cols = [...new Set(M.cells.map((c) => c.x.toFixed(1)))].map(Number); assert(cols.length >= 2);
+      eq(M.pads.length, 2, "one block for the whole title + date"); const b = M.pads[0];
+      assert(M.cells.every((c) => c.x >= b.x && c.x + c.size <= b.x + b.w + 0.01 && c.y <= b.y + b.h && c.y - c.size * 0.9 >= b.y - 0.01), "every glyph of every column is inside the one block");
+      assert(b.r > 0 && b.r < M.size * 0.5, "rounded"); }
     eq(lay("The Balloon Adventurer", { date: null }).pads.length, 1, "horizontal title: one block");
   });
   it("排不下一列 → 往左换列；再排不下 → 缩字号；实在不行才截断", () => {

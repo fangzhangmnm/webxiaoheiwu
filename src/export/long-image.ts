@@ -169,7 +169,7 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
     const lay = layoutCoverTitle({ title: spec.coverTitle ?? spec.title, date: spec.date, W, H: h, spine: false, width: (t, s) => m.width(t, cs(s)), ink: (s) => m.ink(cs(s)), wrap: (t, maxW, s) => wrapText(t, maxW, cs(s), m), ruby: spec.ruby ? 0.42 : 0 });
     rows.push({ kind: "cover", h, ops: (y) => [
       { op: "image", x: 0, y, w: W, h, blob: img.blob, ...(crop ? { crop } : {}) },
-      ...lay.pads.map((r): SceneOp => ({ op: "rect", x: Math.round(r.x), y: Math.round(y + r.y), w: Math.round(r.w), h: Math.round(r.h), color: cl.paper, alpha: 0.78 })),
+      ...lay.pads.map((r): SceneOp => ({ op: "rect", x: Math.round(r.x), y: Math.round(y + r.y), w: Math.round(r.w), h: Math.round(r.h), color: cl.paper, alpha: 0.78, radius: r.r })),
       ...[...lay.cells, ...(lay.date ? [lay.date] : [])].map((c): SceneOp => ({ op: "text", x: c.x, y: y + c.y, text: spec.annotate ? spec.annotate(c.before ?? "", c.text, c.after ?? "") : c.text, style: cs(c.size), ...(c.rotate ? { rotate: c.rotate } : {}) })),
     ] });
     space(40);

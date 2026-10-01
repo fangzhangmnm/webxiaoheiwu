@@ -17,8 +17,9 @@ export function render() {
   for (const slug of readdirSync(MODELS_DIR).sort()) {
     const p = join(MODELS_DIR, slug, "manifest.json");
     if (!existsSync(p)) continue;
-    const bytes = readFileSync(p);
-    entries.push({ slug, packId: createHash("sha256").update(bytes).digest("hex"), manifest: JSON.parse(bytes.toString("utf8")) });
+    const bytes = readFileSync(p); const manifest = JSON.parse(bytes.toString("utf8"));
+    if (manifest.task !== "asr") continue;   // 模型仓是全家共用的：2026-10-01 起里面还有朗读的包（task = tts / tts-frontend / runtime）；本 app 只钉语音识别的
+    entries.push({ slug, packId: createHash("sha256").update(bytes).digest("hex"), manifest });
   }
   const body = entries.map((e) => `  ${JSON.stringify(e.slug)}: { packId: ${JSON.stringify(e.packId)}, manifest: ${JSON.stringify(e.manifest)} },`).join("\n");
   return `// 生成物：node tools/gen-asr-packs.mjs（源 = ../20260903 PWA Models/packs/*/manifest.json）。勿手改。

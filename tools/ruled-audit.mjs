@@ -26,7 +26,7 @@ const KV = "webxiaoheiwu-7c2e9a41b3d05f68:";
 
 /** 一组条件下量一次。返回每行的 { 墨迹底边, 线, 距离 }（设备像素）。
  *  scroll = 先把纸（main.surface）滚这么多 CSS px 再量（v2.1.26 一张纸模型：正文框不滚，滚的是纸；字和线同层 → 滚动前后每行的距离必须一样）。 */
-async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0, screen = null }) {
+async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0, screen = null, font = null }) {
   // screen = 设备的屏（CSS px）。不给 = 和视口一样大（手机 / 平板全屏）；Win Mini 的浏览器窗口比屏矮，要单给——字号基准看的是设备不是窗口
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, ...(screen ? { screen } : {}) });
   await ctx.addInitScript(({ kv, scale }) => { try { localStorage.setItem(kv + "imeEnabled", "0"); if (scale !== "1") localStorage.setItem(kv + "fontScale", scale); } catch {} }, { kv: KV, scale });
@@ -35,6 +35,8 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0,
   await page.waitForFunction(() => !!window.__xhw && window.__xhw.editor.canEdit(), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady);
   // 走真的设置控件（阅读节奏单选）：行高与线位要跟着重算
   await page.evaluate(({ mode }) => { const r = document.querySelector(`#readingModePicker input[value="${mode}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const t = document.getElementById("wordCountToggle"); if (t.checked) t.click(); }, { mode });
+  // 编辑器字体（v2.3.26）：走真的设置控件选拼音字体，等它装进文档再量——字头上多了拼音，线还得在字脚下面、逐行不漂
+  if (font) { await page.evaluate((f) => { const r = document.querySelector(`#editorFontPicker input[value="${f}"]`); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }, font); await page.waitForFunction(() => [...document.fonts].some((f) => /XHW Pinyin/.test(f.family) && f.status === "loaded"), null, { timeout: 30000 }); await page.waitForTimeout(400); }
   if (!book) await page.evaluate(() => { const e = document.getElementById("editor"); e.value = Array.from({ length: 60 }, () => "国国国国").join("\n"); e.dispatchEvent(new Event("input", { bubbles: true })); e.scrollTop = 0; e.blur(); });
   if (book) {
     // 有子节的页：两行正文 + 空一行 + 三条子节链接（user 2026-09-29「章后面的超链接我也想做成就像文字一样就在线上的」）——量整个纸面容器，链接行也得坐在线上
@@ -96,6 +98,7 @@ const cases = [];
 for (const dpr of [1, 1.25, 1.75, 2, 3]) for (const mode of [14, 20, 28]) for (const scale of ["1", "1.15"]) cases.push({ w: 1100, h: 900, dpr, mode, scale });
 cases.push({ w: 375, h: 667, dpr: 2, mode: 20, scale: "1" }, { w: 744, h: 1133, dpr: 2, mode: 20, scale: "1.15" });
 for (const mode of [14, 28]) for (const scale of ["1", "1.3"]) cases.push({ w: 375, h: 667, dpr: 2, mode, scale });   // 手机上换行宽：字号不许跟着变
+for (const [w, h, dpr, mode] of [[1100, 900, 1, 20], [1100, 900, 2, 28], [375, 667, 2, 14]]) cases.push({ w, h, dpr, mode, scale: "1", font: "pinyin", shot: `pinyin-${w}x${h}-${mode}` });   // 拼音字体：最挤的 28 档也要对得上
 // GPD Win Mini：7 寸 1920×1080，系统缩放 175% → 1097×617（全屏）/ 1097×537（装成 app 的窗口）/ 1097×480（浏览器标签页）；普通档（「宽稿纸」2026-09-30 撤了）
 const WINMINI_SCREEN = { width: 1097, height: 617 };
 for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: 20, scale: "1", shot: `winmini-1097x${h}`, screen: WINMINI_SCREEN });
@@ -124,7 +127,7 @@ for (const c of cases) {
   const sz = c.book ? { ok: true, text: "" } : sizeCheck(c, m.box);
   if (!ok || !sz.ok) bad++;
   if (!c.book) console.log(`${sz.ok ? "ok  " : "FAIL"} [size] ${c.w}x${c.h} ${c.mode} scale=${c.scale} ${sz.text}`);
-  console.log(`${ok ? "ok  " : "FAIL"} ${c.book ? "[book+toc] " : ""}${c.w}x${c.h} dpr=${c.dpr} ${c.mode} scale=${c.scale} drift=${drift.toFixed(2)} font=${m.box.font.toFixed(2)}px lh=${m.box.lh} lines=${gaps.length} gap(min..max)=${min}..${max} devpx (${(min / em).toFixed(2)}..${(max / em).toFixed(2)} em) first6=${gaps.slice(0, 6).join(",")} last3=${gaps.slice(-3).join(",")}`);
+  console.log(`${ok ? "ok  " : "FAIL"} ${c.book ? "[book+toc] " : ""}${c.font ? `[${c.font}] ` : ""}${c.w}x${c.h} dpr=${c.dpr} ${c.mode} scale=${c.scale} drift=${drift.toFixed(2)} font=${m.box.font.toFixed(2)}px lh=${m.box.lh} lines=${gaps.length} gap(min..max)=${min}..${max} devpx (${(min / em).toFixed(2)}..${(max / em).toFixed(2)} em) first6=${gaps.slice(0, 6).join(",")} last3=${gaps.slice(-3).join(",")}`);
 }
 // 章节名框跟着字号走（v2.3.18，user 2026-10-01「超大字的情况下标题行被裁了」）：起一个会折行的章节名，字号档来回切，框高必须 = 内容高（不裁、不留空）
 for (const [w, h, dpr] of [[375, 667, 2], [1100, 900, 1]]) {
