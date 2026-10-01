@@ -95,6 +95,19 @@ describe("export/pdf-book 页面几何", () => {
     const p = mk(false); eq(p.pageCount, 1); assert(!p.doc.pages[0].ops.some((o) => o.op === "image"), "no cover image"); eq(p.doc.outline.length, 1); eq(p.doc.outline[0].page, 0);
     eq(p.doc.pages[0].ops.filter((o) => o.op === "text" && o.size === PDF_FONT_PT).length, 2); void geo;
   });
+  it("封面铺满整页（fill）：等比、盖住整页、居中；图片页仍完整放进版心（contain）", () => {
+    const ts = typesetFor(20), geo = pdfPageGeometry(ts);
+    for (const [iw, ih] of [[1000, 500], [500, 2000], [707, 1000]]) {
+      const img = { jpeg: new Uint8Array([0xff, 0xd8]), w: iw, h: ih, components: 3 };
+      const plan = planPdfBook({ title: "t", date: null, cover: img, sections: [{ kind: "image", heading: null, image: img }], look, typeset: ts, font });
+      const c = plan.doc.pages[0].ops.find((o) => o.op === "image");
+      assert(c.x <= 0.01 && c.y <= 0.01 && c.x + c.w >= geo.w - 0.01 && c.y + c.h >= geo.h - 0.01, `cover covers the page: ${JSON.stringify(c, ["x", "y", "w", "h"])}`);
+      assert(Math.abs(c.w / c.h - iw / ih) < 1e-6, "aspect kept"); assert(Math.abs((c.x + c.w / 2) - geo.w / 2) < 0.01 && Math.abs((c.y + c.h / 2) - geo.h / 2) < 0.01, "centered");
+      assert(Math.abs(c.w - geo.w) < 0.01 || Math.abs(c.h - geo.h) < 0.01, "one side fits exactly (no more zoom than needed)");
+      const p = plan.doc.pages[2].ops.find((o) => o.op === "image");
+      assert(p.x >= geo.side - 0.01 && p.x + p.w <= geo.w - geo.side + 0.01 && p.y >= geo.top - 0.01 && p.y + p.h <= geo.h - geo.bottom + 0.01, "image page stays inside the type area");
+    }
+  });
   it("章节名占整数行：有章节名的页少 3 行", () => {
     const ts = typesetFor(20), geo = pdfPageGeometry(ts);
     const plan = planPdfBook({ title: "t", date: null, cover: null, sections: [{ kind: "text", heading: "h", text: guo.repeat(20 * geo.linesPerPage) }], look, typeset: ts, font });

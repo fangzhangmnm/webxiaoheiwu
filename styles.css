@@ -1692,23 +1692,28 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
   background: var(--kb-bg); border-top: 1px solid var(--line-strong);
   padding: 0 max(3px, var(--sa-left)) max(env(safe-area-inset-bottom, 0px), 4px) max(3px, var(--sa-right));
   font-family: var(--font-ui); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-  --key-h: 46px; --strip-cand-h: 36px;   /* v2.1.24：候选条只剩候选行、36px（原拼音 16 + 候选 40 = 56） */
+  --key-h: 46px; --strip-cand-h: calc(36px + var(--cand-grow));   /* v2.1.24：候选条只剩候选行、36px（原拼音 16 + 候选 40 = 56）；v2.3.20 起随字号档长高 */
 }
+/* 候选字号跟字号档（v2.3.20，user 2026-10-01「输入候选要不要字大小怎么跟？」「候选条跟会有什么坏处吗」「好，那么做」）：
+   候选字号 = 它自己的现值 × 字号档（手机式 19px、悬浮条 15px / 触屏 19px），**不是**等于正文字号——标准档下一切照旧，只有调大字号的设备上候选才变大。
+   调小不跟着缩（下限 1）；封顶 1.5（19 → 28.5px，再大一屏只剩三个候选）。条高按字号的增量长（--cand-grow），键帽不变（那是手指的尺寸）。
+   键盘那一块的高度由 dock.ts 的 ResizeObserver 重量、写回 --dock-h，纸面跟着让。 */
+:root { --cand-scale: clamp(1, var(--font-scale, 1), 1.5); --cand-grow: calc(17px * (var(--cand-scale) - 1)); }
 .ime-dock.hidden { display: none; }
 .ime-strip { position: relative; display: flex; align-items: stretch; max-width: 1000px; margin: 0 auto; border-bottom: 1px solid color-mix(in srgb, var(--line-strong) 50%, transparent); }
 /* 手机式候选条上的拼音小字（v2.1.33）：绝对定位在条的左上，候选行照旧 36px、只把候选钮往下压 3px 给它让位 */
-.ime-strip .ime-preedit-small { position: absolute; left: 10px; top: 0; height: 12px; line-height: 12px; padding: 0; font-size: 10px; letter-spacing: 0.03em; color: var(--ink-muted); pointer-events: none; max-width: 60%; overflow: hidden; white-space: nowrap; }
-.ime-strip:has(.ime-preedit-small:not(:empty)) .ime-cands { padding-top: 6px; }
-.ime-strip:has(.ime-preedit-small:not(:empty)) .cand { height: calc(var(--strip-cand-h) - 8px); }
+.ime-strip .ime-preedit-small { position: absolute; left: 10px; top: 0; height: calc(12px * var(--cand-scale)); line-height: calc(12px * var(--cand-scale)); padding: 0; font-size: calc(10px * var(--cand-scale)); letter-spacing: 0.03em; color: var(--ink-muted); pointer-events: none; max-width: 60%; overflow: hidden; white-space: nowrap; }
+.ime-strip:has(.ime-preedit-small:not(:empty)) .ime-cands { padding-top: calc(6px * var(--cand-scale)); }
+.ime-strip:has(.ime-preedit-small:not(:empty)) .cand { height: calc(var(--strip-cand-h) - 8px * var(--cand-scale)); }
 .ime-strip-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .ime-preedit { flex: none; height: 16px; line-height: 16px; padding: 0 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; letter-spacing: 0.04em; color: var(--ink-soft); white-space: nowrap; overflow: hidden; }
 .ime-cands { flex: none; height: var(--strip-cand-h); display: flex; align-items: center; gap: 2px; padding: 0 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; overscroll-behavior: contain; }
 .ime-cands::-webkit-scrollbar { display: none; }
-.cand { flex: 0 0 auto; min-width: 40px; height: calc(var(--strip-cand-h) - 4px); padding: 0 12px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--ink); font-size: 19px; white-space: nowrap; cursor: pointer; }
+.cand { flex: 0 0 auto; min-width: 40px; height: calc(var(--strip-cand-h) - 4px); padding: 0 12px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--ink); font-size: calc(19px * var(--cand-scale)); white-space: nowrap; cursor: pointer; }
 .cand.first { background: var(--accent-soft); color: var(--accent-strong); }
 .cand.nav { min-width: 36px; padding: 0 6px; color: var(--ink-soft); }
 .cand .ico { width: 16px; height: 16px; }
-.cand .index { color: var(--ink-muted); margin-right: 5px; font-size: 11px; font-family: ui-monospace, monospace; }
+.cand .index { color: var(--ink-muted); margin-right: 5px; font-size: calc(11px * var(--cand-scale)); font-family: ui-monospace, monospace; }
 .ime-key.hide .ico { width: 20px; height: 20px; }
 
 /* 键位几何照 iOS（v2.1.33，user 2026-09-30「ios 的键位会宽一点，然后 s 和 z 对齐的」）：字母层所有字母键等宽 = (行宽 − 9 缝) / 10，
@@ -1743,11 +1748,11 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
   .cand:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 }
 .ime-keys[data-form="tablet"] { padding-top: 4px; }
-.ime-dock:has(.ime-keys[data-form="tablet"]) { --key-h: 50px; --strip-cand-h: 38px; }
+.ime-dock:has(.ime-keys[data-form="tablet"]) { --key-h: 50px; --strip-cand-h: calc(38px + var(--cand-grow)); }
 @media (max-height: 460px) {   /* 手机横屏：纵向空间最紧，键矮一档 */
-  .ime-dock { --key-h: 33px; --strip-cand-h: 32px; }
+  .ime-dock { --key-h: 33px; --strip-cand-h: calc(32px + var(--cand-grow)); }
   .ime-key { margin: 2px 0; font-size: 18px; }   /* 横向的缝走 .ime-row 的 gap（v2.1.33） */
-  .cand { font-size: 17px; }
+  .cand { font-size: calc(17px * var(--cand-scale)); }
   .ime-preedit { height: 14px; line-height: 14px; font-size: 11px; }
 }
 
@@ -1764,16 +1769,16 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
 /* 中 / 英 芯片：顶栏的那一字 v2.1.26 搬到这里（悬浮条只在组字时出现，切中英时空着也闪一下让人看见）；点 = 切中 / 英（同 Shift） */
 .candidates .ime-mode { grid-row: 1 / 3; grid-column: 1; align-self: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-ui); font-size: 13px; font-weight: 600; color: var(--ink-soft); background: color-mix(in srgb, var(--ink) 8%, transparent); cursor: pointer; user-select: none; }
 .candidates .ime-mode:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 14%, transparent); }
-.candidates .ime-preedit { grid-column: 2; height: 15px; line-height: 15px; padding: 0 4px; }
+.candidates .ime-preedit { grid-column: 2; height: calc(15px * var(--cand-scale)); line-height: calc(15px * var(--cand-scale)); font-size: calc(12px * var(--cand-scale)); padding: 0 4px; }
 .candidates .ime-cands { grid-column: 2; }
 .candidates .ime-preedit:empty { display: none; }   /* 只闪芯片时没有拼音行：条就一行高 */
-.candidates .ime-cands { height: auto; min-height: 28px; padding: 0; touch-action: pan-x; }
-.candidates .cand { height: 28px; min-width: 0; padding: 0 8px; font-size: 15px; border-radius: 6px; }
+.candidates .ime-cands { height: auto; min-height: calc(28px + 15px * (var(--cand-scale) - 1)); padding: 0; touch-action: pan-x; }
+.candidates .cand { height: calc(28px + 15px * (var(--cand-scale) - 1)); min-width: 0; padding: 0 8px; font-size: calc(15px * var(--cand-scale)); border-radius: 6px; }
 .candidates.lingering { visibility: hidden; }   /* 触屏点过候选：空着多留一拍再收（占着位置、看不见），等手指抬起 */
 @media (pointer: coarse) {
   .candidates { padding: 5px 8px 6px; border-radius: 14px; }
-  .candidates .cand { height: 44px; padding: 0 14px; font-size: 19px; border-radius: 10px; }
-  .candidates .cand .index { font-size: 12px; }
+  .candidates .cand { height: calc(44px + 19px * (var(--cand-scale) - 1)); padding: 0 14px; font-size: calc(19px * var(--cand-scale)); border-radius: 10px; }
+  .candidates .cand .index { font-size: calc(12px * var(--cand-scale)); }
 }
 
 

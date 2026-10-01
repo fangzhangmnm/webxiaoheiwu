@@ -8,7 +8,7 @@
 //     字号 = **9 pt 实体字号**（micro 的字号；直接打印就是书的大小）→ 页面 58 × 83 / 78 × 110 / 103 × 146 mm，相邻两档正好差一次对折。
 //     每页行数不是 knob，由比例推出：版心高 = (行数 − 1) × 行距 + 1 字（bookmaker 同一条式子）→ 11 / 17 / 25 行。
 //     单页、左右对称（不分订口 / 切口）；拼版是以后的事。
-//   版式：封面图一页（有的话）→ 书名页 → 每个正文页另起一页（章起新页）、图片页独占一页；页脚页码；每个有名字的正文页一条书签。
+//   版式：封面图一页（有的话；铺满整页、等比、裁掉多出来的）→ 书名页 → 每个正文页另起一页（章起新页）、图片页独占一页；页脚页码；每个有名字的正文页一条书签。
 import type { PdfDoc, PdfImage, PdfOp, PdfPage, PdfOutlineItem, Rgb } from "./pdf.ts";
 import type { TtfFont } from "./ttf.ts";
 import { wrapText, type ExportTypeset } from "./long-image.ts";
@@ -87,11 +87,13 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
   const fits = (): boolean => y + LH - HALF_LEAD <= bodyBottom + 0.01;
   const centered = (text: string, size: number, baseY: number, color: Rgb): void => { ops.push({ op: "text", x: (W - m.width(text, st(size))) / 2, y: baseY, text, size, color }); };
   /** 图片放进一个框里（等比，居中）。 */
+  /** 图片铺满一个框（等比放大到盖住整个框、居中，多出来的被页面边界裁掉——PDF 页面外的内容不显示也不打印）。封面用：user 2026-10-01「导出pdf的时候封面用fill」。 */
+  const fill = (img: PdfImage, bx: number, by: number, bw: number, bh: number): void => { const s = Math.max(bw / img.w, bh / img.h); const w = img.w * s, h = img.h * s; ops.push({ op: "image", x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h, image: img }); };
   const contain = (img: PdfImage, bx: number, by: number, bw: number, bh: number): void => { const s = Math.min(bw / img.w, bh / img.h); const w = img.w * s, h = img.h * s; ops.push({ op: "image", x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h, image: img }); };
 
   // ── 封面 + 书名页 ──
   if (spec.front !== false) {
-    if (spec.cover) { newPage(false); contain(spec.cover, 0, 0, W, H); }
+    if (spec.cover) { newPage(false); fill(spec.cover, 0, 0, W, H); }   // 封面铺满整页（只用于整页框：靠页面边界裁）；图片页仍是完整放进版心
     newPage(false);
     const size = 1.6 * F, lh = size * 1.45; const lines = wrapText(spec.title, inner, st(size), m); let ty = H * 0.36;
     for (const line of lines) { centered(line, size, ty, cInk); ty += lh; }
