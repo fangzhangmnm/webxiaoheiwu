@@ -541,16 +541,16 @@ export declare const S: {
         readonly en: "Open";
     };
     readonly "ui.reading.hintBook": {
-        readonly zh: "这本书的行宽（跟书走，导出长图 / PDF 也用它）。只管一行放几个字，行距跟着走；字的大小看「字号」和屏幕。";
-        readonly en: "This book’s line width (saved with the book; exports use it too). Only how many characters fit on a line; line spacing follows; text size comes from “Text size” and the screen.";
+        readonly zh: "这本书的行宽（跟书走，导出长图 / PDF 也用它）。只管一行最多放几个字，行距跟着走；字多大只看「字号」。";
+        readonly en: "This book’s line width (saved with the book; exports use it too). Only the most characters a line may hold; line spacing follows; text size comes from “Text size” alone.";
     };
     readonly "ui.reading.hintBookDefault": {
         readonly zh: "这本书还没定行宽，先用默认；改一下就记进这本书（导出长图 / PDF 也用它）。";
         readonly en: "This book has no line width of its own yet — showing the default; change it and it’s saved with the book (exports use it too).";
     };
     readonly "ui.reading.hint": {
-        readonly zh: "默认行宽（新书和 txt 稿用；每本书可以自己改）。只管一行放几个字，行距跟着走；字的大小看「字号」和屏幕，屏幕放不下时减字数、不缩字。14 = 诗 / 小故事 / 自律篇幅，20 = 高考作文格，28 = 纸书。";
-        readonly en: "Only how many characters fit on a line; line spacing follows. Text size comes from “Text size” and the screen — when the screen is too narrow, fewer characters per line, never smaller text. 14 = poems / vignettes / disciplined length, 20 = exam essay grid, 28 = paperback.";
+        readonly zh: "默认行宽（新书和 txt 稿用；每本书可以自己改）。只管一行最多放几个字，行距跟着走；字多大只看「字号」，两者互不相干。屏幕放不下时一行少排几个字，不缩字。14 = 诗 / 小故事 / 自律篇幅，20 = 高考作文格，28 = 纸书。";
+        readonly en: "Only the most characters a line may hold; line spacing follows. Text size comes from “Text size” alone — the two never affect each other. When the screen is too narrow, fewer characters per line, never smaller text. 14 = poems / vignettes / disciplined length, 20 = exam essay grid, 28 = paperback.";
     };
     readonly "ui.sec.voice": {
         readonly zh: "语音输入";
@@ -2136,41 +2136,49 @@ export declare const S: {
         readonly zh: "导出";
         readonly en: "Export";
     };
-    readonly "export.msgBook": {
-        readonly zh: "长图按编辑器此刻的字体和行宽排，封面和插图一起；尽量一张，超过单张上限才问你切几张。";
-        readonly en: "Long images use the editor’s current font and line width, cover and illustrations included; one image when possible — you’re only asked to split past the single-image limit.";
+    readonly "export.scope.page": {
+        readonly zh: "这一页";
+        readonly en: "This page";
     };
-    readonly "export.msgDraft": {
-        readonly zh: "长图按编辑器此刻的字体和行宽排；尽量一张，超过单张上限才问你切几张。";
-        readonly en: "Long images use the editor’s current font and line width; one image when possible — you’re only asked to split past the single-image limit.";
+    readonly "export.scope.branch": {
+        readonly zh: "这一支";
+        readonly en: "This branch";
     };
-    readonly "export.copyText": {
-        readonly zh: "复制这一页文字";
-        readonly en: "Copy this page’s text";
+    readonly "export.scope.book": {
+        readonly zh: "整本";
+        readonly en: "Whole book";
     };
-    readonly "export.copyDraft": {
-        readonly zh: "复制全文";
-        readonly en: "Copy the whole text";
+    readonly "export.fmt.text": {
+        readonly zh: "复制文字";
+        readonly en: "Copy text";
     };
-    readonly "export.copyImage": {
-        readonly zh: "复制这张图";
-        readonly en: "Copy this image";
+    readonly "export.fmt.copyImage": {
+        readonly zh: "复制图片";
+        readonly en: "Copy image";
     };
-    readonly "export.pageImage": {
-        readonly zh: "这一页 → 长图";
-        readonly en: "This page → long image";
+    readonly "export.fmt.image": {
+        readonly zh: "长图";
+        readonly en: "Long image";
     };
-    readonly "export.branchImage": {
-        readonly zh: "这一支 → 长图";
-        readonly en: "This branch → long image";
+    readonly "export.fmt.pdf": {
+        readonly zh: "PDF";
+        readonly en: "PDF";
     };
-    readonly "export.bookImage": {
-        readonly zh: "整本 → 长图";
-        readonly en: "Whole book → long image";
+    readonly "export.scopeStats": {
+        readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文";
+        readonly en: "{cjk} chars · {en} words · {pages} text pages";
     };
-    readonly "export.draftImage": {
-        readonly zh: "整篇 → 长图";
-        readonly en: "Whole draft → long image";
+    readonly "export.scopeStatsImages": {
+        readonly zh: " · {images} 张图";
+        readonly en: " · {images} images";
+    };
+    readonly "export.typesetLine": {
+        readonly zh: "长图和 PDF 每行 {chars} 字（设置 → 行宽）";
+        readonly en: "Long image and PDF: {chars} characters per line (Settings → Line width)";
+    };
+    readonly "copy.doneScope": {
+        readonly zh: "已复制 {pages} 页：{cjk} 字 {en} 词";
+        readonly en: "Copied {pages} pages: {cjk} chars · {en} words";
     };
     readonly "export.making": {
         readonly zh: "生成长图…";
@@ -2268,42 +2276,6 @@ export declare const S: {
         readonly zh: "「{name}」已取消隐藏";
         readonly en: "“{name}” is visible again";
     };
-    readonly "export.msgBookStats": {
-        readonly zh: "整本出门的：{cjk} 字 {en} 词 · {pages} 页（隐藏的不算）";
-        readonly en: "Whole book, exportable: {cjk} chars · {en} words · {pages} pages (hidden pages excluded)";
-    };
-    readonly "export.hiddenEmpty": {
-        readonly zh: "这一页是隐藏的，不出门";
-        readonly en: "This page is hidden — it stays out of exports";
-    };
-    readonly "export.pdf": {
-        readonly zh: "PDF…";
-        readonly en: "PDF…";
-    };
-    readonly "export.draftPdf": {
-        readonly zh: "整篇 → PDF";
-        readonly en: "Whole draft → PDF";
-    };
-    readonly "export.pdfScopeTitle": {
-        readonly zh: "PDF：导出哪一部分？";
-        readonly en: "PDF: which part?";
-    };
-    readonly "export.pdfScopeMsg": {
-        readonly zh: "一页一页的小书：书名页、每个正文页另起一页、图片页独占一页，带书签，文字可以搜索和复制。隐藏的页不出门。";
-        readonly en: "A paged little book: title page, each text page starts a new page, images get a page of their own, with bookmarks and searchable text. Hidden pages stay out.";
-    };
-    readonly "export.pdfBook": {
-        readonly zh: "整本";
-        readonly en: "Whole book";
-    };
-    readonly "export.pdfBranch": {
-        readonly zh: "这一支（这页和它下面的所有页）";
-        readonly en: "This branch (this page and everything under it)";
-    };
-    readonly "export.pdfPage": {
-        readonly zh: "这一页";
-        readonly en: "This page";
-    };
     readonly "pdf.making": {
         readonly zh: "生成 PDF…";
         readonly en: "Making the PDF…";
@@ -2339,10 +2311,6 @@ export declare const S: {
     readonly "pdf.failed": {
         readonly zh: "PDF 生成失败：{e}";
         readonly en: "PDF failed: {e}";
-    };
-    readonly "export.typesetLine": {
-        readonly zh: "每行 {chars} 字（设置 → 行宽；图宽 {w} px）";
-        readonly en: "{chars} characters per line (Settings → Line width; image {w} px wide)";
     };
     readonly "kin.parentTitle": {
         readonly zh: "回到上一级：{name}";

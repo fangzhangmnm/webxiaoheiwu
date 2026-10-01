@@ -329,12 +329,13 @@ export function visibleOrder(p: Project, root?: TreeNode[]): string[] {
   walk(root ?? p.tree);
   return out;
 }
-/** 这一支出门的页序：root 在树上被祖先藏着 → 空；否则子树 DFS 剪掉 hidden 的支。散页 = 自己没藏就只有自己。 */
+/** 这一支出门的页序：**点名的那一页（root）一定在**——它自己藏没藏、被哪个祖先藏着都不看；它下面的页照旧，自己标了 hidden 的连同整支剪掉。散页 = 只有自己。
+ *  user 2026-10-01「导出当前支和本页的时候忽视本页的visibility，只看子叶的」：hidden 管的是「跟着整本 / 跟着上级出门时带不带它」，人点名要导出这一页就是要它。
+ *  （2026-09-30 的首版是 root 被藏 → 空。） */
 export function visibleSubtreeOrder(p: Project, name: string): string[] {
   const n = resolveName(p, name); if (!n) throw new Error(`no such page: ${name}`);
-  if (hiddenAncestor(p, n)) return [];
   const l = locate(p.tree, n);
-  return l ? visibleOrder(p, [l.arr[l.index]!]) : (p.nodes.get(n)?.hidden === true ? [] : [n]);
+  return l ? [n, ...visibleOrder(p, treeNodeChildren(l.arr[l.index]!))] : [n];
 }
 /** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导航用；导出走 visibleSubtreeOrder（hidden 的支不出门）。 */
 export function subtreeOrder(p: Project, name: string): string[] {
@@ -343,6 +344,6 @@ export function subtreeOrder(p: Project, name: string): string[] {
   return l ? dfsOrder(p, [l.arr[l.index]!]) : [n];
 }
 export function exportSubtree(p: Project, name: string): string {
-  const order = visibleSubtreeOrder(p, name);   // hidden 的支不出门（2026-09-30）
+  const order = visibleSubtreeOrder(p, name);   // 这一页一定在；它下面 hidden 的支不出门
   return order.filter((x) => nodeKind(x) === "txt").map((x) => (readNodeText(p, x) ?? "").replace(/\s+$/, "")).join("\n\n") + "\n";
 }

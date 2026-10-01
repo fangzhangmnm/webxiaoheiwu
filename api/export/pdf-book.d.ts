@@ -22,6 +22,8 @@ export interface PdfBookSpec {
     title: string;
     date: string | null;
     cover: PdfImage | null;
+    /** 封面页 + 书名页。整本 / 整篇才有；false = 第一页就是正文（这一页 / 这一支）。缺省 true。 */
+    front?: boolean;
     sections: PdfSection[];
     look: PdfBookLook;
     typeset: ExportTypeset;

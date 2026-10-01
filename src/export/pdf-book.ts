@@ -19,7 +19,12 @@ export type PdfSection =
   | { kind: "text"; heading: string | null; text: string }
   | { kind: "image"; heading: null; image: PdfImage };
 export interface PdfBookLook { paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
-export interface PdfBookSpec { title: string; date: string | null; cover: PdfImage | null; sections: PdfSection[]; look: PdfBookLook; typeset: ExportTypeset; font: TtfFont }
+export interface PdfBookSpec {
+  title: string; date: string | null; cover: PdfImage | null;
+  /** 封面页 + 书名页。整本 / 整篇才有；false = 第一页就是正文（这一页 / 这一支）。缺省 true。 */
+  front?: boolean;
+  sections: PdfSection[]; look: PdfBookLook; typeset: ExportTypeset; font: TtfFont;
+}
 export interface PdfBookPlan { doc: PdfDoc; cjk: number; en: number; textPages: number; imagePages: number; pageCount: number; pageW: number; pageH: number }
 
 /** 正文字号（pt）= 实体字号：按 100% 打印出来就是这么大（屏上阅读器贴屏宽显示，20 字档的页宽 78 mm ≈ 手机屏宽）。 */
@@ -85,11 +90,13 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
   const contain = (img: PdfImage, bx: number, by: number, bw: number, bh: number): void => { const s = Math.min(bw / img.w, bh / img.h); const w = img.w * s, h = img.h * s; ops.push({ op: "image", x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h, image: img }); };
 
   // ── 封面 + 书名页 ──
-  if (spec.cover) { newPage(false); contain(spec.cover, 0, 0, W, H); }
-  newPage(false);
-  { const size = 1.6 * F, lh = size * 1.45; const lines = wrapText(spec.title, inner, st(size), m); let ty = H * 0.36;
+  if (spec.front !== false) {
+    if (spec.cover) { newPage(false); contain(spec.cover, 0, 0, W, H); }
+    newPage(false);
+    const size = 1.6 * F, lh = size * 1.45; const lines = wrapText(spec.title, inner, st(size), m); let ty = H * 0.36;
     for (const line of lines) { centered(line, size, ty, cInk); ty += lh; }
-    if (spec.date) centered(spec.date, 0.7 * F, ty + 0.2 * F, cMuted); }
+    if (spec.date) centered(spec.date, 0.7 * F, ty + 0.2 * F, cMuted);
+  }
 
   // ── 各页 ──
   let cjk = 0, en = 0, textPages = 0, imagePages = 0;

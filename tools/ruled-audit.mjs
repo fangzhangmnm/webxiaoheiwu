@@ -26,8 +26,9 @@ const KV = "webxiaoheiwu-7c2e9a41b3d05f68:";
 
 /** 一组条件下量一次。返回每行的 { 墨迹底边, 线, 距离 }（设备像素）。
  *  scroll = 先把纸（main.surface）滚这么多 CSS px 再量（v2.1.26 一张纸模型：正文框不滚，滚的是纸；字和线同层 → 滚动前后每行的距离必须一样）。 */
-async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0 }) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
+async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0, screen = null }) {
+  // screen = 设备的屏（CSS px）。不给 = 和视口一样大（手机 / 平板全屏）；Win Mini 的浏览器窗口比屏矮，要单给——字号基准看的是设备不是窗口
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, ...(screen ? { screen } : {}) });
   await ctx.addInitScript(({ kv, scale }) => { try { localStorage.setItem(kv + "imeEnabled", "0"); if (scale !== "1") localStorage.setItem(kv + "fontScale", scale); } catch {} }, { kv: KV, scale });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: "load" });
@@ -48,7 +49,10 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0 
   await page.waitForTimeout(300);
   if (scroll) { await page.evaluate((y) => { document.querySelector("main.surface").scrollTop = y; }, scroll); await page.waitForTimeout(150); }
   // 量的是纸面容器在视口里露出来的那一段（正文框可能比视口高）：上沿 = 容器上沿与顶栏下沿取大，下沿 = 容器下沿与视口取小
-  const box = await page.evaluate((book) => { const r0 = document.getElementById(book ? "pageBody" : "editor").getBoundingClientRect(); const sf = document.querySelector("main.surface"); const top = Math.max(r0.top, sf.getBoundingClientRect().top + parseFloat(getComputedStyle(sf).paddingTop)); const bottom = Math.min(r0.bottom, innerHeight - parseFloat(getComputedStyle(sf).paddingBottom)); const r = { left: r0.left, top, width: r0.width, height: bottom - top }; const cs = getComputedStyle(document.getElementById("editor")); return { x: r.left, y: r.top, w: r.width, h: r.height, font: parseFloat(cs.fontSize), lh: cs.lineHeight, tocRows: document.querySelectorAll("#childToc:not([hidden]) .child-toc-row").length }; }, book);
+  const box = await page.evaluate((book) => { const r0 = document.getElementById(book ? "pageBody" : "editor").getBoundingClientRect(); const sf = document.querySelector("main.surface"); const top = Math.max(r0.top, sf.getBoundingClientRect().top + parseFloat(getComputedStyle(sf).paddingTop)); const bottom = Math.min(r0.bottom, innerHeight - parseFloat(getComputedStyle(sf).paddingBottom)); const r = { left: r0.left, top, width: r0.width, height: bottom - top }; const cs = getComputedStyle(document.getElementById("editor")); // fit = 这张纸一行实际排得下几个汉字（照编辑器的字体和宽度搭一个看不见的孪生块，逐字加到折行为止）
+    const ed = document.getElementById("editor"); const d = document.createElement("div"); d.style.cssText = "position:absolute;visibility:hidden;left:0;top:0;white-space:pre-wrap;word-break:break-all;padding:0;border:0;"; d.style.font = cs.font; d.style.letterSpacing = cs.letterSpacing; d.style.lineHeight = cs.lineHeight; d.style.width = (ed.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) + "px"; document.body.appendChild(d);
+    const lhPx = parseFloat(cs.lineHeight); let fit = 0; for (let n = 1; n <= 80; n++) { d.textContent = "国".repeat(n); if (d.offsetHeight > lhPx * 1.5) break; fit = n; } d.remove();
+    return { x: r.left, y: r.top, w: r.width, h: r.height, font: parseFloat(cs.fontSize), lh: cs.lineHeight, fit, tocRows: document.querySelectorAll("#childToc:not([hidden]) .child-toc-row").length }; }, book);
   if (shot) await page.screenshot({ path: `tmp/ui/${shot}.png` });
   const png = await page.screenshot({ clip: { x: box.x, y: box.y, width: box.w, height: box.h } });
   await ctx.close();
@@ -79,15 +83,26 @@ async function measure({ w, h, dpr, mode, scale, shot, book = false, scroll = 0 
   return { box, rows: book ? runs.filter((r) => r.bottom - r.top > box.font * dpr * 0.5).map((r, i) => { const below = lines.find((l) => l.y > r.bottom - box.font * dpr * 0.25); return { i, gap: below ? below.y - r.bottom : null }; }).filter((r) => r.gap != null && r.gap < box.font * dpr * 0.8) : rows, lineCount: lines.length };
 }
 
+// 字号绝对（v2.3.17，user 2026-10-01「字号应该是绝对的，不是相对于行宽的」）：字号 = 设备基准（22；屏短边 < 500 → 16）× 字号档，不看行宽；
+//   每行字数 = 行宽档，不看字号档（屏够宽时）；屏不够宽 → 少排几个字（fit < 档），字号不变。
+function sizeCheck(c, box) {
+  const scr = c.screen ?? { width: c.w, height: c.h }; const base = Math.min(scr.width, scr.height) < 500 ? 16 : 22, want = base * Number(c.scale);
+  const pad = Math.min(32, Math.max(18, c.w * 0.035));   // styles.css --page-pad-x
+  const roomy = c.w >= c.mode * want + 2 * pad + 8;   // 纸宽上限放得进屏 → 行宽必须严格（手机也一样：user 2026-10-01「不超屏幕范围的话我希望手机也是严格行宽。现在14档普通字变成15了」「20档也变成21」）
+  const okFont = Math.abs(box.font - want) < 0.06, okFit = roomy ? box.fit === c.mode : box.fit <= c.mode && box.fit >= 1;
+  return { ok: okFont && okFit, text: `font=${box.font.toFixed(2)} (want ${want.toFixed(2)}) fit=${box.fit}${roomy ? ` (want ${c.mode})` : ` (≤ ${c.mode}, narrow screen)`}` };
+}
 const cases = [];
 for (const dpr of [1, 1.25, 1.75, 2, 3]) for (const mode of [14, 20, 28]) for (const scale of ["1", "1.15"]) cases.push({ w: 1100, h: 900, dpr, mode, scale });
 cases.push({ w: 375, h: 667, dpr: 2, mode: 20, scale: "1" }, { w: 744, h: 1133, dpr: 2, mode: 20, scale: "1.15" });
+for (const mode of [14, 28]) for (const scale of ["1", "1.3"]) cases.push({ w: 375, h: 667, dpr: 2, mode, scale });   // 手机上换行宽：字号不许跟着变
 // GPD Win Mini：7 寸 1920×1080，系统缩放 175% → 1097×617（全屏）/ 1097×537（装成 app 的窗口）/ 1097×480（浏览器标签页）；普通档（「宽稿纸」2026-09-30 撤了）
-for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: 20, scale: "1", shot: `winmini-1097x${h}` });
+const WINMINI_SCREEN = { width: 1097, height: 617 };
+for (const h of [617, 537, 480]) cases.push({ w: 1097, h, dpr: 1.75, mode: 20, scale: "1", shot: `winmini-1097x${h}`, screen: WINMINI_SCREEN });
 // 有子节的页：正文两行 + 三条子节链接，链接行也要坐在线上
-for (const [w, h, dpr] of [[1100, 900, 1], [744, 1133, 2], [1097, 537, 1.75], [375, 667, 3]]) cases.push({ w, h, dpr, mode: 20, scale: "1", book: true, shot: `toc-on-lines-${w}x${h}` });
+for (const [w, h, dpr] of [[1100, 900, 1], [744, 1133, 2], [1097, 537, 1.75], [375, 667, 3]]) cases.push({ w, h, dpr, mode: 20, scale: "1", book: true, shot: `toc-on-lines-${w}x${h}`, ...(w === 1097 ? { screen: WINMINI_SCREEN } : {}) });
 // 一张纸模型（v2.1.26）：纸滚过一个不是整行的距离之后，每行「墨迹底边 → 线」的距离必须和没滚时逐行一样（字和线同层的机械证据；抖动本身归真机）
-for (const [w, h, dpr] of [[1100, 900, 1], [375, 667, 2], [1097, 537, 1.75]]) cases.push({ w, h, dpr, mode: 20, scale: "1", scroll: 137, invariant: true });
+for (const [w, h, dpr] of [[1100, 900, 1], [375, 667, 2], [1097, 537, 1.75]]) cases.push({ w, h, dpr, mode: 20, scale: "1", scroll: 137, invariant: true, ...(w === 1097 ? { screen: WINMINI_SCREEN } : {}) });
 let bad = 0;
 for (const c of cases) {
   const m = await measure(c);
@@ -106,7 +121,9 @@ for (const c of cases) {
   const drift = gaps.length >= 8 ? Math.abs(mean(gaps.slice(0, 4)) - mean(gaps.slice(-4))) : 0;
   const jitter = Number.isInteger(c.dpr) ? 1 : 2;   // 小数缩放比下线落在半个设备像素上，抗锯齿后「最暗的一行」会差 1
   const ok = (c.book ? gaps.length === 5 && m.box.tocRows === 3 : gaps.length >= 6) && max - min <= jitter && drift <= 0.75 && min >= 0 && max <= em * 0.34;   // 书：2 行正文 + 3 行链接 = 5 行字
-  if (!ok) bad++;
+  const sz = c.book ? { ok: true, text: "" } : sizeCheck(c, m.box);
+  if (!ok || !sz.ok) bad++;
+  if (!c.book) console.log(`${sz.ok ? "ok  " : "FAIL"} [size] ${c.w}x${c.h} ${c.mode} scale=${c.scale} ${sz.text}`);
   console.log(`${ok ? "ok  " : "FAIL"} ${c.book ? "[book+toc] " : ""}${c.w}x${c.h} dpr=${c.dpr} ${c.mode} scale=${c.scale} drift=${drift.toFixed(2)} font=${m.box.font.toFixed(2)}px lh=${m.box.lh} lines=${gaps.length} gap(min..max)=${min}..${max} devpx (${(min / em).toFixed(2)}..${(max / em).toFixed(2)} em) first6=${gaps.slice(0, 6).join(",")} last3=${gaps.slice(-3).join(",")}`);
 }
 await browser.close(); srv.close();

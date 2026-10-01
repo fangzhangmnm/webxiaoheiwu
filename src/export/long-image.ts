@@ -35,6 +35,8 @@ export const widthFor = (ts: ExportTypeset): number => Math.round(ts.charsPerLin
 export interface LongImageSpec {
   title: string; date: string | null;
   cover: ImageRef | null;
+  /** 封面 + 书名 + 日期那一段。整本 / 整篇才有；false = 从第一页的章节名直接开始（这一页 / 这一支；user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）。缺省 true。 */
+  front?: boolean;
   sections: LongImageSection[];
   look: LongImageLook;
   typeset: ExportTypeset;
@@ -141,11 +143,13 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
   };
 
   // ── 封面 / 书名 ──
-  if (spec.cover) imageRow(spec.cover, "cover", true);
-  space(spec.cover ? 40 : 72);
-  for (const line of wrapText(spec.title, inner, titleStyle, m)) textRow(line, titleStyle, titleM, Math.round(titleStyle.sizePx * 1.4), "center", false, "cover");
-  if (spec.date) { space(8); textRow(spec.date, small, smallM, Math.round(small.sizePx * 1.6), "center", false, "cover"); }
-  space(spec.cover ? 40 : 56);
+  if (spec.front !== false) {
+    if (spec.cover) imageRow(spec.cover, "cover", true);
+    space(spec.cover ? 40 : 72);
+    for (const line of wrapText(spec.title, inner, titleStyle, m)) textRow(line, titleStyle, titleM, Math.round(titleStyle.sizePx * 1.4), "center", false, "cover");
+    if (spec.date) { space(8); textRow(spec.date, small, smallM, Math.round(small.sizePx * 1.6), "center", false, "cover"); }
+    space(spec.cover ? 40 : 56);
+  } else space(24);
 
   // ── 各页 ──
   let cjk = 0, en = 0, textPages = 0, imagePages = 0, first = true;

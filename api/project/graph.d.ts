@@ -101,7 +101,9 @@ export declare function hiddenAncestor(p: Project, name: string): string | null;
 export declare const isHiddenInTree: (p: Project, name: string) => boolean;
 /** 出门的页序：前序 DFS，自己标了 hidden 的节点连同整支跳过。root 不给 = 整棵树。 */
 export declare function visibleOrder(p: Project, root?: TreeNode[]): string[];
-/** 这一支出门的页序：root 在树上被祖先藏着 → 空；否则子树 DFS 剪掉 hidden 的支。散页 = 自己没藏就只有自己。 */
+/** 这一支出门的页序：**点名的那一页（root）一定在**——它自己藏没藏、被哪个祖先藏着都不看；它下面的页照旧，自己标了 hidden 的连同整支剪掉。散页 = 只有自己。
+ *  user 2026-10-01「导出当前支和本页的时候忽视本页的visibility，只看子叶的」：hidden 管的是「跟着整本 / 跟着上级出门时带不带它」，人点名要导出这一页就是要它。
+ *  （2026-09-30 的首版是 root 被藏 → 空。） */
 export declare function visibleSubtreeOrder(p: Project, name: string): string[];
 /** 这一支的页序：选中页的子树前序 DFS；不在树里 → 只有它自己。导航用；导出走 visibleSubtreeOrder（hidden 的支不出门）。 */
 export declare function subtreeOrder(p: Project, name: string): string[];

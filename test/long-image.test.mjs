@@ -52,6 +52,15 @@ describe("export/long-image · planLongImage 切片", () => {
     const imgs = p.slices.flatMap((s) => s.ops.filter((o) => o.op === "image"));
     eq(imgs.length, 2); eq(imgs[0].w, 456); eq(imgs[0].h, 684, "封面 ≤ 1.5 × 宽"); assert(imgs[0].crop, "太高的封面裁中段"); eq(imgs[1].w, 400); eq(imgs[1].h, 200); eq(p.imagePages, 1); eq(p.slices[0].hasImage, true, "有图的张 → 调用方走 JPEG");
   });
+  it("front: false（这一页 / 这一支）→ 没有封面、书名、日期，从章节名直接开始；页脚小字仍是 title", () => {
+    const tall = { blob: {}, w: 500, h: 2000 }; const sections = [{ kind: "text", heading: "一", text: "字" }];
+    const full = planLongImage(spec(sections, { cover: tall }), m), bare = planLongImage(spec(sections, { cover: tall, front: false, title: "书 · 一" }), m);
+    const texts = (p) => p.slices.flatMap((s) => s.ops.filter((o) => o.op === "text").map((o) => o.text));
+    assert(texts(full).includes("书") && texts(full).includes("20260930"), "整本有书名和日期");
+    eq(bare.slices.flatMap((s) => s.ops.filter((o) => o.op === "image")).length, 0, "no cover");
+    eq(texts(bare).join("|"), "一|字|书 · 一", "章节名 → 正文 → 页脚");
+    assert(bare.totalHeight < full.totalHeight - 600, "少了封面那一屏");
+  });
   it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同；行距跟档走", async () => {
     const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";   // 30 字 → 20 字/行 = 2 行
     const m2 = { width: (t) => [...t].reduce((a, c) => a + (c === " " ? 10 : cjkRe.test(c) ? 40 : 20), 0), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }), ink: (st) => ({ asc: st.sizePx * 0.8, desc: st.sizePx * 0.1 }) };

@@ -88,6 +88,13 @@ describe("export/pdf-book 页面几何", () => {
       const num = pg.ops.filter((o) => o.op === "text" && o.size !== PDF_FONT_PT); eq(num.length, 1, "one page number"); assert(num[0].y > geo.h - geo.bottom, "page number sits in the bottom margin");
     }
   });
+  it("front: false（这一页 / 这一支）→ 没有封面页和书名页，第一页就是正文", () => {
+    const ts = typesetFor(20), geo = pdfPageGeometry(ts); const img = { jpeg: new Uint8Array([0xff, 0xd8]), w: 10, h: 10, components: 3 };
+    const mk = (front) => planPdfBook({ title: "book", date: "2026-10-01", cover: img, front, sections: [{ kind: "text", heading: "h", text: guo.repeat(40) }], look, typeset: ts, font });
+    eq(mk(true).pageCount, 3, "封面 + 书名页 + 正文"); eq(mk(undefined).pageCount, 3, "缺省 = 有");
+    const p = mk(false); eq(p.pageCount, 1); assert(!p.doc.pages[0].ops.some((o) => o.op === "image"), "no cover image"); eq(p.doc.outline.length, 1); eq(p.doc.outline[0].page, 0);
+    eq(p.doc.pages[0].ops.filter((o) => o.op === "text" && o.size === PDF_FONT_PT).length, 2); void geo;
+  });
   it("章节名占整数行：有章节名的页少 3 行", () => {
     const ts = typesetFor(20), geo = pdfPageGeometry(ts);
     const plan = planPdfBook({ title: "t", date: null, cover: null, sections: [{ kind: "text", heading: "h", text: guo.repeat(20 * geo.linesPerPage) }], look, typeset: ts, font });

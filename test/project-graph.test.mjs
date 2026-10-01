@@ -64,9 +64,11 @@ describe("project/graph · 撞名=链接、占位符已废、反链=查询", () 
     assert(isHidden(p, "一2.txt")); assert(!isHidden(p, "一2a.txt"), "孩子自己的旗子不动"); assert(isHiddenInTree(p, "一2a.txt"), "但在树上被藏"); eq(hiddenAncestor(p, "一2a.txt"), "一2.txt");
     assert(!isHiddenInTree(p, "一1.txt")); assert(!isHiddenInTree(p, "二.txt"));
     eq(visibleOrder(p).join("|"), "一.txt|一1.txt|二.txt");
-    eq(visibleSubtreeOrder(p, "一.txt").join("|"), "一.txt|一1.txt"); eq(visibleSubtreeOrder(p, "一2a.txt").length, 0, "被祖先藏 → 空"); eq(visibleSubtreeOrder(p, "一2.txt").length, 0, "自己藏 → 空");
+    eq(visibleSubtreeOrder(p, "一.txt").join("|"), "一.txt|一1.txt"); eq(visibleSubtreeOrder(p, "一2a.txt").join(), "一2a.txt", "点名的那一页被祖先藏着也出门"); eq(visibleSubtreeOrder(p, "一2.txt").join("|"), "一2.txt|一2a.txt", "点名的那一页自己藏着也出门，底下没藏的跟着");
+    setHidden(p, "一2a.txt", true); eq(visibleSubtreeOrder(p, "一2.txt").join(), "一2.txt", "底下藏着的照旧不带"); setHidden(p, "一2a.txt", false);
+    assert(exportSubtree(p, "一2.txt").includes("一2.txt正文"), "导出这一支：点名的页一定在");
     assert(!exportSubtree(p, "一.txt").includes("一2"), "导出这一支不带 hidden 的支");
-    eq(visibleSubtreeOrder(p, "散.txt").join(), "散.txt"); setHidden(p, "散.txt", true); eq(visibleSubtreeOrder(p, "散.txt").length, 0); assert(isHiddenInTree(p, "散.txt")); eq(hiddenAncestor(p, "散.txt"), null);
+    eq(visibleSubtreeOrder(p, "散.txt").join(), "散.txt"); setHidden(p, "散.txt", true); eq(visibleSubtreeOrder(p, "散.txt").join(), "散.txt", "散页点名也出门"); assert(isHiddenInTree(p, "散.txt")); eq(hiddenAncestor(p, "散.txt"), null);
     renameNode(p, "一2.txt", "一二.txt", now); assert(isHidden(p, "一二.txt")); eq(hiddenAncestor(p, "一2a.txt"), "一二.txt");
     setHidden(p, "一二.txt", false); assert(!("hidden" in p.nodes.get("一二.txt")), "取消 = 删键，不留 false"); eq(visibleOrder(p).length, 5);
   });

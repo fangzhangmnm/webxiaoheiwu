@@ -62,6 +62,22 @@ export interface Choice<T> {
     onPick?: () => void;
 }
 export declare function openChoiceSheet<T>(title: string, message: string, choices: Choice<T>[]): Promise<T | null>;
+/** 「范围 + 动作」sheet（created 2026-10-01 by Claude Fable 5.1；user「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：
+ *  一条段选（scopes，只有一项就不画）+ 一行小字（note(scope)，范围一换就重算）+ 一排动作钮（choices(scope)）。
+ *  范围 × 动作是两条正交的轴：m + n 个控件，不是 m × n 个钮，也不用两层 sheet。取消 / Esc / 点空白 = null。 */
+export interface ScopedChoiceOpts<S, T> {
+    scopes: {
+        label: string;
+        value: S;
+    }[];
+    initial: S;
+    note: (scope: S) => string;
+    choices: (scope: S) => Choice<T>[];
+}
+export declare function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpts<S, T>): Promise<{
+    scope: S;
+    value: T;
+} | null>;
 /** 通用「搜索 + 选一项」sheet（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」「通用件同意」「不用原生 select」；created 2026-09-10 by Claude Fable 5.1）。
  *  首用 = 挪到…（app.ts movePageFlow）；「链接到已有页」「移到夹」之类以后同一个件。列表自绘（iOS 原生 select 是滚轮、Quest 更糟）。
  *  rows 由 search(q) **同步**给（q 空 = 默认列表，调用方决定给什么）；点行 = 选中 → 列表下方出现该行的动作钮（actions(row)，按行算：固定行可以只有一个动作）。

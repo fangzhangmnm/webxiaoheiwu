@@ -54,14 +54,24 @@
 
   /* 行宽（v2.3.11，user 2026-09-30「现在阅读节奏为什么还是只有两档，而且你不是说去语义化吗」）：
      唯一 knob = 每行几个字（14 / 20 / 28，同步偏好跟人走，body[data-chars]），和导出同一套数字；
-     字号上限统一 22px（保字大），行距跟档 1.9 / 1.75 / 1.6，纸宽 = 字数 × 字号上限 + 72 边距；
-     屏幕放不下时字号只降到 16px 下限、由行宽让步（手机上自动减字数）。旧「阅读节奏」两档（短行 / 标准）退役：classic → 28、novel → 20。 */
+     行距跟档 1.9 / 1.75 / 1.6。旧「阅读节奏」两档（短行 / 标准）退役：classic → 28、novel → 20。
+     **字号和行宽互不相干（v2.3.17，user 2026-10-01「为什么字号和行宽还是串扰。字号应该是绝对的，不是相对于行宽的」）**：
+       字号 = 这台设备的基准（--editor-font-base：22px；手机 16px，见下面的 media）× 字号档（--font-scale，设置「字号（本机）」）。不看行宽、不看屏宽。
+       纸宽上限 = 每行字数 × 字号 + 两边留白 → 调字号纸跟着变宽，每行字数不变。
+       屏幕放不下：纸只有屏那么宽，一行少排几个字，**不缩字**。
+     （v2.3.11–16 的做法是字号 = clamp(16, (屏宽 − 72) / 字数, 22) × 档、纸宽 = 字数 × 22 + 72：手机上换行宽字号跟着变，任何设备上调字号档每行字数跟着变。） */
   --target-chars: 20;
   --editor-line-height: 1.75;
-  --editor-font-max: 22px;
+  --editor-font-base: 22px;
 }
+/* 手机（屏的短边 < 500 CSS px）基准 16px（user 2026-10-01「16可以啊」）：看的是设备不是窗口，所以同一台设备上字号恒定；16 也是 iOS 不自动放大页面的下限。 */
+@media (max-device-width: 499px), (max-device-height: 499px) { :root { --editor-font-base: 16px; } }
 /* --box-max 必须定义在 body 上：自定义属性里的 var() 在定义处就代换，写在 :root 会永远按 :root 的 --target-chars（20）算，body[data-chars] 改了也不跟（ruled-audit 2026-09-30 抓到 28 字档字号变 16px） */
-body { --box-max: calc(var(--target-chars) * var(--editor-font-max) + 72px); }
+body {
+  --editor-font: calc(var(--editor-font-base) * var(--font-scale, 1));
+  --page-pad-x: clamp(18px, 3.5vw, 32px);
+  --box-max: calc(var(--target-chars) * var(--editor-font) + 2 * var(--page-pad-x) + 8px);   /* 8 = 纸的边框 2 + 取整余量 6（比任何字号都小，多不出一个字） */
+}
 
 :root[data-theme="night"] {
   --bg: #121110; --bg-soft: #1c1b19; --ink: #e8e3d6; --ink-soft: #998f7a; --line: #2a2926; --line-strong: #3a3833;
@@ -272,7 +282,7 @@ body {
   max-width: var(--box-max);
   flex: none;
   margin: 0 auto;
-  padding: var(--page-pad-y) clamp(18px, 3.5vw, 32px) calc(var(--page-pad-y) + var(--floater-band));
+  padding: var(--page-pad-y) var(--page-pad-x) calc(var(--page-pad-y) + var(--floater-band));
   display: flex;
   flex-direction: column;
   min-height: var(--sheet-h);   /* 短稿也是一整张纸；长稿比视口高，滚的是 .surface */
@@ -379,7 +389,7 @@ body {
   border: 0;
   background: transparent;
   font-family: var(--font-editor);
-  font-size: clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max));
+  font-size: var(--editor-font);
   line-height: var(--editor-line-height);
   color: var(--ink-soft);
   caret-color: var(--accent);
@@ -1377,6 +1387,14 @@ body {
 .sheet-choice { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line-strong, #c9b89a); background: var(--paper, #f1e6cf); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .sheet-choice.primary { background: var(--accent, #a05826); color: #fff; border-color: transparent; }
 .sheet-choice.danger { color: var(--danger, #b0413e); }
+/* 「范围 + 动作」sheet（sheets.ts openScopedChoiceSheet；首用 = 导出）：一条段选定范围、一行小字报这个范围有多少、一排动作钮 */
+.sheet-seg { display: flex; border: 1px solid var(--line-strong, #c9b89a); border-radius: 10px; overflow: hidden; }
+.sheet-seg-btn { flex: 1 1 0; min-width: 0; padding: 9px 6px; border: 0; border-left: 1px solid var(--line-strong, #c9b89a); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.sheet-seg-btn:first-child { border-left: 0; }
+.sheet-seg-btn[aria-checked="true"] { background: var(--ink, #1b1b1b); color: var(--paper, #f1e6cf); }
+.sheet-seg-note { margin: 2px 0; font-size: 13px; line-height: 1.5; color: var(--ink-muted); white-space: pre-line; }
+.sheet-choice-row { display: flex; gap: 8px; }
+.sheet-choice-row .sheet-choice { flex: 1 1 0; min-width: 0; text-align: center; padding: 10px 6px; }
 .crypto-button.danger { background: var(--danger, #b0413e); color: #fff; border-color: transparent; }
 .crypto-button.danger:hover { background: var(--accent-strong, #8f2f2c); color: #fff; }
 .crypto-button.hidden { display: none; }   /* choice sheet 不该有「确定」（审计 UI-5） */
@@ -1462,7 +1480,7 @@ body {
 /* ── zen 顶栏 + 写字线（2026-09-04 user「帮我 zen mode 一点」「显示一条条的写字线」）：字数撤、干净态状态留白、IME 只剩「中/英」一字。
    标题框 2026-09-04 撤（ADR-0007：文件名是管理句柄不是标题，回顶栏 .doc-name；编辑器里没有标题） ── */
 .top-spacer { flex: 1 1 0; min-width: 0; }
-.page { --editor-font: calc(clamp(16px, calc((min(100vw, var(--box-max)) - 72px) / var(--target-chars)), var(--editor-font-max)) * var(--font-scale, 1)); }   /* 规范管行宽，档位乘字号（设置「字号」） */
+/* --editor-font 定义在 body（见 :root 里的行宽注释）：字号 = 设备基准 × 字号档，和行宽无关 */
 .body { font-size: var(--editor-font); }
 /* 章节名框（v0.2.15 的 #titleInput 捞回来当节点名；user 2026-09-10）：只在工程模式显示；正文字号 ×1.25、居中、无边框 */
 /* 章节名行 = ⟨ 章节名 ⟩：上一页 / 下一页 chevron 住章节名两侧，不再占页脚（user 2026-09-10「上一页和下一页可以放在标题行，用 ⟨ ⟩ 的 svg…quest 屏幕 vertical space is scarcity」） */

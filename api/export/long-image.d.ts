@@ -41,6 +41,8 @@ export interface LongImageSpec {
     title: string;
     date: string | null;
     cover: ImageRef | null;
+    /** 封面 + 书名 + 日期那一段。整本 / 整篇才有；false = 从第一页的章节名直接开始（这一页 / 这一支；user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）。缺省 true。 */
+    front?: boolean;
     sections: LongImageSection[];
     look: LongImageLook;
     typeset: ExportTypeset;
