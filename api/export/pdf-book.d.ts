@@ -24,12 +24,30 @@ export interface PdfBookLook {
     rule: string | null; /** 目录链接的颜色（编辑器里子节目录那种）；不给 = 墨色 */
     link?: string;
 }
+/** 封面的配色（书架封面那一套 --cover-*）。halo = 书名压在封面图上时那一圈描边。 */
+export interface CoverLook {
+    paper: string;
+    ink: string;
+    inkSoft: string;
+    spine: string;
+    spineEdge: string;
+    halo: string;
+}
+export declare const DEFAULT_COVER_LOOK: CoverLook;
+/** 注音字体：封面书名每个字头上给拼音留的高度（字的倍数）。 */
+export declare const COVER_RUBY = 0.42;
 export interface PdfBookSpec {
     title: string;
     date: string | null;
     cover: PdfImage | null;
-    /** 封面页 + 书名页。整本 / 整篇才有；false = 第一页就是正文（这一页 / 这一支）。缺省 true。 */
+    /** 封面页（v2.3.23 起一页：封面图铺满或一张纸，书名印在上面——和书架上那张封面同一套排法）。整本 / 整篇才有；false = 第一页就是正文（这一页 / 这一支）。缺省 true。 */
     front?: boolean;
+    /** 封面配色；不给 = 书架封面的浅色那套。 */
+    coverLook?: CoverLook;
+    /** 书（没有封面图时画装订线）还是 txt 稿（一张纸，没有装订线）。缺省 book。 */
+    coverKind?: "book" | "draft";
+    /** 书名是没起名的消歧码 → 用淡色印（和书架一样）。 */
+    titleSoft?: boolean;
     sections: PdfSection[];
     look: PdfBookLook;
     typeset: ExportTypeset;

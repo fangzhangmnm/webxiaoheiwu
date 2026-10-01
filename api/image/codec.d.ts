@@ -38,7 +38,12 @@ export type SceneOp = {
     y: number;
     text: string;
     style: TextStyle;
-    align?: "left" | "center" | "right";
+    align?: "left" | "center" | "right"; /** 顺时针转 90°（以 x, y 为轴） */
+    rotate?: 90; /** 先描一圈边再填 */
+    stroke?: {
+        color: string;
+        width: number;
+    };
 } | {
     op: "image";
     x: number;

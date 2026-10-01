@@ -19,14 +19,17 @@ const esc = (x: string): string => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", 
 
 export interface CoverPlan { date: string | null; title: string; vertical: boolean; size: "xl" | "l" | "m" | "s"; coded: boolean }
 /** 这个名字的封面怎么排（纯函数，测试用它）。 */
-export function planCover(stem: string): CoverPlan {
-  const { date, title } = splitDatedName(stem);
+/** 书名（已经拆掉日期）竖排还是横排、字号第几档。书架封面和导出封面（export/cover-title.ts）共用这一条规则。 */
+export function coverTypo(title: string): { vertical: boolean; size: CoverPlan["size"] } {
   const chars = [...title].filter((c) => !/\s/.test(c));
   const cjk = chars.filter((c) => CJK.test(c)).length, other = chars.length - cjk;
   const vertical = cjk > 0 && cjk * 2 >= other;
   const n = chars.length;
-  const size = vertical ? (n <= 5 ? "xl" : n <= 10 ? "l" : n <= 18 ? "m" : "s") : (n <= 8 ? "xl" : n <= 20 ? "l" : n <= 40 ? "m" : "s");
-  return { date, title, vertical, size, coded: date != null && isCodeTitle(title) };
+  return { vertical, size: vertical ? (n <= 5 ? "xl" : n <= 10 ? "l" : n <= 18 ? "m" : "s") : (n <= 8 ? "xl" : n <= 20 ? "l" : n <= 40 ? "m" : "s") };
+}
+export function planCover(stem: string): CoverPlan {
+  const { date, title } = splitDatedName(stem);
+  return { date, title, ...coverTypo(title), coded: date != null && isCodeTitle(title) };
 }
 /** 竖排正文：把一两个字符的拉丁 / 数字小串包成纵中横。 */
 function verticalRuns(title: string): string {

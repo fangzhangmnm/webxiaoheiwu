@@ -14,7 +14,7 @@ export interface PdfImage { jpeg: Uint8Array; w: number; h: number; components: 
 export type PdfOp =
   | { op: "rect"; x: number; y: number; w: number; h: number; color: Rgb }
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: Rgb; width: number }
-  | { op: "text"; x: number; y: number; text: string; size: number; color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */ before?: string; after?: string }
+  | { op: "text"; x: number; y: number; text: string; size: number; color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */ before?: string; after?: string; /** 顺时针转 90°（以 x, y 为轴；竖排里侧躺的拉丁串 / 括号） */ rotate?: 90; /** 先描一圈边再填（封面图上的书名：一圈纸色，字才看得清）。描边那一遍用另一个字体名 /F2（同一份字形，但它的 ToUnicode 全映到零宽空格）——否则阅读器抽字 / 复制时每个字出现两次。 */ stroke?: { color: Rgb; width: number }; /** 只描边不填（调用方想把一组字的描边排在前、填充排在后，让抽出来的字连在一起） */ noFill?: boolean }
   | { op: "image"; x: number; y: number; w: number; h: number; image: PdfImage };
 /** 页内链接：这一页上的一块矩形（左上角坐标系，和 ops 一样），点了跳到第 page 页（从 0 起）。 */
 export interface PdfLink { x: number; y: number; w: number; h: number; page: number }
@@ -66,11 +66,12 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
 
   // ── 页内容：边写边收集用到的字形 ──
   const used = new Map<number, number>();   // 字形号 → 码点（ToUnicode 用；同一字形多个码点时留第一个）
+  const strokeGids = new Set<number>(); const font2Obj = reserve(), uni2Obj = reserve();   // 描边专用的 /F2（用不到就不写这两个对象的引用）
   const missing = new Set<string>();
   const images = new Map<PdfImage, { n: number; name: string }>();
   const pageObjs: number[] = doc.pages.map(() => reserve());   // 页对象号先占好：前面的页要链到后面的页
   doc.pages.forEach((page, pi) => {
-    const H = page.h; let c = ""; const xobj: string[] = [];
+    const H = page.h; let c = ""; const xobj: string[] = []; let usesF2 = false;
     for (const o of page.ops) {
       if (o.op === "rect") c += `${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} rg ${num(o.x)} ${num(H - o.y - o.h)} ${num(o.w)} ${num(o.h)} re f\n`;
       else if (o.op === "line") c += `${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} RG ${num(o.width)} w ${num(o.x1)} ${num(H - o.y1)} m ${num(o.x2)} ${num(H - o.y2)} l S\n`;
@@ -82,9 +83,14 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
           const cp = ch.codePointAt(0)!; const g = shaped[skipN + k] ?? 0;
           if (g === 0 && ch.trim()) missing.add(ch);
           if (!used.has(g)) used.set(g, cp);
+          if (o.stroke) strokeGids.add(g);
           hex += hex4(g);
         });
-        if (hex) c += `BT /F1 ${num(o.size)} Tf ${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} rg ${num(o.x)} ${num(H - o.y)} Td <${hex}> Tj ET\n`;
+        if (hex) {
+          const at = o.rotate === 90 ? `0 -1 1 0 ${num(o.x)} ${num(H - o.y)} Tm` : `${num(o.x)} ${num(H - o.y)} Td`;
+          if (o.stroke) { c += `q 1 j 1 J ${num(o.stroke.color[0])} ${num(o.stroke.color[1])} ${num(o.stroke.color[2])} RG ${num(o.stroke.width * 2)} w BT /F2 ${num(o.size)} Tf 1 Tr ${at} <${hex}> Tj ET Q\n`; usesF2 = true; }   // 描边线宽对中，所以给两倍：露在字外面的那一半 = width
+          if (!o.noFill) c += `BT /F1 ${num(o.size)} Tf ${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} rg ${at} <${hex}> Tj ET\n`;
+        }
       } else {
         let im = images.get(o.image);
         if (!im) { im = { n: reserve(), name: `Im${images.size + 1}` }; images.set(o.image, im); }
@@ -97,7 +103,7 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
     const links = (page.links ?? []).filter((l) => l.page >= 0 && l.page < pageObjs.length);
     const annots = links.length ? ` /Annots [${links.map((l) => `<< /Type /Annot /Subtype /Link /Rect [${num(l.x)} ${num(H - l.y - l.h)} ${num(l.x + l.w)} ${num(H - l.y)}] /Border [0 0 0] /Dest [${pageObjs[l.page]} 0 R /Fit] >>`).join(" ")}]` : "";
     const xo = xobj.length ? ` /XObject << ${xobj.map((nm) => `/${nm} ${[...images.values()].find((v) => v.name === nm)!.n} 0 R`).join(" ")} >>` : "";
-    obj(pg, `<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${num(page.w)} ${num(page.h)}] /Resources << /Font << /F1 ${fontObj} 0 R >>${xo} >> /Contents ${content} 0 R${annots} >>`);
+    obj(pg, `<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${num(page.w)} ${num(page.h)}] /Resources << /Font << /F1 ${fontObj} 0 R${usesF2 ? ` /F2 ${font2Obj} 0 R` : ""} >>${xo} >> /Contents ${content} 0 R${annots} >>`);
   });
   for (const [img, { n }] of images) stream(n, `/Type /XObject /Subtype /Image /Width ${img.w} /Height ${img.h} /ColorSpace /${img.components === 1 ? "DeviceGray" : img.components === 4 ? "DeviceCMYK" : "DeviceRGB"} /BitsPerComponent 8 /Filter /DCTDecode`, img.jpeg, false);
   obj(pagesObj, `<< /Type /Pages /Kids [${pageObjs.map((n) => `${n} 0 R`).join(" ")}] /Count ${pageObjs.length} >>`);
@@ -120,6 +126,13 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
   cmapText += "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
   stream(uniObj, "", enc.encode(cmapText));
   obj(fontObj, `<< /Type /Font /Subtype /Type0 /BaseFont /${base} /Encoding /Identity-H /DescendantFonts [${cidObj} 0 R] /ToUnicode ${uniObj} 0 R >>`);
+  // /F2：描边那一遍用的名字。同一份字形；ToUnicode 把用到的字形全映到 U+200B（零宽空格）→ 抽字 / 复制 / 搜索只看得到填充那一遍
+  { const sg = [...strokeGids].filter((g) => g !== 0).sort((a, b) => a - b);
+    let t = "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n";
+    for (let i = 0; i < sg.length; i += 100) { const part = sg.slice(i, i + 100); t += `${part.length} beginbfchar\n${part.map((g) => `<${hex4(g)}> <200B>`).join("\n")}\nendbfchar\n`; }
+    t += "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
+    stream(uni2Obj, "", enc.encode(t));
+    obj(font2Obj, `<< /Type /Font /Subtype /Type0 /BaseFont /${base} /Encoding /Identity-H /DescendantFonts [${cidObj} 0 R] /ToUnicode ${uni2Obj} 0 R >>`); }
 
   // ── 书签（平铺一层）──
   let outlineRef = "";

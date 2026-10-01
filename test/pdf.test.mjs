@@ -96,7 +96,7 @@ describe("export/pdf-book 页面几何", () => {
   it("front: false（这一页 / 这一支）→ 没有封面页和书名页，第一页就是正文", () => {
     const ts = typesetFor(20), geo = pdfPageGeometry(ts); const img = { jpeg: new Uint8Array([0xff, 0xd8]), w: 10, h: 10, components: 3 };
     const mk = (front) => planPdfBook({ title: "book", date: "2026-10-01", cover: img, front, sections: [{ kind: "text", heading: "h", text: guo.repeat(40) }], look, typeset: ts, font });
-    eq(mk(true).pageCount, 3, "封面 + 书名页 + 正文"); eq(mk(undefined).pageCount, 3, "缺省 = 有");
+    eq(mk(true).pageCount, 2, "封面页（图 + 书名）+ 正文"); eq(mk(undefined).pageCount, 2, "缺省 = 有");
     const p = mk(false); eq(p.pageCount, 1); assert(!p.doc.pages[0].ops.some((o) => o.op === "image"), "no cover image"); eq(p.doc.outline.length, 1); eq(p.doc.outline[0].page, 0);
     eq(p.doc.pages[0].ops.filter((o) => o.op === "text" && o.size === PDF_FONT_PT).length, 2); void geo;
   });
@@ -109,7 +109,7 @@ describe("export/pdf-book 页面几何", () => {
       assert(c.x <= 0.01 && c.y <= 0.01 && c.x + c.w >= geo.w - 0.01 && c.y + c.h >= geo.h - 0.01, `cover covers the page: ${JSON.stringify(c, ["x", "y", "w", "h"])}`);
       assert(Math.abs(c.w / c.h - iw / ih) < 1e-6, "aspect kept"); assert(Math.abs((c.x + c.w / 2) - geo.w / 2) < 0.01 && Math.abs((c.y + c.h / 2) - geo.h / 2) < 0.01, "centered");
       assert(Math.abs(c.w - geo.w) < 0.01 || Math.abs(c.h - geo.h) < 0.01, "one side fits exactly (no more zoom than needed)");
-      const p = plan.doc.pages[2].ops.find((o) => o.op === "image");
+      const p = plan.doc.pages[1].ops.find((o) => o.op === "image");
       assert(p.x >= geo.side - 0.01 && p.x + p.w <= geo.w - geo.side + 0.01 && p.y >= geo.top - 0.01 && p.y + p.h <= geo.h - geo.bottom + 0.01, "image page stays inside the type area");
     }
   });
@@ -145,6 +145,28 @@ describe("export/pdf-book 页面几何", () => {
     const m = [...pdf.matchAll(/\/Subtype \/Link \/Rect \[[^\]]+\] \/Border \[0 0 0\] \/Dest \[(\d+) 0 R \/Fit\]/g)].map((r) => Number(r[1]));
     eq(m.length, 2); for (const id of m) assert(new RegExp(`\\n${id} 0 obj\\n<< /Type /Page `).test(pdf), `link target ${id} is a page object`);
     assert(m[0] !== m[1], "two different target pages");
+  });
+  it("封面页（v2.3.23）：一页；有图 = 图铺满 + 书名描边；没图 = 纸 + 装订线 + 书名不描边；txt 稿没有装订线；竖排一字一个 op", () => {
+    const ts = typesetFor(20), geo = pdfPageGeometry(ts); const img = { jpeg: new Uint8Array([0xff, 0xd8]), w: 600, h: 900, components: 3 };
+    const title = String.fromCodePoint(0x6c14, 0x7403, 0x5192, 0x9669, 0x5bb6);   // 气球冒险家
+    const mk = (extra) => planPdfBook({ title, date: "20250829", cover: null, sections: [{ kind: "text", heading: null, text: guo }], look, typeset: ts, font, ...extra });
+    const withImg = mk({ cover: img }), paper = mk({}), draft = mk({ coverKind: "draft" });
+    for (const p of [withImg, paper, draft]) eq(p.pageCount, 2);
+    const t = (p) => p.doc.pages[0].ops.filter((o) => o.op === "text");
+    const outline = t(withImg).filter((o) => o.noFill), cells = t(withImg).filter((o) => !o.noFill && o.text !== "20250829");
+    eq(cells.map((o) => o.text).join(""), title, "one op per character, in reading order"); assert(outline.length === cells.length + 1 && outline.every((o) => o.stroke && o.stroke.width > 0), "outlined over the image (title + date), outline pass first");
+    assert(t(withImg).findIndex((o) => !o.noFill) > t(withImg).map((o) => !!o.noFill).lastIndexOf(true), "all outlines come before all fills");
+    { const bytes = new TextDecoder("latin1").decode(writePdf(withImg.doc, font)); assert(/\/F2 \d+ 0 R/.test(bytes), "outline pass uses its own font name"); assert(!/\/F2 \d+ 0 R/.test(new TextDecoder("latin1").decode(writePdf(paper.doc, font))), "no /F2 when nothing is outlined"); }
+    assert(cells.every((o, i) => i === 0 || (Math.abs(o.x - cells[0].x) < 0.01 && o.y > cells[i - 1].y)), "one column, top to bottom");
+    assert(cells[0].x > geo.w * 0.7, "the column sits at the right");
+    eq(t(withImg).filter((o) => o.text === "20250829" && !o.noFill).length, 1); assert(withImg.doc.pages[0].ops.some((o) => o.op === "image"));
+    assert(t(paper).every((o) => !o.stroke), "no outline on paper"); assert(!paper.doc.pages[0].ops.some((o) => o.op === "image"));
+    const rects = (p) => p.doc.pages[0].ops.filter((o) => o.op === "rect");
+    eq(rects(paper).length, 3, "page bg + cover paper + spine"); assert(rects(paper)[2].w < geo.w * 0.06 && rects(paper)[2].x === 0, "spine on the left");
+    eq(rects(draft).length, 2, "a draft is a plain sheet: no spine");
+    // 写成 PDF：描边 + 旋转的指令不让写出器出错
+    const rot = mk({ title: title + "\uff08ABCDEF\uff09", cover: img }); assert(t(rot).some((o) => o.rotate === 90), "brackets / long latin runs are rotated");
+    assert(writePdf(rot.doc, font).length > 1000);
   });
   it("章节名占整数行：有章节名的页少 3 行", () => {
     const ts = typesetFor(20), geo = pdfPageGeometry(ts);

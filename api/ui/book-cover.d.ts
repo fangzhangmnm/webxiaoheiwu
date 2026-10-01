@@ -6,6 +6,11 @@ export interface CoverPlan {
     coded: boolean;
 }
 /** 这个名字的封面怎么排（纯函数，测试用它）。 */
+/** 书名（已经拆掉日期）竖排还是横排、字号第几档。书架封面和导出封面（export/cover-title.ts）共用这一条规则。 */
+export declare function coverTypo(title: string): {
+    vertical: boolean;
+    size: CoverPlan["size"];
+};
 export declare function planCover(stem: string): CoverPlan;
 /** 没有封面图时垫在下面的那张纸（图库包的占位槽）：只有颜色，不印字——字在上面那一层。 */
 export declare function paperHtml(kind: "book" | "draft"): string;

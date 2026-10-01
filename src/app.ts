@@ -9,7 +9,7 @@ import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections,
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
 import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary } from "./docs.ts";
-import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate, splitDatedName } from "./doc-model.ts";
+import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate, splitDatedName, isCodeTitle } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
 import { importPageName } from "./image/policy.ts";
 import { humanSize, readPngText, withPngText, PNG_BLURB_KEYWORD, type GalleryView } from "@internal/gallery";
@@ -24,7 +24,7 @@ import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, pai
 import { parseTtf, NotTrueTypeError, type TtfFont } from "./export/ttf.ts";
 import { installSansFont, installFont, loadFontBytes, FONT_FAMILY, type FontId } from "./fonts.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
-import { planPdfBook, type PdfSection } from "./export/pdf-book.ts";
+import { planPdfBook, type PdfSection, type CoverLook } from "./export/pdf-book.ts";
 import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook, treeChildren } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
@@ -584,6 +584,11 @@ function editorLook(): LongImageLook {
     link: resolveCssColor(v("--accent-strong", "#7a3d14"), "#7a3d14"),   // 子节目录的链接色（styles.css .child-toc-row）；变量里是 color-mix()，先让浏览器算成具体的颜色（PDF 那边只认具体的）
   };
 }
+/** 封面的配色 = 书架封面那一套（styles.css --cover-*，跟主题走）；txt 稿是一张纸（--cover-sheet*）。 */
+function coverLook(kind: "book" | "draft"): CoverLook {
+  const root = getComputedStyle(document.documentElement); const c = (name: string, fb: string): string => resolveCssColor(root.getPropertyValue(name).trim() || fb, fb);
+  return { paper: kind === "draft" ? c("--cover-sheet", "#f4f2ec") : c("--cover-paper", "#e9e3d5"), ink: kind === "draft" ? c("--cover-sheet-ink", "#4d4a44") : c("--cover-ink", "#43382c"), inkSoft: c("--cover-ink-soft", "#857b6a"), spine: c("--cover-spine", "#d2c9b5"), spineEdge: c("--cover-spine-edge", "#c2b8a2"), halo: "#ffffff" };
+}
 /** 让浏览器把一个 CSS 颜色写法（变量里可能是 color-mix() 之类）算成具体的颜色串。 */
 function resolveCssColor(value: string, fallback: string): string {
   const el = document.createElement("span"); el.style.display = "none"; el.style.color = fallback; el.style.color = value;
@@ -593,13 +598,13 @@ function resolveCssColor(value: string, fallback: string): string {
 async function imageRef(bytes: Uint8Array): Promise<ImageRef> { const blob = new Blob([bytes as unknown as BlobPart]); const { w, h } = await probeSize(blob); return { blob, w, h }; }
 /** 导出的原料（长图 / PDF 共用）：txt 稿 = 整篇；书 = 这一页 / 这一支（子树 DFS）/ 整本（全树 DFS，散页不含；hidden 的支剪掉）；图片页原位；封面 = graph.json cover 指的那页的高清字节。 */
 type ExportItem = { kind: "text"; heading: string | null; text: string; /** 子节目录：这次一起出门的直接子页（target = items 里的序号） */ toc?: { label: string; target: number }[] } | { kind: "image"; bytes: Uint8Array };
-interface ExportSource { title: string; date: string | null; cover: Uint8Array | null; /** 封面 + 书名那一段：整本 / 整篇才有 */ front: boolean; items: ExportItem[] }
+interface ExportSource { title: string; date: string | null; cover: Uint8Array | null; /** 封面 + 书名那一段：整本 / 整篇才有 */ front: boolean; /** 封面按书还是按 txt 稿画 */ kind: "book" | "draft"; /** 书名是没起名的消歧码（封面上用淡色印） */ soft: boolean; items: ExportItem[] }
 function collectExport(scope: LongImageScope): ExportSource | null {
   if (scope === "draft") {
     const text = editorEl.value; if (!text.trim()) return null;
     const st = editor.state; const stem = st.name ? parseDocName(st.name).stem : (st.pendingTitle || st.pendingDate || "");
     const { date, title } = splitDatedName(stem);
-    return { title: title || stem, date, cover: null, front: true, items: [{ kind: "text", heading: null, text }] };
+    return { title: title || stem, date, cover: null, front: true, kind: "draft", soft: date != null && isCodeTitle(title), items: [{ kind: "text", heading: null, text }] };
   }
   const s = project.session(); const cur = project.current(); if (!s || !cur) return null;
   project.commitEditor();
@@ -621,9 +626,9 @@ function collectExport(scope: LongImageScope): ExportSource | null {
   }
   const stem = parseDocName(project.name() ?? "").stem; const { date, title } = splitDatedName(stem);
   // 书名和封面只属于整本（user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）：这一页 / 这一支从章节名直接开始；出处留在页脚小字和文件名里（书名 · 页名）
-  if (scope !== "book") return { title: `${title || stem} · ${nodeDisplayName(cur)}`, date: null, cover: null, front: false, items };
+  if (scope !== "book") return { title: `${title || stem} · ${nodeDisplayName(cur)}`, date: null, cover: null, front: false, kind: "book", soft: false, items };
   const cp = project.coverPage(); const cb = cp && nodeKind(cp) === "image" ? s.bytesOf(cp) : null;
-  return { title: title || stem, date, cover: cb ?? null, front: true, items };
+  return { title: title || stem, date, cover: cb ?? null, front: true, kind: "book", soft: date != null && isCodeTitle(title), items };
 }
 async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | null> {
   const src = collectExport(scope); if (!src) return null;
@@ -633,7 +638,7 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
   if (pin) look.family = `"${FONT_FAMILY.pinyin}", ${look.family}`;   // 拼音字体里没有的字落回黑体 / 系统字体
   // canvas 画字不做「按词选读音」那一步（实测）→ 用自己的排字结果把读音写成变体选择符，canvas 认这个
   const ctxOf = pin ? { annotate: (before: string, line: string, after: string): string => pin.font.annotate(line, before, after) } : {};
-  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, ...ctxOf, sections, look, typeset: currentTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
+  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, coverLook: { ink: "#43382c", halo: "#ffffff" }, ruby: !!pin, ...ctxOf, sections, look, typeset: currentTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
 }
 /** 文件尺寸（user 2026-09-30「用高压」「默认jpg行吗…是否用jpg你可以pushback」）：按内容定不按阈值猜——纯文字的那张 = 调色板 PNG（256 色；纸底大面积同色，比 JPEG 更小也更锐，微信再压一次也不糊）；有照片（封面 / 插图页）的那张 = JPEG q82。 */
 const LONG_IMAGE_JPEG_QUALITY = 82;
@@ -751,7 +756,7 @@ async function renderPdfFile(scope: LongImageScope, opts: { font?: Uint8Array } 
   const sections: PdfSection[] = [];
   for (const it of src.items) sections.push(it.kind === "text" ? it : { kind: "image", heading: null, image: await pdfImage(it.bytes) });
   const lk = editorLook();
-  const plan = planPdfBook({ title: src.title, date: src.date, cover: src.cover ? await pdfImage(src.cover) : null, front: src.front, sections, look: { paper: lk.paper, ink: lk.ink, inkSoft: lk.inkSoft, muted: lk.muted, rule: lk.rule, ...(lk.link ? { link: lk.link } : {}) }, typeset: currentTypeset(), font: f.font });
+  const plan = planPdfBook({ title: src.title, date: src.date, cover: src.cover ? await pdfImage(src.cover) : null, front: src.front, coverLook: coverLook(src.kind), coverKind: src.kind, titleSoft: src.soft, sections, look: { paper: lk.paper, ink: lk.ink, inkSoft: lk.inkSoft, muted: lk.muted, rule: lk.rule, ...(lk.link ? { link: lk.link } : {}) }, typeset: currentTypeset(), font: f.font });
   plan.doc.producer = `WebXiaoHeiWu ${APP_VERSION}`;
   const stats: PdfStats = { glyphs: 0, missing: [], fontBytes: 0 };
   const bytes = writePdf(plan.doc, f.font, { stats });

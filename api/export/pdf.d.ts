@@ -30,7 +30,13 @@ export type PdfOp = {
     size: number;
     color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */
     before?: string;
-    after?: string;
+    after?: string; /** 顺时针转 90°（以 x, y 为轴；竖排里侧躺的拉丁串 / 括号） */
+    rotate?: 90; /** 先描一圈边再填（封面图上的书名：一圈纸色，字才看得清）。描边那一遍用另一个字体名 /F2（同一份字形，但它的 ToUnicode 全映到零宽空格）——否则阅读器抽字 / 复制时每个字出现两次。 */
+    stroke?: {
+        color: Rgb;
+        width: number;
+    }; /** 只描边不填（调用方想把一组字的描边排在前、填充排在后，让抽出来的字连在一起） */
+    noFill?: boolean;
 } | {
     op: "image";
     x: number;

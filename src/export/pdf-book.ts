@@ -14,16 +14,28 @@ import type { TtfFont } from "./ttf.ts";
 import { wrapText, type ExportTypeset } from "./long-image.ts";
 import type { TextMeasurer, TextStyle } from "../image/codec.ts";
 import { statsForText } from "../doc-model.ts";
+import { layoutCoverTitle } from "./cover-title.ts";
 
 export type PdfSection =
   | { kind: "text"; heading: string | null; text: string; /** 子节目录：正文后面空一行列出来，每行链到那一节的第一页、行尾印页码。target = sections 里的序号。 */ toc?: PdfTocEntry[] }
   | { kind: "image"; heading: null; image: PdfImage };
 export interface PdfTocEntry { label: string; target: number }
 export interface PdfBookLook { paper: string; ink: string; inkSoft: string; muted: string; rule: string | null; /** 目录链接的颜色（编辑器里子节目录那种）；不给 = 墨色 */ link?: string }
+/** 封面的配色（书架封面那一套 --cover-*）。halo = 书名压在封面图上时那一圈描边。 */
+export interface CoverLook { paper: string; ink: string; inkSoft: string; spine: string; spineEdge: string; halo: string }
+export const DEFAULT_COVER_LOOK: CoverLook = { paper: "#e9e3d5", ink: "#43382c", inkSoft: "#857b6a", spine: "#d2c9b5", spineEdge: "#c2b8a2", halo: "#ffffff" };
+/** 注音字体：封面书名每个字头上给拼音留的高度（字的倍数）。 */
+export const COVER_RUBY = 0.42;
 export interface PdfBookSpec {
   title: string; date: string | null; cover: PdfImage | null;
-  /** 封面页 + 书名页。整本 / 整篇才有；false = 第一页就是正文（这一页 / 这一支）。缺省 true。 */
+  /** 封面页（v2.3.23 起一页：封面图铺满或一张纸，书名印在上面——和书架上那张封面同一套排法）。整本 / 整篇才有；false = 第一页就是正文（这一页 / 这一支）。缺省 true。 */
   front?: boolean;
+  /** 封面配色；不给 = 书架封面的浅色那套。 */
+  coverLook?: CoverLook;
+  /** 书（没有封面图时画装订线）还是 txt 稿（一张纸，没有装订线）。缺省 book。 */
+  coverKind?: "book" | "draft";
+  /** 书名是没起名的消歧码 → 用淡色印（和书架一样）。 */
+  titleSoft?: boolean;
   sections: PdfSection[]; look: PdfBookLook; typeset: ExportTypeset; font: TtfFont;
 }
 export interface PdfBookPlan { doc: PdfDoc; cjk: number; en: number; textPages: number; imagePages: number; pageCount: number; pageW: number; pageH: number }
@@ -100,13 +112,23 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
   const fill = (img: PdfImage, bx: number, by: number, bw: number, bh: number): void => { const s = Math.max(bw / img.w, bh / img.h); const w = img.w * s, h = img.h * s; ops.push({ op: "image", x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h, image: img }); };
   const contain = (img: PdfImage, bx: number, by: number, bw: number, bh: number): void => { const s = Math.min(bw / img.w, bh / img.h); const w = img.w * s, h = img.h * s; ops.push({ op: "image", x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h, image: img }); };
 
-  // ── 封面 + 书名页 ──
+  // ── 封面（一页）：封面图铺满整页，或一张纸（书 = 左边一条装订线）；书名和日期印在上面，排法 = 书架上那张封面（cover-title.ts）──
+  //    user 2026-10-01「然后封面要不要和书架的封面对齐？就是也有字」「好，两个做」。v2.3.14–22 是「封面图一页 + 书名页一页」。
   if (spec.front !== false) {
-    if (spec.cover) { newPage(false); fill(spec.cover, 0, 0, W, H); }   // 封面铺满整页（只用于整页框：靠页面边界裁）；图片页仍是完整放进版心
+    const cl = spec.coverLook ?? DEFAULT_COVER_LOOK, hasImg = !!spec.cover;
     newPage(false);
-    const size = 1.6 * F, lh = size * 1.45; const lines = wrapText(spec.title, inner, st(size), m); let ty = H * 0.36;
-    for (const line of lines) { centered(line, size, ty, cInk); ty += lh; }
-    if (spec.date) centered(spec.date, 0.7 * F, ty + 0.2 * F, cMuted);
+    if (spec.cover) fill(spec.cover, 0, 0, W, H);   // 铺满整页（靠页面边界裁）；图片页仍是完整放进版心
+    else ops.push({ op: "rect", x: 0, y: 0, w: W, h: H, color: parseCssColor(cl.paper) });
+    const lay = layoutCoverTitle({ title: spec.title, date: spec.date, W, H, spine: !hasImg && spec.coverKind !== "draft", width: (t, s) => m.width(t, st(s)), ink: (s) => m.ink(st(s)), wrap: (t, maxW, s) => wrapText(t, maxW, st(s), m), ruby: font.contextual ? COVER_RUBY : 0 });
+    if (lay.spineW) { ops.push({ op: "rect", x: 0, y: 0, w: lay.spineW, h: H, color: parseCssColor(cl.spine) }); ops.push({ op: "line", x1: lay.spineW, y1: 0, x2: lay.spineW, y2: H, color: parseCssColor(cl.spineEdge), width: W * 0.004 }); }
+    const stroke = hasImg ? { stroke: { color: parseCssColor(cl.halo), width: W * 0.006 } } : {};
+    const cTitle = parseCssColor(spec.titleSoft ? cl.inkSoft : cl.ink);
+    const cellOp = (c: typeof lay.cells[number], color: Rgb): PdfOp => ({ op: "text", x: c.x, y: c.y, text: c.text, size: c.size, color, ...(c.rotate ? { rotate: c.rotate } : {}), ...(c.before ? { before: c.before } : {}), ...(c.after ? { after: c.after } : {}) });
+    const cDate = parseCssColor(hasImg ? cl.ink : cl.inkSoft);
+    // 有图：先把所有字的描边画完，再画所有字的填充——抽字时书名是连着的一串（描边那一遍抽出来是零宽空格，见 pdf.ts /F2）
+    if (hasImg) { for (const c of lay.cells) ops.push({ ...cellOp(c, cTitle), ...stroke, noFill: true } as PdfOp); if (lay.date) ops.push({ ...cellOp(lay.date, cDate), ...stroke, noFill: true } as PdfOp); }
+    for (const c of lay.cells) ops.push(cellOp(c, cTitle));
+    if (lay.date) ops.push(cellOp(lay.date, cDate));
   }
 
   // ── 各页 ──

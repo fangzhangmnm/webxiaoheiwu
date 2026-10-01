@@ -13,6 +13,7 @@
 //   输出是显示列表（SceneOp），量字宽与落像素归 image/codec.ts（app 唯一 canvas 点）。
 import type { SceneOp, TextMeasurer, TextStyle } from "../image/codec.ts";
 import { statsForText } from "../doc-model.ts";
+import { layoutCoverTitle } from "./cover-title.ts";
 
 export interface ImageRef { blob: Blob; w: number; h: number }
 export type LongImageSection =
@@ -39,6 +40,10 @@ export interface LongImageSpec {
   cover: ImageRef | null;
   /** 封面 + 书名 + 日期那一段。整本 / 整篇才有；false = 从第一页的章节名直接开始（这一页 / 这一支；user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）。缺省 true。 */
   front?: boolean;
+  /** 封面图上那层字的颜色（书架封面那一套）：墨色 + 一圈描边。不给 = 深褐字、白描边。 */
+  coverLook?: { ink: string; halo: string };
+  /** 正文字体是注音字体 → 封面书名每个字头上给拼音留位置。 */
+  ruby?: boolean;
   /** 注音字体：把一行字换成「带读音标记」的同一行（多音字后面补变体选择符，见 ttf.ts annotate）。折行、量宽都用原文，只有画的时候用它的结果；
    *  before / after = 同一段里上一行的尾、下一行的头（词被折行拆开时靠它选对读音）。不给 = 原样画。 */
   annotate?: (before: string, line: string, after: string) => string;
@@ -150,12 +155,24 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
   };
 
   // ── 封面 / 书名 ──
-  if (spec.front !== false) {
-    if (spec.cover) imageRow(spec.cover, "cover", true);
-    space(spec.cover ? 40 : 72);
+  if (spec.front !== false && spec.cover) {
+    // 有封面图：书名和日期压在图上（和书架上那张封面同一套排法，cover-title.ts；user 2026-10-01「封面要不要和书架的封面对齐？就是也有字」「好，两个做」）
+    const img = spec.cover; let h = Math.round(W * img.h / img.w); let crop: { sx: number; sy: number; sw: number; sh: number } | undefined;
+    const cap = Math.round(W * 1.5); if (h > cap) { const sh = img.w * cap / W; crop = { sx: 0, sy: (img.h - sh) / 2, sw: img.w, sh }; h = cap; }
+    const cl = spec.coverLook ?? { ink: "#43382c", halo: "#ffffff" }; const cs = (sizePx: number): TextStyle => ({ family: look.family, sizePx, color: cl.ink });
+    const lay = layoutCoverTitle({ title: spec.title, date: spec.date, W, H: h, spine: false, width: (t, s) => m.width(t, cs(s)), ink: (s) => m.ink(cs(s)), wrap: (t, maxW, s) => wrapText(t, maxW, cs(s), m), ruby: spec.ruby ? 0.42 : 0 });
+    const stroke = { color: cl.halo, width: Math.max(1.5, W * 0.006) };
+    rows.push({ kind: "cover", h, ops: (y) => [
+      { op: "image", x: 0, y, w: W, h, blob: img.blob, ...(crop ? { crop } : {}) },
+      ...[...lay.cells, ...(lay.date ? [lay.date] : [])].map((c): SceneOp => ({ op: "text", x: c.x, y: y + c.y, text: spec.annotate ? spec.annotate(c.before ?? "", c.text, c.after ?? "") : c.text, style: cs(c.size), ...(c.rotate ? { rotate: c.rotate } : {}), stroke })),
+    ] });
+    space(40);
+  } else if (spec.front !== false) {
+    // 没有封面图：照旧一段书名 + 日期（长图是一条卷轴，不为它凭空造一张封面）
+    space(72);
     { const tl = wrapText(spec.title, inner, titleStyle, m); tl.forEach((_, i) => textRow(drawn(tl, i), titleStyle, titleM, Math.round(titleStyle.sizePx * 1.4), "center", false, "cover")); }
     if (spec.date) { space(8); textRow(spec.date, small, smallM, Math.round(small.sizePx * 1.6), "center", false, "cover"); }
-    space(spec.cover ? 40 : 56);
+    space(56);
   } else space(24);
 
   // ── 各页 ──

@@ -57,7 +57,7 @@ export interface TextStyle { family: string; sizePx: number; weight?: number | s
 export type SceneOp =
   | { op: "rect"; x: number; y: number; w: number; h: number; color: string }
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: string; width: number }
-  | { op: "text"; x: number; y: number; text: string; style: TextStyle; align?: "left" | "center" | "right" }   // y = 基线
+  | { op: "text"; x: number; y: number; text: string; style: TextStyle; align?: "left" | "center" | "right"; /** 顺时针转 90°（以 x, y 为轴） */ rotate?: 90; /** 先描一圈边再填 */ stroke?: { color: string; width: number } }   // y = 基线
   | { op: "image"; x: number; y: number; w: number; h: number; blob: Blob; crop?: { sx: number; sy: number; sw: number; sh: number } };
 export interface TextMeasurer { width(text: string, style: TextStyle): number; ascent(style: TextStyle): { asc: number; desc: number }; /** 汉字本体的墨迹上下伸（量「国」；不看字体自报的 ascent——注音字体会把拼音带算进去，各平台取的表还不一样）。 */ ink(style: TextStyle): { asc: number; desc: number } }
 const fontString = (st: TextStyle): string => `${st.weight ?? 400} ${st.sizePx}px ${st.family}`;
@@ -100,7 +100,14 @@ export async function paintScene(w: number, h: number, bg: string, ops: SceneOp[
   for (const o of ops) {
     if (o.op === "rect") { cx.fillStyle = o.color; cx.fillRect(o.x, o.y, o.w, o.h); }
     else if (o.op === "line") { cx.strokeStyle = o.color; cx.lineWidth = o.width; cx.beginPath(); cx.moveTo(o.x1, o.y1); cx.lineTo(o.x2, o.y2); cx.stroke(); }
-    else if (o.op === "text") { cx.font = fontString(o.style); cx.fillStyle = o.style.color; cx.textAlign = o.align ?? "left"; cx.textBaseline = "alphabetic"; cx.fillText(o.text, o.x, o.y); }
+    else if (o.op === "text") {
+      cx.font = fontString(o.style); cx.fillStyle = o.style.color; cx.textAlign = o.align ?? "left"; cx.textBaseline = "alphabetic";
+      if (o.rotate || o.stroke) {
+        cx.save(); cx.translate(o.x, o.y); if (o.rotate === 90) cx.rotate(Math.PI / 2);
+        if (o.stroke) { cx.lineJoin = "round"; cx.lineWidth = o.stroke.width * 2; cx.strokeStyle = o.stroke.color; cx.strokeText(o.text, 0, 0); }
+        cx.fillText(o.text, 0, 0); cx.restore();
+      } else cx.fillText(o.text, o.x, o.y);
+    }
     else {
       const src = await decodeBlob(o.blob);
       if (o.crop) cx.drawImage(src as CanvasImageSource, o.crop.sx, o.crop.sy, o.crop.sw, o.crop.sh, o.x, o.y, o.w, o.h);
