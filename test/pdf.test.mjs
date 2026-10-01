@@ -115,3 +115,52 @@ describe("export/pdf-book 页面几何", () => {
     eq(first.length, geo.linesPerPage - 3); eq(plan.pageCount, 3);
   });
 });
+
+// 注音字体的上下文替换（v2.3.21）：vendor/fonts/pinyin.ttf.gz = 萌神手写体 2.0。期望值 = HarfBuzz（uharfbuzz 0.56.2）对同一份字体排出来的字形号，2026-10-01 录的；
+//   换字体文件的话重录（开发机：对 9,289 字的语料逐字比过，零差异）。
+const PINYIN = decodeURIComponent(new URL("../vendor/fonts/pinyin.ttf.gz", import.meta.url).pathname);
+const HB_FIXTURE = [["银行行长走在行人道上，一行人行色匆匆。", [57410, 49346, 49343, 57800, 52594, 18001, 49343, 12234, 54494, 11783, 64516, 11751, 49343, 12234, 49343, 45507, 15017, 15017, 4080]], ["重庆很重要，重新开始，重量。", [55417, 22552, 23174, 55417, 50089, 64516, 55420, 27434, 22851, 19650, 64516, 55417, 55424, 4080]], ["音乐老师很快乐。", [59408, 11980, 43966, 22231, 23174, 23405, 11977, 4080]], ["他长大了，头发很长。", [12311, 57800, 19225, 12091, 64516, 19266, 15521, 23174, 57800, 4080]], ["我们还是觉得睡觉最好，觉得好看。", [24762, 12364, 54177, 27723, 50264, 23203, 38570, 50264, 28194, 19454, 64516, 50264, 23203, 19457, 38355, 4080]], ["朝阳区的朝霞，朝着太阳。", [28279, 58299, 15128, 38036, 28279, 58897, 64516, 28276, 38479, 19237, 58299, 4080]], ["了解了，受不了了。", [12094, 50333, 12091, 64516, 15542, 11797, 12094, 12091, 4080]], ["银行", [57410, 49346]], ["行", [49343]], ["行走", [49343, 52594]], ["着急地看着我，穿着衣服，着火了。", [38479, 23569, 18027, 38355, 38485, 24762, 64516, 40455, 38485, 49396, 28231, 64516, 38479, 34347, 12091, 4080]], ["一会儿开会，会计。", [11751, 12491, 13922, 22851, 12491, 64516, 12491, 51412, 4080]], ["数学老师数了数。", [27254, 20645, 43966, 22231, 27254, 12091, 27254, 4080]], ["这只小狗只吃肉。", [54182, 15599, 21058, 35809, 15599, 15673, 44261, 4080]], ["大夫说没关系，淹没。", [19225, 19241, 51646, 31809, 14065, 41880, 64516, 32745, 31809, 4080]], ["好学生好学。", [19454, 20645, 37159, 19454, 20645, 4080]], ["便宜，方便。", [12930, 20767, 64516, 27451, 12930, 4080]], ["差不多，出差，参差。", [22157, 11797, 19203, 64516, 14364, 22161, 64516, 15476, 22162, 4080]], ["都是首都。", [54903, 27723, 60454, 54906, 4080]], ["得到，跑得快，得去。", [23203, 14503, 64516, 52850, 23203, 23405, 64516, 23203, 15455, 4080]], ["的确，目的，我的。", [38039, 39226, 64516, 38276, 38040, 64516, 24762, 38036, 4080]]];
+describe("export/ttf rclt（注音字体按词选读音）" + (existsSync(PINYIN) ? "" : "（SKIP：没有 vendor/fonts/pinyin.ttf.gz）"), () => {
+  if (!existsSync(PINYIN)) { it("skip: pinyin font not vendored", () => {}); return; }
+  const pin = parseTtf(new Uint8Array(gunzipSync(readFileSync(PINYIN))));
+  it("字体有 rclt、查找表种类全认识", () => { assert(pin.contextual); eq(pin.shapeSkipped.join(), ""); assert(/Mengshen/.test(pin.psName), pin.psName); });
+  it("每一行排出来的字形号和 HarfBuzz 一样；一个码点一个字形", () => {
+    let changed = 0;
+    for (const [line, want] of HB_FIXTURE) { const got = pin.shape(line); eq(got.length, [...line].length); eq(got.join(","), want.join(","), line); [...line].forEach((ch, i) => { if (got[i] !== pin.glyphId(ch.codePointAt(0))) changed++; }); }
+    assert(changed >= 10, `rclt actually changed some glyphs: ${changed}`);
+  });
+  it("同一个字，上下文不同 → 字形不同；折行拆开的词靠 before / after 找回来", () => {
+    const hang = String.fromCodePoint(0x884c), yin = String.fromCodePoint(0x94f6);   // 行、银
+    const alone = pin.shape(hang)[0], inWord = pin.shape(yin + hang)[1];
+    assert(alone === pin.glyphId(0x884c) && inWord !== alone, `${alone} vs ${inWord}`);
+    // pdf-book：两行，上一行以「银」结尾、下一行以「行」开头 → 第二行的 op 带 before
+    const ts = typesetFor(14); const text = String.fromCharCode(0x56fd).repeat(13) + yin + hang + String.fromCharCode(0x56fd).repeat(3);
+    const plan = planPdfBook({ title: "t", date: null, cover: null, front: false, sections: [{ kind: "text", heading: null, text }], look: { paper: "#fff", ink: "#000", inkSoft: "#000", muted: "#888", rule: null }, typeset: ts, font: pin });
+    const ops = plan.doc.pages[0].ops.filter((o) => o.op === "text" && o.size === PDF_FONT_PT);
+    eq(ops.length, 2); eq([...ops[0].text].length, 14); assert(ops[0].text.endsWith(yin) && ops[1].text.startsWith(hang));
+    assert(ops[1].before && ops[1].before.endsWith(yin) && ops[0].after && ops[0].after.startsWith(hang), JSON.stringify({ b: ops[1].before, a: ops[0].after }));
+    eq(pin.shape(ops[1].before + ops[1].text)[[...ops[1].before].length], inWord, "带上前文 → 选回词里的读音");
+    // 写出来的 PDF 能成、没有缺字
+    const stats = { glyphs: 0, missing: [], fontBytes: 0 }; const pdf = writePdf(plan.doc, pin, { stats });
+    assert(pdf.length > 1000 && stats.missing.length === 0 && stats.glyphs >= 4, JSON.stringify({ n: pdf.length, ...stats }));
+  });
+  it("annotate：换了读音的字后面补变体选择符（cmap 14），别的字不动；去掉选择符 = 原文；带前文也行", () => {
+    const hang = String.fromCodePoint(0x884c), yin = String.fromCodePoint(0x94f6), VS = /[\u{E0100}-\u{E01EF}]/gu;
+    const a = pin.annotate(yin + hang + hang + String.fromCodePoint(0x8d70));   // 银行行走
+    eq(a.replace(VS, ""), yin + hang + hang + String.fromCodePoint(0x8d70)); eq([...a].length, 5, "exactly one selector added");
+    const cps = [...a].map((c) => c.codePointAt(0)); assert(cps[2] >= 0xe01e0 && cps[2] <= 0xe01ef && cps[1] === 0x884c, cps.map((c) => c.toString(16)).join(" "));
+    eq(pin.annotate(hang), hang, "alone = default reading, no selector");
+    const b = pin.annotate(hang + String.fromCodePoint(0x91cc), yin);   // 上一行以「银」结尾，这一行「行里」
+    eq([...b].length, 3); eq([...b][0], hang); assert([...b][1].codePointAt(0) === cps[2], "same selector as inside the word");
+    for (const [line, want] of HB_FIXTURE) {   // 每一行：补了选择符的字 = 被 rclt 换掉的字
+      const ann = [...pin.annotate(line)]; let k = 0, marked = 0, changed = 0;
+      [...line].forEach((ch, i) => { eq(ann[k], ch); k++; const sel = ann[k] && ann[k].codePointAt(0) >= 0xe0100; if (sel) { k++; marked++; } if (want[i] !== pin.glyphId(ch.codePointAt(0))) { changed++; assert(sel, `no selector for ${ch} in ${line}`); } });
+      eq(marked, changed, line);
+    }
+  });
+  it("普通字体（黑体）没有 rclt：shape = 逐字查 cmap，pdf-book 不带前后文", () => {
+    if (!FONT) return; const raw = readFileSync(FONT); const sans = parseTtf(new Uint8Array(FONT.endsWith(".gz") ? gunzipSync(raw) : raw));
+    if (sans.contextual) return;   // 测试字体换成了别的注音字体就不测这条
+    const s = String.fromCodePoint(0x94f6, 0x884c); eq(sans.shape(s).join(), [sans.glyphId(0x94f6), sans.glyphId(0x884c)].join());
+  });
+});

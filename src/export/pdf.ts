@@ -14,7 +14,7 @@ export interface PdfImage { jpeg: Uint8Array; w: number; h: number; components: 
 export type PdfOp =
   | { op: "rect"; x: number; y: number; w: number; h: number; color: Rgb }
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: Rgb; width: number }
-  | { op: "text"; x: number; y: number; text: string; size: number; color: Rgb }
+  | { op: "text"; x: number; y: number; text: string; size: number; color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */ before?: string; after?: string }
   | { op: "image"; x: number; y: number; w: number; h: number; image: PdfImage };
 export interface PdfPage { w: number; h: number; ops: PdfOp[] }
 export interface PdfOutlineItem { title: string; page: number }   // page = 从 0 起的页序
@@ -74,12 +74,14 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
       else if (o.op === "line") c += `${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} RG ${num(o.width)} w ${num(o.x1)} ${num(H - o.y1)} m ${num(o.x2)} ${num(H - o.y2)} l S\n`;
       else if (o.op === "text") {
         let hex = "";
-        for (const ch of o.text) {
-          const cp = ch.codePointAt(0)!; const g = font.glyphId(cp);
+        const chars = [...o.text], skipN = o.before ? [...o.before].length : 0;
+        const shaped = font.shape((o.before ?? "") + o.text + (o.after ?? ""));   // 上下文必换（注音字体的多音字）；普通字体 = 逐字查表
+        chars.forEach((ch, k) => {
+          const cp = ch.codePointAt(0)!; const g = shaped[skipN + k] ?? 0;
           if (g === 0 && ch.trim()) missing.add(ch);
           if (!used.has(g)) used.set(g, cp);
           hex += hex4(g);
-        }
+        });
         if (hex) c += `BT /F1 ${num(o.size)} Tf ${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} rg ${num(o.x)} ${num(H - o.y)} Td <${hex}> Tj ET\n`;
       } else {
         let im = images.get(o.image);

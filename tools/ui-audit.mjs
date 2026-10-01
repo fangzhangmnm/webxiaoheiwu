@@ -72,7 +72,7 @@ for (const [w, h] of sizes) {
   { const text = await page.inputValue("#editor"); await page.click("#edgeExport"); await wait(300);
     const choices = await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((b) => b.textContent.trim()));
     const note = await page.evaluate(() => document.querySelector("#sheetChoices .sheet-seg-note")?.textContent ?? "");
-    probe(tag, "导出 (txt draft) → one sheet, no scope row, three buttons in one row: 复制文字 / 长图 / PDF; note = 字数; a line-width row 14 / 20* / 28 (follows the editor)", choices.join("|") === "复制文字|长图|PDF" && await page.evaluate(() => !document.querySelector("#sheetChoices > .sheet-seg") && (() => { const b = [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((x) => x.getBoundingClientRect()); return b.every((r) => Math.abs(r.top - b[0].top) < 1); })()) && /\d+ 字 \d+ 词/.test(note) && await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-line .sheet-seg-btn")].map((b) => b.textContent + (b.getAttribute("aria-checked") === "true" ? "*" : "")).join("|")) === "14|20*|28", JSON.stringify(choices) + " | " + note);
+    probe(tag, "导出 (txt draft) → one sheet, no scope row, three buttons in one row: 复制文字 / 长图 / PDF; note = 字数; a line-width row 14 / 20* / 28 (follows the editor)", choices.join("|") === "复制文字|长图|PDF" && await page.evaluate(() => !document.querySelector("#sheetChoices > .sheet-seg") && (() => { const b = [...document.querySelectorAll("#sheetChoices .sheet-choice")].map((x) => x.getBoundingClientRect()); return b.every((r) => Math.abs(r.top - b[0].top) < 1); })()) && /\d+ 字 \d+ 词/.test(note) && await page.evaluate(() => [...(document.querySelector("#sheetChoices .sheet-seg-line")?.querySelectorAll(".sheet-seg-btn") ?? [])].map((b) => b.textContent + (b.getAttribute("aria-checked") === "true" ? "*" : "")).join("|")) === "14|20*|28", JSON.stringify(choices) + " | " + note);
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-choice")].find((b) => /复制/.test(b.textContent))?.click()); await wait(400);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => "ERR:" + e.message));
     probe(tag, "导出 → 复制全文 → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
@@ -552,8 +552,8 @@ for (const [w, h] of sizes) {
   { const lw = await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="28"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); const s = window.__xhw.project.session(); return { book: s.project.editorState.lineWidth?.charsPerLine, body: document.body.dataset.chars, hint: document.getElementById("readingModeHint").textContent }; });
     probe(tag, "line width picked inside a book → stored in the book's editor-state + body[data-chars]=28 + hint says 这本书", lw.book === 28 && lw.body === "28" && /这本书/.test(lw.hint), JSON.stringify(lw));
     await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
-    const wrow = () => page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-line .sheet-seg-btn")].map((b) => b.textContent + (b.getAttribute("aria-checked") === "true" ? "*" : "")).join("|"));
-    const pickW = async (n) => { await page.evaluate((n) => [...document.querySelectorAll("#sheetChoices .sheet-seg-line .sheet-seg-btn")].find((b) => b.textContent === String(n))?.click(), n); await wait(120); };
+    const wrow = () => page.evaluate(() => [...(document.querySelector("#sheetChoices .sheet-seg-line")?.querySelectorAll(".sheet-seg-btn") ?? [])].map((b) => b.textContent + (b.getAttribute("aria-checked") === "true" ? "*" : "")).join("|"));
+    const pickW = async (n) => { await page.evaluate((n) => [...(document.querySelector("#sheetChoices .sheet-seg-line")?.querySelectorAll(".sheet-seg-btn") ?? [])].find((b) => b.textContent === String(n))?.click(), n); await wait(120); };
     const stored = () => page.evaluate(() => window.__xhw.project.session().project.editorState.exportLineWidth?.charsPerLine ?? null);
     const imgW = () => page.evaluate(async () => (await window.__xhw.exportLongImage("page")).plan.width);
     probe(tag, "export sheet line-width row follows the book's line width by default (28 selected, nothing stored)", await wrow() === "14|20|28*" && await stored() === null, await wrow());
@@ -566,6 +566,26 @@ for (const [w, h] of sizes) {
     probe(tag, "reopening the export sheet remembers 20", await wrow() === "14|20*|28", await wrow());
     await pickW(28);
     probe(tag, "picking the editor's own width (28) drops the override (follows again)", await stored() === null && await wrow() === "14|20|28*", JSON.stringify({ stored: await stored(), row: await wrow() }));
+    // v2.3.21 导出字体（user「萌神拼音也vendor进去吧，导出的时候还蛮需要的」）：第三条段选 黑体* | 拼音；选拼音 → 记进这本书、字体这时才取；长图 / PDF 用它；选回黑体 = 撤
+    { const frow = () => page.evaluate(() => [...document.querySelectorAll("#sheetChoices .sheet-seg-line")].at(-1) ? [...[...document.querySelectorAll("#sheetChoices .sheet-seg-line")].at(-1).querySelectorAll(".sheet-seg-btn")].map((b) => b.textContent + (b.getAttribute("aria-checked") === "true" ? "*" : "")).join("|") : "");
+      const pickF = async (re) => { await page.evaluate((r) => [...[...document.querySelectorAll("#sheetChoices .sheet-seg-line")].at(-1).querySelectorAll(".sheet-seg-btn")].find((b) => new RegExp(r).test(b.textContent))?.click(), re.source); await wait(120); };
+      const storedF = () => page.evaluate(() => window.__xhw.project.session().project.editorState.exportFont ?? null);
+      const hasFace = () => page.evaluate(() => [...document.fonts].some((f) => /XHW Pinyin/.test(f.family)));
+      probe(tag, "export sheet has a font row 黑体* | 拼音 (two option rows in all); the pinyin font is not loaded yet", await frow() === "黑体*|拼音" && await page.evaluate(() => document.querySelectorAll("#sheetChoices .sheet-seg-line").length) === 2 && await storedF() === null, JSON.stringify({ row: await frow(), face: await hasFace() }));
+      const faceBefore = await hasFace();
+      await pickF(/拼音/);
+      probe(tag, "pick 拼音 → stored in the book (exportFont = pinyin), row shows 拼音*, still nothing fetched (lazy)", await storedF() === "pinyin" && await frow() === "黑体|拼音*" && await hasFace() === faceBefore, JSON.stringify({ stored: await storedF(), row: await frow() }));
+      await page.click("#sheetCancel"); await wait(200);
+      const out = await page.evaluate(async () => { const li = await window.__xhw.exportLongImage("page"); const pdf = await window.__xhw.exportPdf("page"); return { img: !!li && li.files.length >= 1, font: pdf?.fontLabel ?? null, missing: pdf?.missing?.length ?? -1, pages: pdf?.pages ?? 0 }; });
+      probe(tag, "exporting with 拼音: long image renders, the pinyin face is now installed, PDF embeds Mengshen with no missing glyphs", out.img && await hasFace() && /Mengshen/.test(out.font ?? "") && out.pages >= 1, JSON.stringify(out));
+      probe(tag, "the editor itself stays on the body font (pinyin is export-only)", await page.evaluate(() => /^"?XHW Sans/.test(getComputedStyle(document.getElementById("editor")).fontFamily)));
+      await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
+      probe(tag, "reopening the export sheet remembers 拼音", await frow() === "黑体|拼音*", await frow());
+      await pickF(/黑体/);
+      probe(tag, "picking 黑体 drops the override", await storedF() === null && await frow() === "黑体*|拼音", JSON.stringify({ stored: await storedF(), row: await frow() }));
+      const back = await page.evaluate(async () => { const s = [...document.querySelectorAll("#sheetCancel")][0]; s?.click(); await new Promise((r) => setTimeout(r, 200)); const pdf = await window.__xhw.exportPdf("page"); return pdf?.fontLabel ?? null; });
+      probe(tag, "back on 黑体: PDF embeds NotoSansSC again", /NotoSansSC/.test(back ?? ""), String(back));
+      await ensureSidebar(true); await page.click("#edgeExport"); await wait(300); }
     await page.click("#sheetCancel").catch(() => {}); await page.keyboard.press("Escape"); await wait(200);
     await page.evaluate(() => { const r = document.querySelector('#readingModePicker input[value="20"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); }); await wait(100); }
   // hidden（v2.3.2，user 2026-09-30「和unity一样，parent hidden -> all child hidden」）：藏当前页 → 自己的旗子 + 纸上眼睛 + 侧栏行 hidden-self + 整本长图少它 + 这一页长图为空；取消 → 复原

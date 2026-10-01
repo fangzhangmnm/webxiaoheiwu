@@ -24,6 +24,8 @@ export interface LongImageLook { family: string; paper: string; ink: string; ink
 export interface ExportTypeset { charsPerLine: number; pxPerChar: number; lineHeightRatio: number; /** 注音带（em）：加在行距上面的那一截——汉字照旧坐在线上、离行底不变，拼音往上长（2026-09-30 萌神对齐）。缺省 0。 */ rubyBand?: number }
 /** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
 export const PX_PER_CHAR = 30;
+/** 折行时带给注音字体的前后文长度（字）。 */
+const CONTEXT_CHARS = 6;
 /** 每行字数的离散选项（user「行宽还是三档吧。我这种有阅读写作障碍的用比手机还极端的第三档」「诗歌啊小故事啊，或者需要刻意自律篇幅的时候」「随便写一点看着就蛮多=点燃引擎」）：
  *  14 极端短行（诗 / 小故事 / 自律篇幅；user 数过「应该是 14」；800 字 ≈ 4 屏半）· 20 高考作文格 / 网文 app 默认区间（800 字 ≈ 2 屏）· 28 纸书 32 开（800 字 ≈ 1 屏）。 */
 export const CHARS_PRESETS: readonly number[] = [14, 20, 28];
@@ -37,6 +39,9 @@ export interface LongImageSpec {
   cover: ImageRef | null;
   /** 封面 + 书名 + 日期那一段。整本 / 整篇才有；false = 从第一页的章节名直接开始（这一页 / 这一支；user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）。缺省 true。 */
   front?: boolean;
+  /** 注音字体：把一行字换成「带读音标记」的同一行（多音字后面补变体选择符，见 ttf.ts annotate）。折行、量宽都用原文，只有画的时候用它的结果；
+   *  before / after = 同一段里上一行的尾、下一行的头（词被折行拆开时靠它选对读音）。不给 = 原样画。 */
+  annotate?: (before: string, line: string, after: string) => string;
   sections: LongImageSection[];
   look: LongImageLook;
   typeset: ExportTypeset;
@@ -127,6 +132,8 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
 
   const rows: Row[] = [];
   const space = (h: number) => { if (h > 0) rows.push({ kind: "space", h: Math.round(h), ops: () => [] }); };
+  /** 一组折好的行里第 i 行要画的字（注音字体 → 补读音标记）。 */
+  const drawn = (lines: string[], i: number): string => (spec.annotate && lines[i] ? spec.annotate(i > 0 ? lines[i - 1]!.slice(-CONTEXT_CHARS) : "", lines[i]!, i + 1 < lines.length ? lines[i + 1]!.slice(0, CONTEXT_CHARS) : "") : lines[i]!);
   const textRow = (line: string, style: TextStyle, met: { asc: number; desc: number }, lh: number, align: "left" | "center", ruled: boolean, kind: RowKind = "text", baseOff?: number) =>
     rows.push({ kind, h: lh, ops: (y) => {
       const ops: SceneOp[] = [];
@@ -146,7 +153,7 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
   if (spec.front !== false) {
     if (spec.cover) imageRow(spec.cover, "cover", true);
     space(spec.cover ? 40 : 72);
-    for (const line of wrapText(spec.title, inner, titleStyle, m)) textRow(line, titleStyle, titleM, Math.round(titleStyle.sizePx * 1.4), "center", false, "cover");
+    { const tl = wrapText(spec.title, inner, titleStyle, m); tl.forEach((_, i) => textRow(drawn(tl, i), titleStyle, titleM, Math.round(titleStyle.sizePx * 1.4), "center", false, "cover")); }
     if (spec.date) { space(8); textRow(spec.date, small, smallM, Math.round(small.sizePx * 1.6), "center", false, "cover"); }
     space(spec.cover ? 40 : 56);
   } else space(24);
@@ -156,13 +163,16 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
   for (const sec of spec.sections) {
     if (sec.heading != null) {
       if (!first) space(LH * 0.5);
-      for (const line of wrapText(sec.heading, inner, head, m)) textRow(line, head, headM, Math.round(head.sizePx * 1.4), "center", false, "heading");
+      { const hl = wrapText(sec.heading, inner, head, m); hl.forEach((_, i) => textRow(drawn(hl, i), head, headM, Math.round(head.sizePx * 1.4), "center", false, "heading")); }
       space(F * 0.5);
     }
     first = false;
     if (sec.kind === "text") {
       textPages++; const st = statsForText(sec.text); cjk += st.cjk; en += st.en;
-      for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) for (const line of wrapText(para, inner, body, m)) textRow(line, body, bodyM, LH, "left", true, "text", bodyBase);
+      for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) {
+        const lines = wrapText(para, inner, body, m);
+        lines.forEach((_, li) => textRow(drawn(lines, li), body, bodyM, LH, "left", true, "text", bodyBase));
+      }
     } else {
       imagePages++; space(LH * 0.5); imageRow(sec.image, "image", false); space(LH * 0.5);
     }

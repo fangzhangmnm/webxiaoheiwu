@@ -22,6 +22,17 @@ export interface TtfFont {
   inkOf(gid: number): [number, number, number, number] | null;
   /** 只留这些字形（外加 .notdef 与复合字形的部件）的 TTF。字形号不变。 */
   subset(gids: Iterable<number>): Uint8Array;
+  /** 一串字 → 一串字形号（一个码点一个）。先查 cmap，再做 GSUB 的 `rclt`（上下文必换）——注音字体靠它按词给多音字选读音（「银行」的行 ≠ 「行走」的行）。
+   *  没有 rclt 的字体 = 逐字查 cmap。只做一对一替换，所以长度不变。 */
+  shape(text: string): number[];
+  /** 把按上下文选好的读音**写进文字里**：哪个字的字形被 rclt 换了，就在它后面补一个变体选择符（cmap 14；萌神给每个读音都留了一个，U+E01E0 起）。
+   *  给不做 rclt 的排字引擎用——实测 Chromium 的 canvas 画字不做上下文替换，但认变体选择符（2026-10-01，`tmp/round0930/probe-canvas-rclt.mjs`）。
+   *  before / after = 这一行在段落里的前文 / 后文（只参与选读音，不出现在结果里）。选择符不占宽度。没有 rclt 的字体 → 原样返回。 */
+  annotate(text: string, before?: string, after?: string): string;
+  /** 这款字体有没有 rclt（有 = 逐行单独排会丢掉跨行的上下文，调用方要把前后文一起给）。 */
+  contextual: boolean;
+  /** rclt 里遇到的、这个引擎不认识的查找表种类（空 = 全认识）。不为空 = 个别读音可能选错，调用方该如实说。 */
+  shapeSkipped: string[];
 }
 
 const u16 = (b: Uint8Array, o: number): number => (b[o]! << 8) | b[o + 1]!;
@@ -64,12 +75,13 @@ export function parseTtf(bytes: Uint8Array): TtfFont {
   }
 
   // ── cmap：优先 format 12（全 Unicode），其次 format 4（BMP）──
-  let f12 = -1, f4 = -1;
+  let f12 = -1, f4 = -1, f14 = -1;
   const nSub = u16(bytes, cmap.off + 2);
   for (let i = 0; i < nSub; i++) {
     const r = cmap.off + 4 + 8 * i, pid = u16(bytes, r), s = cmap.off + u32(bytes, r + 4), fmt = u16(bytes, s);
     if (fmt === 12 && (pid === 3 || pid === 0)) f12 = s;
     else if (fmt === 4 && (pid === 3 || pid === 0) && f4 < 0) f4 = s;
+    else if (fmt === 14) f14 = s;
   }
   if (f12 < 0 && f4 < 0) throw new NotTrueTypeError("no usable cmap subtable (format 4 or 12)");
   const glyphId = (cp: number): number => {
@@ -142,7 +154,136 @@ export function parseTtf(bytes: Uint8Array): TtfFont {
     return assembleSfnt(out);
   }
 
-  return { unitsPerEm, ascender, descender, capHeight, bbox, numGlyphs, psName, glyphId, advance, inkOf, subset };
+  const rclt = buildRclt(bytes, tables.get("GSUB"));
+  const shape = (text: string): number[] => { const g: number[] = []; for (const ch of text) g.push(glyphId(ch.codePointAt(0)!)); if (rclt) rclt.apply(g); return g; };
+
+  /** cmap 14 反查：码点 + 字形号 → 变体选择符；没有 → 0。选择符一共没几个（萌神 9 个），逐个二分。 */
+  const u24 = (o: number): number => (bytes[o]! << 16) | (bytes[o + 1]! << 8) | bytes[o + 2]!;
+  const selectorFor = (cp: number, gid: number): number => {
+    if (f14 < 0) return 0;
+    for (let i = 0, n = u32(bytes, f14 + 6); i < n; i++) {
+      const r = f14 + 10 + 11 * i, nd = u32(bytes, r + 7); if (!nd) continue;
+      const t = f14 + nd; let lo = 0, hi = u32(bytes, t) - 1;
+      while (lo <= hi) { const mid = (lo + hi) >> 1, m = t + 4 + 5 * mid, v = u24(m); if (cp < v) hi = mid - 1; else if (cp > v) lo = mid + 1; else { if (u16(bytes, m + 3) === gid) return u24(r); break; } }
+    }
+    return 0;
+  };
+  const annotate = (text: string, before = "", after = ""): string => {
+    if (!rclt) return text;
+    const chars = [...text], skipN = [...before].length, g = shape(before + text + after);
+    let out = "";
+    chars.forEach((ch, k) => { const cp = ch.codePointAt(0)!, got = g[skipN + k]!; out += ch; if (got !== glyphId(cp)) { const vs = selectorFor(cp, got); if (vs) out += String.fromCodePoint(vs); } });
+    return out;
+  };
+
+  return { unitsPerEm, ascender, descender, capHeight, bbox, numGlyphs, psName, glyphId, advance, inkOf, subset, shape, annotate, contextual: !!rclt, shapeSkipped: rclt ? rclt.skipped : [] };
+}
+
+// ── GSUB `rclt`（v2.3.21；created 2026-10-01 by Claude Fable 5.1）──────────────────────────────────────────────
+//   只为注音字体（萌神）：汉字字形自带拼音，多音字的别的读音是另一个字形，靠 rclt 的「链式上下文替换」按前后的字换过去。
+//   认的查找表：1（单替换，格式 1 / 2）、6（链式上下文，格式 2 按类 / 格式 3 按覆盖表）、7（扩展壳）。别的 → 记进 skipped、跳过。
+//   语义照 OpenType：查找表按 LookupList 的序号依次整串过一遍；每个位置试各子表，头一个匹配的生效；链式匹配上了就跳过整段输入。
+//   不管 script / language（把所有 rclt 特性的查找表并起来）、不管 lookupFlag 的忽略规则（这类字体里没有要忽略的标记）。
+type Cov = (gid: number) => number;
+function buildRclt(b: Uint8Array, t: { off: number; len: number } | undefined): { apply(g: number[]): void; skipped: string[] } | null {
+  if (!t || t.len < 10) return null;
+  const base = t.off, featureList = base + u16(b, base + 6), lookupList = base + u16(b, base + 8);
+  const wanted = new Set<number>();
+  for (let i = 0, n = u16(b, featureList); i < n; i++) {
+    const r = featureList + 2 + 6 * i; if (tagAt(b, r) !== "rclt") continue;
+    const f = featureList + u16(b, r + 4);
+    for (let k = 0, m = u16(b, f + 2); k < m; k++) wanted.add(u16(b, f + 4 + 2 * k));
+  }
+  if (!wanted.size) return null;
+  const skipped: string[] = [];
+  const skip = (what: string): null => { if (!skipped.includes(what)) skipped.push(what); return null; };
+
+  const coverage = (o: number): Cov => {
+    const fmt = u16(b, o), n = u16(b, o + 2);
+    if (fmt === 1) return (g) => { let lo = 0, hi = n - 1; while (lo <= hi) { const mid = (lo + hi) >> 1, v = u16(b, o + 4 + 2 * mid); if (g < v) hi = mid - 1; else if (g > v) lo = mid + 1; else return mid; } return -1; };
+    return (g) => { let lo = 0, hi = n - 1; while (lo <= hi) { const mid = (lo + hi) >> 1, r = o + 4 + 6 * mid, a = u16(b, r), e = u16(b, r + 2); if (g < a) hi = mid - 1; else if (g > e) lo = mid + 1; else return u16(b, r + 4) + (g - a); } return -1; };
+  };
+  const classDef = (o: number | null): ((gid: number) => number) => {
+    if (o == null) return () => 0;
+    const fmt = u16(b, o);
+    if (fmt === 1) { const start = u16(b, o + 2), n = u16(b, o + 4); return (g) => (g >= start && g < start + n ? u16(b, o + 6 + 2 * (g - start)) : 0); }
+    const n = u16(b, o + 2);
+    return (g) => { let lo = 0, hi = n - 1; while (lo <= hi) { const mid = (lo + hi) >> 1, r = o + 4 + 6 * mid, a = u16(b, r), e = u16(b, r + 2); if (g < a) hi = mid - 1; else if (g > e) lo = mid + 1; else return u16(b, r + 4); } return 0; };
+  };
+
+  /** 一张子表：在 g[i] 上试一次；匹配并改了 → 吃掉的输入长度（≥ 1），否则 0。 */
+  type Sub = (g: number[], i: number) => number;
+  const lookupCache = new Map<number, Sub[]>();
+  const applyAt = (lookup: number, g: number[], i: number): number => { for (const s of subsOf(lookup)) { const n = s(g, i); if (n) return n; } return 0; };
+  const records = (o: number, count: number, g: number[], i: number): void => { for (let k = 0; k < count; k++) { const seq = u16(b, o + 4 * k), lk = u16(b, o + 4 * k + 2); if (i + seq < g.length) applyAt(lk, g, i + seq); } };
+
+  function subsOf(lookup: number): Sub[] {
+    let subs = lookupCache.get(lookup); if (subs) return subs;
+    subs = []; lookupCache.set(lookup, subs);
+    if (lookup >= u16(b, lookupList)) return subs;
+    const lo = lookupList + u16(b, lookupList + 2 + 2 * lookup); let type = u16(b, lo);
+    for (let k = 0, n = u16(b, lo + 4); k < n; k++) {
+      let st = lo + u16(b, lo + 6 + 2 * k), ty = type;
+      if (ty === 7) { ty = u16(b, st + 2); st = st + u32(b, st + 4); }
+      const sub = makeSub(ty, st); if (sub) subs.push(sub);
+    }
+    return subs;
+  }
+  function makeSub(type: number, o: number): Sub | null {
+    const fmt = u16(b, o);
+    if (type === 1) {
+      const cov = coverage(o + u16(b, o + 2));
+      if (fmt === 1) { const delta = u16(b, o + 4); return (g, i) => { if (cov(g[i]!) < 0) return 0; g[i] = (g[i]! + delta) & 0xffff; return 1; }; }
+      if (fmt === 2) return (g, i) => { const c = cov(g[i]!); if (c < 0 || c >= u16(b, o + 4)) return 0; g[i] = u16(b, o + 6 + 2 * c); return 1; };
+      return skip(`single substitution format ${fmt}`);
+    }
+    if (type === 6 && fmt === 2) {
+      const off = (k: number): number | null => { const v = u16(b, o + k); return v ? o + v : null; };
+      const cov = coverage(o + u16(b, o + 2)), back = classDef(off(4)), input = classDef(off(6)), ahead = classDef(off(8)), nSets = u16(b, o + 10);
+      return (g, i) => {
+        if (cov(g[i]!) < 0) return 0;
+        const cls = input(g[i]!); if (cls >= nSets) return 0;
+        const so = u16(b, o + 12 + 2 * cls); if (!so) return 0;
+        const set = o + so;
+        rules: for (let r = 0, nr = u16(b, set); r < nr; r++) {
+          let p = set + u16(b, set + 2 + 2 * r);
+          const nb = u16(b, p); p += 2;
+          if (nb > i) continue;
+          for (let k = 0; k < nb; k++) if (back(g[i - 1 - k]!) !== u16(b, p + 2 * k)) continue rules;
+          p += 2 * nb;
+          const ni = u16(b, p); p += 2;
+          if (i + ni > g.length) continue;
+          for (let k = 1; k < ni; k++) if (input(g[i + k]!) !== u16(b, p + 2 * (k - 1))) continue rules;
+          p += 2 * (ni - 1);
+          const na = u16(b, p); p += 2;
+          if (i + ni + na > g.length) continue;
+          for (let k = 0; k < na; k++) if (ahead(g[i + ni + k]!) !== u16(b, p + 2 * k)) continue rules;
+          p += 2 * na;
+          records(p + 2, u16(b, p), g, i);
+          return Math.max(1, ni);
+        }
+        return 0;
+      };
+    }
+    if (type === 6 && fmt === 3) {
+      let p = o + 2;
+      const list = (): Cov[] => { const n = u16(b, p); p += 2; const out: Cov[] = []; for (let k = 0; k < n; k++) out.push(coverage(o + u16(b, p + 2 * k))); p += 2 * n; return out; };
+      const back = list(), input = list(), ahead = list(); const nRec = u16(b, p), rec = p + 2;
+      if (!input.length) return null;
+      return (g, i) => {
+        if (back.length > i || i + input.length + ahead.length > g.length) return 0;
+        for (let k = 0; k < input.length; k++) if (input[k]!(g[i + k]!) < 0) return 0;
+        for (let k = 0; k < back.length; k++) if (back[k]!(g[i - 1 - k]!) < 0) return 0;
+        for (let k = 0; k < ahead.length; k++) if (ahead[k]!(g[i + input.length + k]!) < 0) return 0;
+        records(rec, nRec, g, i);
+        return input.length;
+      };
+    }
+    return skip(`lookup type ${type} format ${fmt}`);
+  }
+
+  const order = [...wanted].sort((x, y) => x - y);
+  return { skipped, apply(g) { for (const lk of order) { for (let i = 0; i < g.length;) { const n = applyAt(lk, g, i); i += n || 1; } } } };
 }
 
 function checksum(b: Uint8Array): number {

@@ -183,6 +183,10 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     const r3 = await unpackProject(await packProject(p)); eq(JSON.stringify(r3.project.editorState.exportLineWidth), JSON.stringify({ charsPerLine: 20 })); eq(r3.project.editorState.lineWidth, undefined);
     p.editorState.exportLineWidth = { charsPerLine: null };
     eq((await unpackProject(await packProject(p))).project.editorState.exportLineWidth, undefined);
+    // exportFont（2026-10-01）：导出用的字体；没有 = 黑体
+    eq("exportFont" in JSON.parse(td.decode((await zipUnpack(await packProject(p)))[".webxiaoheiwu/editor-state.json"])), false);
+    p.editorState.exportFont = "pinyin"; eq((await unpackProject(await packProject(p))).project.editorState.exportFont, "pinyin");
+    p.editorState.exportFont = 7; eq((await unpackProject(await packProject(p))).project.editorState.exportFont, undefined); delete p.editorState.exportFont;
   });
   it("hidden 往返：true 才写、缺 = 出门；老书没有这个键", async () => {
     const p = emptyProject(); createNode(p, "a.txt", "A", () => 1); createNode(p, "b.txt", "B", () => 1); p.nodes.get("b.txt").hidden = true;

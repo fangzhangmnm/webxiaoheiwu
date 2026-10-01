@@ -43,6 +43,9 @@ export interface LongImageSpec {
     cover: ImageRef | null;
     /** 封面 + 书名 + 日期那一段。整本 / 整篇才有；false = 从第一页的章节名直接开始（这一页 / 这一支；user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）。缺省 true。 */
     front?: boolean;
+    /** 注音字体：把一行字换成「带读音标记」的同一行（多音字后面补变体选择符，见 ttf.ts annotate）。折行、量宽都用原文，只有画的时候用它的结果；
+     *  before / after = 同一段里上一行的尾、下一行的头（词被折行拆开时靠它选对读音）。不给 = 原样画。 */
+    annotate?: (before: string, line: string, after: string) => string;
     sections: LongImageSection[];
     look: LongImageLook;
     typeset: ExportTypeset;

@@ -27,6 +27,8 @@ export interface PdfBookSpec {
 }
 export interface PdfBookPlan { doc: PdfDoc; cjk: number; en: number; textPages: number; imagePages: number; pageCount: number; pageW: number; pageH: number }
 
+/** 折行时带给注音字体的前后文长度（字）。萌神的词表最长四五个字。 */
+export const CONTEXT_CHARS = 6;
 /** 正文字号（pt）= 实体字号：按 100% 打印出来就是这么大（屏上阅读器贴屏宽显示，20 字档的页宽 78 mm ≈ 手机屏宽）。 */
 export const PDF_FONT_PT = 9;
 /** 页面宽高比（宽 : 高 = 1 : √2）。 */
@@ -63,7 +65,8 @@ export function fontMeasurer(font: TtfFont): TextMeasurer {
   return {
     width: (text: string, style: TextStyle) => { let w = 0; for (const ch of text) w += adv(ch.codePointAt(0)!); return w * style.sizePx; },
     ascent: (style: TextStyle) => ({ asc: font.ascender * k * style.sizePx, desc: -font.descender * k * style.sizePx }),
-    ink: (style: TextStyle) => (guo ? { asc: guo[3] * k * style.sizePx, desc: Math.max(0, -guo[1] * k * style.sizePx) } : { asc: 0.8 * style.sizePx, desc: 0.07 * style.sizePx }),
+    // 注音字体的「国」连头上的拼音一起是一个字形：墨迹上沿高过 0.95 字 → 按汉字本体 0.8 字算（和 codec.createTextMeasurer().ink 同一条规矩）
+    ink: (style: TextStyle) => (guo ? { asc: (guo[3] * k > 0.95 ? 0.8 : guo[3] * k) * style.sizePx, desc: Math.max(0, -guo[1] * k * style.sizePx) } : { asc: 0.8 * style.sizePx, desc: 0.07 * style.sizePx }),
   };
 }
 
@@ -115,10 +118,14 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
       y += LH;
     }
     for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) {
-      for (const line of wrapText(para, inner, st(F), m)) {
+      const lines = wrapText(para, inner, st(F), m);
+      for (let li = 0; li < lines.length; li++) {
+        const line = lines[li]!;
+        // 注音字体：一个词被折行拆开时，给它前后文（上一行的尾、下一行的头），多音字才选得对
+        const ctx = font.contextual ? { ...(li > 0 ? { before: lines[li - 1]!.slice(-CONTEXT_CHARS) } : {}), ...(li + 1 < lines.length ? { after: lines[li + 1]!.slice(0, CONTEXT_CHARS) } : {}) } : {};
         if (!fits()) { newPage(); y = lineTop; }
         if (cRule) ops.push({ op: "line", x1: SIDE, y1: y + ruleY, x2: W - SIDE, y2: y + ruleY, color: cRule, width: 0.03 * F });
-        if (line !== "") ops.push({ op: "text", x: SIDE, y: y + bodyBase, text: line, size: F, color: cBody });
+        if (line !== "") ops.push({ op: "text", x: SIDE, y: y + bodyBase, text: line, size: F, color: cBody, ...ctx });
         y += LH;
       }
     }

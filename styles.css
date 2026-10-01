@@ -1394,7 +1394,7 @@ body {
 .sheet-seg-btn[aria-checked="true"] { background: var(--ink, #1b1b1b); color: var(--paper, #f1e6cf); }
 .sheet-seg-line { display: flex; align-items: center; gap: 10px; }
 .sheet-seg-line .sheet-seg { flex: 1 1 auto; }
-.sheet-seg-line .sheet-seg-btn { padding: 6px 6px; }
+.sheet-seg-line .sheet-seg-btn { padding: 6px 6px; line-height: 1.5; }   /* 数字和汉字的行盒不一样高：钉住行高，几条段选才一样高 */
 .sheet-seg-label { flex: none; font-size: 13px; color: var(--ink-muted); }
 .sheet-seg-note { margin: 2px 0; font-size: 13px; line-height: 1.5; color: var(--ink-muted); white-space: pre-line; }
 .sheet-choice-row { display: flex; gap: 8px; }

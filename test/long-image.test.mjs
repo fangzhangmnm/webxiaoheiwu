@@ -61,6 +61,18 @@ describe("export/long-image · planLongImage 切片", () => {
     eq(texts(bare).join("|"), "一|字|书 · 一", "章节名 → 正文 → 页脚");
     assert(bare.totalHeight < full.totalHeight - 600, "少了封面那一屏");
   });
+  it("注音字体（annotate）：每一行画的是 annotate 的结果，拿到的前后文 = 同一段上一行的尾 / 下一行的头；折行和量宽用原文；不给就原样", () => {
+    const text = "一二三四五六七八九十一二三四五六七八九十甲乙丙丁戊己庚辛壬癸甲乙丙丁戊己庚辛壬癸子丑寅卯";   // 44 字 → 20 / 20 / 4
+    const calls = [];
+    const p = planLongImage(spec([{ kind: "text", heading: "章", text }], { annotate: (b, line, a) => { calls.push([b, line, a]); return line + "*"; } }), m);
+    const texts = p.slices.flatMap((s) => s.ops.filter((o) => o.op === "text").map((o) => o.text));
+    const bodyCalls = calls.filter((c) => /^[一甲子]/.test(c[1]));
+    eq(bodyCalls.length, 3); eq(bodyCalls.map((c) => [...c[1]].length).join(), "20,20,4", "wrapped on the plain text");
+    eq(JSON.stringify(bodyCalls.map((c) => [c[0], c[2]])), JSON.stringify([["", "甲乙丙丁戊己"], ["五六七八九十", "子丑寅卯"], ["戊己庚辛壬癸", ""]]));
+    assert(texts.includes("章*") && texts.includes("书*") && texts.includes("子丑寅卯*"), "title, heading and body all go through annotate: " + texts.join("|"));
+    const plain = planLongImage(spec([{ kind: "text", heading: "章", text }]), m).slices.flatMap((s) => s.ops.filter((o) => o.op === "text").map((o) => o.text));
+    assert(plain.includes("章") && plain.includes("子丑寅卯") && !plain.some((t) => t.endsWith("*")));
+  });
   it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同；行距跟档走", async () => {
     const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";   // 30 字 → 20 字/行 = 2 行
     const m2 = { width: (t) => [...t].reduce((a, c) => a + (c === " " ? 10 : cjkRe.test(c) ? 40 : 20), 0), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }), ink: (st) => ({ asc: st.sizePx * 0.8, desc: st.sizePx * 0.1 }) };

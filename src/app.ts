@@ -22,7 +22,7 @@ import { nodeDisplayName } from "./project/naming.ts";
 import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./project/format.ts";
 import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
 import { parseTtf, NotTrueTypeError, type TtfFont } from "./export/ttf.ts";
-import { installSansFont, loadSansBytes } from "./fonts.ts";
+import { installSansFont, installFont, loadFontBytes, FONT_FAMILY, type FontId } from "./fonts.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
 import { planPdfBook, type PdfSection } from "./export/pdf-book.ts";
 import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
@@ -504,6 +504,24 @@ function setExportChars(n: number): void {
   else draftExportChars = follow ? null : n;
 }
 const currentTypeset = (): ExportTypeset => typesetFor(exportCharsPref());
+// ── 导出字体（v2.3.21，user 2026-10-01「萌神拼音也vendor进去吧，导出的时候还蛮需要的（需要导出和编辑分开配置吗？）」）：
+//   编辑器永远是黑体，不给选；**只有导出**（长图 / PDF）可以换成萌神拼音（汉字头上带拼音）。和导出行宽同一套：导出面板里选，记进这本书 editor-state 的 `exportFont`
+//   （没有 = 黑体；随保存写、不标脏），txt 稿只记到这次打开为止。拼音字体 12 MB，选了、真要导出时才取。
+let draftExportFont: FontId | null = null;
+function exportFontPref(): FontId { const v = project.active() ? project.session()?.project.editorState.exportFont : draftExportFont; return v === "pinyin" ? "pinyin" : "sans"; }
+function setExportFont(id: FontId): void {
+  const s = project.active() ? project.session() : null;
+  if (s) { if (id === "sans") delete s.project.editorState.exportFont; else s.project.editorState.exportFont = id; }
+  else draftExportFont = id === "sans" ? null : id;
+}
+/** 导出用的字体到位：黑体 = 开机就在装的那一款；拼音 = 现在取、现在装（盖一层「取字体」）。拿不到 → 说清楚、返回 false。 */
+async function ensureExportFont(): Promise<boolean> {
+  await fontReady;
+  if (exportFontPref() !== "pinyin") return true;
+  const ok = await withBusy(t("export.fontLoading"), async () => (await installFont("pinyin")) && !!(await builtinFont("pinyin")));
+  if (!ok) setStatus(t("export.fontFailed"), { error: true });
+  return ok;
+}
 type ExportFormat = "text" | "image" | "pdf";
 /** 导出 sheet（v2.3.17，user 2026-10-01「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：范围和格式是两条正交的轴——
  *  一条段选定范围（这一页 / 这一支 / 整本；txt 稿只有整篇，不画段选）+ 一条段选定长图 / PDF 的行宽（v2.3.19）+ 三个钮定格式（复制文字 / 长图 / PDF）。一层 sheet。
@@ -524,11 +542,15 @@ async function exportSheetFlow(): Promise<void> {
     return st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") : t("export.empty");
   };
   // 第二条段选 = 导出的行宽（长图 / PDF）：默认跟编辑器，点了就记（setExportChars）
-  const extra = { label: t("export.widthLabel"), options: CHARS_PRESETS.map((n) => ({ label: String(n), value: n })), initial: exportCharsPref(), onChange: (n: number) => setExportChars(n) };
+  // 第三条 = 导出的字体：黑体 / 拼音（萌神）。点了就记（setExportFont）；字体本身到真导出时才取
+  const extras = [
+    { label: t("export.widthLabel"), options: CHARS_PRESETS.map((n) => ({ label: String(n), value: n })), initial: exportCharsPref(), onChange: (n: number) => setExportChars(n) },
+    { label: t("export.fontLabel"), options: [{ label: t("export.font.sans"), value: "sans" as FontId }, { label: t("export.font.pinyin"), value: "pinyin" as FontId }], initial: exportFontPref(), onChange: (id: FontId) => setExportFont(id) },
+  ];
   const choices = (scope: LongImageScope): Choice<ExportFormat>[] => [
     { label: t(scope === "page" && inBook && project.currentKind() === "image" ? "export.fmt.copyImage" : "export.fmt.text"), value: "text", primary: true },
     { label: t("export.fmt.image"), value: "image" }, { label: t("export.fmt.pdf"), value: "pdf" }];
-  const r = await openScopedChoiceSheet<LongImageScope, ExportFormat, number>(t("export.title"), { scopes, initial: inBook ? "page" : "draft", extra, note, choices });
+  const r = await openScopedChoiceSheet<LongImageScope, ExportFormat>(t("export.title"), { scopes, initial: inBook ? "page" : "draft", extras, note, choices });
   if (!r) return;
   if (r.value === "text") await copyScopeText(r.scope);
   else if (r.value === "image") await exportLongImageFlow(r.scope);
@@ -593,7 +615,11 @@ async function collectLongImage(scope: LongImageScope): Promise<LongImageSpec | 
   const src = collectExport(scope); if (!src) return null;
   const sections: LongImageSection[] = [];
   for (const it of src.items) sections.push(it.kind === "text" ? it : { kind: "image", heading: null, image: await imageRef(it.bytes) });
-  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, sections, look: editorLook(), typeset: currentTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
+  const look = editorLook(); const pin = exportFontPref() === "pinyin" ? await builtinFont("pinyin") : null;
+  if (pin) look.family = `"${FONT_FAMILY.pinyin}", ${look.family}`;   // 拼音字体里没有的字落回黑体 / 系统字体
+  // canvas 画字不做「按词选读音」那一步（实测）→ 用自己的排字结果把读音写成变体选择符，canvas 认这个
+  const ctxOf = pin ? { annotate: (before: string, line: string, after: string): string => pin.font.annotate(line, before, after) } : {};
+  return { title: src.title, date: src.date, cover: src.cover ? await imageRef(src.cover) : null, front: src.front, ...ctxOf, sections, look, typeset: currentTypeset(), sliceLabel: (i: number, n: number): string => t("export.sliceLabel", { i, n }) };
 }
 /** 文件尺寸（user 2026-09-30「用高压」「默认jpg行吗…是否用jpg你可以pushback」）：按内容定不按阈值猜——纯文字的那张 = 调色板 PNG（256 色；纸底大面积同色，比 JPEG 更小也更锐，微信再压一次也不糊）；有照片（封面 / 插图页）的那张 = JPEG q82。 */
 const LONG_IMAGE_JPEG_QUALITY = 82;
@@ -611,7 +637,7 @@ async function encodeSlices(spec: LongImageSpec, plan: LongImagePlan): Promise<F
 }
 /** 无交互路（探针 / 脚本）：超过单张上限就按上限切。opts.family / pxPerChar / charsPerLine = 试字体用的覆盖（2026-09-30 字体试样：像素字要按格子的整数倍画才不糊；不进产品 UI）。 */
 async function renderLongImageFiles(scope: LongImageScope, opts: { maxSliceHeight?: number; family?: string; pxPerChar?: number; charsPerLine?: number; rubyBand?: number } = {}): Promise<{ files: File[]; plan: LongImagePlan } | null> {
-  await fontReady;   // 量字宽之前字体要到位，否则按系统字体折行、画的时候又换了字体
+  if (!(await ensureExportFont())) return null;   // 量字宽之前字体要到位，否则按系统字体折行、画的时候又换了字体
   const spec = await collectLongImage(scope); if (!spec) return null;
   if (opts.family) spec.look = { ...spec.look, family: opts.family };
   if (opts.pxPerChar || opts.charsPerLine || opts.rubyBand != null) spec.typeset = { ...typesetFor(opts.charsPerLine ?? spec.typeset.charsPerLine), ...(opts.pxPerChar ? { pxPerChar: opts.pxPerChar } : {}), ...(opts.rubyBand != null ? { rubyBand: opts.rubyBand } : {}) };
@@ -622,7 +648,8 @@ async function renderLongImageFiles(scope: LongImageScope, opts: { maxSliceHeigh
 }
 async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
   let spec: LongImageSpec | null;
-  try { await fontReady; spec = await collectLongImage(scope); }
+  if (!(await ensureExportFont())) return;
+  try { spec = await collectLongImage(scope); }
   catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); return; }
   if (!spec) { setStatus(t("export.empty")); return; }
   // 尽量一张（user「三屏太难受了」）：只有超过单张上限才问切法
@@ -662,7 +689,22 @@ async function offerFiles(files: File[], title: string, message: string, opts: {
 //   字体来源：内置字体（vendor/fonts/sans.ttf.gz = 思源黑体全量，v2.3.15 进仓）→ 拿不到（离线且没缓存）才让用户选一个本机的 .ttf（只在这次会话的内存里，不落盘、不上传）。
 //   页面几何在 pdf-book.ts（v2.3.16：1 : √2、9 pt 实体字号、每页行数由比例推出；user 2026-09-30「同意sqrt2」，提案 §10.5）。
 //   图片页 / 封面：JPEG 原字节直塞；别的格式经 codec 解码、拍平白底、转 JPEG q88。
-let pdfFont: { font: TtfFont; label: string } | null = null;
+type LoadedFont = { font: TtfFont; label: string };
+/** 解析好的内置字体（PDF 嵌字、长图判断哪一行要带前后文）。这次打开期间留着：TtfFont 攥着整份字节（黑体 10 MB / 拼音 20 MB）。 */
+const builtinFonts = new Map<FontId, Promise<LoadedFont | null>>();
+function builtinFont(id: FontId): Promise<LoadedFont | null> {
+  let p = builtinFonts.get(id);
+  if (!p) {
+    p = (async () => {
+      try { const b = await loadFontBytes(id); if (!b) return null; const font = parseTtf(b); return { font, label: font.psName }; }
+      catch (e) { reportError(e, "log"); return null; }
+    })();
+    builtinFonts.set(id, p);
+    void p.then((f) => { if (!f) builtinFonts.delete(id); });   // 没拿到的下次重试
+  }
+  return p;
+}
+let pickedPdfFont: LoadedFont | null = null;   // 黑体拿不到时用户选的本机字体（只在内存）
 const pdfFontInput = $<HTMLInputElement>("pdfFontInput");
 function pickOneFile(input: HTMLInputElement): Promise<File | null> {
   return new Promise((resolve) => {
@@ -672,15 +714,14 @@ function pickOneFile(input: HTMLInputElement): Promise<File | null> {
     input.value = ""; input.click();
   });
 }
-async function loadPdfFont(): Promise<{ font: TtfFont; label: string } | null> {
-  if (pdfFont) return pdfFont;
-  try {
-    const b = await loadSansBytes();   // 内置字体（vendor/fonts/sans.ttf.gz，思源黑体全量）
-    if (b) { const font = parseTtf(b); pdfFont = { font, label: font.psName }; return pdfFont; }
-  } catch (e) { reportError(e, "log"); /* 内置字体坏了 / 拿不到：走本机文件 */ }
+async function loadPdfFont(): Promise<LoadedFont | null> {
+  const id = exportFontPref();
+  const f = await builtinFont(id); if (f) return f;
+  if (id === "pinyin") { setStatus(t("export.fontFailed"), { error: true }); return null; }   // 拼音字体没有「选本机文件」这条退路：选它就是要它
+  if (pickedPdfFont) return pickedPdfFont;
   if (!(await openConfirmSheet(t("pdf.fontTitle"), t("pdf.fontMsg"), { okLabel: t("pdf.fontPick") }))) return null;
   const file = await pickOneFile(pdfFontInput); if (!file) return null;
-  try { pdfFont = { font: parseTtf(new Uint8Array(await file.arrayBuffer())), label: file.name.replace(/\.[A-Za-z0-9]+$/, "") }; return pdfFont; }
+  try { pickedPdfFont = { font: parseTtf(new Uint8Array(await file.arrayBuffer())), label: file.name.replace(/\.[A-Za-z0-9]+$/, "") }; return pickedPdfFont; }
   catch (e) { if (!(e instanceof NotTrueTypeError)) reportError(e, "log"); setStatus(t("pdf.fontBad"), { error: true }); return null; }
 }
 async function pdfImage(bytes: Uint8Array): Promise<PdfImage> {
@@ -690,7 +731,7 @@ async function pdfImage(bytes: Uint8Array): Promise<PdfImage> {
   return { jpeg: await encodeJpeg(d, img.w, img.h, 88), w: img.w, h: img.h, components: 3 };
 }
 /** 无交互路（探针 / 脚本）：opts.font = 字体字节（不给就走 loadPdfFont）。 */
-async function renderPdfFile(scope: LongImageScope, opts: { font?: Uint8Array } = {}): Promise<{ file: File; pages: number; cjk: number; en: number; missing: string[]; fontLabel: string } | null> {
+async function renderPdfFile(scope: LongImageScope, opts: { font?: Uint8Array } = {}): Promise<{ file: File; pages: number; cjk: number; en: number; missing: string[]; fontLabel: string; shapeSkipped: boolean } | null> {
   const src = collectExport(scope); if (!src) return null;
   const f = opts.font ? { font: parseTtf(opts.font), label: "(probe)" } : await loadPdfFont(); if (!f) return null;
   const sections: PdfSection[] = [];
@@ -701,16 +742,16 @@ async function renderPdfFile(scope: LongImageScope, opts: { font?: Uint8Array } 
   const stats: PdfStats = { glyphs: 0, missing: [], fontBytes: 0 };
   const bytes = writePdf(plan.doc, f.font, { stats });
   const name = (src.title || "export").replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
-  return { file: new File([bytes as unknown as BlobPart], name, { type: "application/pdf" }), pages: plan.pageCount, cjk: plan.cjk, en: plan.en, missing: stats.missing, fontLabel: f.label };
+  return { file: new File([bytes as unknown as BlobPart], name, { type: "application/pdf" }), pages: plan.pageCount, cjk: plan.cjk, en: plan.en, missing: stats.missing, fontLabel: f.label, shapeSkipped: f.font.shapeSkipped.length > 0 };
 }
 async function exportPdfFlow(scope: LongImageScope): Promise<void> {
   if (!collectExport(scope)) { setStatus(t("export.empty")); return; }
-  if (!(await loadPdfFont())) return;   // 选字体的 sheet / 文件框不能盖在 busy 层底下：先把字体拿到手
+  if (!(await ensureExportFont()) || !(await loadPdfFont())) return;   // 选字体的 sheet / 文件框不能盖在 busy 层底下：先把字体拿到手
   let r: Awaited<ReturnType<typeof renderPdfFile>>;
   try { r = await withBusy(t("pdf.making"), () => renderPdfFile(scope)); }
   catch (e) { reportError(e, "warning"); setStatus(t("pdf.failed", { e: errText(e) }), { error: true }); return; }
   if (!r) return;
-  const miss = r.missing.length ? "\n" + t("pdf.readyMissing", { n: r.missing.length, chars: r.missing.slice(0, 20).join("") }) : "";
+  const miss = (r.missing.length ? "\n" + t("pdf.readyMissing", { n: r.missing.length, chars: r.missing.slice(0, 20).join("") }) : "") + (r.shapeSkipped ? "\n" + t("pdf.readyShapeSkipped") : "");
   await offerFiles([r.file], t("pdf.readyTitle", { pages: r.pages }), t("pdf.readyMsg", { cjk: r.cjk, en: r.en, size: humanSize(r.file.size), font: r.fontLabel }) + miss);
 }
 // ── 图片页（2.1，ADR-0012/0013）：单一漏斗 importImageFiles（文件选择 / 多选 / 拖放 / 粘贴 / 替换都走 slimImage）──
@@ -1909,4 +1950,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

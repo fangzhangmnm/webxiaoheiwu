@@ -28,7 +28,9 @@ export type PdfOp = {
     y: number;
     text: string;
     size: number;
-    color: Rgb;
+    color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */
+    before?: string;
+    after?: string;
 } | {
     op: "image";
     x: number;

@@ -39,6 +39,8 @@ export interface PdfBookPlan {
     pageW: number;
     pageH: number;
 }
+/** 折行时带给注音字体的前后文长度（字）。萌神的词表最长四五个字。 */
+export declare const CONTEXT_CHARS = 6;
 /** 正文字号（pt）= 实体字号：按 100% 打印出来就是这么大（屏上阅读器贴屏宽显示，20 字档的页宽 78 mm ≈ 手机屏宽）。 */
 export declare const PDF_FONT_PT = 9;
 /** 页面宽高比（宽 : 高 = 1 : √2）。 */

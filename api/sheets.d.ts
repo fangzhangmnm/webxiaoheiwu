@@ -75,20 +75,19 @@ export interface SegRow<X> {
     initial: X;
     onChange?: (value: X) => void;
 }
-export interface ScopedChoiceOpts<S, T, X = never> {
+export interface ScopedChoiceOpts<S, T> {
     scopes: {
         label: string;
         value: S;
     }[];
     initial: S;
-    extra?: SegRow<X>;
+    extras?: SegRow<any>[];
     note: (scope: S) => string;
     choices: (scope: S) => Choice<T>[];
 }
-export declare function openScopedChoiceSheet<S, T, X = never>(title: string, opts: ScopedChoiceOpts<S, T, X>): Promise<{
+export declare function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpts<S, T>): Promise<{
     scope: S;
     value: T;
-    extra: X | undefined;
 } | null>;
 /** 通用「搜索 + 选一项」sheet（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」「通用件同意」「不用原生 select」；created 2026-09-10 by Claude Fable 5.1）。
  *  首用 = 挪到…（app.ts movePageFlow）；「链接到已有页」「移到夹」之类以后同一个件。列表自绘（iOS 原生 select 是滚轮、Quest 更糟）。

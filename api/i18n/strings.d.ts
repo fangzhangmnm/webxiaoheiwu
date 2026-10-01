@@ -609,8 +609,8 @@ export declare const S: {
         readonly en: "Model source (any mirror; bytes are verified on arrival)";
     };
     readonly "ui.font.credit": {
-        readonly zh: "正文字体：思源黑体（Noto Sans SC）© Adobe，SIL 开源字体许可 1.1；随 app 附许可证全文（vendor/fonts/OFL.txt）。";
-        readonly en: "Body font: Noto Sans SC (Source Han Sans) © Adobe, SIL Open Font License 1.1; the full license ships with the app (vendor/fonts/OFL.txt).";
+        readonly zh: "正文字体：思源黑体（Noto Sans SC）© Adobe。导出可选的拼音字体：萌神手写体 © 萌神 PROJECT / LXGW。两款都是 SIL 开源字体许可 1.1，随 app 附许可证全文（vendor/fonts/OFL.txt、OFL-pinyin.txt）。";
+        readonly en: "Body font: Noto Sans SC (Source Han Sans) © Adobe. Optional pinyin font for exports: Mengshen-Handwritten © mengshen project / LXGW. Both under the SIL Open Font License 1.1; the full licenses ship with the app (vendor/fonts/OFL.txt, OFL-pinyin.txt).";
     };
     readonly "ui.sec.maintenance": {
         readonly zh: "维护";
@@ -2167,6 +2167,30 @@ export declare const S: {
     readonly "export.widthLabel": {
         readonly zh: "长图 / PDF 每行字数";
         readonly en: "Long image / PDF characters per line";
+    };
+    readonly "export.fontLabel": {
+        readonly zh: "长图 / PDF 字体";
+        readonly en: "Long image / PDF font";
+    };
+    readonly "export.font.sans": {
+        readonly zh: "黑体";
+        readonly en: "Sans";
+    };
+    readonly "export.font.pinyin": {
+        readonly zh: "拼音";
+        readonly en: "Pinyin";
+    };
+    readonly "export.fontLoading": {
+        readonly zh: "取拼音字体（12 MB，取过就不用再取）…";
+        readonly en: "Fetching the pinyin font (12 MB, cached afterwards)…";
+    };
+    readonly "export.fontFailed": {
+        readonly zh: "拼音字体没取到：第一次用要联网";
+        readonly en: "Couldn’t fetch the pinyin font: the first use needs a connection";
+    };
+    readonly "pdf.readyShapeSkipped": {
+        readonly zh: "这款字体有一部分选读音的规则本 app 不认识，个别多音字的拼音可能不对";
+        readonly en: "Some of this font’s reading-selection rules aren’t supported here; a few polyphone readings may be wrong";
     };
     readonly "export.scopeStats": {
         readonly zh: "{cjk} 字 {en} 词 · {pages} 页正文";

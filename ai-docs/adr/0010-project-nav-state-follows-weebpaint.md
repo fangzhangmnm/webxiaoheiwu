@@ -28,3 +28,7 @@
 - `exportLineWidth: { charsPerLine }`（可选，三档 14 / 20 / 28）：长图和 PDF 用它；**没有 = 跟 `lineWidth` 走**（09-30 那条「编辑器和导出都读它」仍是缺省行为）。同 `lineWidth / refPanel`：随保存写、不标脏。两个字段互不依赖（可以只有 `exportLineWidth`）。
 - 入口只有导出面板的那条段选；选回和编辑器一样的那一档 = 删掉这个字段。txt 稿没有 editor-state，另选只留到这次打开为止。
 - zip 目录清单不变；旧版读到这个字段会忽略、下次保存时丢掉它（editor-state 是整个重写的），不影响内容。
+
+## 修订 2026-10-01 之二（editor-state.json 多一个 `exportFont` = 这本书导出用的字体；edited by Claude Fable 5.1）
+- user 原话：「萌神拼音也vendor进去吧，导出的时候还蛮需要的（需要导出和编辑分开配置吗？）」。答法 = 不用分开配置，因为编辑器不给选字体（永远黑体）；只有导出有这个选项。
+- `exportFont: "pinyin"`（可选字符串；目前只认这一个值，别的值原样带着、当黑体用）：长图和 PDF 用萌神拼音。**没有 = 黑体**。同 `exportLineWidth`：随保存写、不标脏，入口只有导出面板，选回黑体 = 删掉字段，txt 稿只记到这次打开为止。

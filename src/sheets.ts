@@ -197,8 +197,9 @@ export function openChoiceSheet<T>(title: string, message: string, choices: Choi
  *  范围 × 动作是两条正交的轴：m + n 个控件，不是 m × n 个钮，也不用两层 sheet。取消 / Esc / 点空白 = null。 */
 /** 第二条段选（可选）：一个和范围无关的小选项（导出的行宽）。带一个行首小标签；一点就 onChange（要记住的话调用方在这里记）。 */
 export interface SegRow<X> { label: string; options: { label: string; value: X }[]; initial: X; onChange?: (value: X) => void }
-export interface ScopedChoiceOpts<S, T, X = never> { scopes: { label: string; value: S }[]; initial: S; extra?: SegRow<X>; note: (scope: S) => string; choices: (scope: S) => Choice<T>[] }
-export function openScopedChoiceSheet<S, T, X = never>(title: string, opts: ScopedChoiceOpts<S, T, X>): Promise<{ scope: S; value: T; extra: X | undefined } | null> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 每条段选的值类型各不相同，结果经各自的 onChange 交出去
+export interface ScopedChoiceOpts<S, T> { scopes: { label: string; value: S }[]; initial: S; extras?: SegRow<any>[]; note: (scope: S) => string; choices: (scope: S) => Choice<T>[] }
+export function openScopedChoiceSheet<S, T>(title: string, opts: ScopedChoiceOpts<S, T>): Promise<{ scope: S; value: T } | null> {
   _assertNotBusy("scoped-choice");
   return new Promise((resolve) => {
     _reset();
@@ -206,7 +207,6 @@ export function openScopedChoiceSheet<S, T, X = never>(title: string, opts: Scop
     const box = g.choices(); box.classList.remove("hidden");
     g.confirm().classList.add("hidden");
     let scope = opts.initial;
-    const ex = opts.extra; let extra: X | undefined = ex?.initial;
     const onCancel = () => { g.cancel().removeEventListener("click", onCancel); _hide(); resolve(null); };
     const seg = document.createElement("div"); seg.className = "sheet-seg"; seg.setAttribute("role", "radiogroup");
     const note = document.createElement("p"); note.className = "sheet-seg-note";
@@ -220,7 +220,7 @@ export function openScopedChoiceSheet<S, T, X = never>(title: string, opts: Scop
         btn.type = "button";
         btn.className = "sheet-choice" + (c.primary ? " primary" : "") + (c.danger ? " danger" : "");
         btn.textContent = c.label;
-        btn.addEventListener("click", () => { g.cancel().removeEventListener("click", onCancel); _hide(); c.onPick?.(); resolve({ scope, value: c.value, extra }); });
+        btn.addEventListener("click", () => { g.cancel().removeEventListener("click", onCancel); _hide(); c.onPick?.(); resolve({ scope, value: c.value }); });
         row.appendChild(btn);
       }
     };
@@ -231,7 +231,8 @@ export function openScopedChoiceSheet<S, T, X = never>(title: string, opts: Scop
       seg.appendChild(b);
     }
     if (opts.scopes.length > 1) box.appendChild(seg);
-    if (ex) {
+    for (const ex of opts.extras ?? []) {
+      let extra: unknown = ex.initial;
       const line = document.createElement("div"); line.className = "sheet-seg-line";
       const lab = document.createElement("span"); lab.className = "sheet-seg-label"; lab.textContent = ex.label;
       const seg2 = document.createElement("div"); seg2.className = "sheet-seg"; seg2.setAttribute("role", "radiogroup"); seg2.setAttribute("aria-label", ex.label);

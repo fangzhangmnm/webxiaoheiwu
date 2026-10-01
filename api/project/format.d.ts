@@ -51,7 +51,8 @@ export interface EditorState {
     back: string[];
     refPanel?: RefPanelState;
     lineWidth?: LineWidthState;
-    exportLineWidth?: LineWidthState;
+    exportLineWidth?: LineWidthState; /** 这本书导出（长图 / PDF）用的字体；没有 = 黑体。目前只认 "pinyin"（萌神拼音，2026-10-01）。 */
+    exportFont?: string;
 }
 export declare const BACK_STACK_MAX = 50;
 export interface Project {
