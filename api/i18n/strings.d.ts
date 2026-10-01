@@ -2272,6 +2272,70 @@ export declare const S: {
         readonly zh: "这一页是隐藏的，不出门";
         readonly en: "This page is hidden — it stays out of exports";
     };
+    readonly "export.pdf": {
+        readonly zh: "PDF…";
+        readonly en: "PDF…";
+    };
+    readonly "export.draftPdf": {
+        readonly zh: "整篇 → PDF";
+        readonly en: "Whole draft → PDF";
+    };
+    readonly "export.pdfScopeTitle": {
+        readonly zh: "PDF：导出哪一部分？";
+        readonly en: "PDF: which part?";
+    };
+    readonly "export.pdfScopeMsg": {
+        readonly zh: "一页一页的小书：书名页、每个正文页另起一页、图片页独占一页，带书签，文字可以搜索和复制。隐藏的页不出门。";
+        readonly en: "A paged little book: title page, each text page starts a new page, images get a page of their own, with bookmarks and searchable text. Hidden pages stay out.";
+    };
+    readonly "export.pdfBook": {
+        readonly zh: "整本";
+        readonly en: "Whole book";
+    };
+    readonly "export.pdfBranch": {
+        readonly zh: "这一支（这页和它下面的所有页）";
+        readonly en: "This branch (this page and everything under it)";
+    };
+    readonly "export.pdfPage": {
+        readonly zh: "这一页";
+        readonly en: "This page";
+    };
+    readonly "pdf.making": {
+        readonly zh: "生成 PDF…";
+        readonly en: "Making the PDF…";
+    };
+    readonly "pdf.readyTitle": {
+        readonly zh: "PDF 好了：{pages} 页";
+        readonly en: "PDF ready: {pages} pages";
+    };
+    readonly "pdf.readyMsg": {
+        readonly zh: "{cjk} 字 {en} 词 · {size} · 字体 {font}";
+        readonly en: "{cjk} chars · {en} words · {size} · font {font}";
+    };
+    readonly "pdf.readyMissing": {
+        readonly zh: "{n} 个字这款字体里没有，印成了方框：{chars}";
+        readonly en: "{n} characters are not in this font and print as boxes: {chars}";
+    };
+    readonly "pdf.fontTitle": {
+        readonly zh: "PDF 要嵌一款字体";
+        readonly en: "A PDF needs an embedded font";
+    };
+    readonly "pdf.fontMsg": {
+        readonly zh: "内置字体还没装。先选一个本机的 TrueType 字体文件（.ttf）——这次打开期间一直用它；字体只在你的设备上读，不上传、不保存。";
+        readonly en: "The built-in font isn’t installed yet. Pick a TrueType font file (.ttf) from this device — it’s used until you close the app; the font is only read on your device, never uploaded or stored.";
+    };
+    readonly "pdf.fontPick": {
+        readonly zh: "选字体文件…";
+        readonly en: "Choose a font file…";
+    };
+    readonly "pdf.fontBad": {
+        readonly zh: "这个字体文件用不了：要 TrueType 轮廓的 .ttf（不支持 .otf / CFF）";
+        readonly en: "This font file can’t be used: a TrueType-outline .ttf is required (.otf / CFF is not supported)";
+    };
+    readonly "pdf.failed": {
+        readonly zh: "PDF 生成失败：{e}";
+        readonly en: "PDF failed: {e}";
+    };
     readonly "export.typesetLine": {
         readonly zh: "每行 {chars} 字（设置 → 行宽；图宽 {w} px）";
         readonly en: "{chars} characters per line (Settings → Line width; image {w} px wide)";

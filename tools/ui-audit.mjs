@@ -10,6 +10,9 @@ import { fileURLToPath } from "node:url";
 const wpRequire = createRequire(new URL("../../20260524 WeebPaint/package.json", import.meta.url));
 const { chromium } = wpRequire("playwright");
 const { default: UPNG } = await import("../vendor/upng/upng.esm.js");
+const { existsSync: _exists, readFileSync: _read } = await import("node:fs");
+const _fontPath = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/sans.ttf", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p)).find((p) => _exists(p));
+const PDF_FONT_B64 = _fontPath ? _read(_fontPath).toString("base64") : null;   // PDF 探针用的字体（不进仓；没有就跳过那条探针）
 /** 测试图：w×h 噪点 RGBA（噪点让 PNG 压不动 → 大图走 JPEG 重编码那条路；小图走只剥 metadata）。seed 决定内容，同 seed 同字节。 */
 function makePng(w, h, seed) { const px = new Uint8Array(w * h * 4); let x = seed >>> 0; for (let i = 0; i < px.length; i += 4) { x = (x * 1664525 + 1013904223) >>> 0; px[i] = x & 255; px[i + 1] = (x >>> 8) & 255; px[i + 2] = (x >>> 16) & 255; px[i + 3] = 255; } return Buffer.from(UPNG.encode([px.buffer], w, h, 0)); }
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -71,7 +74,7 @@ for (const [w, h] of sizes) {
   // v2.3.1 导出 = 一张 sheet（复制文字 / 长图；user 2026-09-30「先做图片导出吧，这个今晚就能用」）：复制那条仍 = v2.1.9 的整页进剪贴板
   { const text = await page.inputValue("#editor"); await page.click("#edgeExport"); await wait(300);
     const choices = await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()));
-    probe(tag, "导出 (txt draft) → sheet: 复制全文 / 整篇 → 长图; message shows 每行 20 字（图宽 684 px）(follows editor line width)", choices.length === 2 && /复制全文/.test(choices[0]) && /整篇 → 长图/.test(choices[1]) && await page.evaluate(() => /每行 20 字（.*图宽 684 px）/.test(document.getElementById("sheetMessage")?.textContent ?? "")), JSON.stringify(choices) + " | " + await page.evaluate(() => document.getElementById("sheetMessage")?.textContent));
+    probe(tag, "导出 (txt draft) → sheet: 复制全文 / 整篇 → 长图 / 整篇 → PDF; message shows 每行 20 字（图宽 684 px）(follows editor line width)", choices.length === 3 && /复制全文/.test(choices[0]) && /整篇 → 长图/.test(choices[1]) && /整篇 → PDF/.test(choices[2]) && await page.evaluate(() => /每行 20 字（.*图宽 684 px）/.test(document.getElementById("sheetMessage")?.textContent ?? "")), JSON.stringify(choices) + " | " + await page.evaluate(() => document.getElementById("sheetMessage")?.textContent));
     await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].find((b) => /复制/.test(b.textContent))?.click()); await wait(400);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => "ERR:" + e.message));
     probe(tag, "导出 → 复制全文 → whole text on the clipboard + toast 已复制全页 N 字 M 词", clip === text && /已复制全页：\d+ 字 \d+ 词/.test(await page.textContent("#toast")), `clip=${JSON.stringify(clip).slice(0, 60)} toast=${await page.textContent("#toast")}`);
@@ -528,12 +531,17 @@ for (const [w, h] of sizes) {
   probe(tag, "replace image on the cover page → cover regenerated (bytes differ), name kept", thumb2.length > 0 && thumb2.join() !== thumb1.join() && (await page.evaluate(() => window.__xhw.project.current())) === "地图.jpg", await page.textContent("#toast"));
   // v2.1.9 导出图片页 = 图片本身进剪贴板（jpg → PNG 经 codec）
   await ensureSidebar(true); await page.click("#edgeExport"); await wait(300);
-  probe(tag, "导出 sheet on an image page = 复制这张图 / 这一页 / 这一支 / 整本", await page.evaluate(() => { const c = [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()); return c.length === 4 && /复制这张图/.test(c[0]) && /这一页 → 长图/.test(c[1]) && /这一支 → 长图/.test(c[2]) && /整本 → 长图/.test(c[3]); }), await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()).join("|")));
+  probe(tag, "导出 sheet on an image page = 复制这张图 / 这一页 / 这一支 / 整本 / PDF…", await page.evaluate(() => { const c = [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()); return c.length === 5 && /复制这张图/.test(c[0]) && /这一页 → 长图/.test(c[1]) && /这一支 → 长图/.test(c[2]) && /整本 → 长图/.test(c[3]) && /^PDF/.test(c[4]); }), await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent.trim()).join("|")));
   await page.evaluate(() => [...document.querySelectorAll("#sheetChoices button")].find((b) => /复制这张图/.test(b.textContent))?.click()); await wait(1500);
   probe(tag, "导出 on an image page → clipboard holds image/png + toast 已复制这张图", await page.evaluate(async () => { try { const items = await navigator.clipboard.read(); return items.some((it) => it.types.includes("image/png")); } catch (e) { return "ERR:" + e.message; } }) === true && /已复制这张图/.test(await page.textContent("#toast")), await page.textContent("#toast"));
   // 整本 → 长图：封面（cover 字段指的那页的高清字节）铺首屏 + 正文页 + 图片页原位
   { const li = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book"); if (!r) return null; const bm = await createImageBitmap(r.files[0]); return { n: r.files.length, w: bm.width, h: bm.height, text: r.plan.textPages, images: r.plan.imagePages, cjk: r.plan.cjk, name: r.files[0].name }; });
     probe(tag, "长图 (整本): cover from graph.json cover page + ≥1 text page + ≥1 image page, 750 wide, first slice has an image → .jpg", !!li && li.n >= 1 && li.w === 684 && li.text >= 1 && li.images >= 1 && li.h > 750 && /\.jpg$/.test(li.name), JSON.stringify(li)); }
+  // PDF（v2.3.14）：整本 → 一份 PDF（封面图 + 书名页 + 正文页 + 图片页）；字体从本机拿（不进仓，没有就 SKIP）
+  if (PDF_FONT_B64) {
+    const pdf = await page.evaluate(async (b64) => { const bin = atob(b64); const font = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) font[i] = bin.charCodeAt(i); const r = await window.__xhw.exportPdf("book", { font }); if (!r) return null; const u8 = new Uint8Array(await r.file.arrayBuffer()); const head = String.fromCharCode(...u8.slice(0, 8)); const tail = String.fromCharCode(...u8.slice(-6)); return { name: r.file.name, size: r.file.size, pages: r.pages, cjk: r.cjk, missing: r.missing.length, head, tail }; }, PDF_FONT_B64);
+    probe(tag, "PDF (整本): %PDF header, %%EOF trailer, ≥ 4 pages (cover + title + text + image), .pdf name（这本测试书的图是噪声、正文没汉字——大小和字数不设门）", !!pdf && pdf.head.startsWith("%PDF-1.7") && /%%EOF/.test(pdf.tail) && pdf.pages >= 4 && /\.pdf$/.test(pdf.name) && pdf.size > 10_000, JSON.stringify(pdf));
+  } else console.log(tag, "SKIP PDF probe: no TrueType font on this machine (set XHW_TEST_FONT)");
   // 切片路（v2.3.2「尽量一张」：默认不切；给了上限才切，只在行间、每张 ≤ 上限）——app 内走一遍 maxSliceHeight
   { const sl = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book", { maxSliceHeight: 1500 }); const hs = []; for (const f of r.files) { const bm = await createImageBitmap(f); hs.push(bm.height); } return { n: r.files.length, hs, total: r.plan.totalHeight, names: r.files.map((f) => f.name) }; });
     probe(tag, "长图 sliced at 1500: >1 slices, each ≤ 1500 (a lone image row may exceed), every file .png or .jpg", sl.n > 1 && sl.hs.every((h) => h <= 1500 + 1125) && sl.names.every((n) => /\.(png|jpg)$/.test(n)), JSON.stringify(sl)); }

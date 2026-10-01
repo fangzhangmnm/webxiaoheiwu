@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseTtf, NotTrueTypeError } from "../src/export/ttf.ts";
 import { writePdf, jpegInfo } from "../src/export/pdf.ts";
 
-const CANDIDATES = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/LXGWNeoXiHei.ttf", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p));
+const CANDIDATES = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/sans.ttf", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p));
 const FONT = CANDIDATES.find((p) => existsSync(p));
 const u16 = (b, o) => (b[o] << 8) | b[o + 1], u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
 const tablesOf = (b) => { const t = {}; for (let i = 0; i < u16(b, 4); i++) { const r = 12 + 16 * i; t[String.fromCharCode(b[r], b[r + 1], b[r + 2], b[r + 3])] = { off: u32(b, r + 8), len: u32(b, r + 12) }; } return t; };
