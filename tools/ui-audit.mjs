@@ -544,6 +544,16 @@ for (const [w, h] of sizes) {
   // PDF（v2.3.14；v2.3.15 起内置字体在仓里，app 自己取）：整本 → 一份 PDF（封面图 + 书名页 + 正文页 + 图片页）
   { const pdf = await page.evaluate(async () => { const r = await window.__xhw.exportPdf("book"); if (!r) return null; const u8 = new Uint8Array(await r.file.arrayBuffer()); return { name: r.file.name, size: r.file.size, pages: r.pages, font: r.fontLabel, head: String.fromCharCode(...u8.slice(0, 8)), tail: String.fromCharCode(...u8.slice(-6)) }; });
     probe(tag, "PDF (整本) with the built-in font: %PDF header, %%EOF trailer, ≥ 4 pages, .pdf name, font = NotoSansSC-Regular", !!pdf && pdf.head.startsWith("%PDF-1.7") && /%%EOF/.test(pdf.tail) && pdf.pages >= 4 && /\.pdf$/.test(pdf.name) && pdf.size > 10_000 && /NotoSansSC/.test(pdf.font), JSON.stringify(pdf)); }
+  // 子节目录进导出（v2.3.22，user「导出的时候要不要也加子叶的页面内链接…不然的话目录是空的就很奇怪」「好，两个做」）：整本 PDF 的链接数 = 一起出门的「父页（文字）→ 子页」对数；长图里子页名出现在父页正文后面；「这一页」没有目录
+  { const t = await page.evaluate(async () => {
+      const p = window.__xhw.project, s = p.session(); const names = s.exportOrder(null), set = new Set(names); let pairs = 0; const labels = [];
+      const walk = (nodes) => { for (const n of nodes) { const name = typeof n === "string" ? n : n.name, ch = typeof n === "string" ? [] : (n.children ?? []); if (set.has(name) && /\.txt$/i.test(name)) for (const c of ch) { const cn = typeof c === "string" ? c : c.name; if (set.has(cn)) { pairs++; labels.push(cn); } } walk(ch); } };
+      walk(s.project.tree);
+      const pdf = await window.__xhw.exportPdf("book"), one = await window.__xhw.exportPdf("page"), img = await window.__xhw.exportLongImage("book");
+      const texts = img.plan.slices.flatMap((sl) => sl.ops.filter((o) => o.op === "text").map((o) => o.text));
+      return { pairs, links: pdf.links, pageLinks: one ? one.links : 0, tocInImage: labels.length === 0 || labels.some((l) => texts.filter((x) => x.replace(/[\u{E0100}-\u{E01EF}]/gu, "") === l.replace(/\.txt$/i, "")).length >= 1) };
+    });
+    probe(tag, "exports carry the child table of contents: whole-book PDF has one link per exported parent→child pair, 这一页 has none, the long image lists the child names", t.links === t.pairs && t.pageLinks === 0 && t.tocInImage, JSON.stringify(t)); }
   probe(tag, "built-in font is installed and the editor uses it (computed font-family starts with XHW Sans; document.fonts has it loaded)", await page.evaluate(async () => (await window.__xhw.fontReady) === true && /^"?XHW Sans/.test(getComputedStyle(document.getElementById("editor")).fontFamily) && document.fonts.check('20px "XHW Sans"')), await page.evaluate(() => getComputedStyle(document.getElementById("editor")).fontFamily.slice(0, 40)));
   // 切片路（v2.3.2「尽量一张」：默认不切；给了上限才切，只在行间、每张 ≤ 上限）——app 内走一遍 maxSliceHeight
   { const sl = await page.evaluate(async () => { const r = await window.__xhw.exportLongImage("book", { maxSliceHeight: 1500 }); const hs = []; for (const f of r.files) { const bm = await createImageBitmap(f); hs.push(bm.height); } return { n: r.files.length, hs, total: r.plan.totalHeight, names: r.files.map((f) => f.name) }; });

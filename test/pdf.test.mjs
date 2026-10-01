@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { parseTtf, NotTrueTypeError } from "../src/export/ttf.ts";
 import { writePdf, jpegInfo } from "../src/export/pdf.ts";
-import { planPdfBook, pdfPageGeometry, PDF_FONT_PT } from "../src/export/pdf-book.ts";
+import { planPdfBook, pdfPageGeometry, parseCssColor, PDF_FONT_PT } from "../src/export/pdf-book.ts";
 import { typesetFor, CHARS_PRESETS } from "../src/export/long-image.ts";
 
 const CANDIDATES = [process.env.XHW_TEST_FONT, new URL("../vendor/fonts/sans.ttf.gz", import.meta.url).pathname, "/mnt/c/Users/15617/OneDrive/Lib/Fonts/LXGWNeoXiHei.ttf"].filter(Boolean).map((p) => decodeURIComponent(p));
@@ -62,6 +62,11 @@ describe("export/ttf + pdf" + (FONT ? "" : "（SKIP：没有可用的 TrueType �
 // 页面几何（v2.3.16，user 2026-09-30「同意sqrt2」）：三档共用 1 : √2、9 pt 实体字号、每页行数由比例推出
 describe("export/pdf-book 页面几何", () => {
   const mm = (pt) => pt * 25.4 / 72;
+  it("parseCssColor：#rgb / #rrggbb / rgb() / color(srgb …)（浏览器算 color-mix 的结果）；认不出 → 黑", () => {
+    const f = (c) => parseCssColor(c).map((v) => v.toFixed(3)).join();
+    eq(f("#fff"), "1.000,1.000,1.000"); eq(f("#7a3d14"), [0x7a, 0x3d, 0x14].map((v) => (v / 255).toFixed(3)).join()); eq(f("rgb(255, 0, 51)"), "1.000,0.000,0.200");
+    eq(f("color(srgb 0.514 0.283 0.122)"), "0.514,0.283,0.122"); eq(f("color-mix(in srgb, red 50%, black)"), "0.000,0.000,0.000");
+  });
   it("三档：宽高比 √2、页面 58.4×82.6 / 77.5×109.6 / 102.9×145.5 mm、每页 11 / 17 / 25 行", () => {
     eq(PDF_FONT_PT, 9); eq(CHARS_PRESETS.join(","), "14,20,28");
     const g = CHARS_PRESETS.map((c) => pdfPageGeometry(typesetFor(c)));
@@ -107,6 +112,39 @@ describe("export/pdf-book 页面几何", () => {
       const p = plan.doc.pages[2].ops.find((o) => o.op === "image");
       assert(p.x >= geo.side - 0.01 && p.x + p.w <= geo.w - geo.side + 0.01 && p.y >= geo.top - 0.01 && p.y + p.h <= geo.h - geo.bottom + 0.01, "image page stays inside the type area");
     }
+  });
+  it("子节目录：正文后空一行、一节一行（链接色）、行尾页码 = 那一节的页码、整行是链到那一页的链接；纯目录页不空那一行", () => {
+    const ts = typesetFor(20), geo = pdfPageGeometry(ts); const lk = { ...look, link: "#7a3d14" };
+    const long = guo.repeat(20 * geo.linesPerPage * 2);   // 子节一占两页多（有章节名）
+    const sections = [
+      { kind: "text", heading: "目录", text: "", toc: [{ label: "甲", target: 1 }, { label: "乙", target: 2 }] },
+      { kind: "text", heading: "甲", text: long, toc: [] },
+      { kind: "text", heading: "乙", text: guo.repeat(5) },
+    ];
+    const plan = planPdfBook({ title: "t", date: null, cover: null, front: false, sections, look: lk, typeset: ts, font });
+    const p0 = plan.doc.pages[0]; const texts = p0.ops.filter((o) => o.op === "text");
+    const rowA = texts.find((o) => o.text === "甲" && o.size === PDF_FONT_PT), rowB = texts.find((o) => o.text === "乙" && o.size === PDF_FONT_PT);
+    assert(rowA && rowB && rowB.y - rowA.y > 0 && Math.abs((rowB.y - rowA.y) - geo.lineHeight) < 0.01, "one line per entry");
+    eq(rowA.color.map((v) => v.toFixed(2)).join(), [0x7a, 0x3d, 0x14].map((v) => (v / 255).toFixed(2)).join(), "link colour");
+    // 纯目录页：章节名 3 行之后紧跟目录（不空一行）
+    const firstBodyY = plan.doc.pages[1].ops.filter((o) => o.op === "text" && o.size === PDF_FONT_PT)[0].y;
+    assert(Math.abs(rowA.y - firstBodyY) < 0.01, `toc starts where body would: ${rowA.y} vs ${firstBodyY}`);
+    // 乙在第几页：目录 1 页 + 甲 3 页 → 乙 = 第 5 页（页序 4）
+    const bPage = plan.doc.outline.find((o) => o.title === "乙").page; assert(bPage >= 3, String(bPage));
+    eq(JSON.stringify(p0.links.map((l) => l.page)), JSON.stringify([1, bPage]));
+    for (const l of p0.links) { assert(Math.abs(l.x - geo.side) < 0.01 && Math.abs(l.w - 20 * PDF_FONT_PT) < 0.01 && Math.abs(l.h - geo.lineHeight) < 0.01, JSON.stringify(l)); }
+    const nums = texts.filter((o) => /^\d+$/.test(o.text) && o.size === PDF_FONT_PT).map((o) => o.text);
+    eq(nums.join(), `2,${bPage + 1}`, "page numbers printed at the row ends");
+    for (const o of texts.filter((o) => /^\d+$/.test(o.text) && o.size === PDF_FONT_PT)) assert(o.x > geo.w / 2 && o.x < geo.w - geo.side, "right-aligned inside the type area");
+    // 有正文的页：正文和目录之间空一行
+    const plan2 = planPdfBook({ title: "t", date: null, cover: null, front: false, sections: [{ kind: "text", heading: null, text: guo.repeat(3), toc: [{ label: "甲", target: 1 }] }, { kind: "text", heading: "甲", text: guo }], look: lk, typeset: ts, font });
+    const b = plan2.doc.pages[0].ops.filter((o) => o.op === "text" && o.size === PDF_FONT_PT && !/^\d+$/.test(o.text));
+    eq(b.length, 2); assert(Math.abs((b[1].y - b[0].y) - 2 * geo.lineHeight) < 0.01, "one blank line between body and toc");
+    // 写成 PDF：有链接注记，目标是真的页对象
+    const pdf = new TextDecoder("latin1").decode(writePdf(plan.doc, font));
+    const m = [...pdf.matchAll(/\/Subtype \/Link \/Rect \[[^\]]+\] \/Border \[0 0 0\] \/Dest \[(\d+) 0 R \/Fit\]/g)].map((r) => Number(r[1]));
+    eq(m.length, 2); for (const id of m) assert(new RegExp(`\\n${id} 0 obj\\n<< /Type /Page `).test(pdf), `link target ${id} is a page object`);
+    assert(m[0] !== m[1], "two different target pages");
   });
   it("章节名占整数行：有章节名的页少 3 行", () => {
     const ts = typesetFor(20), geo = pdfPageGeometry(ts);

@@ -16,7 +16,9 @@ export type PdfOp =
   | { op: "line"; x1: number; y1: number; x2: number; y2: number; color: Rgb; width: number }
   | { op: "text"; x: number; y: number; text: string; size: number; color: Rgb; /** 这一行在段落里的前文 / 后文（不画，只给注音字体按词选读音用——词可能正好被折行拆开）。 */ before?: string; after?: string }
   | { op: "image"; x: number; y: number; w: number; h: number; image: PdfImage };
-export interface PdfPage { w: number; h: number; ops: PdfOp[] }
+/** 页内链接：这一页上的一块矩形（左上角坐标系，和 ops 一样），点了跳到第 page 页（从 0 起）。 */
+export interface PdfLink { x: number; y: number; w: number; h: number; page: number }
+export interface PdfPage { w: number; h: number; ops: PdfOp[]; links?: PdfLink[] }
 export interface PdfOutlineItem { title: string; page: number }   // page = 从 0 起的页序
 export interface PdfDoc { title: string; pages: PdfPage[]; outline?: PdfOutlineItem[]; producer?: string }
 export interface PdfStats { glyphs: number; missing: string[]; fontBytes: number }
@@ -66,8 +68,8 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
   const used = new Map<number, number>();   // 字形号 → 码点（ToUnicode 用；同一字形多个码点时留第一个）
   const missing = new Set<string>();
   const images = new Map<PdfImage, { n: number; name: string }>();
-  const pageObjs: number[] = [];
-  for (const page of doc.pages) {
+  const pageObjs: number[] = doc.pages.map(() => reserve());   // 页对象号先占好：前面的页要链到后面的页
+  doc.pages.forEach((page, pi) => {
     const H = page.h; let c = ""; const xobj: string[] = [];
     for (const o of page.ops) {
       if (o.op === "rect") c += `${num(o.color[0])} ${num(o.color[1])} ${num(o.color[2])} rg ${num(o.x)} ${num(H - o.y - o.h)} ${num(o.w)} ${num(o.h)} re f\n`;
@@ -90,12 +92,13 @@ export function writePdf(doc: PdfDoc, font: TtfFont, opts: { stats?: PdfStats } 
         c += `q ${num(o.w)} 0 0 ${num(o.h)} ${num(o.x)} ${num(H - o.y - o.h)} cm /${im.name} Do Q\n`;
       }
     }
-    const content = reserve(), pg = reserve();
+    const content = reserve(), pg = pageObjs[pi]!;
     stream(content, "", enc.encode(c));
+    const links = (page.links ?? []).filter((l) => l.page >= 0 && l.page < pageObjs.length);
+    const annots = links.length ? ` /Annots [${links.map((l) => `<< /Type /Annot /Subtype /Link /Rect [${num(l.x)} ${num(H - l.y - l.h)} ${num(l.x + l.w)} ${num(H - l.y)}] /Border [0 0 0] /Dest [${pageObjs[l.page]} 0 R /Fit] >>`).join(" ")}]` : "";
     const xo = xobj.length ? ` /XObject << ${xobj.map((nm) => `/${nm} ${[...images.values()].find((v) => v.name === nm)!.n} 0 R`).join(" ")} >>` : "";
-    obj(pg, `<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${num(page.w)} ${num(page.h)}] /Resources << /Font << /F1 ${fontObj} 0 R >>${xo} >> /Contents ${content} 0 R >>`);
-    pageObjs.push(pg);
-  }
+    obj(pg, `<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${num(page.w)} ${num(page.h)}] /Resources << /Font << /F1 ${fontObj} 0 R >>${xo} >> /Contents ${content} 0 R${annots} >>`);
+  });
   for (const [img, { n }] of images) stream(n, `/Type /XObject /Subtype /Image /Width ${img.w} /Height ${img.h} /ColorSpace /${img.components === 1 ? "DeviceGray" : img.components === 4 ? "DeviceCMYK" : "DeviceRGB"} /BitsPerComponent 8 /Filter /DCTDecode`, img.jpeg, false);
   obj(pagesObj, `<< /Type /Pages /Kids [${pageObjs.map((n) => `${n} 0 R`).join(" ")}] /Count ${pageObjs.length} >>`);
 

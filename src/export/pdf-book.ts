@@ -16,9 +16,10 @@ import type { TextMeasurer, TextStyle } from "../image/codec.ts";
 import { statsForText } from "../doc-model.ts";
 
 export type PdfSection =
-  | { kind: "text"; heading: string | null; text: string }
+  | { kind: "text"; heading: string | null; text: string; /** 子节目录：正文后面空一行列出来，每行链到那一节的第一页、行尾印页码。target = sections 里的序号。 */ toc?: PdfTocEntry[] }
   | { kind: "image"; heading: null; image: PdfImage };
-export interface PdfBookLook { paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
+export interface PdfTocEntry { label: string; target: number }
+export interface PdfBookLook { paper: string; ink: string; inkSoft: string; muted: string; rule: string | null; /** 目录链接的颜色（编辑器里子节目录那种）；不给 = 墨色 */ link?: string }
 export interface PdfBookSpec {
   title: string; date: string | null; cover: PdfImage | null;
   /** 封面页 + 书名页。整本 / 整篇才有；false = 第一页就是正文（这一页 / 这一支）。缺省 true。 */
@@ -45,7 +46,7 @@ export function pdfPageGeometry(typeset: ExportTypeset): { w: number; h: number;
   return { w, h, side, top, bottom, lineHeight, linesPerPage };
 }
 
-/** CSS 颜色串（`#rgb` / `#rrggbb` / `rgb()` / `rgba()`）→ 0..1 的 RGB；认不出 → 黑。 */
+/** CSS 颜色串（`#rgb` / `#rrggbb` / `rgb()` / `rgba()` / `color(srgb r g b)`）→ 0..1 的 RGB；认不出 → 黑。 */
 export function parseCssColor(s: string): Rgb {
   const t = s.trim();
   let m = /^#([0-9a-f]{3})$/i.exec(t);
@@ -54,6 +55,8 @@ export function parseCssColor(s: string): Rgb {
   if (m) return [0, 2, 4].map((i) => parseInt(m![1]!.slice(i, i + 2), 16) / 255) as Rgb;
   m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(t);
   if (m) return [Number(m[1]) / 255, Number(m[2]) / 255, Number(m[3]) / 255];
+  m = /^color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i.exec(t);   // 浏览器把 color-mix() 算出来的颜色报成这种写法（0..1）
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
   return [0, 0, 0];
 }
 
@@ -82,7 +85,10 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
   const ruleY = bodyBase + 0.18 * F;
   const paper = parseCssColor(look.paper), cInk = parseCssColor(look.ink), cBody = parseCssColor(look.inkSoft), cMuted = parseCssColor(look.muted), cRule = look.rule ? parseCssColor(look.rule) : null;
 
+  const cLink = parseCssColor(look.link ?? look.ink);
   const pages: PdfPage[] = []; const outline: PdfOutlineItem[] = []; const numbered: number[] = [];   // numbered = 印页码的页
+  const sectionPage: number[] = [];   // 每一节的第一页（页序）
+  const tocPending: { page: PdfPage; y: number; target: number }[] = [];   // 目录行的页码和链接：目标页要等全部排完才知道，先记着
   let ops: PdfOp[] = [], y = 0;
   let lineTop = 0;   // 这一页正文行盒的起点（y 从这里起每行加 LH）；一页最多 geo.linesPerPage 行
   const newPage = (withNumber = true): void => { ops = [{ op: "rect", x: 0, y: 0, w: W, h: H, color: paper }]; pages.push({ w: W, h: H, ops }); if (withNumber) numbered.push(pages.length - 1); y = TOP; lineTop = TOP - HALF_LEAD; };
@@ -105,10 +111,11 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
 
   // ── 各页 ──
   let cjk = 0, en = 0, textPages = 0, imagePages = 0;
-  for (const sec of spec.sections) {
-    if (sec.kind === "image") { imagePages++; newPage(); contain(sec.image, SIDE, TOP, inner, bodyBottom - TOP); continue; }
+  for (let si = 0; si < spec.sections.length; si++) {
+    const sec = spec.sections[si]!;
+    if (sec.kind === "image") { imagePages++; newPage(); sectionPage[si] = pages.length - 1; contain(sec.image, SIDE, TOP, inner, bodyBottom - TOP); continue; }
     textPages++; const s = statsForText(sec.text); cjk += s.cjk; en += s.en;
-    newPage();   // 章起新页
+    newPage(); sectionPage[si] = pages.length - 1;   // 章起新页
     y = lineTop;
     if (sec.heading != null) {
       outline.push({ title: sec.heading, page: pages.length - 1 });
@@ -117,7 +124,8 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
       for (const line of hl) { centered(line, size, y + LH * 1.5, cInk); y += 2 * LH; }
       y += LH;
     }
-    for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) {
+    const tocOnly = sec.text.trim() === "" && !!sec.toc?.length;   // 一页纯目录：不为空正文留那一行，目录紧跟章节名
+    for (const para of tocOnly ? [] : sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) {
       const lines = wrapText(para, inner, st(F), m);
       for (let li = 0; li < lines.length; li++) {
         const line = lines[li]!;
@@ -129,6 +137,30 @@ export function planPdfBook(spec: PdfBookSpec): PdfBookPlan {
         y += LH;
       }
     }
+    // ── 子节目录（user 2026-10-01「导出的时候要不要也加子叶的页面内链接…不然的话目录是空的就很奇怪」「好，两个做」）：和编辑器里一样——正文后面空一行，一节一行；
+    //    正文是空的（一页纯目录）就不空那一行。标签折行时页码和链接跟第一行；右边留三个字给页码。
+    const toc = (sec.toc ?? []).filter((e) => e.target >= 0 && e.target < spec.sections.length && e.target !== si);
+    if (toc.length) {
+      const ruled = (): void => { if (cRule) ops.push({ op: "line", x1: SIDE, y1: y + ruleY, x2: W - SIDE, y2: y + ruleY, color: cRule, width: 0.03 * F }); };
+      if (sec.text.trim() !== "") { if (!fits()) { newPage(); y = lineTop; } ruled(); y += LH; }
+      for (const e of toc) {
+        const lines = wrapText(e.label, inner - 3 * F, st(F), m);
+        lines.forEach((line, li) => {
+          if (!fits()) { newPage(); y = lineTop; }
+          ruled();
+          if (line !== "") ops.push({ op: "text", x: SIDE, y: y + bodyBase, text: line, size: F, color: cLink });
+          if (li === 0) tocPending.push({ page: pages[pages.length - 1]!, y, target: e.target });
+          y += LH;
+        });
+      }
+    }
+  }
+  // 目录行的页码 + 链接（现在每一节在哪一页都知道了）
+  for (const t of tocPending) {
+    const pi = sectionPage[t.target]; if (pi == null) continue;
+    const n = numbered.indexOf(pi), label = n >= 0 ? String(n + 1) : "";
+    if (label) t.page.ops.push({ op: "text", x: W - SIDE - m.width(label, st(F)), y: t.y + bodyBase, text: label, size: F, color: cMuted });
+    (t.page.links ??= []).push({ x: SIDE, y: t.y, w: inner, h: LH, page: pi });
   }
   // ── 页码（正文 / 图片页；封面与书名页不印）──
   numbered.forEach((pi, i) => { const p = pages[pi]!; const label = String(i + 1), size = 0.75 * F; p.ops.push({ op: "text", x: (W - m.width(label, st(size))) / 2, y: H - 1.0 * F, text: label, size, color: cMuted }); });

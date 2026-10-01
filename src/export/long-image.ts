@@ -16,10 +16,10 @@ import { statsForText } from "../doc-model.ts";
 
 export interface ImageRef { blob: Blob; w: number; h: number }
 export type LongImageSection =
-  | { kind: "text"; heading: string | null; text: string }
+  | { kind: "text"; heading: string | null; text: string; /** 子节目录：正文后面空一行列出来（和编辑器里一样；图片里点不了，只是文字）。 */ toc?: { label: string }[] }
   | { kind: "image"; heading: string | null; image: ImageRef };
 /** 编辑器贡献的「样子」（app 层从 computed style 量来）：字体栈、纸色 / 墨色、写字线颜色（null = 没开）。 */
-export interface LongImageLook { family: string; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null }
+export interface LongImageLook { family: string; paper: string; ink: string; inkSoft: string; muted: string; rule: string | null; /** 子节目录那种链接色；不给 = 墨色 */ link?: string }
 /** 排版引擎的输入：每行几个字 + 像素/字 + 行距倍数。charsPerLine = 设置 → 行宽（user「导出跟编辑器的行宽走啊」），其余由档推出。 */
 export interface ExportTypeset { charsPerLine: number; pxPerChar: number; lineHeightRatio: number; /** 注音带（em）：加在行距上面的那一截——汉字照旧坐在线上、离行底不变，拼音往上长（2026-09-30 萌神对齐）。缺省 0。 */ rubyBand?: number }
 /** 像素/字定死（不是用户选项）：30 → 20 字/行 684 宽。 */
@@ -169,9 +169,15 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
     first = false;
     if (sec.kind === "text") {
       textPages++; const st = statsForText(sec.text); cjk += st.cjk; en += st.en;
-      for (const para of sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) {
+      const tocOnly = sec.text.trim() === "" && !!sec.toc?.length;   // 一页纯目录：不为空正文留那一行
+      for (const para of tocOnly ? [] : sec.text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n")) {
         const lines = wrapText(para, inner, body, m);
         lines.forEach((_, li) => textRow(drawn(lines, li), body, bodyM, LH, "left", true, "text", bodyBase));
+      }
+      if (sec.toc?.length) {   // 子节目录：空一行（正文是空的就不空）+ 一节一行，坐在写字线上，链接色
+        const linkStyle: TextStyle = { ...body, color: look.link ?? look.ink };
+        if (sec.text.trim() !== "") textRow("", body, bodyM, LH, "left", true, "text", bodyBase);
+        for (const e of sec.toc) { const tl = wrapText(e.label, inner, body, m); tl.forEach((_, li) => textRow(drawn(tl, li), linkStyle, bodyM, LH, "left", true, "text", bodyBase)); }
       }
     } else {
       imagePages++; space(LH * 0.5); imageRow(sec.image, "image", false); space(LH * 0.5);

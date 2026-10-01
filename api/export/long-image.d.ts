@@ -7,7 +7,10 @@ export interface ImageRef {
 export type LongImageSection = {
     kind: "text";
     heading: string | null;
-    text: string;
+    text: string; /** 子节目录：正文后面空一行列出来（和编辑器里一样；图片里点不了，只是文字）。 */
+    toc?: {
+        label: string;
+    }[];
 } | {
     kind: "image";
     heading: string | null;
@@ -20,7 +23,8 @@ export interface LongImageLook {
     ink: string;
     inkSoft: string;
     muted: string;
-    rule: string | null;
+    rule: string | null; /** 子节目录那种链接色；不给 = 墨色 */
+    link?: string;
 }
 /** 排版引擎的输入：每行几个字 + 像素/字 + 行距倍数。charsPerLine = 设置 → 行宽（user「导出跟编辑器的行宽走啊」），其余由档推出。 */
 export interface ExportTypeset {

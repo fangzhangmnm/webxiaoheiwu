@@ -73,6 +73,17 @@ describe("export/long-image · planLongImage 切片", () => {
     const plain = planLongImage(spec([{ kind: "text", heading: "章", text }]), m).slices.flatMap((s) => s.ops.filter((o) => o.op === "text").map((o) => o.text));
     assert(plain.includes("章") && plain.includes("子丑寅卯") && !plain.some((t) => t.endsWith("*")));
   });
+  it("子节目录：正文后空一行、一节一行、链接色；纯目录页不空那一行；没有 link 色就用墨色", () => {
+    const lookL = { ...look, link: "#7a3d14" };
+    const p = planLongImage(spec([{ kind: "text", heading: "总", text: "正文", toc: [{ label: "甲" }, { label: "乙" }] }, { kind: "text", heading: "甲", text: "一" }], { look: lookL }), m);
+    const ops = p.slices.flatMap((s) => s.ops.filter((o) => o.op === "text"));
+    const body = ops.find((o) => o.text === "正文"), a = ops.find((o) => o.text === "甲" && o.style.color === "#7a3d14"), b = ops.find((o) => o.text === "乙");
+    assert(body && a && b, ops.map((o) => o.text).join("|")); eq(b.style.color, "#7a3d14");
+    eq(a.y - body.y, 2 * (b.y - a.y), "one blank line between body and toc"); assert(b.y > a.y);
+    const q = planLongImage(spec([{ kind: "text", heading: "目录", text: "", toc: [{ label: "甲" }] }, { kind: "text", heading: "甲", text: "一" }]), m);
+    const tq = q.slices.flatMap((s) => s.ops.filter((o) => o.op === "text")); const row = tq.filter((o) => o.text === "甲")[0];
+    eq(row.style.color, look.ink, "no link colour given → ink"); assert(row.y < tq.filter((o) => o.text === "甲")[1].y, "toc row comes before the child's own heading");
+  });
   it("每行字数只管折行，像素/字只管缩放：同一段字，20 字/行下 40 px/字的图宽是 20 px/字的两倍，行数相同；行距跟档走", async () => {
     const text = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";   // 30 字 → 20 字/行 = 2 行
     const m2 = { width: (t) => [...t].reduce((a, c) => a + (c === " " ? 10 : cjkRe.test(c) ? 40 : 20), 0), ascent: (st) => ({ asc: st.sizePx * 0.88, desc: st.sizePx * 0.24 }), ink: (st) => ({ asc: st.sizePx * 0.8, desc: st.sizePx * 0.1 }) };

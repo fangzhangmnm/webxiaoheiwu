@@ -26,7 +26,7 @@ import { installSansFont, installFont, loadFontBytes, FONT_FAMILY, type FontId }
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
 import { planPdfBook, type PdfSection } from "./export/pdf-book.ts";
 import { planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
-import { seedBook } from "./project/graph.ts";
+import { seedBook, treeChildren } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
 import { initGalleryHost } from "./gallery-host.ts";
 import { createDrawer } from "./drawer.ts";
@@ -581,11 +581,18 @@ function editorLook(): LongImageLook {
     family: cs.fontFamily,
     paper: pg.backgroundColor || "#fff", ink: v("--ink", "#1b1b1b"), inkSoft: cs.color || "#222222", muted: v("--ink-muted", "#888888"),
     rule: document.body.classList.contains("ruled-lines") ? v("--line", "#d8d2c4") : null,
+    link: resolveCssColor(v("--accent-strong", "#7a3d14"), "#7a3d14"),   // 子节目录的链接色（styles.css .child-toc-row）；变量里是 color-mix()，先让浏览器算成具体的颜色（PDF 那边只认具体的）
   };
+}
+/** 让浏览器把一个 CSS 颜色写法（变量里可能是 color-mix() 之类）算成具体的颜色串。 */
+function resolveCssColor(value: string, fallback: string): string {
+  const el = document.createElement("span"); el.style.display = "none"; el.style.color = fallback; el.style.color = value;
+  document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove();
+  return c || fallback;
 }
 async function imageRef(bytes: Uint8Array): Promise<ImageRef> { const blob = new Blob([bytes as unknown as BlobPart]); const { w, h } = await probeSize(blob); return { blob, w, h }; }
 /** 导出的原料（长图 / PDF 共用）：txt 稿 = 整篇；书 = 这一页 / 这一支（子树 DFS）/ 整本（全树 DFS，散页不含；hidden 的支剪掉）；图片页原位；封面 = graph.json cover 指的那页的高清字节。 */
-type ExportItem = { kind: "text"; heading: string | null; text: string } | { kind: "image"; bytes: Uint8Array };
+type ExportItem = { kind: "text"; heading: string | null; text: string; /** 子节目录：这次一起出门的直接子页（target = items 里的序号） */ toc?: { label: string; target: number }[] } | { kind: "image"; bytes: Uint8Array };
 interface ExportSource { title: string; date: string | null; cover: Uint8Array | null; /** 封面 + 书名那一段：整本 / 整篇才有 */ front: boolean; items: ExportItem[] }
 function collectExport(scope: LongImageScope): ExportSource | null {
   if (scope === "draft") {
@@ -598,13 +605,20 @@ function collectExport(scope: LongImageScope): ExportSource | null {
   project.commitEditor();
   // hidden（2026-09-30；2026-10-01 user「导出当前支和本页的时候忽视本页的visibility，只看子叶的」）：点名的这一页一定出门——它自己藏没藏不看；这一支 = 它 + 底下没藏的；整本 = 剪掉所有 hidden 的支
   const names = scope === "page" ? [cur] : s.exportOrder(scope === "branch" ? cur : null);
-  const items: ExportItem[] = [];
+  const items: ExportItem[] = []; const at = new Map<string, number>();   // 页名 → items 里的序号
   for (const n of names) {
     const k = nodeKind(n);
-    if (k === "txt") items.push({ kind: "text", heading: nodeDisplayName(n), text: readNodeText(s.project, n) ?? "" });
-    else if (k === "image") { const b = s.bytesOf(n); if (b) items.push({ kind: "image", bytes: b }); }
+    if (k === "txt") { at.set(n, items.length); items.push({ kind: "text", heading: nodeDisplayName(n), text: readNodeText(s.project, n) ?? "" }); }
+    else if (k === "image") { const b = s.bytesOf(n); if (b) { at.set(n, items.length); items.push({ kind: "image", bytes: b }); } }
   }
   if (!items.length) return null;
+  // 子节目录（v2.3.22，user 2026-10-01「导出的时候要不要也加子叶的页面内链接（做好pdf链接），一个是wysiwyg，一个是不然的话目录是空的就很奇怪」）：
+  //   和纸上的子节目录同一份名单，但只列**这次一起出门的**（隐藏的、范围外的不列——所以「这一页」没有目录）。PDF 里每行是链接 + 页码；长图里是文字。
+  for (const [n, i] of at) {
+    const it = items[i]!; if (it.kind !== "text") continue;
+    const toc = treeChildren(s.project, n).flatMap((c) => (at.has(c) ? [{ label: nodeDisplayName(c), target: at.get(c)! }] : []));
+    if (toc.length) it.toc = toc;
+  }
   const stem = parseDocName(project.name() ?? "").stem; const { date, title } = splitDatedName(stem);
   // 书名和封面只属于整本（user 2026-10-01「这一支的话是不是就应该没有书名和封面了」）：这一页 / 这一支从章节名直接开始；出处留在页脚小字和文件名里（书名 · 页名）
   if (scope !== "book") return { title: `${title || stem} · ${nodeDisplayName(cur)}`, date: null, cover: null, front: false, items };
@@ -731,18 +745,18 @@ async function pdfImage(bytes: Uint8Array): Promise<PdfImage> {
   return { jpeg: await encodeJpeg(d, img.w, img.h, 88), w: img.w, h: img.h, components: 3 };
 }
 /** 无交互路（探针 / 脚本）：opts.font = 字体字节（不给就走 loadPdfFont）。 */
-async function renderPdfFile(scope: LongImageScope, opts: { font?: Uint8Array } = {}): Promise<{ file: File; pages: number; cjk: number; en: number; missing: string[]; fontLabel: string; shapeSkipped: boolean } | null> {
+async function renderPdfFile(scope: LongImageScope, opts: { font?: Uint8Array } = {}): Promise<{ file: File; pages: number; cjk: number; en: number; missing: string[]; fontLabel: string; shapeSkipped: boolean; /** 页内链接条数（子节目录） */ links: number } | null> {
   const src = collectExport(scope); if (!src) return null;
   const f = opts.font ? { font: parseTtf(opts.font), label: "(probe)" } : await loadPdfFont(); if (!f) return null;
   const sections: PdfSection[] = [];
   for (const it of src.items) sections.push(it.kind === "text" ? it : { kind: "image", heading: null, image: await pdfImage(it.bytes) });
   const lk = editorLook();
-  const plan = planPdfBook({ title: src.title, date: src.date, cover: src.cover ? await pdfImage(src.cover) : null, front: src.front, sections, look: { paper: lk.paper, ink: lk.ink, inkSoft: lk.inkSoft, muted: lk.muted, rule: lk.rule }, typeset: currentTypeset(), font: f.font });
+  const plan = planPdfBook({ title: src.title, date: src.date, cover: src.cover ? await pdfImage(src.cover) : null, front: src.front, sections, look: { paper: lk.paper, ink: lk.ink, inkSoft: lk.inkSoft, muted: lk.muted, rule: lk.rule, ...(lk.link ? { link: lk.link } : {}) }, typeset: currentTypeset(), font: f.font });
   plan.doc.producer = `WebXiaoHeiWu ${APP_VERSION}`;
   const stats: PdfStats = { glyphs: 0, missing: [], fontBytes: 0 };
   const bytes = writePdf(plan.doc, f.font, { stats });
   const name = (src.title || "export").replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
-  return { file: new File([bytes as unknown as BlobPart], name, { type: "application/pdf" }), pages: plan.pageCount, cjk: plan.cjk, en: plan.en, missing: stats.missing, fontLabel: f.label, shapeSkipped: f.font.shapeSkipped.length > 0 };
+  return { file: new File([bytes as unknown as BlobPart], name, { type: "application/pdf" }), pages: plan.pageCount, cjk: plan.cjk, en: plan.en, missing: stats.missing, fontLabel: f.label, shapeSkipped: f.font.shapeSkipped.length > 0, links: plan.doc.pages.reduce((a, p) => a + (p.links?.length ?? 0), 0) };
 }
 async function exportPdfFlow(scope: LongImageScope): Promise<void> {
   if (!collectExport(scope)) { setStatus(t("export.empty")); return; }

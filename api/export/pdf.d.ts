@@ -39,10 +39,19 @@ export type PdfOp = {
     h: number;
     image: PdfImage;
 };
+/** 页内链接：这一页上的一块矩形（左上角坐标系，和 ops 一样），点了跳到第 page 页（从 0 起）。 */
+export interface PdfLink {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    page: number;
+}
 export interface PdfPage {
     w: number;
     h: number;
     ops: PdfOp[];
+    links?: PdfLink[];
 }
 export interface PdfOutlineItem {
     title: string;

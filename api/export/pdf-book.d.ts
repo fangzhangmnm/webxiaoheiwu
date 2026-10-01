@@ -5,18 +5,24 @@ import type { TextMeasurer } from "../image/codec.ts";
 export type PdfSection = {
     kind: "text";
     heading: string | null;
-    text: string;
+    text: string; /** 子节目录：正文后面空一行列出来，每行链到那一节的第一页、行尾印页码。target = sections 里的序号。 */
+    toc?: PdfTocEntry[];
 } | {
     kind: "image";
     heading: null;
     image: PdfImage;
 };
+export interface PdfTocEntry {
+    label: string;
+    target: number;
+}
 export interface PdfBookLook {
     paper: string;
     ink: string;
     inkSoft: string;
     muted: string;
-    rule: string | null;
+    rule: string | null; /** 目录链接的颜色（编辑器里子节目录那种）；不给 = 墨色 */
+    link?: string;
 }
 export interface PdfBookSpec {
     title: string;
@@ -61,7 +67,7 @@ export declare function pdfPageGeometry(typeset: ExportTypeset): {
     lineHeight: number;
     linesPerPage: number;
 };
-/** CSS 颜色串（`#rgb` / `#rrggbb` / `rgb()` / `rgba()`）→ 0..1 的 RGB；认不出 → 黑。 */
+/** CSS 颜色串（`#rgb` / `#rrggbb` / `rgb()` / `rgba()` / `color(srgb r g b)`）→ 0..1 的 RGB；认不出 → 黑。 */
 export declare function parseCssColor(s: string): Rgb;
 /** 用字体自己的度量量字宽（给 wrapText）。没有的字按 .notdef 的宽算。 */
 export declare function fontMeasurer(font: TtfFont): TextMeasurer;
