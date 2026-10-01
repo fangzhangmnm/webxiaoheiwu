@@ -125,7 +125,7 @@ export function planLongImage(spec: LongImageSpec, m: TextMeasurer, opts: { maxS
     rows.push({ kind, h: lh, ops: (y) => {
       const ops: SceneOp[] = [];
       if (ruled && look.rule) ops.push({ op: "line", x1: SIDE, y1: y + ruleY + 0.5, x2: W - SIDE, y2: y + ruleY + 0.5, color: look.rule, width: ruleW });
-      if (line !== "") ops.push({ op: "text", x: align === "center" ? W / 2 : SIDE, y: baseline(y, lh, met), text: line, style, align });
+      if (line !== "") ops.push({ op: "text", x: align === "center" ? Math.round(W / 2) : SIDE, y: Math.round(baseline(y, lh, met)), text: line, style, align });   // 基线落整像素：像素字不糊，普通字也更实
       return ops;
     } });
   const imageRow = (img: ImageRef, kind: RowKind, fullBleed: boolean) => {

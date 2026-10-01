@@ -558,9 +558,11 @@ async function encodeSlices(spec: LongImageSpec, plan: LongImagePlan): Promise<F
   }
   return files;
 }
-/** 无交互路（探针 / 脚本）：超过单张上限就按上限切。 */
-async function renderLongImageFiles(scope: LongImageScope, opts: { maxSliceHeight?: number } = {}): Promise<{ files: File[]; plan: LongImagePlan } | null> {
+/** 无交互路（探针 / 脚本）：超过单张上限就按上限切。opts.family / pxPerChar / charsPerLine = 试字体用的覆盖（2026-09-30 字体试样：像素字要按格子的整数倍画才不糊；不进产品 UI）。 */
+async function renderLongImageFiles(scope: LongImageScope, opts: { maxSliceHeight?: number; family?: string; pxPerChar?: number; charsPerLine?: number } = {}): Promise<{ files: File[]; plan: LongImagePlan } | null> {
   const spec = await collectLongImage(scope); if (!spec) return null;
+  if (opts.family) spec.look = { ...spec.look, family: opts.family };
+  if (opts.pxPerChar || opts.charsPerLine) spec.typeset = { ...typesetFor(opts.charsPerLine ?? spec.typeset.charsPerLine), ...(opts.pxPerChar ? { pxPerChar: opts.pxPerChar } : {}) };
   const m = createTextMeasurer();
   let plan = planLongImage(spec, m, opts);
   if (opts.maxSliceHeight == null && plan.totalHeight > SINGLE_IMAGE_MAX_HEIGHT) plan = planLongImage(spec, m, { maxSliceHeight: SINGLE_IMAGE_MAX_HEIGHT });
