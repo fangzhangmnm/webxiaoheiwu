@@ -1386,7 +1386,7 @@ const input = createInputPipeline({
 });
 const imeDock = createImeDock({
   ime, pipeline: input, dock: $("imeDock"), floating: $("candidateBar"),
-  labels: { space: t("kb.space"), symbols: t("kb.symbols"), letters: t("kb.letters"), more: t("kb.more"), zh: t("ime.modeZh"), en: t("ime.modeEn"), enter: t("kb.enter"), backspace: t("ui.voiceBackspace"), shift: t("kb.shift"), hide: t("kb.hide"), mic: t("voice.mic"), prevPage: t("kb.prevPage"), nextPage: t("kb.nextPage"), toggleMode: t("ime.clickToToggle") },
+  labels: { space: t("kb.space"), symbols: t("kb.symbols"), letters: t("kb.letters"), more: t("kb.more"), zh: t("ime.modeZh"), en: t("ime.modeEn"), enter: t("kb.enter"), backspace: t("ui.voiceBackspace"), shift: t("kb.shift"), hide: t("kb.hide"), mic: t("voice.mic"), confirm: t("kb.confirm"), prevPage: t("kb.prevPage"), nextPage: t("kb.nextPage"), toggleMode: t("ime.clickToToggle") },
   keyboardWanted,
   onHideRequest: () => { kbHiddenBy = "user"; kbSummoned = false; },
   onMic: () => toggleMic(),   // 手机键盘底排的话筒键（v2.3.31）= 纸面话筒钮同一个动作

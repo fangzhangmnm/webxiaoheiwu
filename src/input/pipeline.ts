@@ -121,7 +121,7 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     let ev = e;
     if (api.foldCapsLock && e.key.length === 1 && e.key >= "A" && e.key <= "Z" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && e.getModifierState("CapsLock")) {
       const lower = e.key.toLowerCase();
-      ev = new Proxy(e, { get: (t, prop) => { if (prop === "key") return lower; const v = Reflect.get(t, prop) as unknown; return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v; } });
+      ev = new Proxy(e, { get: (t, prop) => { if (prop === "key") return lower; if (prop === "getModifierState") return (k: string) => (k === "CapsLock" ? false : t.getModifierState(k)); const v = Reflect.get(t, prop) as unknown; return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v; } });   // CapsLock 当语音键时它不算「大写锁」（v2.3.33 Caps Lock = 字母直出，这里得说没锁）
     }
     const r = await ime.onKeydown(ev);   // 要吃的键在它第一个 await 之前就 preventDefault（同步生效）
     apply(el, r);

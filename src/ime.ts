@@ -32,6 +32,8 @@ interface Backend {
   clear(): Promise<ImeResult>;
   chooseCandidate(index: number): Promise<ImeResult>;
   commitDefault(withNewline: boolean): Promise<ImeResult>;
+  /** 组字区原样上屏（已选的字 + 剩下的字母；v2.3.33 回车的语义，同 iOS「确认」/ 微软拼音）。 */
+  commitRaw(): Promise<ImeResult>;
   changePage(prev: boolean): Promise<ImeResult>;
   dumpUserDir?(): Promise<UserDictDump>;
   restoreUserDir?(dump: UserDictDump): Promise<void>;
@@ -68,6 +70,7 @@ class StarterMapBackend implements Backend {
     const selected = this.candidates[0] ?? this.buffer; const consumedBuffer = this.buffer; this.resetState();
     return { type: "commit", text: withNewline ? `${selected}\n` : selected, consumedBuffer };
   }
+  async commitRaw(): Promise<ImeResult> { const consumedBuffer = this.buffer; const text = this.buffer; this.resetState(); return text ? { type: "commit", text, consumedBuffer } : { type: "clear" }; }
   async changePage(): Promise<ImeResult> { return { type: "composing" }; }
   async typePunctuation(): Promise<ImeResult> { return { type: "passthrough" }; }
 }
@@ -185,6 +188,8 @@ class RimeWorkerBackend implements Backend {
     });
   }
   changePage(prev: boolean) { return this.enqueue(async () => this.normalize(await this.call("changePage", prev))); }
+  // RIME 自己的 Return = 已选的字 + 剩下的输入原样上屏（实测：head「你」+ 输入 nivv → committed「你nivv」；双拼上屏的是打的键，不是转写出来的全拼）
+  commitRaw() { return this.enqueue(async () => this.normalize(await this.call("process", "{Return}"))); }
 
   // ── 用户词库 dump/restore（worker fsOperate 直通 IDBFS /rime）──
   async dumpUserDir(): Promise<UserDictDump> { const dump: UserDictDump = { files: [] }; await this._dumpRecursive("/rime", "", dump.files); return dump; }
@@ -254,6 +259,10 @@ export class NaturalCodeIME {
   pageSize = 5;   // 悬浮条缺省 5（dock.ts FLOAT_PAGE_SIZE 同值；软键盘露着时 dock 改 40）
   async setPageSize(n: number): Promise<void> { this.pageSize = n; if (this.backend.setPageSize) { try { await this.backend.setPageSize(n); } catch (e) { console.warn("[ime] setPageSize failed", e); } } }
   backend: Backend = new StarterMapBackend();
+  /** 临时英文（v2.3.33，user 2026-10-04「和ios对齐，嗯和你建议一样」「空格收尾留空格，因为不想留的话可以用回车」）：中文态里一个大写字母（Shift + 字母 / 软键盘上档一次）
+   *  起头，后面的字母、数字原样接着、不出汉字候选——「我用AI写」「Wi-Fi」不用切中英。空格 = 原样 + 一个空格；回车 = 原样；标点 = 原样 + 这个标点（中文标点照旧）；
+   *  退格删一个、删空即退出；Esc / Ctrl+Z 撤掉；点条上那枚原样芯片 = 原样；切中 / 英 = 原样带出去。null = 不在临时英文里。纯 JS，不进 RIME。 */
+  private temp: string | null = null;
   initializeError: string | null = null;
   initialized = false;
 
@@ -296,32 +305,82 @@ export class NaturalCodeIME {
   }
   getState(): ImeState {
     const s = this.backend.getState();
+    if (this.temp != null) return { enabled: this.enabled, asciiMode: this.asciiMode, buffer: this.temp, candidates: [], engine: s.engine, initializeError: this.initializeError, page: 0, hasMore: false };   // 条上只有原样那一枚
     return { enabled: this.enabled, asciiMode: this.asciiMode, buffer: s.buffer, candidates: s.candidates, engine: s.engine, initializeError: this.initializeError, page: s.page ?? 0, hasMore: !!s.hasMore };
   }
+  /** 临时英文收尾：原样 + suffix 上屏。 */
+  private takeTemp(suffix: string): ImeResult { const text = (this.temp ?? "") + suffix; this.temp = null; return text ? { type: "commit", text, consumedBuffer: "" } : { type: "clear" }; }
+  /** 把 RIME 里正在组的字收掉：先上首选；首选上不完（拼不成字的尾巴）剩下的原样带出——别留看不见的组字。没在组字 = null。 */
+  private async flushBackend(): Promise<{ text: string; consumedBuffer: string } | null> {
+    if (!(this.backend.getState().buffer || this.backend.busy)) return null;
+    let r = await this.backend.commitDefault(false);
+    let text = r.type === "commit" ? r.text : "", consumed = r.type === "commit" ? r.consumedBuffer : "";
+    if (this.backend.getState().buffer) { r = await this.backend.commitRaw(); if (r.type === "commit") { text += r.text; consumed = consumed || r.consumedBuffer; } }
+    return text ? { text, consumedBuffer: consumed } : null;
+  }
   // ── 不经按键的动词（软键盘 / 候选条点选；src/input/pipeline.ts 用）──
-  /** 首选上屏（同空格）；没在组字 → passthrough。 */
-  async commitFirst(): Promise<ImeResult> { if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.commitDefault(false); }
-  /** 点第 index 个候选（当前页内，0 起）。 */
-  async choose(index: number): Promise<ImeResult> { if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.chooseCandidate(index); }
+  /** 首选上屏（同空格；临时英文 = 原样、不带空格）；没在组字 → passthrough。 */
+  async commitFirst(): Promise<ImeResult> { if (this.temp != null) return this.takeTemp(""); if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.commitDefault(false); }
+  /** 点第 index 个候选（当前页内，0 起）。临时英文条上只有原样那一枚。 */
+  async choose(index: number): Promise<ImeResult> { if (this.temp != null) return this.takeTemp(""); if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.chooseCandidate(index); }
   /** 候选翻页。 */
-  async turnPage(prev: boolean): Promise<ImeResult> { if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.changePage(prev); }
-  isComposing(): boolean { return this.enabled && !this.asciiMode && (this.backend.getState().buffer.length > 0 || !!this.backend.busy); }
-  resetComposition(): void { this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
+  async turnPage(prev: boolean): Promise<ImeResult> { if (this.temp != null) return { type: "composing" }; if (!this.isComposing()) return { type: "passthrough" }; return await this.backend.changePage(prev); }
+  isComposing(): boolean { return this.enabled && !this.asciiMode && (this.temp != null || this.backend.getState().buffer.length > 0 || !!this.backend.busy); }
+  resetComposition(): void { this.temp = null; this.backend.resetState(); void this.backend.clear().catch(() => {}); }   // JS 态与 worker 缓冲一起清（只清 JS 会让下一击接在 worker 残留拼音后面——2026-09-04 探针抓到 zhe→「zhezhe」）
   async dumpUserDir(): Promise<UserDictDump | null> { if (!this.backend.dumpUserDir) return null; try { return await this.backend.dumpUserDir(); } catch (e) { console.warn("[ime] dumpUserDir failed", e); return null; } }
   async restoreUserDir(dump: UserDictDump): Promise<void> { if (!this.backend.restoreUserDir) return; try { await this.backend.restoreUserDir(dump); } catch (e) { console.warn("[ime] restoreUserDir failed", e); } }
 
   /** Shift 单击：中 ↔ EN。切到 EN 时把未完成的拼音原样提交。 */
   async toggleAsciiMode(): Promise<ImeResult> {
     const toAscii = !this.asciiMode;
-    const pending = this.backend.getState().buffer.replace(/ /g, "");   // 原样上屏不带 RIME 插的音节空格（同 Windows 微软拼音：Shift 上屏 nihao，不是 ni hao）
+    const pending = this.temp ?? this.backend.getState().buffer.replace(/ /g, "");   // 原样上屏不带 RIME 插的音节空格（同 Windows 微软拼音：Shift 上屏 nihao，不是 ni hao）；临时英文原样
+    this.temp = null;
     await this.backend.clear();
     this.asciiMode = toAscii;
     if (toAscii && pending) return { type: "commit", text: pending, consumedBuffer: pending };
     return { type: "clear" };
   }
 
+  /** 临时英文里的键（见 temp）。 */
+  private async onTempKey(event: KeyboardEvent): Promise<ImeResult> {
+    const k = event.key, mods = event.ctrlKey || event.altKey || event.metaKey;
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && (k === "z" || k === "Z")) { event.preventDefault(); this.temp = null; return { type: "clear" }; }
+    if (mods) return { type: "passthrough" };
+    if (/^[a-zA-Z0-9]$/.test(k)) { event.preventDefault(); this.temp += k; return { type: "composing" }; }
+    if (k === "Backspace") { event.preventDefault(); this.temp = this.temp!.slice(0, -1); if (!this.temp) { this.temp = null; return { type: "clear" }; } return { type: "composing" }; }
+    if (k === "Escape") { event.preventDefault(); this.temp = null; return { type: "clear" }; }
+    if (k === " ") { event.preventDefault(); return this.takeTemp(" "); }
+    if (k === "Enter") { event.preventDefault(); return this.takeTemp(""); }
+    const p = this.punctOverride(k, false);
+    if (p != null) { event.preventDefault(); return this.takeTemp(p); }
+    if (isRoutedPunct(event)) {   // 中文标点照旧（RIME 出全角）：先把原样那段收掉，再落标点
+      event.preventDefault();
+      const run = this.takeTemp("");
+      const r = await this.backend.typePunctuation(k);
+      const text = (run.type === "commit" ? run.text : "") + (r.type === "commit" ? r.text : "");
+      return text ? { type: "commit", text, consumedBuffer: "" } : r;
+    }
+    return { type: "passthrough" };
+  }
+
   async onKeydown(event: KeyboardEvent): Promise<ImeResult> {
     if (!this.enabled || this.asciiMode) return { type: "passthrough" };
+    // v2.3.33 大写（user 2026-10-04「和ios对齐」）：以前实体键盘的 Shift + 字母 / Caps Lock 都被折成小写塞进拼音（大写丢了），和软键盘不一致。
+    //   Caps Lock 锁着 = 字母直出、不进输入法（正在组的先收掉：首选 / 临时英文原样）；大写字母 = 起临时英文（见 temp）。
+    if (isAsciiLetter(event) && event.getModifierState?.("CapsLock")) {
+      if (!this.isComposing()) return { type: "passthrough" };
+      event.preventDefault();
+      const head = this.temp != null ? this.takeTemp("") : null;
+      const f = head && head.type === "commit" ? { text: head.text, consumedBuffer: "" } : await this.flushBackend();
+      return { type: "commit", text: (f?.text ?? "") + event.key, consumedBuffer: f?.consumedBuffer ?? "" };
+    }
+    if (this.temp != null) return await this.onTempKey(event);
+    if (isAsciiLetter(event) && event.key !== event.key.toLowerCase()) {
+      event.preventDefault();
+      this.temp = event.key;   // 同步立起来：手快的话下一个字母在 RIME 收尾之前就到了，它得进临时英文而不是拼音
+      const f = await this.flushBackend();   // 正在组的拼音先上首选
+      return f ? { type: "commit", text: f.text, consumedBuffer: f.consumedBuffer } : { type: "composing" };
+    }
     if (isAsciiLetter(event)) { event.preventDefault(); return await this.backend.typeLetter(event.key.toLowerCase()); }
     if (!(event.ctrlKey || event.altKey || event.metaKey)) {   // JS 层标点覆盖（RIME 方案层改不了，见 punctOverride）
       const p = this.punctOverride(event.key, this.isComposing());
@@ -341,7 +400,9 @@ export class NaturalCodeIME {
     if (event.key === "Escape") { event.preventDefault(); return await this.backend.clear(); }
     if (/^[1-9]$/.test(event.key)) { event.preventDefault(); return await this.backend.chooseCandidate(Number(event.key) - 1); }
     if (event.key === " ") { event.preventDefault(); return await this.backend.commitDefault(false); }
-    if (event.key === "Enter") { event.preventDefault(); return await this.backend.commitDefault(true); }
+    // 回车 = 原样上屏、不换行（v2.3.33，user「和ios对齐」：iOS 回车键此时是「确认」，微软拼音 / 搜狗 / macOS 同；再按一次才换行）。
+    //   以前是「上首选 + 换行」，而且走空格那条路——拼不成字的尾巴在时既不换行也没上完。中文态里打一个英文词：打完回车即可，不用切中英。
+    if (event.key === "Enter") { event.preventDefault(); return await this.backend.commitRaw(); }
     if (event.key === "PageDown" || event.key === "]" || event.key === "=") { event.preventDefault(); return await this.backend.changePage(false); }
     if (event.key === "PageUp" || event.key === "[" || event.key === "-") { event.preventDefault(); return await this.backend.changePage(true); }
     return { type: "passthrough" };

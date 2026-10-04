@@ -110,7 +110,7 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     else if (shown && !hideTimer) hideTimer = setTimeout(() => { hideTimer = null; if (!(pipeline.focused() && ime.getState().enabled && d.keyboardWanted())) setShown(false); renderFloating(); }, HIDE_DELAY_MS);
     const composing = s.enabled && !!s.buffer && !!field && !masked;
     if (shown) {
-      keyboard.setForm(form()); keyboard.setMasked(masked); keyboard.setMode(s.asciiMode ? "en" : "zh");
+      keyboard.setForm(form()); keyboard.setMasked(masked); keyboard.setMode(s.asciiMode ? "en" : "zh"); keyboard.setComposing(composing);
       stripHide.hidden = form() !== "phone";
       // 打字热路径（v2.3.31，user 2026-10-04「软键盘不应该被app卡」）：没变就不碰 DOM——render 每个键、每次焦点变化都会来；
       //   以前每次都重写 40 个候选 + 当场读 scrollWidth（逼一次排版）+ 读整块的高度，CPU ×4 量到摊到每个键 ≈ 14 ms。

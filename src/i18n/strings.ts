@@ -365,6 +365,7 @@ export const S = {
   "kb.more":      { zh: "#+=", en: "#+=" },
   "kb.letters":   { zh: "ABC", en: "ABC" },
   "kb.enter":     { zh: "换行 / 确定", en: "Return" },
+  "kb.confirm":   { zh: "确认", en: "Confirm" },   // 组字时回车键帽（v2.3.33 照 iOS：回车 = 原样上屏）
   "kb.shift":     { zh: "上档", en: "Shift" },
   "kb.hide":      { zh: "收起键盘", en: "Hide keyboard" },
   "kb.show":      { zh: "软键盘", en: "On-screen keyboard" },

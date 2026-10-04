@@ -36,7 +36,7 @@ export interface SoftKeyboardDeps {
   /** 引号风格（设置项；缺省 curly）：符号层第一层放哪对引号。 */
   quoteStyle?(): "curly" | "corner";
   /** 键帽上的字（界面语言）。 */
-  labels: { space: string; symbols: string; letters: string; more: string; zh: string; en: string; enter: string; backspace: string; shift: string; hide: string; mic?: string };
+  labels: { space: string; symbols: string; letters: string; more: string; zh: string; en: string; enter: string; backspace: string; shift: string; hide: string; mic?: string; confirm?: string };
 }
 export interface SoftKeyboard {
   el: HTMLElement;
@@ -52,6 +52,8 @@ export interface SoftKeyboard {
   reset(): void;
   /** 话筒键的样子：absent = 这台设备 / 这一页没有语音（空格吃掉那格）；其余照纸面话筒钮的 data-state。 */
   setMic(state: MicKeyState): void;
+  /** 正在组字（拼音 / 临时英文）：回车键帽写「确认」（照 iOS；回车 = 原样上屏，v2.3.33）。 */
+  setComposing(on: boolean): void;
 }
 export type MicKeyState = "absent" | "idle" | "recording" | "listening" | "transcribing" | "error" | "disabled";
 
@@ -91,7 +93,7 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
   let mode: KeyboardMode = "zh", masked = false, form: KeyboardForm = "phone", layer: Layer = "letters";
   let shift: "off" | "once" | "lock" = "off", lastShiftTap = 0;
   let extra: string[] = [];
-  let mic: MicKeyState = "absent";
+  let mic: MicKeyState = "absent", composing = false;
   let keys: K[] = [];   // 当前画在屏上的键（下标 = data-i）
 
   const effMode = (): KeyboardMode => (masked ? "en" : mode);
@@ -100,7 +102,7 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
   function rows(): K[][] {
     const zh = effMode() === "zh", tablet = form === "tablet";
     const bksp: K = { act: "key", v: "Backspace", icon: "backspace", w: 1.5, cls: "fn", aria: d.labels.backspace };
-    const enter: K = { act: "key", v: "Enter", icon: "key-enter", cls: "fn accent", aria: d.labels.enter };
+    const enter: K = composing && d.labels.confirm ? { act: "key", v: "Enter", label: d.labels.confirm, cls: "fn accent", aria: d.labels.enter } : { act: "key", v: "Enter", icon: "key-enter", cls: "fn accent", aria: d.labels.enter };
     const modeKey: K = { act: "mode", v: "", label: zh ? d.labels.zh : d.labels.en, cls: "fn" + (masked ? " disabled" : "") };
     const space: K = { act: "key", v: " ", label: d.labels.space, cls: "space" };
     const hide: K = { act: "hide", v: "", icon: "chevron-down", cls: "fn hide", aria: d.labels.hide };
@@ -161,8 +163,10 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
 
   function fire(k: K): void {
     if (k.act === "letter") {
-      // 不按上档：字母交给管线（中文态输入法拿去组字，英文态 / 密码框它放行 → 落小写）；按了上档：原样落大写，不进组字
-      if (upper()) d.onLiteral(k.v.toUpperCase()); else d.onKey(k.v);
+      // 不按上档：字母交给管线（中文态输入法拿去组字，英文态 / 密码框它放行 → 落小写）。
+      // v2.3.33（user 2026-10-04「和ios对齐」）：上档一次 = 大写也交给输入法（中文态 → 临时英文，见 ime.ts temp；英文态照常落大写）；
+      //   上档锁住（双击）= Caps Lock：大写直接落、不进输入法（正在组的先收掉）。以前上档一次也是直接落，后面的小写又回拼音，打不出 AI / Wi-Fi。
+      if (shift === "lock") d.onLiteral(k.v.toUpperCase()); else d.onKey(upper() ? k.v.toUpperCase() : k.v);
       if (shift === "once") { shift = "off"; invalidate(); }
     }
     else if (k.act === "key") d.onKey(k.v);
@@ -226,6 +230,7 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
     setExtraLetters(list) { if (list.join() !== extra.join()) { extra = [...list]; invalidate(); } },
     reset() { stopRepeat(); pending.clear(); if (layer !== "letters" || shift !== "off" || renderDue) { layer = "letters"; shift = "off"; render(); } },
     refresh() { invalidate(); },
+    setComposing(on) { if (composing !== on) { composing = on; invalidate(); } },
     setMic(m) { if (mic !== m) { const relayout = (mic === "absent") !== (m === "absent"); mic = m; if (relayout || form === "phone") invalidate(); } },
   };
 }

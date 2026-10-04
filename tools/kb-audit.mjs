@@ -54,6 +54,8 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "paper keeps a usable height above the keyboard", pg.h >= (h < 500 ? 110 : 200), `page.h=${pg.h}`);
   const keysFit = await page.evaluate(() => [...document.querySelectorAll("#imeDock .ime-key")].every((k) => { const r = k.getBoundingClientRect(); return r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.width >= 24 && r.height >= 30; }));
   probe(tag, "every key is on screen and at least 24×30", keysFit, await page.evaluate(() => JSON.stringify([...document.querySelectorAll("#imeDock .ime-key")].map((k) => { const r = k.getBoundingClientRect(); return [k.textContent, Math.round(r.width), Math.round(r.height)]; }).filter((x) => x[1] < 24 || x[2] < 30))));
+  // 页面外延底色（v2.3.33，Edge iPad「最下面还是空一点」= WebKit 用根背景色填底部安全区那一截）：键盘露着时根背景 = 键盘底色，那一截像键盘自己的底边
+  probe(tag, "docked: the root (html) background equals the keyboard's own background (Edge's bottom safe-area strip continues the keyboard)", await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor === getComputedStyle(document.getElementById("imeDock")).backgroundColor), await page.evaluate(() => `${getComputedStyle(document.documentElement).backgroundColor} vs ${getComputedStyle(document.getElementById("imeDock")).backgroundColor}`));
   await shot("01-keyboard");
   // 键位几何照 iOS（v2.1.33，user「ios 的键位会宽一点，然后 s 和 z 对齐的」）：所有字母键等宽；z 的左边 == s 的左边；第二排两端各空半键
   // v2.3.29（user 2026-10-04 键位对齐肌肉记忆 + iPad mini / iPhone SE2 截图；「数字收到符号里面省空间吧」）：
@@ -137,6 +139,26 @@ for (const [w, h, tag] of SIZES) {
     probe(tag, "two lanes: on commit the keyboard redraws first (candidates cleared), the app's (deliberately slow, 120 ms) input listeners run after it; the word still lands at the caret", !!kb && !!app && kb[1] < app[1] && (await ed()).v.slice(sL, sL + 1) === "你", JSON.stringify({ log, around: (await ed()).v.slice(sL - 2, sL + 3) }));
   }
 
+  // ③⅞ 回车 / 大写（v2.3.33，user 2026-10-04「那么和ios对齐，嗯和你建议一样」「空格收尾留空格，因为不想留的话可以用回车」）：
+  //   组字中回车 = 原样上屏不换行（键帽写「确认」）；上档一次 = 临时英文（后面的字母原样接着），空格收尾带一个空格、回车收尾不带
+  { const s5 = (await ed()).s;
+    await tapKeys("ni"); await wait(250);
+    const lab = await page.evaluate(() => [...document.querySelectorAll("#imeDock .ime-key.accent")].map((k) => k.textContent.trim()));
+    await tapKey("换行 / 确定"); await wait(300);
+    const a = await ed();
+    probe(tag, "composing: the return key reads 确认; tapping it puts the letters in as typed (ni) — no candidate, no newline", lab.includes("确认") && a.v.slice(s5, s5 + 2) === "ni" && a.s === s5 + 2 && (await page.evaluate(() => [...document.querySelectorAll("#imeDock .ime-key.accent")].every((k) => k.textContent.trim() !== "确认"))), JSON.stringify({ lab, around: a.v.slice(s5, s5 + 4), s: a.s - s5 }));
+    const s6 = (await ed()).s;
+    await tapKeys("wo"); await wait(200); await tapKey("上档"); await tapKey("A"); await tapKey("上档"); await tapKey("I"); await wait(250);
+    const mid = await page.evaluate(() => ({ buf: window.__xhw.ime.getState().buffer, chip: [...document.querySelectorAll("#imeDock .cand")].map((c) => c.textContent) }));
+    await tapKey("空格"); await wait(300);
+    const b = await ed();
+    probe(tag, "wo + ⇧A ⇧I: 我 goes in, AI is a temporary English run (one raw chip); space ends it WITH a space → 我AI␠", b.v.slice(s6, s6 + 4) === "我AI " && b.s === s6 + 4 && mid.buf === "AI" && JSON.stringify(mid.chip) === JSON.stringify(["AI"]), JSON.stringify({ around: b.v.slice(s6, s6 + 6), mid }));
+    const s7 = (await ed()).s;
+    await tapKey("上档"); await tapKey("O"); await tapKey("k"); await tapKey("换行 / 确定"); await wait(300);
+    const c = await ed();
+    probe(tag, "⇧O k + return: Ok goes in with no space and no newline", c.v.slice(s7, s7 + 2) === "Ok" && c.s === s7 + 2, JSON.stringify({ around: c.v.slice(s7, s7 + 4) }));
+  }
+
   // ③½ 拼不成字的拼音不再隐形（v2.3.29，user 2026-10-04「输入了不出字的拼音，会静默不显示拼音，但是得按退格才能消掉这些隐形的输入」）：
   //   RIME 把拼不成音节的字母放在 tail、选了半截的字放在 head，以前只画 body。现在拼音小字 = 全文；没有候选时候选行给一枚「原样上屏」芯片。
   {
@@ -182,11 +204,11 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "a punctuation key returns to the letters layer by itself (v2.3.31, user chose「标点后自动回」)", await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.layer === "letters"));
   await tapKey("上档"); await tapKey("A"); await tapKey("b"); await wait(200);
   const a4 = await ed();
-  probe(tag, "123 layer digits + ？, back to letters, shift-once A then lowercase b goes to the IME", a4.v.slice(s1, s1 + 4) === "12？A" && (await page.evaluate(() => window.__xhw.ime.getState().buffer)) === "b", a4.v.slice(s1, s1 + 6));
-  await tapKey("退格（按住连删）"); await wait(150);   // 删掉拼音 b
-  await tapKey("退格（按住连删）"); await wait(150);   // 删掉 A
+  probe(tag, "123 layer digits + ？, back to letters; shift-once A then b = temporary English run Ab (v2.3.33), nothing in the paper yet", a4.v.slice(s1, s1 + 3) === "12？" && a4.s === s1 + 3 && (await page.evaluate(() => window.__xhw.ime.getState().buffer)) === "Ab", JSON.stringify({ around: a4.v.slice(s1, s1 + 5), buf: await page.evaluate(() => window.__xhw.ime.getState().buffer) }));
+  await tapKey("退格（按住连删）"); await wait(150);   // 删掉临时英文的 b
+  await tapKey("退格（按住连删）"); await wait(150);   // 删掉 A → 临时英文退出
   const a5 = await ed();
-  probe(tag, "backspace: first the pinyin, then the letter before the caret", a5.v.slice(s1, s1 + 3) === "12？" && a5.s === s1 + 3, a5.v.slice(s1, s1 + 5));
+  probe(tag, "backspace eats the temporary English run letter by letter, the paper is untouched", a5.v.slice(s1, s1 + 3) === "12？" && a5.s === s1 + 3 && (await page.evaluate(() => window.__xhw.ime.getState().buffer)) === "", a5.v.slice(s1, s1 + 5));
   await tapKey("换行 / 确定"); await wait(150);
   probe(tag, "enter inserts a newline in the paper", (await ed()).v.slice(s1 + 3, s1 + 4) === "\n");
   await page.keyboard.press("Control+z").catch(() => {});   // 实体键：顺带验「实体键盘让位」在 ⑥
@@ -198,6 +220,7 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "real key press (Ctrl+Z) made the soft keyboard step aside; hide button keeps it hidden; paper gets its height back", (await rectOf("#imeDock"))?.shown !== true && (await rectOf(".page")).b > h - 40, JSON.stringify(await rectOf(".page")));
   const tg = await rectOf("#kbToggle");
   probe(tag, "keyboard button shows at the paper's bottom-left while the keyboard is hidden", !!tg?.shown && tg.l < w / 2, JSON.stringify(tg));
+  probe(tag, "keyboard hidden: the root background is back to the page color (--bg-0)", await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor !== getComputedStyle(document.getElementById("imeDock")).backgroundColor));
   await shot("05-hidden");
   await page.touchscreen.tap(tg.l + tg.w / 2, tg.t + tg.h / 2); await wait(400);
   probe(tag, "tap the keyboard button → keyboard back, focus in the paper", (await rectOf("#imeDock"))?.shown === true && (await ed()).active === "editor");
@@ -287,10 +310,18 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "Esc while composing in the sheet input cancels the pinyin only; the sheet stays open", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && document.getElementById("candidateBar").classList.contains("hidden")));
   await page.keyboard.type("shu"); await wait(300); await page.keyboard.press("Enter"); await wait(400);
   const v = await page.inputValue("#sheetInput");
-  probe(tag, "Enter while composing commits the first candidate into the input (no newline, no space) and does NOT confirm the sheet", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden")) && /^[\u4e00-\u9fff]+$/.test(v), JSON.stringify(v));
+  probe(tag, "Enter while composing puts the letters in as typed (shu; v2.3.33 = iOS 确认 / 微软拼音) — no newline — and does NOT confirm the sheet", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden")) && v === "shu", JSON.stringify(v));
   await page.keyboard.press("Enter"); await wait(900);
   probe(tag, "second Enter (not composing) confirms: file renamed", await page.evaluate((v) => document.getElementById("sheet").classList.contains("hidden") && document.getElementById("docNameButton").textContent === v, v), await page.evaluate(() => document.getElementById("docNameButton").textContent));
 
+  // 实体键盘的大写 / 回车（v2.3.33）：Shift + 字母以前被折成小写塞进拼音（大写丢了）；现在 = 临时英文，空格收尾带空格；组字中回车 = 原样
+  { await page.click("#editor"); await page.evaluate(() => { const e = document.getElementById("editor"); e.focus(); e.setSelectionRange(e.value.length, e.value.length); });
+    const s0 = await page.evaluate(() => document.getElementById("editor").value.length);
+    await page.keyboard.type("wo"); await wait(250); await page.keyboard.press("Shift+KeyA"); await page.keyboard.press("Shift+KeyI"); await wait(150); await page.keyboard.press("Space"); await wait(300);
+    await page.keyboard.type("ni"); await wait(250); await page.keyboard.press("Enter"); await wait(300);
+    const t = await page.evaluate((s0) => document.getElementById("editor").value.slice(s0), s0);
+    probe(tag, "hardware: wo + Shift+A Shift+I + space → 我AI␠ (uppercase kept, temporary English); ni + Enter → ni (as typed, no newline)", t === "我AI ni", JSON.stringify(t));
+  }
   // 光标跟随（v2.1.33，user 2026-09-30「打字的时候为什么页面会往下滚」）：纸末尾连按回车，每次 scrollTop 的增量必须 == 一行（以前多滚一行 = 2 × lh）
   {
     await page.evaluate(() => { const e = document.getElementById("editor"); e.focus(); e.value = Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 行`).join("\n"); e.dispatchEvent(new Event("input", { bubbles: true })); e.setSelectionRange(e.value.length, e.value.length); });
