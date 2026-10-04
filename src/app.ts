@@ -948,7 +948,7 @@ async function importDroppedFiles(files: File[]): Promise<void> {
   if (imgs.length) setStatus(t("img.dropTxtMode"), { error: true });
   const f = txts[0]; if (!f) return;
   const text = decodeTextBytes(new Uint8Array(await f.arrayBuffer())).text;
-  await editor.newDoc({ dir: editor.currentDir() });
+  await openNewDraft();
   const stem = f.name.replace(/\.txt$/i, "").trim();
   editor.state.pendingTitle = stem || null;
   editorEl.value = text; editorEl.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1027,11 +1027,11 @@ const isDirtyAny = () => (project.active() ? (project.session()?.dirty ?? false)
 async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
 /** 打开任一身份：工程 → 工程模式（txt 编辑器 park）；txt → txt 编辑器（工程模式关）。 */
 async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
-  libraryReturnTo = null;   // 换了文档：书库返回时不再重开旧的
+  libraryReturn = "replaced";   // 换了文档：书库返回时不再重开旧的
   if (docKind(name) === "project") {
     if (!editor.isParked()) await editor.park();
     const ok = await project.openStore(name, { promptUnlock: opts.promptUnlock });
-    if (!ok) { await leaveProject(); await editor.newDoc(); return false; }   // 打不开（本地无、坏、旧格式）→ 退出书模式、开一张新稿（park 过的 txt 编辑器没有身份，不能就那么留着）
+    if (!ok) { await openNewDraft(); return false; }   // 打不开（本地无、坏、旧格式）→ 退出书模式、开一张新稿（park 过的 txt 编辑器没有身份，不能就那么留着）
     document.body.dataset.project = "1";
     return ok;
   }
@@ -1039,12 +1039,26 @@ async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Pro
   if (editor.isParked()) editor.resume();   // 进书库时 park 过（见 releaseForLibrary）
   return editor.open(name, opts);
 }
+/** 换成一张空新稿——**任何入口都走这里**（书库 / 抽屉的「新建…」、锁卡、拖进 txt、打不开时退回、书库返回无处可回、开机）。
+ *  v2.3.30 以前各处直接调 `editor.newDoc`（user 2026-10-04「新建稿为什么会跳到上一本书。出了故障」），三个洞：
+ *    ① 新稿没打字前没有名字，书库返回（`returnFromLibrary`）拿「有没有名字」猜「书库里换没换文档」→ 猜成没换 → 重开上一本，之后打的字写进上一本；
+ *    ② 书库里编辑器是 park 着的，`newDoc` 不解 park；③ 书开着时（锁卡「新建稿」）书不关。
+ *  encrypted 要先有密码：取消 = 什么都不换、返回 false（调用方别关书库）。 */
+async function openNewDraft(opts: { encrypted?: boolean; dir?: string } = {}): Promise<boolean> {
+  if (opts.encrypted && !(await ensureUnlocked())) return false;
+  const dir = opts.dir ?? (project.active() ? parseDocName(project.name() ?? "").dir : editor.currentDir());
+  libraryReturn = "replaced";
+  await leaveProject();
+  if (editor.isParked()) editor.resume();
+  return editor.newDoc({ ...opts, dir });
+}
 // ── 进书库即关书（v2.1.34，user 2026-09-30「进书库关书同意」；起因「退出到图库之后还显示打开中」）：书库是文件管理器视角，进去就把手上的文档放下
 //   （落盘 + 释放），卡片上不再有「打开中」、随便删 / 改名、`galx.openActive` 那条路不再触发；「返回编辑器」= 重开刚才那篇（本地 IDB，快）。
-//   从书库里点开别的 / 新建 → openAny 已经换了文档，返回时什么都不做。
-let libraryReturnTo: string | null = null;
+//   从书库里点开别的 / 新建 → 换文档的那条路（openAny / openNewDraft / newProjectFlow / openLocalHome）记一笔 "replaced"，返回时什么都不做。
+//   v2.3.30：以前返回时拿「现在有没有打开的文档名」去猜换没换——新稿没打字前没有名字，猜错 → 重开上一本（user 2026-10-04「新建稿为什么会跳到上一本书」）。现在是显式的。
+let libraryReturn: { reopen: string | null } | "replaced" = { reopen: null };
 async function releaseForLibrary(): Promise<void> {
-  libraryReturnTo = activeName();
+  libraryReturn = { reopen: activeName() };
   if (project.active()) { await project.close(); delete document.body.dataset.project; edgeSidebar.render(); }
   if (!editor.isParked()) await editor.park();   // park = 先 flush 再静默：不收 input、不落盘、身份清空
   editorEl.value = "";   // 纸面别留上一篇的字（parked 期间 input 不算数）
@@ -1052,10 +1066,10 @@ async function releaseForLibrary(): Promise<void> {
   galleryHost.refresh();   // 「打开中」标签 / 可删性按「没有打开的」重算
 }
 async function returnFromLibrary(): Promise<void> {
-  const name = libraryReturnTo; libraryReturnTo = null;
-  if (activeName()) { editorEl.focus(); return; }   // 书库里已经开了别的（点卡片 / 新建）
-  if (name && await openAny(name)) { editorEl.focus(); return; }
-  await leaveProject(); if (editor.isParked()) editor.resume(); await editor.newDoc(); editorEl.focus();
+  const r = libraryReturn; libraryReturn = { reopen: null };
+  if (r === "replaced") { editorEl.focus(); return; }   // 书库里已经换了文档（点卡片 / 新建稿 / 新建书 / 本机的书）
+  if (r.reopen && await openAny(r.reopen)) { editorEl.focus(); return; }
+  await openNewDraft(); editorEl.focus();
 }
 async function newProjectFlow(): Promise<void> {
   // 默认名「作品」（user 2026-09-10「default 还是叫“作品”吧」；撞名由 createProjectDoc 加序号）；首节点「第一章」按语言生成
@@ -1070,6 +1084,7 @@ async function newProjectFlow(): Promise<void> {
     if (!editor.isParked()) await editor.park();
     await project.createInStore(name, firstNode);
     document.body.dataset.project = "1";
+    libraryReturn = "replaced";
     if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
     setStatus(t("project.created", { name: parseDocName(name).stem }));
     if (wantEncrypt) {   // 勾了加密：走顶栏锁钮同一条路（先要密码；取消密码框 = 这本书先明文，说清楚，锁钮随时可封）
@@ -1088,6 +1103,7 @@ async function openLocalHome(lh: LocalHome): Promise<void> {
   if (!editor.isParked()) await editor.park();
   const ok = await project.openLocal(lh);
   document.body.dataset.project = "1";
+  libraryReturn = "replaced";
   if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
   if (ok) setStatus(lh.canWriteBack ? t("project.localWriteBack") : t("project.localDownloadOnly"));
 }
@@ -1302,7 +1318,7 @@ const unpushedHint = (name: string | null): string => (name && drawer.findByName
 const reopenWithPrompt = () => { if (project.active()) { void project.unlock(); return; } const n = editor.state.name; if (n) void editor.open(n, { promptUnlock: true }); };
 lockCardUnlock.addEventListener("click", reopenWithPrompt);
 lockCardRetry.addEventListener("click", reopenWithPrompt);
-$("lockCardNew").addEventListener("click", () => { void editor.newDoc({ dir: editor.currentDir() }); });
+$("lockCardNew").addEventListener("click", () => { void openNewDraft(); });   // 锁着的是书时书要先关（v2.3.30 以前书留着、只换了底下 park 着的编辑器）
 function rememberLastActive(): void {
   if (!booted || !activeName() || !auth.isSignedIn()) return;   // 冷启动 open(last) 不写云端指针——别盖掉别的设备最后写的那篇
   appState.setItem("lastActive", { name: activeName()!, savedAt: Date.now(), device: deviceLabel() });
@@ -1858,8 +1874,7 @@ function openNewMenu(anchor: HTMLElement, currentFolder: () => string, afterNew:
       if (id === "folder") { void drawer.newFolder(); return; }
       if (id === "project") { void newProjectFlow(); return; }
       if (id === "local") { void openLocalProjectFlow(); return; }
-      if (project.active()) { void leaveProject().then(() => editor.newDoc({ dir: currentFolder(), encrypted: id === "enc" })).then(afterNew); return; }
-      void editor.newDoc({ dir: currentFolder(), encrypted: id === "enc" }).then(afterNew);
+      void openNewDraft({ dir: currentFolder(), encrypted: id === "enc" }).then((ok) => { if (ok) afterNew(); });   // 加密稿取消密码 = 什么都没换，书库 / 抽屉留着
     },
   });
 }
@@ -2015,11 +2030,11 @@ async function boot(): Promise<void> {
   const last = editor.lastOpenName();
   if (last) {
     const opened = await openAny(last);   // 失败时 openAny 已退到新稿
-    if (!opened) { if (!editor.state.pendingDate) await editor.newDoc(); setStatus(t("st.lastOpenFailed", { name: parseDocName(last).stem }), { error: true }); }
+    if (!opened) { if (!editor.state.pendingDate) await openNewDraft(); setStatus(t("st.lastOpenFailed", { name: parseDocName(last).stem }), { error: true }); }
   } else {
     await Promise.race([drawer.firstFrame(), new Promise((r) => setTimeout(r, 3000))]);   // 等列表首帧（最多 3s），不再死等 1.5s 后开空新稿
     const first = drawer.items()[0]?.name ?? null;
-    if (first) await openAny(first); else await editor.newDoc();
+    if (first) await openAny(first); else await openNewDraft();
   }
   booted = true;
   if (new URLSearchParams(location.search).has("reset")) { setStatus(t("settings.forceUpdated", { v: APP_VERSION })); try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ } }   // 强制更新回执

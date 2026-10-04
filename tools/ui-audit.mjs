@@ -765,6 +765,35 @@ for (const [w, h] of sizes) {
       probe(tag, "delete chain: the trash view lists it", await page.evaluate((v) => [...document.querySelectorAll("#galleryMount .gallery-tile")].some((t) => (t.querySelector(".gallery-tile-name")?.getAttribute("title") ?? t.textContent ?? "").includes(v.replace(/\.txt$/, ""))), victim), await page.evaluate(() => [...document.querySelectorAll("#galleryMount .gallery-tile .gallery-tile-name")].map((n) => n.textContent?.trim()).join("|")));
       await page.click("#galleryAsideBack"); await wait(300);
     } }
+  // ── 书库里「新建稿」= 真的换成一张新稿（v2.3.30，user 2026-10-04「新建稿为什么会跳到上一本书。出了故障」）：
+  //   以前新稿没打字前没有名字，书库返回时被当成「没换文档」→ 重开上一本，之后打的字写进上一本。上一篇是 txt / 书各验一次：
+  //   新建后屏上是空新稿、书没开着、编辑器不在 park；打字落成一篇新稿；上一篇一个字没多。
+  { const st = () => page.evaluate(() => ({ book: window.__xhw.project.active() ? window.__xhw.project.name() : null, txt: window.__xhw.editor.state.name, parked: window.__xhw.editor.isParked(), value: document.getElementById("editor").value, mode: document.body.dataset.mode ?? "" }));
+    const toLibrary = async () => { if (await page.evaluate(() => document.body.dataset.mode !== "gallery")) { await page.click("#libraryButton"); await wait(900); } };
+    const pickNew = async (label) => { await toLibrary(); await page.click("#galleryNewBtn"); await wait(200); await page.evaluate((l) => { const it = [...document.querySelectorAll(".popup-menu button")].find((b) => b.textContent.trim() === l); if (!it) throw new Error(`menu item ${l} not found`); it.click(); }, label); };
+    const typeIn = async (text) => { await page.evaluate((t) => { const e = document.getElementById("editor"); e.focus(); e.value += t; e.dispatchEvent(new Event("input", { bubbles: true })); }, text); await wait(1500); };
+    const readDoc = (name) => page.evaluate(async (n) => { if (/\.zip$/.test(n)) { await window.__xhw.openAny(n); const v = window.__xhw.project.session().currentText(); return v; } await window.__xhw.openAny(n); return document.getElementById("editor").value; }, name);
+    if (await page.evaluate(() => document.body.dataset.mode === "gallery")) { await page.click("#galleryBack"); await wait(400); }
+    // 上一篇 = txt 稿
+    await pickNew("新建稿"); await wait(1200); await typeIn("上一篇的字");
+    const prevTxt = (await st()).txt;
+    await pickNew("新建稿"); await wait(1500);
+    const a = await st();
+    probe(tag, "library 新建稿 after a txt draft: a fresh empty draft (no name yet, not parked, library closed) — not the previous draft again", !!prevTxt && a.txt == null && a.book == null && a.value === "" && !a.parked && a.mode !== "gallery", JSON.stringify({ prevTxt, a }));
+    await typeIn("新稿的字");
+    const b = await st();
+    probe(tag, "typing in it makes a new draft of its own; the previous draft is untouched", !!b.txt && b.txt !== prevTxt && b.value === "新稿的字" && (await readDoc(prevTxt)) === "上一篇的字", JSON.stringify({ b, prev: await readDoc(prevTxt) }));
+    // 上一篇 = 书
+    await pickNew("新建书…"); await wait(400); await page.fill("#sheetInput", "新建稿回归书"); await page.click("#sheetConfirm"); await wait(1500);
+    await typeIn("书里的字");
+    const book = (await st()).book;
+    await pickNew("新建稿"); await wait(1500);
+    const c = await st();
+    probe(tag, "library 新建稿 after a book: the book stays closed, a fresh empty draft is on the paper", !!book && c.book == null && c.txt == null && c.value === "" && !c.parked && c.mode !== "gallery", JSON.stringify({ book, c }));
+    await typeIn("另一篇新稿");
+    const d2 = await st();
+    probe(tag, "typing after that goes into the new draft, the book's page is untouched", !!d2.txt && d2.book == null && d2.value === "另一篇新稿" && (await readDoc(book)) === "书里的字", JSON.stringify({ d2, bookText: await readDoc(book) }));
+  }
   await ctx.close();
 }
 await browser.close(); srv.close();
