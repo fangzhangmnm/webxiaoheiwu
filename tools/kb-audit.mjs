@@ -56,15 +56,32 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "every key is on screen and at least 24×30", keysFit, await page.evaluate(() => JSON.stringify([...document.querySelectorAll("#imeDock .ime-key")].map((k) => { const r = k.getBoundingClientRect(); return [k.textContent, Math.round(r.width), Math.round(r.height)]; }).filter((x) => x[1] < 24 || x[2] < 30))));
   await shot("01-keyboard");
   // 键位几何照 iOS（v2.1.33，user「ios 的键位会宽一点，然后 s 和 z 对齐的」）：所有字母键等宽；z 的左边 == s 的左边；第二排两端各空半键
+  // v2.3.29（user 2026-10-04 键位对齐肌肉记忆 + iPad mini / iPhone SE2 截图；「数字收到符号里面省空间吧」）：
+  //   手机 = iPhone：回车在最右下角、宽 2.5 格；空格 3 格；字母层没有「收起」（在符号层话筒那格）。
+  //   平板 = iPad：没有数字行（4 排）；⌫ 在第一排最右、回车在第二排最右、「收起」在最右下角；第二排缩进半个键宽；z 在 w 下面（左 ⇧ 一个键宽）；有 ← →。
   {
     const g = await page.evaluate(() => {
-      const keys = [...document.querySelectorAll(".ime-keys[data-layer=letters] .ime-key")].filter((k) => /^[a-z]$/.test(k.textContent.trim()));
-      const rect = (ch) => keys.find((k) => k.textContent.trim() === ch).getBoundingClientRect();
+      const kb = document.querySelector("#imeDock .ime-keys"), all = [...kb.querySelectorAll(".ime-key")];
+      const keys = all.filter((k) => /^[a-z]$/.test(k.textContent.trim()));
+      const R = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, w: r.width }; };
+      const rect = (ch) => R(keys.find((k) => k.textContent.trim() === ch));
+      const aria = (a) => all.find((k) => k.getAttribute("aria-label") === a);
+      const icon = (id) => all.some((k) => k.querySelector("use")?.getAttribute("href") === "#" + id);
       const widths = keys.map((k) => Math.round(k.getBoundingClientRect().width * 10) / 10);
-      const row2 = rect("a").left - rect("q").left, key = rect("q").width, gap = rect("w").left - rect("q").right;
-      return { minW: Math.min(...widths), maxW: Math.max(...widths), zLeft: rect("z").left, sLeft: rect("s").left, row2Offset: row2, halfKey: (key + gap) / 2, gap };
+      const rows = [...kb.querySelectorAll(".ime-row")], rowR = R(rows[0]);
+      const q = rect("q"), w = rect("w"), a = rect("a"), s = rect("s"), z = rect("z"), key = q.w, gap = w.l - q.r;
+      const bk = aria("退格（按住连删）"), en = aria("换行 / 确定"), hide = aria("收起键盘"), last = R(all.at(-1)), space = all.find((k) => k.classList.contains("space"));
+      return { form: kb.dataset.form, nRows: rows.length, minW: Math.min(...widths), maxW: Math.max(...widths), zLeft: z.l, sLeft: s.l, wLeft: w.l, row2Offset: a.l - q.l, key, gap, pitch: key + gap, rowRight: rowR.r,
+        bk: bk && R(bk), en: en && R(en), qTop: q.t, aTop: a.t, hide: hide && R(hide), lastIsEnter: all.at(-1) === en, lastIsHide: all.at(-1) === hide, last, space: space && R(space), arrows: icon("chevron-left") && icon("chevron-right") };
     });
-    probe(tag, "letter keys all the same width; z aligned under s; asdf row inset by half a key (iOS geometry)", g.maxW - g.minW <= 1 && Math.abs(g.zLeft - g.sLeft) <= 1 && Math.abs(g.row2Offset - g.halfKey) <= 1, JSON.stringify(g));
+    const near = (x, y, tol = 1) => Math.abs(x - y) <= tol;
+    if (g.form === "phone") {
+      probe(tag, "phone (iPhone): letter keys all the same width; z aligned under s; asdf row inset by half a key", g.maxW - g.minW <= 1 && near(g.zLeft, g.sLeft) && near(g.row2Offset, (g.key + g.gap) / 2), JSON.stringify(g));
+      probe(tag, "phone (iPhone): return is the bottom-right key, 2.5 slots wide; space 3 slots; no hide key on the letters layer", g.lastIsEnter && near(g.last.r, g.rowRight) && near(g.en.w, 2.5 * g.pitch - g.gap, 1.5) && near(g.space.w, 3 * g.pitch - g.gap, 1.5) && !g.hide, JSON.stringify(g));
+    } else {
+      probe(tag, "tablet (iPad): 4 rows (no number row); letter keys same width; asdf inset by half a key; z under w", g.nRows === 4 && g.maxW - g.minW <= 1 && near(g.row2Offset, g.key / 2) && near(g.zLeft, g.wLeft), JSON.stringify(g));
+      probe(tag, "tablet (iPad): backspace at the end of the q row, return at the end of the a row, hide key bottom-right, ← → present", !!g.bk && near(g.bk.t, g.qTop) && near(g.bk.r, g.rowRight) && !!g.en && near(g.en.t, g.aTop) && near(g.en.r, g.rowRight) && g.lastIsHide && near(g.last.r, g.rowRight) && g.arrows, JSON.stringify(g));
+    }
   }
 
   // ② 多行正文、光标放在第 2 行末 → 打「nihao」点首选 → 字落在光标处、光标紧跟其后（不乱跑）
@@ -93,7 +110,7 @@ for (const [w, h, tag] of SIZES) {
   const a3 = await ed();
   probe(tag, "ni + space + 。 → 你。 in that order", a3.v.slice(s0, s0 + 2) === "你。" && a3.s === s0 + 2, a3.v.slice(s0 - 2, s0 + 4));
   await tapKeys("woxiangquchifanranhou"); await wait(400);
-  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, stripH: strip.height, smallPinyin: (() => { const p = document.querySelector("#imeDock .ime-preedit-small"); if (!p) return false; const cs = getComputedStyle(p); return p.textContent.length > 0 && parseFloat(cs.fontSize) <= 11 && cs.position === "absolute"; })(), noHideInStrip: !document.querySelector("#imeDock .ime-strip .ime-hide"), hideKey: !!document.querySelector("#imeDock .ime-key.hide") }; });
+  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, stripH: strip.height, smallPinyin: (() => { const p = document.querySelector("#imeDock .ime-preedit-small"); if (!p) return false; const cs = getComputedStyle(p); return p.textContent.length > 0 && parseFloat(cs.fontSize) <= 11 && cs.position === "absolute"; })(), noHideInStrip: !document.querySelector("#imeDock .ime-strip .ime-hide"), hideKey: document.querySelector("#imeDock .ime-keys").dataset.form === "phone" || !!document.querySelector("#imeDock .ime-key.hide") }; });   // 手机的「收起」在符号层（v2.3.29），平板在最下一排
   probe(tag, "long pinyin: 1st candidate still starts at the strip's left edge and is fully on screen; pinyin shown as a small (≤11px) overlay that costs no width or height (v2.1.33, user「拼音还是用比较小的字体显示一下吧」); no hide column, strip ≤ 40px; hide key lives in the bottom row", !!long.first && long.first.l >= 0 && long.first.l - long.stripLeft < 12 && long.first.r <= w && long.smallPinyin && long.noHideInStrip && long.hideKey && long.stripH <= 40, JSON.stringify(long));
   await shot("03-long-pinyin");
   // 候选字号跟字号档（v2.3.20，user「候选条跟会有什么坏处吗」「好，那么做」）：现值 × 档（调小不缩、封顶 1.5）；条长高多少，键盘那一块就长高多少，纸面跟着让
@@ -104,6 +121,32 @@ for (const [w, h, tag] of SIZES) {
     probe(tag, "candidate size follows the text-size setting: ×1.5 → candidates ×1.5 (19 → 28.5px; 17 → 25.5 on short screens), strip +8.5px, dock grows by the same amount and --dock-h follows, the visible paper still ends above the keyboard, keys unchanged; ×0.85 → same as standard (never shrinks)",
       (a.cand === 19 || a.cand === 17) && Math.abs(b.cand - a.cand * 1.5) < 0.1 && Math.abs((b.strip - a.strip) - 8.5) < 0.6 && Math.abs((b.dock - a.dock) - (b.strip - a.strip)) < 0.6 && Math.abs(b.dockVar - Math.round(b.dock)) < 0.6 && b.visBottom <= b.dockTop + 1 && Math.abs(b.key - a.key) < 0.1 && Math.abs(b.small - 15) < 0.1 && b.first && Math.abs(c.cand - a.cand) < 0.1 && Math.abs(c.strip - a.strip) < 0.1, JSON.stringify({ a, b, c })); }
   await tapKey("空格"); await wait(300);
+
+  // ③½ 拼不成字的拼音不再隐形（v2.3.29，user 2026-10-04「输入了不出字的拼音，会静默不显示拼音，但是得按退格才能消掉这些隐形的输入」）：
+  //   RIME 把拼不成音节的字母放在 tail、选了半截的字放在 head，以前只画 body。现在拼音小字 = 全文；没有候选时候选行给一枚「原样上屏」芯片。
+  {
+    const pre = () => page.evaluate(() => ({ small: document.querySelector("#imeDock .ime-preedit-small").textContent, cands: [...document.querySelectorAll("#imeDock .cand")].map((c) => ({ t: c.textContent, raw: c.dataset.raw != null })), buffer: window.__xhw.ime.getState().buffer }));
+    const s2 = (await ed()).s;
+    await tapKeys("niv"); await wait(300);
+    const p1 = await pre();
+    probe(tag, "ni + v (no syllable): the stray v is shown in the pinyin (ni v), candidates still there", /^ni\s?v$/.test(p1.small) && p1.cands.length >= 3 && !p1.cands[0].raw, JSON.stringify(p1));
+    await tapCand(0);
+    const p2 = await pre();
+    probe(tag, "pick 你 with the stray v left over: pinyin shows 你v, the strip offers one raw chip 你v (nothing silent)", p2.small === "你v" && p2.cands.length === 1 && p2.cands[0].raw && p2.cands[0].t === "你v", JSON.stringify(p2));
+    await tapCand(0);
+    const a35 = await ed(), p3 = await pre();
+    probe(tag, "tap the raw chip → 你v lands at the caret, composition over (no invisible leftovers)", a35.v.slice(s2, s2 + 2) === "你v" && a35.s === s2 + 2 && p3.buffer === "" && p3.small === "", JSON.stringify({ around: a35.v.slice(s2 - 2, s2 + 4), p3 }));
+    await tapKeys("ii"); await wait(300);
+    const p4 = await pre();
+    probe(tag, "ii (no candidates at all): pinyin shown and a raw chip ii in the strip", p4.small === "ii" && p4.cands.length === 1 && p4.cands[0].raw && p4.cands[0].t === "ii", JSON.stringify(p4));
+    await tapKey("退格（按住连删）"); await tapKey("退格（按住连删）"); await wait(200);
+    probe(tag, "backspace twice clears the visible ii (and nothing else)", (await pre()).buffer === "" && (await ed()).v.slice(s2, s2 + 2) === "你v" && (await ed()).s === s2 + 2, JSON.stringify({ p: await pre(), around: (await ed()).v.slice(s2 - 2, s2 + 4) }));
+    if (await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.form === "tablet")) {
+      const s3 = (await ed()).s;
+      await tapKey("，"); await tapKey("上档"); await tapKey("。"); await wait(200);
+      probe(tag, "tablet (iPad) ，/。 keys: tap = ，  shift + tap = ？ (the small one on top)", (await ed()).v.slice(s3, s3 + 2) === "，？", (await ed()).v.slice(s3, s3 + 3));
+    }
+  }
 
   // ④ 符号层 / 上档 / 退格 / 回车
   const s1 = (await ed()).s;
@@ -120,14 +163,23 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "enter inserts a newline in the paper", (await ed()).v.slice(s1 + 3, s1 + 4) === "\n");
   await page.keyboard.press("Control+z").catch(() => {});   // 实体键：顺带验「实体键盘让位」在 ⑥
 
-  // ⑤ 收起键盘 → 键盘钮在；点键盘钮 → 回来
-  await tapKey("收起键盘"); await wait(400);
+  // ⑤ 收起键盘 → 键盘钮在；点键盘钮 → 回来（手机的「收起」在符号层话筒那格，v2.3.29）
+  const isPhone = await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.form === "phone");
+  if (!isPhone) await tapKey("收起键盘");   // 键盘此刻已被上面的实体键让位收掉（这一下点在藏起来的键上）；手机字母层没有「收起」，在下面召回后单独验
+  await wait(400);
   probe(tag, "real key press (Ctrl+Z) made the soft keyboard step aside; hide button keeps it hidden; paper gets its height back", (await rectOf("#imeDock"))?.shown !== true && (await rectOf(".page")).b > h - 40, JSON.stringify(await rectOf(".page")));
   const tg = await rectOf("#kbToggle");
   probe(tag, "keyboard button shows at the paper's bottom-left while the keyboard is hidden", !!tg?.shown && tg.l < w / 2, JSON.stringify(tg));
   await shot("05-hidden");
   await page.touchscreen.tap(tg.l + tg.w / 2, tg.t + tg.h / 2); await wait(400);
   probe(tag, "tap the keyboard button → keyboard back, focus in the paper", (await rectOf("#imeDock"))?.shown === true && (await ed()).active === "editor");
+  if (isPhone) {   // v2.3.29：手机的「收起」= 符号层最下一排话筒那格
+    probe(tag, "phone: no hide key on the letters layer", await page.evaluate(() => !document.querySelector("#imeDock .ime-key.hide")));
+    await tapKey("123"); await wait(100); await tapKey("收起键盘"); await wait(400);
+    probe(tag, "phone: 123 → hide key → keyboard hidden, paper gets its height back", (await rectOf("#imeDock"))?.shown !== true && (await rectOf(".page")).b > h - 40);
+    const e2 = await rectOf("#editor"); await page.touchscreen.tap(e2.l + e2.w / 2, Math.min(e2.b - 10, h / 2)); await wait(400);
+    probe(tag, "phone: tap the paper again → keyboard back on the letters layer", (await rectOf("#imeDock"))?.shown === true && await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.layer === "letters"));
+  }
 
   // ⑥ 实体键盘让位：组字中候选回到 PC 式悬浮条；悬浮条两行、首选在屏内
   await page.keyboard.type("nihao"); await wait(400);

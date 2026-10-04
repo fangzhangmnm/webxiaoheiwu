@@ -9,6 +9,12 @@
 //       字母键落大写还是小写在**抬手那一刻**按当时的上档状态判，不看键帽上当时画的是什么。
 //     · 键面上 touchstart / mousedown 一律 preventDefault：焦点留在文本框里；iOS 的原生文字手势（点一下挪光标）不会穿过键盘落到下面的正文上。
 //   VR：手柄射线 / 手势捏合也是 pointer 事件，一次一个指针；hover 高亮帮瞄准（CSS `@media (hover: hover)`）。
+//   键位对齐 iOS 肌肉记忆（v2.3.29，user 2026-10-04「能不能让软键盘的位置和我的肌肉记忆对齐，或者至少退格键放在上面」+ iPad mini / iPhone SE2 两张截图；
+//     「左右可以加。数字收到符号里面省空间吧」）：宽度按「格」算（slot：一格 = 键宽 + 缝，CSS --pitch），键中心落在 iOS 同一个键的位置上。
+//     · 平板 = iPad：q…p ⌫ / 缩进半键 a…l 回车 / ⇧ z…m ！， ？。 ⇧ / 中英 符号 空格 ← → 符号 收起（中英在地球键的位置；← → 从空格右端切出来）；
+//       符号层 = iPad 的 .?123 层：数字 ⌫ / 符号 回车 / … / 同一排底。不再有数字行（数字在符号层第一排）。
+//     · 手机 = iPhone：前三排照旧（v2.1.33）；最下一排 符号 中英 ， 空格 。 回车——回车在最右下角、和 iPhone 一样宽（以前最右下角是「收起」，按 iPhone 习惯点回车会把键盘收掉）；
+//       「收起」进符号层最下一排（iPhone 话筒那一格）。
 import { iconHtml } from "../ui/icon.ts";
 
 export type KeyboardMode = "zh" | "en";
@@ -40,7 +46,9 @@ export interface SoftKeyboard {
 
 type Layer = "letters" | "sym1" | "sym2";
 type Act = "key" | "letter" | "literal" | "shift" | "layer" | "mode" | "hide";
-interface K { act: Act; v: string; label?: string; icon?: string; w?: number; cls?: string; aria?: string }
+/** w = 按权重分剩下的宽（旧排法）；slot = 占几格（一格 = 键宽 + 缝，CSS `--pitch`；键宽 = slot 格 − 一条缝）；fill = 吃掉这一排剩下的；
+ *  lead = 左边先空多少个键宽（iPad 第二排的半键缩进）；alt = 上档时落的字（iPad 的「！，」「？。」键，键帽上小字画在上面）。 */
+interface K { act: Act; v: string; label?: string; icon?: string; w?: number; slot?: number; fill?: boolean; lead?: number; alt?: string; cls?: string; aria?: string }
 
 const lit = (chars: string): K[] => [...chars].map((c) => ({ act: "literal" as const, v: c }));
 const litList = (list: string[]): K[] => list.map((c) => ({ act: "literal" as const, v: c }));
@@ -66,29 +74,39 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
   const upper = (): boolean => shift !== "off";
   const letterKey = (c: string): K => ({ act: "letter", v: c, label: upper() ? c.toUpperCase() : c });
   function rows(): K[][] {
-    const zh = effMode() === "zh";
+    const zh = effMode() === "zh", tablet = form === "tablet";
     const bksp: K = { act: "key", v: "Backspace", icon: "backspace", w: 1.5, cls: "fn", aria: d.labels.backspace };
-    const enter: K = { act: "key", v: "Enter", icon: "key-enter", w: form === "tablet" ? 1.6 : 1.8, cls: "fn accent", aria: d.labels.enter };
-    const modeKey: K = { act: "mode", v: "", label: zh ? d.labels.zh : d.labels.en, w: 1.25, cls: "fn" + (masked ? " disabled" : "") };
-    const space: K = { act: "key", v: " ", label: d.labels.space, w: form === "tablet" ? 5 : 3.6, cls: "space" };
-    const hide: K = { act: "hide", v: "", icon: "chevron-down", w: 1, cls: "fn hide", aria: d.labels.hide };
+    const enter: K = { act: "key", v: "Enter", icon: "key-enter", cls: "fn accent", aria: d.labels.enter };
+    const modeKey: K = { act: "mode", v: "", label: zh ? d.labels.zh : d.labels.en, cls: "fn" + (masked ? " disabled" : "") };
+    const space: K = { act: "key", v: " ", label: d.labels.space, cls: "space" };
+    const hide: K = { act: "hide", v: "", icon: "chevron-down", cls: "fn hide", aria: d.labels.hide };
+    const toLayer = (v: Layer, label: string): K => ({ act: "layer", v, label, cls: "fn" });
+    const s = (k: K, slot: number): K => ({ ...k, slot });
+    const fill = (k: K): K => ({ ...k, fill: true });
+    const sym = layer === "letters" ? toLayer("sym1", d.labels.symbols) : toLayer("letters", d.labels.letters);
+    // 最下一排（各层同一排）。iPad 实测（mini 竖屏，格 = 键宽 + 缝）：地球 1.05 / .?123 1.05 / 空格 6 / .?123 1.55 / 收起 余下 ≈ 1.35——
+    //   ← → 各 0.75 从空格右端切（空格 4.5）。iPhone 实测：123 1.25 / 地球 1.25 / 话筒 1 / 空格 4 / 回车 余下 ≈ 2.3——字母层话筒那格放「，」、空格右端 1 格放「。」，符号层话筒那格放「收起」。
+    const arrows: K[] = [{ act: "key", v: "ArrowLeft", icon: "chevron-left", cls: "fn", slot: 0.75 }, { act: "key", v: "ArrowRight", icon: "chevron-right", cls: "fn", slot: 0.75 }];
+    const bottom: K[] = tablet ? [s(modeKey, 1.05), s(sym, 1.05), s(space, 4.5), ...arrows, s(sym, 1.55), fill(hide)]
+      : layer === "letters" ? [s(sym, 1.25), s(modeKey, 1.25), s({ act: "literal", v: zh ? "，" : "," }, 1), s(space, 3), s({ act: "literal", v: zh ? "。" : "." }, 1), fill(enter)]
+      : [s(sym, 1.25), s(modeKey, 1.25), s(hide, 1), s(space, 4), fill(enter)];
     if (layer === "letters") {
       const r1 = [..."qwertyuiop"].map(letterKey), r2 = [..."asdfghjkl"].map(letterKey), r3 = [..."zxcvbnm"].map(letterKey);
       for (const x of extra) r2.push({ act: "key", v: x, label: x });
       const sh: K = { act: "shift", v: "", icon: "key-shift", w: 1.5, cls: "fn" + (shift === "lock" ? " locked" : shift === "once" ? " on" : ""), aria: d.labels.shift };
-      const comma: K = zh ? { act: "literal", v: "，" } : { act: "literal", v: "," };
-      const dot: K = zh ? { act: "literal", v: "。" } : { act: "literal", v: "." };
-      const bottom: K[] = [{ act: "layer", v: "sym1", label: d.labels.symbols, w: 1.25, cls: "fn" }, modeKey, comma, space, dot];
-      if (form === "tablet") bottom.push({ act: "key", v: "ArrowLeft", icon: "chevron-left", cls: "fn" }, { act: "key", v: "ArrowRight", icon: "chevron-right", cls: "fn" });
-      bottom.push(enter, hide);
-      const out = [r1, r2, [sh, ...r3, bksp], bottom];
-      if (form === "tablet") out.unshift(lit("1234567890"));
-      return out;
+      if (!tablet) return [r1, r2, [sh, ...r3, bksp], bottom];
+      // iPad：每排 11 格。第二排缩进半个键宽（微软双拼多一个 ; 时不缩，回车留一格）；第三排左 ⇧ 一格、右 ⇧ 吃余下 → z 落在 w 下面。
+      const one = (k: K): K => s(k, 1);
+      const punct = (v: string, alt: string): K => ({ act: "literal", v, alt, slot: 1, aria: v });
+      const row2 = r2.map(one); if (!extra.length) row2[0] = { ...row2[0]!, lead: 0.5 };
+      return [[...r1.map(one), fill(bksp)], [...row2, fill(enter)], [one(sh), ...r3.map(one), zh ? punct("，", "！") : punct(",", "!"), zh ? punct("。", "？") : punct(".", "?"), fill(sh)], bottom];
     }
     const corner = d.quoteStyle?.() === "corner";
     const table = layer === "sym1" ? (zh ? SYM1_ZH(corner) : SYM1_EN) : zh ? SYM2_ZH(corner) : SYM2_EN;
     const flip: K = { act: "layer", v: layer === "sym1" ? "sym2" : "sym1", label: layer === "sym1" ? d.labels.more : d.labels.symbols, w: 1.5, cls: "fn" };
-    return [table[0]!, table[1]!, [flip, ...table[2]!, bksp], [{ act: "layer", v: "letters", label: d.labels.letters, w: 1.25, cls: "fn" }, modeKey, space, enter, hide]];
+    // iPad 的 .?123 层：数字 ⌫ / 符号 回车 / #+= … #+= / 同一排底
+    if (tablet) return [[...table[0]!.map((k) => s(k, 1)), fill(bksp)], [...table[1]!.map((k) => s(k, 1)), fill(enter)], [{ ...flip, w: 1 }, ...table[2]!, { ...flip, w: 1 }], bottom];
+    return [table[0]!, table[1]!, [flip, ...table[2]!, bksp], bottom];
   }
   let renderDue = false;
   /** 状态变了要重画：有手指按着就先欠着。 */
@@ -98,13 +116,15 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
     keys = [];
     const html: string[] = [];
     for (const row of rows()) {
-      const letters = layer === "letters" && row.every((k) => k.act === "shift" || k.v === "Backspace" || k.act === "letter" || (k.act === "key" && /^[a-z;]$/.test(k.v)));   // 字母排（含 shift / 退格）：CSS 按 iOS 几何定宽
+      const letters = form === "phone" && layer === "letters" && row.every((k) => k.act === "shift" || k.v === "Backspace" || k.act === "letter" || (k.act === "key" && /^[a-z;]$/.test(k.v)));   // 手机字母排（含 shift / 退格）：CSS 按 iOS 几何定宽
       html.push(`<div class="ime-row" data-n="${row.length}"${letters ? ' data-letters=""' : ""}>`);
       for (const k of row) {
         const i = keys.push(k) - 1;
-        const label = k.icon ? iconHtml(k.icon, { cls: "ico" }) : esc(k.label ?? k.v);
+        const label = k.icon ? iconHtml(k.icon, { cls: "ico" }) : k.alt ? `<span class="alt">${esc(k.alt)}</span><span>${esc(k.v)}</span>` : esc(k.label ?? k.v);
         const wide = [...(k.label ?? k.v)].length > 1 && !k.icon ? " small" : "";
-        html.push(`<div class="ime-key ${k.cls ?? ""}${wide}" data-i="${i}" style="flex-grow:${k.w ?? 1}" role="button"${k.aria ? ` aria-label="${esc(k.aria)}"` : ""}>${label}</div>`);
+        const flex = k.fill ? "flex:1 1 0" : k.slot != null ? `flex:0 0 calc(${k.slot} * var(--pitch) - var(--kg))` : `flex-grow:${k.w ?? 1}`;
+        const lead = k.lead ? `;margin-left:calc(${k.lead} * (var(--pitch) - var(--kg)))` : "";
+        html.push(`<div class="ime-key ${k.cls ?? ""}${wide}${k.alt ? " dual" + (upper() ? " alt-on" : "") : ""}" data-i="${i}" style="${flex}${lead}" role="button"${k.aria ? ` aria-label="${esc(k.aria)}"` : ""}>${label}</div>`);
       }
       html.push(`</div>`);
     }
@@ -120,7 +140,10 @@ export function createSoftKeyboard(d: SoftKeyboardDeps): SoftKeyboard {
       if (shift === "once") { shift = "off"; invalidate(); }
     }
     else if (k.act === "key") d.onKey(k.v);
-    else if (k.act === "literal") d.onLiteral(k.v);
+    else if (k.act === "literal") {
+      if (k.alt && upper()) { d.onLiteral(k.alt); if (shift === "once") { shift = "off"; invalidate(); } }   // iPad「！，」「？。」：上档落上面那个
+      else d.onLiteral(k.v);
+    }
     else if (k.act === "shift") { const now = Date.now(); shift = shift === "off" ? "once" : shift === "once" && now - lastShiftTap < 400 ? "lock" : "off"; lastShiftTap = now; invalidate(); }
     else if (k.act === "layer") { layer = k.v as Layer; invalidate(); }
     else if (k.act === "mode") { if (!masked) d.onToggleMode(); }

@@ -1734,6 +1734,11 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
    第二排 9 键居中（两端各空半键），第三排 shift / 退格 = 1.5 键 + 半缝 → z 正落在 s 下面；键之间用 gap 不用 margin，缝 5px、外边 3px。
    符号层 / 最下一排仍按权重 flex-grow 铺满。 */
 .ime-keys { --kg: 5px; max-width: 1000px; margin: 0 auto; padding: 3px 3px 2px; touch-action: none; }
+/* 「格」（v2.3.29，user 2026-10-04 键位对齐肌肉记忆）：一格 = 键宽 + 缝；占 n 格的键宽 = n × --pitch − --kg（soft-keyboard.ts 行内 style 用）。
+   百分比在用到的地方才解析（= 那一排的宽）。手机：一排 10 个字母键 → (100% + 缝) / 10；平板（iPad）：一排 10 字母 + 退格 = 11 格。
+   iPad 横屏键盘是全宽的 → 平板放宽到 1400（盖住 iPad Pro 13 横屏 1376）。 */
+.ime-keys[data-form="phone"] { --pitch: calc((100% + var(--kg)) / 10); }
+.ime-keys[data-form="tablet"] { --pitch: calc(100% / 11); max-width: 1400px; }
 .ime-row { display: flex; justify-content: center; gap: var(--kg); }
 .ime-row[data-letters][data-n="9"] .ime-key { flex: 0 0 calc((100% - 9 * var(--kg)) / 10); flex-grow: 0 !important; }   /* 行内 style 写的是 flex-grow，得压过它 */
 .ime-row[data-letters][data-n="9"] .ime-key.fn { flex-basis: calc(1.5 * (100% - 9 * var(--kg)) / 10 + 0.5 * var(--kg)); }
@@ -1745,6 +1750,10 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
   font-size: 21px; line-height: 1; cursor: pointer; overflow: hidden; white-space: nowrap;
 }
 .ime-key.small { font-size: 14px; }
+/* iPad 的「！，」「？。」：上档字小字在上、主字在下；按了上档时上面那个变亮 */
+.ime-key.dual { flex-direction: column; gap: 3px; font-size: 19px; }
+.ime-key.dual .alt { font-size: 13px; color: var(--ink-muted); }
+.ime-key.dual.alt-on .alt { color: var(--accent); }
 .ime-key.space { font-size: 13px; color: var(--ink-muted); }
 .ime-key.fn { background: var(--key-fn-bg); color: var(--ink-soft); }
 .ime-key.accent { background: var(--accent); color: #faf2e2; }

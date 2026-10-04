@@ -69,6 +69,9 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
   /** 候选条。手机式（软键盘）：一页 40 个、整条手指横滑、不出翻页芯片（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」；
    *  40 个还不够时条尾留一枚 › 兜底）；PC 悬浮条：一页 9 个带序号、‹ › 翻页照旧。 */
   function candHtml(s: ReturnType<NaturalCodeIME["getState"]>, withIndex: boolean): string {
+    // 组字中却一个候选都没有（拼不成字：ii、选了「你」剩下的 v）：给一枚「原样上屏」芯片 = 空格的效果（RIME 实测：没候选时空格把组字区原样上屏）——
+    //   v2.3.29 以前这时候选行是空的、拼音只有角上的小字，像什么都没打（user 2026-10-04「会静默不显示拼音」）。
+    if (!s.candidates.length && s.buffer && s.page === 0) return `<span class="cand first raw" role="option" data-raw="">${esc(s.buffer.replace(/ /g, ""))}</span>`;
     const list = withIndex ? s.candidates.slice(0, FLOAT_PAGE_SIZE) : s.candidates;
     const chips = list.map((w, i) => `<span class="cand${i === 0 && s.page === 0 ? " first" : ""}" role="option" data-i="${i}">${withIndex ? `<span class="index">${i + 1}</span>` : ""}${esc(w)}</span>`);
     if (s.page > 0) chips.unshift(`<span class="cand nav" data-nav="prev" role="button" aria-label="${esc(d.labels.prevPage)}">${iconHtml("chevron-left", { cls: "ico" })}</span>`);
@@ -128,7 +131,7 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     e.preventDefault();
     if (chip.dataset.nav) { void pipeline.page(chip.dataset.nav === "prev"); return; }
     if (floating) { lingerUntil = Date.now() + FLOAT_LINGER_MS; setTimeout(renderFloating, FLOAT_LINGER_MS + 20); }
-    void pipeline.pick(Number(chip.dataset.i));
+    void pipeline.pick(chip.dataset.raw != null ? -1 : Number(chip.dataset.i));
   }
   for (const [box, floating] of [[d.dock, false], [d.floating, true]] as const) {
     box.addEventListener("mousedown", (e) => e.preventDefault());

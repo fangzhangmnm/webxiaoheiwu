@@ -80,7 +80,12 @@ class RimeWorkerBackend implements Backend {
   schema: ImeSchema = DEFAULT_SCHEMA;
   worker: Worker | null = null;
   queue: Promise<unknown> = Promise.resolve();
+  /** 组字区全文（画给人看、判「在不在组字」）= head + body + tail。v2.3.29 以前只取 body（user 2026-10-04「输入了不出字的拼音，会静默不显示拼音，
+   *  但是得按退格才能消掉这些隐形的输入」）——实测 RIME 把拼不成音节的字母放在 tail（nihaov → body「ni hao」tail「v」），选了半截的字放在 head
+   *  （niv 点「你」→ head「你」body「v」；再按 Esc → head「你」body 空，RIME 仍在组字），只看 body 就全成了看不见、却会被下一次上屏带出来的字。 */
   buffer = "";
+  /** 只有 body：上屏时「幽灵拼音」比对用（pipeline commitText），保持 v2.3.29 以前的口径——head 是汉字，拿它去比对会误删正文里恰好相同的字。 */
+  body = "";
   candidates: string[] = [];
   page = 0;
   hasMore = false;
@@ -106,7 +111,7 @@ class RimeWorkerBackend implements Backend {
   }
   setSimplified(v: boolean): Promise<void> { this.simplified = v; return this.enqueue(() => this.applyOptions(), { compose: false }); }
   getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine, page: this.page, hasMore: this.hasMore }; }
-  resetState() { this.buffer = ""; this.candidates = []; this.page = 0; this.hasMore = false; }
+  resetState() { this.buffer = ""; this.body = ""; this.candidates = []; this.page = 0; this.hasMore = false; }
   private pending = 0;
   /** **组字**任务在飞（首字回包前空格 / 退格 / 数字要排在它后面，不能按「缓冲为空」直通）。
    *  只数组字任务：换方案 / 初始化 / 预热排在同一条队里但不算——否则输入法还在加载时按 Enter 会被当成「组字中的确认」吞掉。 */
@@ -149,9 +154,11 @@ class RimeWorkerBackend implements Backend {
   }
   normalize(result: any): ImeResult {
     if (!result || typeof result !== "object") return { type: "passthrough" };
-    if (typeof result.committed === "string") { const consumedBuffer = this.buffer; this.resetState(); return { type: "commit", text: result.committed, consumedBuffer }; }
+    if (typeof result.committed === "string") { const consumedBuffer = this.body; this.resetState(); return { type: "commit", text: result.committed, consumedBuffer }; }
     if (result.state === 1) {
-      this.buffer = result.body ?? "";
+      const head = String(result.head ?? ""), body = String(result.body ?? ""), tail = String(result.tail ?? "");
+      this.body = body;
+      this.buffer = head + body + (body && tail ? " " : "") + tail;   // tail 前空一格：和 RIME 自己的音节空格同一个样子，多出来的那几个字母看得出是另一段
       this.candidates = Array.isArray(result.candidates) ? result.candidates.map((c: { text?: string }) => c.text ?? "") : [];
       this.page = typeof result.page === "number" ? result.page : 0;
       this.hasMore = result.isLastPage === false;
@@ -299,7 +306,7 @@ export class NaturalCodeIME {
   /** Shift 单击：中 ↔ EN。切到 EN 时把未完成的拼音原样提交。 */
   async toggleAsciiMode(): Promise<ImeResult> {
     const toAscii = !this.asciiMode;
-    const pending = this.backend.getState().buffer;
+    const pending = this.backend.getState().buffer.replace(/ /g, "");   // 原样上屏不带 RIME 插的音节空格（同 Windows 微软拼音：Shift 上屏 nihao，不是 ni hao）
     await this.backend.clear();
     this.asciiMode = toAscii;
     if (toAscii && pending) return { type: "commit", text: pending, consumedBuffer: pending };
