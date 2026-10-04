@@ -1780,8 +1780,16 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
   .ime-key.accent:hover { background: var(--accent-strong); }
   .cand:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 }
-.ime-keys[data-form="tablet"] { padding-top: 4px; }
-.ime-dock:has(.ime-keys[data-form="tablet"]) { --key-h: 50px; --strip-cand-h: calc(38px + var(--cand-grow)); }
+/* 平板 = iPad 系统键盘的尺寸（v2.3.32，user 2026-10-04「ipad上面键盘是不是键太矮了而且候选字也太矮了？量一下截图」「截图里面键盘有刻意垫高，但这个是键盘自己的布局」；
+   iPad mini 竖屏系统键盘截图逐像素量的，CSS px）：键高 55.5、行距 64.5（上下缝各 4.5）、候选栏到第一排键顶 63（候选条 56 + 分隔线 1 + 1.5 + 4.5）、候选字墨迹 24 ≈ 27px 字号、
+   字母墨迹 16.5 ≈ 23px、空格字 ≈ 18px；最后一排键底到屏幕底 28（安全区 20 + 4.5 + 2 + 1.5）。以前 50 / 56 / 38 / 19px / 21px / 13px，整块矮 50、第一排键顶离屏底差 34。横屏没量，先用同一套。 */
+.ime-keys[data-form="tablet"] { padding-top: 1.5px; }
+.ime-dock:has(.ime-keys[data-form="tablet"]) { --key-h: 55.5px; --strip-cand-h: calc(56px + var(--cand-grow)); padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 1.5px), 8px); }
+.ime-keys[data-form="tablet"] .ime-key { margin: 4.5px 0; font-size: 23px; }
+.ime-keys[data-form="tablet"] .ime-key.space, .ime-keys[data-form="tablet"] .ime-key.small { font-size: 18px; }
+.ime-keys[data-form="tablet"] .ime-key .ico { width: 25px; height: 25px; }
+.ime-dock:has(.ime-keys[data-form="tablet"]) .cand { font-size: calc(27px * var(--cand-scale)); padding: 0 16px; }
+.ime-dock:has(.ime-keys[data-form="tablet"]) .ime-strip .ime-preedit-small { font-size: calc(12px * var(--cand-scale)); height: calc(15px * var(--cand-scale)); line-height: calc(15px * var(--cand-scale)); }
 @media (max-height: 460px) {   /* 手机横屏：纵向空间最紧，键矮一档 */
   .ime-dock { --key-h: 33px; --strip-cand-h: calc(32px + var(--cand-grow)); }
   .ime-key { margin: 2px 0; font-size: 18px; }   /* 横向的缝走 .ime-row 的 gap（v2.1.33） */

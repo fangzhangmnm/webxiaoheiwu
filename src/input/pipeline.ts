@@ -44,6 +44,8 @@ export interface InputPipeline {
   toggleMode(): Promise<void>;
   /** 把一个已经到手的 keydown 交给输入法（焦点不在任何框上时 app 把第一击救回正文用）。 */
   routeHardwareKey(el: TextField, e: KeyboardEvent): Promise<void>;
+  /** app 道里排着的改字现在就做完（落盘 / 换页 / 离开之前：文本框此刻必须是最新的）。 */
+  flushText(): void;
 }
 
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn", "FnLock", "NumLock", "ScrollLock", "OS", "Hyper", "Super", "AltGraph"]);
@@ -65,6 +67,34 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
   }
   const editable = (el: TextField): boolean => isWritable(el) && d.canEdit(el);
 
+  // ── 两条道（v2.3.32，user 2026-10-04「关键是软键盘不应该被app卡」「我要的是app不拖垮键盘，而不是给app加一大堆瞎优化」→ 选「分两条道」）──
+  //   键盘道 = 下面 enqueue 那条队：app 自己的键 → 输入法（worker）→ 画拼音 / 候选（d.onChange）。**从不碰文本框、从不等 app。**
+  //   app 道 = textOps：上屏 / 落字 / 退格 / 回车 / 方向键这些「改文本框」的动作，按到达顺序排队，在键盘这一帧画完之后另起一拍一口气做完；
+  //     改文本框会发 input → app 对它的反应（量排版、落盘计时、字数…）都在这一拍里，不再夹在两个键中间。worker 算下一个字母的同时主线程才去跑 app 的反应。
+  //   顺序与数据：实体键盘 / 系统输入法的路仍同步（浏览器原生插字不能被我们排在后面），进来之前先把 app 道做完；
+  //     在键盘以外按下手指、离开页面、落盘 / 换页之前（flushText）也先做完——字不会落进下一页；做的时候再问一次这个框还能不能改。
+  //   物理上限：网页的触摸事件都在同一条主线程上，app 自己若跑一个很长的同步任务，键盘的下一帧也只能等它——只有系统键盘是独立进程。
+  const textOps: Array<() => void> = [];
+  let drainScheduled = false;
+  /** 排一个改字；返回的 promise = 它真的做完（或因框不能改而跳过）。软键盘自己不等它；要等结果的调用方（语音退格钮）才等。 */
+  function queueText(el: TextField, op: () => void): Promise<void> {
+    let done!: () => void; const p = new Promise<void>((r) => { done = r; });
+    textOps.push(() => { try { if (el.isConnected && editable(el)) op(); } finally { done(); } });
+    if (!drainScheduled) scheduleDrain();
+    return p;
+  }
+  function scheduleDrain(): void {
+    drainScheduled = true;
+    let ran = false; const run = (): void => { if (ran) return; ran = true; drainText(); };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => { setTimeout(run, 0); });   // 这一帧（键盘的变化）先画出去
+    setTimeout(run, 50);   // 页面在后台时 rAF 不来：兜底
+  }
+  function drainText(): void {
+    drainScheduled = false;
+    while (textOps.length) { const op = textOps.shift()!; try { op(); } catch (e) { console.warn("[input] text op failed", e); } }
+  }
+  const queueApply = (el: TextField, r: ImeResult): Promise<void> => (r.type === "commit" ? queueText(el, () => apply(el, r)) : Promise.resolve());
+
   /** 输入法上屏落字：幽灵拼音（系统层组字残留在框里的裸字母）一并替换。 */
   function commitText(el: TextField, consumedBuffer: string, text: string): void {
     if (el instanceof HTMLInputElement) text = text.replace(/[\r\n]+/g, "");   // 单行框：组字中按回车 = 首选上屏，不带换行（也不留空格）
@@ -80,6 +110,7 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
 
   // ── 实体键盘 ──
   async function routeHardwareKey(el: TextField, e: KeyboardEvent): Promise<void> {
+    drainText();   // 软键盘排着的改字先落（实体键盘放行的键由浏览器当场插，不能插到它们前面）
     if (isMasked(el)) return;
     if (e.key !== "Unidentified" && e.key !== "Process") lastRealKeydownAt = Date.now();
     if (e.key === "Shift") { if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat && ime.enabled) shiftCleanPress = true; return; }
@@ -127,6 +158,7 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     for (const ch of data) void press(ch.toLowerCase());
   }, true);
   window.addEventListener("beforeinput", (event: Event) => {
+    if (!isProgrammaticEdit()) drainText();   // 系统层插字之前，软键盘排着的改字先落（自己落字时发的 beforeinput 不算）
     const el = asTextField(event.target);
     const ie = event as InputEvent;
     if (!el || !ime.enabled || isProgrammaticEdit() || isMasked(el)) return;   // 自己落的字别再路由一遍
@@ -170,24 +202,28 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     else if (key === "ArrowRight") moveCaret(el, 1);
     else if ([...key].length === 1) insertText(el, key);
   }
+  // 返回的 promise = 这个键连同它的改字都做完（键盘道本身不等它：下一个键照常进输入法）
   function press(key: string): Promise<void> {
+    let done: Promise<void> = Promise.resolve();
     return enqueue(async (el) => {
       if (usesIme(el)) {
         const fake = new KeyboardEvent("keydown", { key, cancelable: true });
         const pending = ime.onKeydown(fake);
-        if (fake.defaultPrevented) { apply(el, await pending); return; }
+        if (fake.defaultPrevented) { done = queueApply(el, await pending); return; }
       }
-      defaultAction(el, key);
-    });
+      done = queueText(el, () => defaultAction(el, key));
+    }).then(() => done);
   }
   function literal(text: string): Promise<void> {
+    let done: Promise<void> = Promise.resolve();
     return enqueue(async (el) => {
-      if (usesIme(el) && ime.isComposing()) apply(el, await ime.commitFirst());
-      insertText(el, text);
-    });
+      if (usesIme(el) && ime.isComposing()) void queueApply(el, await ime.commitFirst());
+      done = queueText(el, () => insertText(el, text));
+    }).then(() => done);
   }
   function pick(index: number): Promise<void> {
-    return enqueue(async (el) => { if (usesIme(el)) apply(el, index < 0 ? await ime.commitFirst() : await ime.choose(index)); });
+    let done: Promise<void> = Promise.resolve();
+    return enqueue(async (el) => { if (usesIme(el)) done = queueApply(el, index < 0 ? await ime.commitFirst() : await ime.choose(index)); }).then(() => done);
   }
   function page(prev: boolean): Promise<void> {
     return enqueue(async (el) => { if (usesIme(el)) await ime.turnPage(prev); });
@@ -196,13 +232,18 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     const run = async (): Promise<void> => {
       const el = target();
       const r = await ime.toggleAsciiMode();
-      if (el && editable(el) && !isMasked(el)) apply(el, r);
+      if (el && editable(el) && !isMasked(el)) done = queueApply(el, r);
       d.onChange();
     };
+    let done: Promise<void> = Promise.resolve();
     const p = chain.then(run, run);
     chain = p.catch((e) => { console.warn("[input] mode toggle failed", e); });
-    return chain;
+    return chain.then(() => done);
   }
-  const api = { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey, /** CapsLock 是语音键时开：实体键盘单字母折回小写（见 routeHardwareKey）。 */ foldCapsLock: false };
+  // 在键盘以外按下手指 / 离开页面：先把排着的改字落掉（手指可能正要去点下一页、另一个框）
+  document.addEventListener("pointerdown", (e) => { if (textOps.length && !(e.target instanceof Element && e.target.closest("[data-ime-ui]"))) drainText(); }, true);
+  window.addEventListener("pagehide", drainText);
+  document.addEventListener("visibilitychange", drainText);
+  const api = { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey, flushText: drainText, /** CapsLock 是语音键时开：实体键盘单字母折回小写（见 routeHardwareKey）。 */ foldCapsLock: false };
   return api;
 }

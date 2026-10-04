@@ -62,6 +62,7 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
   //   平板的「收起」在键盘最右下（iPad），条上这枚藏着。翻的是 v2.1.24 的「吃掉了候选词需要的宝贵的横向空间」——user 自己提的。
   d.dock.innerHTML = `<div class="ime-strip"><div class="ime-preedit ime-preedit-small" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div><button type="button" class="ime-strip-hide" aria-label="${esc(d.labels.hide)}" title="${esc(d.labels.hide)}">${iconHtml("chevron-down", { cls: "ico" })}</button></div>`;
   d.dock.appendChild(keyboard.el);
+  d.dock.setAttribute("data-ime-ui", ""); d.floating.setAttribute("data-ime-ui", "");   // 输入管线：在这两块上按手指不算「去点别处」（不提前落 app 道里的改字）
   const cands = d.dock.querySelector<HTMLElement>(".ime-cands")!, dPreedit = d.dock.querySelector<HTMLElement>(".ime-preedit")!;
   const stripHide = d.dock.querySelector<HTMLButtonElement>(".ime-strip-hide")!;
   stripHide.addEventListener("click", (e) => { e.preventDefault(); d.onHideRequest(); render(); });

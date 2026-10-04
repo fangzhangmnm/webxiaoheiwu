@@ -1050,7 +1050,7 @@ const activeName = (): string | null => (project.active() ? project.name() : edi
 const syncKindAny = () => (project.active() ? project.syncKind() : editor.syncKind());
 const canEditNow = () => (project.active() ? project.canEdit() : editor.canEdit());
 const noteExternalEditAny = () => (project.active() ? project.noteExternalEdit() : editor.noteExternalEdit());
-const flushLocalAny = () => (project.active() ? project.flushLocal() : editor.flushLocal());
+const flushLocalAny = () => { input.flushText(); return project.active() ? project.flushLocal() : editor.flushLocal(); };   // 软键盘 app 道里排着的改字先落（v2.3.32 两条道）
 const pushNowAny = () => (project.active() ? project.pushNow() : editor.pushNow());
 const refreshIfCleanAny = () => (project.active() ? project.refreshIfClean() : editor.refreshIfClean());   // 2026-09-26：书也快进（以前书这一面是空操作 → 别的设备改了书这台永远看不到）
 const stateAny = () => (project.active() ? project.stateText() : editor.statusForDoc());   // 顶栏粘性稿态也是「谁活着问谁」（以前 boot 末尾拿 parked 的 txt 编辑器状态 → 工程一开就显「本地没有缓存」）
