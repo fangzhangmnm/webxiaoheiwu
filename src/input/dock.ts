@@ -27,6 +27,8 @@ export interface ImeDockDeps {
   dock: HTMLElement;
   floating: HTMLElement;
   labels: SoftKeyboardDeps["labels"] & { hide: string; prevPage: string; nextPage: string; toggleMode: string };
+  /** 手机键盘底排的话筒键（v2.3.31）：点了 = 纸面话筒钮同一个动作。 */
+  onMic?(): void;
   /** 软键盘现在该不该露（设置 + 设备 + 有没有见过实体键盘，app 说了算）。 */
   keyboardWanted(): boolean;
   /** 用户按了「收起键盘」。 */
@@ -43,6 +45,8 @@ export interface ImeDock {
   keyboardShown(): boolean;
   /** 中 / 英 切换了：PC 式悬浮条空着也闪一下芯片（v2.1.26，顶栏不再有「中 / 英」一字；软键盘露着时键盘自己的中 / 英键就是状态，不闪）。 */
   flashMode(): void;
+  /** 话筒此刻在键盘里（手机式那一块露着）：纸面的悬浮话筒钮让位（v2.3.31「语音也收进来」）。 */
+  micInKeyboard(): boolean;
   keyboard: ReturnType<typeof createSoftKeyboard>;
 }
 
@@ -50,20 +54,24 @@ const esc = (x: string): string => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", 
 
 export function createImeDock(d: ImeDockDeps): ImeDock {
   const { ime, pipeline } = d;
-  const keyboard = createSoftKeyboard({ labels: d.labels, quoteStyle: () => d.ime.quoteStyle, onKey: (k) => { void pipeline.press(k); }, onLiteral: (t) => { void pipeline.literal(t); }, onToggleMode: () => { void pipeline.toggleMode(); }, onHide: () => { d.onHideRequest(); render(); } });
+  const keyboard = createSoftKeyboard({ labels: d.labels, quoteStyle: () => d.ime.quoteStyle, onKey: (k) => { void pipeline.press(k); }, onLiteral: (t) => { void pipeline.literal(t); }, onToggleMode: () => { void pipeline.toggleMode(); }, onHide: () => { d.onHideRequest(); render(); }, onMic: () => d.onMic?.() });
   // 手机式那一块（v2.1.24）：候选条只有候选那一行——拼音不显示（user 2026-09-29「候选词框能不能矮一点，拼音放别的地方，或者干脆不显示？」），
   //   「收起键盘」搬进键盘最下一排（原来在候选条右侧占一列 46px，候选词少一格）。PC 式悬浮条照旧带拼音行。
   // v2.1.33：拼音以小字回到候选条（user 2026-09-30「拼音还是用比较小的字体显示一下吧」）——贴在条的左上角一行 11px，不占候选的宽度
-  d.dock.innerHTML = `<div class="ime-strip"><div class="ime-preedit ime-preedit-small" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div></div>`;
+  // v2.3.31：手机的「收起」回到候选条右端（user 2026-10-04「手机侧可以也学苹果放在候选栏的旁边」，iPhone 截图里候选条右端那枚 ⌄ + 一道竖线）；
+  //   平板的「收起」在键盘最右下（iPad），条上这枚藏着。翻的是 v2.1.24 的「吃掉了候选词需要的宝贵的横向空间」——user 自己提的。
+  d.dock.innerHTML = `<div class="ime-strip"><div class="ime-preedit ime-preedit-small" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div><button type="button" class="ime-strip-hide" aria-label="${esc(d.labels.hide)}" title="${esc(d.labels.hide)}">${iconHtml("chevron-down", { cls: "ico" })}</button></div>`;
   d.dock.appendChild(keyboard.el);
   const cands = d.dock.querySelector<HTMLElement>(".ime-cands")!, dPreedit = d.dock.querySelector<HTMLElement>(".ime-preedit")!;
+  const stripHide = d.dock.querySelector<HTMLButtonElement>(".ime-strip-hide")!;
+  stripHide.addEventListener("click", (e) => { e.preventDefault(); d.onHideRequest(); render(); });
   // PC 式悬浮条（v2.1.26）：左端一枚「中 / 英」芯片（原顶栏那一字搬来；user 2026-09-30「输入法也许可以收到悬浮框里面」），点 = 切中 / 英；右边拼音行 + 候选行。
   d.floating.innerHTML = `<span class="ime-mode" role="button"></span><div class="ime-preedit" aria-hidden="true"></div><div class="ime-cands" role="listbox"></div>`;
   const fMode = d.floating.querySelector<HTMLElement>(".ime-mode")!, fPreedit = d.floating.querySelector<HTMLElement>(".ime-preedit")!, fCands = d.floating.querySelector<HTMLElement>(".ime-cands")!;
   const MODE_FLASH_MS = 1100;
   let modeFlashUntil = 0;
 
-  let shown = false, hideTimer: ReturnType<typeof setTimeout> | null = null, lingerUntil = 0, lastBuffer = "", lastPage = -1;
+  let shown = false, hideTimer: ReturnType<typeof setTimeout> | null = null, lingerUntil = 0, lastBuffer = "", lastPage = -1, lastCandHtml = "", preeditRaf = 0;
   const form = (): KeyboardForm => (Math.min(window.innerWidth, window.innerHeight) >= 600 && window.innerWidth >= 700 ? "tablet" : "phone");
 
   /** 候选条。手机式（软键盘）：一页 40 个、整条手指横滑、不出翻页芯片（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」；
@@ -102,10 +110,15 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     const composing = s.enabled && !!s.buffer && !!field && !masked;
     if (shown) {
       keyboard.setForm(form()); keyboard.setMasked(masked); keyboard.setMode(s.asciiMode ? "en" : "zh");
-      cands.innerHTML = composing ? candHtml(s, false) : "";
-      dPreedit.textContent = composing ? s.buffer : ""; dPreedit.scrollLeft = dPreedit.scrollWidth;
+      stripHide.hidden = form() !== "phone";
+      // 打字热路径（v2.3.31，user 2026-10-04「软键盘不应该被app卡」）：没变就不碰 DOM——render 每个键、每次焦点变化都会来；
+      //   以前每次都重写 40 个候选 + 当场读 scrollWidth（逼一次排版）+ 读整块的高度，CPU ×4 量到摊到每个键 ≈ 14 ms。
+      //   块的高度由 ResizeObserver 盯着（setShown / 字号档 / 换布局都会触发），这里不再每次读。
+      const html = composing ? candHtml(s, false) : "";
+      if (html !== lastCandHtml) { lastCandHtml = html; cands.innerHTML = html; }
+      const pre = composing ? s.buffer : "";
+      if (dPreedit.textContent !== pre) { dPreedit.textContent = pre; if (pre && !preeditRaf) preeditRaf = requestAnimationFrame(() => { preeditRaf = 0; dPreedit.scrollLeft = dPreedit.scrollWidth; }); }   // 拼音太长时看末尾：在下一帧里读（那一帧本来就要排版）
       if (s.buffer !== lastBuffer || s.page !== lastPage) cands.scrollLeft = 0;   // 每次换了拼音 / 翻了页都从头看：首选永远在最左
-      setLayoutVar();
     }
     lastBuffer = s.buffer; lastPage = s.page;
     renderFloating();
@@ -148,7 +161,7 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
 
   document.addEventListener("focusin", () => render());
   document.addEventListener("focusout", () => { setTimeout(render, 0); });   // focusout 时 activeElement 还没换，下一拍再看
-  window.addEventListener("resize", () => { if (shown) { keyboard.setForm(form()); setLayoutVar(); } });
+  window.addEventListener("resize", () => { if (shown) { keyboard.setForm(form()); stripHide.hidden = form() !== "phone"; setLayoutVar(); } });
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => setLayoutVar()).observe(d.dock);
 
   function warmUp(): void {
@@ -160,7 +173,7 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     void d.floating.offsetHeight;   // 逼一次布局：样式计算 + 字形整形都在这一下发生
     d.floating.classList.add("hidden"); d.floating.style.visibility = "";
     fPreedit.textContent = ""; fCands.innerHTML = "";
-    if (shown) { cands.innerHTML = candHtml(sample, false); void cands.offsetHeight; cands.innerHTML = ""; }   // 手机式那一块露着时，它的候选行也过一遍（同一帧内清掉，看不见）
+    if (shown) { cands.innerHTML = candHtml(sample, false); void cands.offsetHeight; cands.innerHTML = lastCandHtml; }   // 手机式那一块露着时，它的候选行也过一遍（同一帧内清掉，看不见）
   }
-  return { render, keyboardShown: () => shown, keyboard, warmUp, flashMode };
+  return { render, keyboardShown: () => shown, keyboard, warmUp, flashMode, micInKeyboard: () => shown && form() === "phone" };
 }

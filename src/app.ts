@@ -51,10 +51,12 @@ import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
 import { setQuoteStyle } from "./zh-punct.ts";
 import { createInputPipeline } from "./input/pipeline.ts";
 import { createImeDock } from "./input/dock.ts";
+import type { MicKeyState } from "./input/soft-keyboard.ts";
 import { asTextField, type TextField } from "./input/field.ts";
 import { createPaper } from "./ui/paper.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+let imeDockReady = false;   // 软键盘那一块建好了没：renderMicVisibility 可能在它之前被调（boot 早期的 onChanged；v2.3.31 话筒进键盘）
 
 // ── 早期初始化（DOM 已就绪：module 默认 deferred）──
 initI18n();
@@ -158,15 +160,23 @@ document.addEventListener("focusin", (e) => { const f = asTextField(e.target); i
 let onKeyboardFloor: (() => void) | null = null;   // 键盘那一块的高度变了 → 浮窗（参考窗）让位；参考窗宿主建好之后才接上
 if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset，纸面整体缩到键盘上方（styles .page height）；iOS 若把视口顶上去，拉回 0 让固定顶栏别被推出屏
   const vv = window.visualViewport;
+  // v2.3.31（user 2026-10-04 iPad 真机「ipad键盘最下面没贴屏幕底部」，键盘下面空一截约 32 px，第二次报——v2.3.5 的 bottom: var(--kb-offset) 没治好）：
+  //   app 的软键盘露着时所有文本框都是 inputmode=none、系统键盘不会出来，此时可见视口不管被系统缩了多少（iPadOS 给快捷栏 / 窗口角留的位置）都不该把我们的键盘抬起来 → 当 0。
+  //   视口本身比屏幕矮的那一种，CSS 那边让键盘底色往下多铺一截（.ime-dock::after）。几个高度进黑匣子，还不贴就有数可查。
+  let lastGeo = "";
   const upd = (follow: boolean) => {
     if (vv.offsetTop > 0 && document.activeElement && document.activeElement !== document.body) window.scrollTo(0, 0);
-    const next = `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`;
+    const raw = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    const geo = `inner=${window.innerHeight} vv=${Math.round(vv.height)}+${Math.round(vv.offsetTop)} client=${document.documentElement.clientHeight} screen=${screen.height} docked=${document.body.classList.contains("ime-docked")}`;
+    if (geo !== lastGeo) { lastGeo = geo; diagNote("viewport", geo); }
+    const next = `${document.body.classList.contains("ime-docked") ? 0 : raw}px`;
     if (document.documentElement.style.getPropertyValue("--kb-offset") === next) return;
     document.documentElement.style.setProperty("--kb-offset", next);
     onKeyboardFloor?.();
     if (follow) followCaret();   // 键盘那一块变了：光标所在行别留在它底下
   };
   vv.addEventListener("resize", () => upd(true)); vv.addEventListener("scroll", () => upd(true)); upd(false);
+  new MutationObserver(() => upd(true)).observe(document.body, { attributes: true, attributeFilter: ["class"] });   // 软键盘露 / 收（body.ime-docked）也要重算
 }
 
 // ── 密码政策接线（弹窗 = 输入 sheet；verifier 住 synced-app-state）──
@@ -392,6 +402,7 @@ window.addEventListener("resize", () => { titleFitKey = ""; fitTitle(); });
 function syncBodyHeight(): void {
   paper.alignTop(pageBody);
   const lh = paper.lineHeight();
+  bodyLen = editorEl.value.length;
   const h = `${Math.max(1, Math.round(paper.contentHeight() / lh)) * lh}px`;
   if (editorEl.style.height !== h) editorEl.style.height = h;
   childToc.hidden = !(tocChildren.length > 0 && project.active());
@@ -401,7 +412,8 @@ function syncBodyHeight(): void {
 function followCaret(): void {
   if (document.activeElement !== editorEl) return;
   const lh = paper.lineHeight();
-  const bottom = editorEl.getBoundingClientRect().top + paper.caretBottom();   // 光标行底边（视口坐标）
+  const atEnd = (editorEl.selectionEnd ?? 0) >= editorEl.value.length;
+  const bottom = editorEl.getBoundingClientRect().top + (atEnd ? editorEl.clientHeight : paper.caretBottom());   // 光标行底边（视口坐标）；光标在末尾 = 正文框高度（框高 = 内容行数 × 行高），不量孪生框
   const top = bottom - lh;
   const cs = getComputedStyle(sheet);
   const viewTop = sheet.getBoundingClientRect().top + (parseFloat(cs.paddingTop) || 0);
@@ -440,7 +452,26 @@ function renderPageKin(): void {
   syncBodyHeight();
 }
 parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); editorEl.focus(); } });
-editorEl.addEventListener("input", () => { syncBodyHeight(); followCaret(); });   // 末尾续写：正文长一行目录跟着下一行；光标行不在可见区就把纸滚过去
+// 打字热路径（v2.3.31，user 2026-10-04「键盘反应尽量灵敏，不要被阻塞，不要卡。高实时要求」）：每次 input 都把全文塞进孪生框量两遍（正文高度 + 光标行），
+//   3 万字一次 ≈ 30 ms（CPU ×4 量的，空格上屏 21 → 80 ms、有 70 ms 的长任务）。改成：只加了字 = 行数只会多不会少 → 正文框自己的 scrollHeight 就够；
+//   字变少（删 / 替换）或停手 300 ms 后才量全文校正；光标在末尾时光标行底边 = 正文框高度，不量。
+let bodyLen = -1, bodyFullTimer: ReturnType<typeof setTimeout> | null = null, lastTypingAt = 0;
+/** 停手了再做（任何按键都把计时往后推——组字中的字母不发 input，只看 input 会在连打的两个词之间跳出来，CPU ×4 量到 55–70 ms 的长任务）。 */
+function afterTypingPause(fn: () => void, ms: number): ReturnType<typeof setTimeout> {
+  const tick = (): ReturnType<typeof setTimeout> => setTimeout(() => { const left = lastTypingAt + ms - Date.now(); if (left > 0) bodyFullTimer = setTimeout(() => { bodyFullTimer = tick(); }, left); else fn(); }, ms);
+  return tick();
+}
+function syncBodyHeightOnInput(): void {
+  const len = editorEl.value.length, grew = bodyLen >= 0 && len >= bodyLen && !!editorEl.style.height;
+  bodyLen = len;
+  if (bodyFullTimer) clearTimeout(bodyFullTimer);
+  // 字变少（删 / 替换）：120 ms 后量全文把多出来的行收掉；只加了字：停手 1.5 s 才量一次全文校正（替换选区、折行变化这类「加了字行数却少了」的少见情形在这里归位）
+  bodyFullTimer = grew ? afterTypingPause(() => { bodyFullTimer = null; syncBodyHeight(); }, 1500) : setTimeout(() => { bodyFullTimer = null; syncBodyHeight(); }, 120);
+  if (!grew) return;
+  const lh = paper.lineHeight(), sh = editorEl.scrollHeight;
+  if (sh > editorEl.clientHeight + 0.5) editorEl.style.height = `${Math.max(1, Math.round(sh / lh)) * lh}px`;
+}
+editorEl.addEventListener("input", () => { syncBodyHeightOnInput(); followCaret(); });   // 末尾续写：正文长一行目录跟着下一行；光标行不在可见区就把纸滚过去
 window.addEventListener("resize", () => { paper.refresh(); syncBodyHeight(); followCaret(); });   // 键盘 / 转屏 / 缩放改了容器高度与设备像素比
 /** 「点一下」而不是「按下」（v2.1.34，user 2026-09-30「滚动浏览的时候不应该触发软键盘」）：手指落下就给焦点的话，划纸面滚动也会把软键盘叫出来。
  *  按下记位置，抬起时没怎么动（< 10px、< 600 ms）才算点。鼠标照旧按下即算（没有滚动手势）。 */
@@ -1343,8 +1374,8 @@ let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后�
 const input = createInputPipeline({
   ime,
   canEdit: (el) => (el === editorEl ? canEditNow() : true),
-  onActivity: () => idlePoke(),
-  onCommit: () => { void maybePushUserDict(); },
+  onActivity: () => { lastTypingAt = Date.now(); idlePoke(); },
+  onCommit: () => { scheduleUserDictPush(); },
   onChange: () => renderImeState(),
   onKeydown: (el, e) => {
     if (voiceMode && el === editorEl && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key === "Backspace" || e.key === "Enter")) { voiceMode = false; renderMicVisibility(); }   // 敲了实体键 = 不是纯口述
@@ -1355,14 +1386,16 @@ const input = createInputPipeline({
 });
 const imeDock = createImeDock({
   ime, pipeline: input, dock: $("imeDock"), floating: $("candidateBar"),
-  labels: { space: t("kb.space"), symbols: t("kb.symbols"), letters: t("kb.letters"), more: t("kb.more"), zh: t("ime.modeZh"), en: t("ime.modeEn"), enter: t("kb.enter"), backspace: t("ui.voiceBackspace"), shift: t("kb.shift"), hide: t("kb.hide"), prevPage: t("kb.prevPage"), nextPage: t("kb.nextPage"), toggleMode: t("ime.clickToToggle") },
+  labels: { space: t("kb.space"), symbols: t("kb.symbols"), letters: t("kb.letters"), more: t("kb.more"), zh: t("ime.modeZh"), en: t("ime.modeEn"), enter: t("kb.enter"), backspace: t("ui.voiceBackspace"), shift: t("kb.shift"), hide: t("kb.hide"), mic: t("voice.mic"), prevPage: t("kb.prevPage"), nextPage: t("kb.nextPage"), toggleMode: t("ime.clickToToggle") },
   keyboardWanted,
   onHideRequest: () => { kbHiddenBy = "user"; kbSummoned = false; },
+  onMic: () => toggleMic(),   // 手机键盘底排的话筒键（v2.3.31）= 纸面话筒钮同一个动作
   onLayout: () => {
-    paper.refresh(); syncBodyHeight(); renderKbToggle(); followCaret(); refHost.relayout();
+    paper.refresh(); syncBodyHeight(); renderMicVisibility(); followCaret(); refHost.relayout();   // renderMicVisibility 里含 renderKbToggle；键盘露 / 收 = 话筒在键盘里还是在纸上
     const f = input.focused(); if (f && f !== editorEl && f.closest(".crypto-modal")) f.scrollIntoView({ block: "nearest" });   // sheet 里的框：键盘露出来之后别被它挡住
   },
 });
+imeDockReady = true;
 // 触屏点文本框：按「收起」收掉的键盘回来（实体键盘让位的不回来，见 kbHiddenBy）
 onTap(document, (e) => e.pointerType !== "mouse" && kbHiddenBy === "user" && !!asTextField(e.target), () => { kbHiddenBy = null; setTimeout(renderImeState, 0); }, { capture: true });   // 划动滚动不算「点」（v2.1.34）
 /** 纸面左下角的键盘钮：软键盘没露着、而这台设备可能用得上（触屏为主 / Quest）时才在。点 = 召出软键盘并把焦点放回文本框。 */
@@ -1407,6 +1440,13 @@ async function pushUserDict(): Promise<void> {
   finally { dictPushInFlight = false; }
 }
 function maybePushUserDict(): Promise<void> { return Date.now() - lastDictPushAt < USER_DICT_PUSH_INTERVAL_MS ? Promise.resolve() : pushUserDict(); }
+/** 上屏后的词库导出等停手 3 s 再做（v2.3.31）：导出是一串 worker 文件读（实测一次 19 个往返），和按键共用一条串行通道——打字途中跑会插在下一个字母前面。 */
+let dictPushTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleUserDictPush(): void {
+  if (Date.now() - lastDictPushAt < USER_DICT_PUSH_INTERVAL_MS) return;
+  if (dictPushTimer) clearTimeout(dictPushTimer);
+  dictPushTimer = setTimeout(() => { dictPushTimer = null; void maybePushUserDict(); }, 3000);
+}
 let dictRestoredSavedAt = 0;
 async function pullUserDict(): Promise<void> {
   const dump = rimeDict.getItem<UserDictDump>("dump");
@@ -1435,6 +1475,7 @@ const voiceErrorText = (error: unknown): string => {
 const onVoiceState = (next: VoiceState, error?: unknown) => {
   if (next === "recording" && pttBackend && !pttCommitted) return;   // PTT 250ms 门没过就不画「录音中」（Ctrl 和弦不闪）
   micButton.setAttribute("data-state", next);
+  if (!micButton.hidden || imeDock.micInKeyboard()) imeDock.keyboard.setMic(micButton.classList.contains("disabled") ? "disabled" : next);
   if (next === "recording" || next === "listening") setStatus(t("voice.recording"));
   else if (next === "transcribing") setStatus(t("voice.transcribing"));
   else if (next === "error" && error) setStatus(voiceErrorText(error), { error: true });
@@ -1456,10 +1497,12 @@ function renderMicVisibility(): void {
   const st = editor.state;
   const absent = !activeVoiceBackend() || pttKeyPref() === "none" || (project.active() ? (project.locked() || project.currentKind() === "image") : (!st.name && !st.pendingDate) || st.locked || (st.unavailable && booted));   // 锁着/不可用：锁卡盖着纸面，话筒收起；图片页没有正文可口述
   const blocked = project.active() ? !project.canEdit() : st.readOnly;   // 只读：可见但灰，点了 toast 说原因——别让钮凭空消失（user 2026-09-04「麦克风按钮怎么不见了」）
-  micButton.hidden = absent;
+  const inKb = imeDockReady && imeDock.micInKeyboard();   // 手机键盘露着：话筒在键盘底排（v2.3.31「语音也收进来」），纸上的悬浮钮让位
+  micButton.hidden = absent || inKb;
   micButton.classList.toggle("disabled", blocked);
+  if (imeDockReady) imeDock.keyboard.setMic(absent ? "absent" : blocked ? "disabled" : ((micButton.getAttribute("data-state") as MicKeyState | null) ?? "idle"));
   micButton.title = blocked ? t("voice.blockedReadOnly") : t("voice.mic");
-  voiceBackspaceButton.hidden = absent || blocked || !voiceMode;
+  voiceBackspaceButton.hidden = absent || blocked || !voiceMode || inKb;   // 键盘露着 = 键盘自己有退格
   renderKbToggle();
 }
 /** 语音模式退格：删光标前一个字（整个 emoji 算一个）/ 选区；组字中则删拼音。按住连删。走输入管线（同软键盘的退格键一条路）。 */
@@ -1477,7 +1520,9 @@ voiceBackspaceButton.addEventListener("pointerdown", (e) => {
   bsRepeat = setTimeout(tick, 450);
 });
 for (const ev of ["pointerup", "pointercancel", "pointerleave"]) voiceBackspaceButton.addEventListener(ev, stopBsRepeat);
-micButton.addEventListener("click", () => {
+micButton.addEventListener("click", () => toggleMic());
+/** 话筒：开 / 停口述（纸面悬浮钮与手机键盘的话筒键共用）。没包 = 下载 sheet。 */
+function toggleMic(): void {
   void (async () => {
     if (!canEditNow()) { setStatus(micButton.title, { error: true }); return; }
     const backend = activeVoiceBackend(); if (!backend) return;
@@ -1489,7 +1534,7 @@ micButton.addEventListener("click", () => {
     editorEl.focus();
     backend.toggle(pickSpeechLang());
   })();
-});
+}
 editorEl.addEventListener("input", () => { localSession?.notifyExternalInput(); });
 editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "recording") localSession.abort(); });
 

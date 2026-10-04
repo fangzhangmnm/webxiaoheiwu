@@ -1714,6 +1714,8 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
    键盘那一块的高度由 dock.ts 的 ResizeObserver 重量、写回 --dock-h，纸面跟着让。 */
 :root { --cand-scale: clamp(1, var(--font-scale, 1), 1.5); --cand-grow: calc(17px * (var(--cand-scale) - 1)); }
 .ime-dock.hidden { display: none; }
+/* 键盘底色往下多铺一截（v2.3.31，iPad 真机「键盘最下面没贴屏幕底部」）：iPadOS 给的视口比屏幕矮时，视口外那一条也是键盘的颜色，不露纸面背景 */
+.ime-dock::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 120px; background: var(--kb-bg); pointer-events: none; }
 .ime-strip { position: relative; display: flex; align-items: stretch; max-width: 1000px; margin: 0 auto; border-bottom: 1px solid color-mix(in srgb, var(--line-strong) 50%, transparent); }
 /* 手机式候选条上的拼音小字（v2.1.33）：绝对定位在条的左上，候选行照旧 36px、只把候选钮往下压 3px 给它让位 */
 .ime-strip .ime-preedit-small { position: absolute; left: 10px; top: 0; height: calc(12px * var(--cand-scale)); line-height: calc(12px * var(--cand-scale)); padding: 0; font-size: calc(10px * var(--cand-scale)); letter-spacing: 0.03em; color: var(--ink-muted); pointer-events: none; max-width: 60%; overflow: hidden; white-space: nowrap; }
@@ -1729,6 +1731,14 @@ body.ime-docked .gallery-full { bottom: var(--dock-h, 0px); }
 .cand .ico { width: 16px; height: 16px; }
 .cand .index { color: var(--ink-muted); margin-right: 5px; font-size: calc(11px * var(--cand-scale)); font-family: ui-monospace, monospace; }
 .ime-key.hide .ico { width: 20px; height: 20px; }
+/* 手机候选条右端的「收起」（v2.3.31，照 iPhone：一道竖线 + ⌄）；候选行吃掉剩下的宽、自己横滑 */
+.ime-strip .ime-cands { flex: 1 1 0; min-width: 0; }
+.ime-strip-hide { flex: none; width: 44px; margin: 6px 0; padding: 0; border: 0; border-left: 1px solid color-mix(in srgb, var(--line-strong) 60%, transparent); background: transparent; color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.ime-strip-hide[hidden] { display: none; }
+.ime-strip-hide .ico { width: 20px; height: 20px; pointer-events: none; }
+/* 键盘里的话筒键（手机底排，v2.3.31）：录音中 = 实心强调色；转写中 = 强调色字 */
+.ime-key.mic.mic-recording, .ime-key.mic.mic-listening { background: var(--accent); color: #faf2e2; }
+.ime-key.mic.mic-transcribing { color: var(--accent); }
 
 /* 键位几何照 iOS（v2.1.33，user 2026-09-30「ios 的键位会宽一点，然后 s 和 z 对齐的」）：字母层所有字母键等宽 = (行宽 − 9 缝) / 10，
    第二排 9 键居中（两端各空半键），第三排 shift / 退格 = 1.5 键 + 半缝 → z 正落在 s 下面；键之间用 gap 不用 margin，缝 5px、外边 3px。

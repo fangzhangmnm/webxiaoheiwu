@@ -86,11 +86,15 @@ export function createPaper(d: PaperDeps): Paper {
     }
     if (changed) d.onChanged();
   }
+  let lastText: string | null = null, lastWidth = -1, lastHeight = 0;
   function measure(text: string): number {
     if (!mirror.isConnected) d.page.appendChild(mirror);
-    mirror.style.width = `${d.editor.clientWidth}px`;
-    mirror.value = text;
-    return mirror.scrollHeight;
+    const w = d.editor.clientWidth;
+    if (text === lastText && w === lastWidth && mirror.isConnected) return lastHeight;   // 同一段字同一个宽：不再排一遍版（v2.3.31 打字热路径）
+    if (w !== lastWidth) mirror.style.width = `${w}px`;
+    if (mirror.value !== text) mirror.value = text;
+    lastText = text; lastWidth = w; lastHeight = mirror.scrollHeight;
+    return lastHeight;
   }
   function contentHeight(): number { return measure(d.editor.value); }
   function caretBottom(): number {

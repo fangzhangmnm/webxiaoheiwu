@@ -72,15 +72,18 @@ for (const [w, h, tag] of SIZES) {
       const q = rect("q"), w = rect("w"), a = rect("a"), s = rect("s"), z = rect("z"), key = q.w, gap = w.l - q.r;
       const bk = aria("退格（按住连删）"), en = aria("换行 / 确定"), hide = aria("收起键盘"), last = R(all.at(-1)), space = all.find((k) => k.classList.contains("space"));
       return { form: kb.dataset.form, nRows: rows.length, minW: Math.min(...widths), maxW: Math.max(...widths), zLeft: z.l, sLeft: s.l, wLeft: w.l, row2Offset: a.l - q.l, key, gap, pitch: key + gap, rowRight: rowR.r,
-        bk: bk && R(bk), en: en && R(en), qTop: q.t, aTop: a.t, hide: hide && R(hide), lastIsEnter: all.at(-1) === en, lastIsHide: all.at(-1) === hide, last, space: space && R(space), arrows: icon("chevron-left") && icon("chevron-right") };
+        bk: bk && R(bk), en: en && R(en), qTop: q.t, aTop: a.t, hide: hide && R(hide), lastIsEnter: all.at(-1) === en, lastIsHide: all.at(-1) === hide, last, space: space && R(space), arrows: icon("chevron-left") && icon("chevron-right"),
+        mic: !!aria("语音输入"), commaOnLetters: all.some((k) => k.textContent === "，" || k.textContent === "。"),
+        stripHide: (() => { const b = document.querySelector("#imeDock .ime-strip-hide"); return !!b && !b.hidden && b.getBoundingClientRect().width > 0; })(), floatingMic: !document.getElementById("micButton").hidden };
     });
     const near = (x, y, tol = 1) => Math.abs(x - y) <= tol;
     if (g.form === "phone") {
       probe(tag, "phone (iPhone): letter keys all the same width; z aligned under s; asdf row inset by half a key", g.maxW - g.minW <= 1 && near(g.zLeft, g.sLeft) && near(g.row2Offset, (g.key + g.gap) / 2), JSON.stringify(g));
-      probe(tag, "phone (iPhone): return is the bottom-right key, 2.5 slots wide; space 3 slots; no hide key on the letters layer", g.lastIsEnter && near(g.last.r, g.rowRight) && near(g.en.w, 2.5 * g.pitch - g.gap, 1.5) && near(g.space.w, 3 * g.pitch - g.gap, 1.5) && !g.hide, JSON.stringify(g));
+      probe(tag, "phone (iPhone, v2.3.31): bottom row = 123 · 中英 · 话筒 · 空格(4 slots) · 回车(2.5 slots, bottom-right); no ，。 and no hide key on the letters layer", g.lastIsEnter && near(g.last.r, g.rowRight) && near(g.en.w, 2.5 * g.pitch - g.gap, 1.5) && near(g.space.w, 4 * g.pitch - g.gap, 1.5) && !g.hide && g.mic && !g.commaOnLetters, JSON.stringify(g));
+      probe(tag, "phone: hide key sits at the right end of the candidate strip (iPhone ⌄); the floating mic on the paper steps aside while the keyboard (with its mic key) is up", g.stripHide && !g.floatingMic, JSON.stringify({ stripHide: g.stripHide, floatingMic: g.floatingMic }));
     } else {
       probe(tag, "tablet (iPad): 4 rows (no number row); letter keys same width; asdf inset by half a key; z under w", g.nRows === 4 && g.maxW - g.minW <= 1 && near(g.row2Offset, g.key / 2) && near(g.zLeft, g.wLeft), JSON.stringify(g));
-      probe(tag, "tablet (iPad): backspace at the end of the q row, return at the end of the a row, hide key bottom-right, ← → present", !!g.bk && near(g.bk.t, g.qTop) && near(g.bk.r, g.rowRight) && !!g.en && near(g.en.t, g.aTop) && near(g.en.r, g.rowRight) && g.lastIsHide && near(g.last.r, g.rowRight) && g.arrows, JSON.stringify(g));
+      probe(tag, "tablet (iPad): backspace at the end of the q row, return at the end of the a row, hide key bottom-right, ← → present; no hide in the strip, floating mic stays on the paper", !!g.bk && near(g.bk.t, g.qTop) && near(g.bk.r, g.rowRight) && !!g.en && near(g.en.t, g.aTop) && near(g.en.r, g.rowRight) && g.lastIsHide && near(g.last.r, g.rowRight) && g.arrows && !g.stripHide && g.floatingMic, JSON.stringify(g));
     }
   }
 
@@ -106,11 +109,12 @@ for (const [w, h, tag] of SIZES) {
 
   // ③ 连打「ni 空格 。」顺序不乱；长拼音首选仍在屏内
   const s0 = (await ed()).s;
-  await tapKeys("ni"); await tapKey("空格"); await tapKey("。"); await wait(300);
+  const phoneForm = await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.form === "phone");
+  await tapKeys("ni"); await tapKey("空格"); if (phoneForm) await tapKey("123"); await tapKey("。"); await wait(300);   // 手机的 。在 123 层（v2.3.31 iPhone 原样），点完自动回字母层
   const a3 = await ed();
   probe(tag, "ni + space + 。 → 你。 in that order", a3.v.slice(s0, s0 + 2) === "你。" && a3.s === s0 + 2, a3.v.slice(s0 - 2, s0 + 4));
   await tapKeys("woxiangquchifanranhou"); await wait(400);
-  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, stripH: strip.height, smallPinyin: (() => { const p = document.querySelector("#imeDock .ime-preedit-small"); if (!p) return false; const cs = getComputedStyle(p); return p.textContent.length > 0 && parseFloat(cs.fontSize) <= 11 && cs.position === "absolute"; })(), noHideInStrip: !document.querySelector("#imeDock .ime-strip .ime-hide"), hideKey: document.querySelector("#imeDock .ime-keys").dataset.form === "phone" || !!document.querySelector("#imeDock .ime-key.hide") }; });   // 手机的「收起」在符号层（v2.3.29），平板在最下一排
+  const long = await page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"); const r = c?.getBoundingClientRect(); const strip = document.querySelector("#imeDock .ime-strip").getBoundingClientRect(); return { first: r ? { l: r.left, r: r.right, t: c.textContent } : null, stripLeft: strip.left, stripH: strip.height, smallPinyin: (() => { const p = document.querySelector("#imeDock .ime-preedit-small"); if (!p) return false; const cs = getComputedStyle(p); return p.textContent.length > 0 && parseFloat(cs.fontSize) <= 11 && cs.position === "absolute"; })(), noHideInStrip: true, hideKey: document.querySelector("#imeDock .ime-keys").dataset.form === "phone" ? !document.querySelector("#imeDock .ime-strip-hide").hidden : !!document.querySelector("#imeDock .ime-key.hide") }; });   // 手机的「收起」在候选条右端（v2.3.31，照 iPhone），平板在键盘最右下
   probe(tag, "long pinyin: 1st candidate still starts at the strip's left edge and is fully on screen; pinyin shown as a small (≤11px) overlay that costs no width or height (v2.1.33, user「拼音还是用比较小的字体显示一下吧」); no hide column, strip ≤ 40px; hide key lives in the bottom row", !!long.first && long.first.l >= 0 && long.first.l - long.stripLeft < 12 && long.first.r <= w && long.smallPinyin && long.noHideInStrip && long.hideKey && long.stripH <= 40, JSON.stringify(long));
   await shot("03-long-pinyin");
   // 候选字号跟字号档（v2.3.20，user「候选条跟会有什么坏处吗」「好，那么做」）：现值 × 档（调小不缩、封顶 1.5）；条长高多少，键盘那一块就长高多少，纸面跟着让
@@ -151,7 +155,20 @@ for (const [w, h, tag] of SIZES) {
   // ④ 符号层 / 上档 / 退格 / 回车
   const s1 = (await ed()).s;
   await tapKey("123"); await wait(100); await shot("04-symbols");
-  await tapKeys("12"); await tapKey("？"); await tapKey("ABC"); await wait(100);
+  // 中文符号层按 user 小说里的频率排、全角；引号四格跟设置的引号风格（v2.3.31）
+  { const rowsOf = () => page.evaluate(() => [...document.querySelectorAll("#imeDock .ime-keys .ime-row")].map((r) => [...r.querySelectorAll(".ime-key")].map((k) => k.getAttribute("aria-label") ?? k.textContent)));
+    const r = await rowsOf(), tablet = !phoneForm;
+    const row2 = r[1].filter((x) => x !== "换行 / 确定");
+    probe(tag, "123 layer (zh, curly quotes): digits row, then “ ” ‘ ’ —— …… ： 、 first (frequency order, full-width)" + (tablet ? "" : "; ， 。 ？ ！ in row 3"), r[0].slice(0, 10).join("") === "1234567890" && JSON.stringify(row2.slice(0, 8)) === JSON.stringify(["“", "”", "‘", "’", "——", "……", "：", "、"]) && (tablet || JSON.stringify(r[2].slice(1, 5)) === JSON.stringify(["，", "。", "？", "！"])), JSON.stringify(r));
+    await page.evaluate(() => { const s = document.getElementById("quoteStyleSelect"); s.value = "corner"; s.dispatchEvent(new Event("change")); }); await wait(150);
+    const rc = await rowsOf();
+    await tapKey("#+="); await wait(100); const r2c = await rowsOf(); await tapKey("123"); await wait(100);
+    probe(tag, "corner quote style: the four quote keys become 「 」 『 』 (together); the curly set moves to the first row of #+= together", JSON.stringify(rc[1].slice(0, 4)) === JSON.stringify(["「", "」", "『", "』"]) && JSON.stringify(r2c[0].slice(0, 4)) === JSON.stringify(["“", "”", "‘", "’"]), JSON.stringify({ rc: rc[1], r2c: r2c[0] }));
+    await page.evaluate(() => { const s = document.getElementById("quoteStyleSelect"); s.value = "curly"; s.dispatchEvent(new Event("change")); }); await wait(150); }
+  await tapKeys("12"); await wait(100);
+  probe(tag, "digits keep the 123 layer (numbers come in runs)", await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.layer === "sym1"));
+  await tapKey("？"); await wait(150);
+  probe(tag, "a punctuation key returns to the letters layer by itself (v2.3.31, user chose「标点后自动回」)", await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.layer === "letters"));
   await tapKey("上档"); await tapKey("A"); await tapKey("b"); await wait(200);
   const a4 = await ed();
   probe(tag, "123 layer digits + ？, back to letters, shift-once A then lowercase b goes to the IME", a4.v.slice(s1, s1 + 4) === "12？A" && (await page.evaluate(() => window.__xhw.ime.getState().buffer)) === "b", a4.v.slice(s1, s1 + 6));
@@ -163,7 +180,7 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "enter inserts a newline in the paper", (await ed()).v.slice(s1 + 3, s1 + 4) === "\n");
   await page.keyboard.press("Control+z").catch(() => {});   // 实体键：顺带验「实体键盘让位」在 ⑥
 
-  // ⑤ 收起键盘 → 键盘钮在；点键盘钮 → 回来（手机的「收起」在符号层话筒那格，v2.3.29）
+  // ⑤ 收起键盘 → 键盘钮在；点键盘钮 → 回来（手机的「收起」在候选条右端，v2.3.31）
   const isPhone = await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.form === "phone");
   if (!isPhone) await tapKey("收起键盘");   // 键盘此刻已被上面的实体键让位收掉（这一下点在藏起来的键上）；手机字母层没有「收起」，在下面召回后单独验
   await wait(400);
@@ -173,10 +190,10 @@ for (const [w, h, tag] of SIZES) {
   await shot("05-hidden");
   await page.touchscreen.tap(tg.l + tg.w / 2, tg.t + tg.h / 2); await wait(400);
   probe(tag, "tap the keyboard button → keyboard back, focus in the paper", (await rectOf("#imeDock"))?.shown === true && (await ed()).active === "editor");
-  if (isPhone) {   // v2.3.29：手机的「收起」= 符号层最下一排话筒那格
-    probe(tag, "phone: no hide key on the letters layer", await page.evaluate(() => !document.querySelector("#imeDock .ime-key.hide")));
-    await tapKey("123"); await wait(100); await tapKey("收起键盘"); await wait(400);
-    probe(tag, "phone: 123 → hide key → keyboard hidden, paper gets its height back", (await rectOf("#imeDock"))?.shown !== true && (await rectOf(".page")).b > h - 40);
+  if (isPhone) {   // v2.3.31：手机的「收起」= 候选条右端那枚 ⌄（照 iPhone）
+    const sh = await rectOf("#imeDock .ime-strip-hide");
+    await page.touchscreen.tap(sh.l + sh.w / 2, sh.t + sh.h / 2); await wait(400);
+    probe(tag, "phone: the ⌄ at the strip's right end hides the keyboard, paper gets its height back, floating mic back on the paper", (await rectOf("#imeDock"))?.shown !== true && (await rectOf(".page")).b > h - 40 && await page.evaluate(() => !document.getElementById("micButton").hidden));
     const e2 = await rectOf("#editor"); await page.touchscreen.tap(e2.l + e2.w / 2, Math.min(e2.b - 10, h / 2)); await wait(400);
     probe(tag, "phone: tap the paper again → keyboard back on the letters layer", (await rectOf("#imeDock"))?.shown === true && await page.evaluate(() => document.querySelector("#imeDock .ime-keys").dataset.layer === "letters"));
   }
@@ -201,6 +218,14 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "typing into the sheet input through the soft keyboard replaces the selection with the picked word", (await page.inputValue("#sheetInput")) === word, `${await page.inputValue("#sheetInput")} vs ${word}`);
   await tapKey("换行 / 确定"); await wait(900);
   probe(tag, "enter on the soft keyboard confirms the sheet (file renamed)", await page.evaluate((wd) => document.getElementById("sheet").classList.contains("hidden") && (document.getElementById("docNameButton").textContent ?? "").includes(wd), word), await page.evaluate(() => document.getElementById("docNameButton").textContent));
+  // ⑧ 手机键盘的话筒键（v2.3.31「语音也收进来」）：点了 = 纸面话筒钮同一个动作；无头没有语音包 → 弹下载确认（取消即可，什么都不下）
+  if (isPhone) {
+    if (await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden"))) { await page.click("#sheetCancel").catch(() => {}); await wait(300); }
+    const e3 = await rectOf("#editor"); await page.touchscreen.tap(e3.l + e3.w / 2, Math.min(e3.b - 10, h / 2)); await wait(400);
+    await tapKey("语音输入"); await wait(800);
+    probe(tag, "phone: the mic key in the keyboard does what the paper mic does (no pack here → the download sheet asks first)", await page.evaluate(() => !document.getElementById("sheet").classList.contains("hidden") && /语音识别模型/.test(document.getElementById("sheet").textContent ?? "")), await page.evaluate(() => (document.getElementById("sheet").textContent ?? "").replace(/\s+/g, " ").slice(0, 80)));
+    await page.click("#sheetCancel").catch(() => {}); await wait(300);
+  }
   await ctx.close();
 }
 // ── VR 输入模态（user 2026-09-29「不过不要忘了 vr 的输入模态」）：Quest 浏览器 = 手柄射线 / 手势捏合，一次一个指针、按鼠标指针算、没有多点触控。

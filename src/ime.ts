@@ -92,6 +92,8 @@ class RimeWorkerBackend implements Backend {
 
   async initialize(schema: ImeSchema): Promise<void> {
     this.worker = new Worker(RIME_WORKER_URL);
+    // 部署完成会刷新会话、开关可能被打回方案默认（Quest 首次部署是异步的）：worker 发 control/deployStatus → 作废「已重申」并在后台立刻重申（v2.3.31）
+    this.worker.addEventListener("message", (e: MessageEvent) => { const m = e.data as { type?: string; name?: string; args?: unknown[] } | null; if (m?.type === "control" && m.name === "deployStatus") { this.optionsFresh = false; if (m.args?.[0] === "success") this.refreshOptionsSoon(); } });
     await this.setSchema(schema);
   }
   simplified = true;
@@ -154,7 +156,7 @@ class RimeWorkerBackend implements Backend {
   }
   normalize(result: any): ImeResult {
     if (!result || typeof result !== "object") return { type: "passthrough" };
-    if (typeof result.committed === "string") { const consumedBuffer = this.body; this.resetState(); return { type: "commit", text: result.committed, consumedBuffer }; }
+    if (typeof result.committed === "string") { const consumedBuffer = this.body; this.resetState(); this.refreshOptionsSoon(); return { type: "commit", text: result.committed, consumedBuffer }; }
     if (result.state === 1) {
       const head = String(result.head ?? ""), body = String(result.body ?? ""), tail = String(result.tail ?? "");
       this.body = body;
@@ -164,9 +166,14 @@ class RimeWorkerBackend implements Backend {
       this.hasMore = result.isLastPage === false;
       return { type: "composing" };
     }
-    this.resetState(); return { type: "clear" };
+    this.resetState(); this.refreshOptionsSoon(); return { type: "clear" };
   }
-  typeLetter(letter: string) { return this.enqueue(async () => { if (!this.buffer) await this.applyOptions(); return this.normalize(await this.call("process", letter)); }); }
+  // 起组字前重申会话开关（见 applyOptions）：v2.3.31 起改成「上一个词结束后在后台重申」（optionsFresh），下一个词的第一个字母不再排在 4 次往返后面
+  //   （user 2026-10-04「键盘反应尽量灵敏…高实时要求」；CPU ×4 量到每个词首字母 41–52 ms，其余字母 10–20 ms）。没来得及重申（开机后第一个词等）才在前面补。
+  optionsFresh = false;
+  typeLetter(letter: string) { return this.enqueue(async () => { if (!this.buffer && !this.optionsFresh) await this.applyOptions(); this.optionsFresh = false; return this.normalize(await this.call("process", letter)); }); }
+  /** 组字结束了（上屏 / 清空）：排一个不算组字的后台任务把开关重申掉，下一个词首字母直接 process。 */
+  private refreshOptionsSoon(): void { if (this.optionsFresh) return; void this.enqueue(async () => { if (this.buffer) return; await this.applyOptions(); this.optionsFresh = true; }, { compose: false }).catch(() => {}); }
   typePunctuation(key: string) { return this.enqueue(async () => this.normalize(await this.call("process", key))); }
   backspace() { return this.enqueue(async () => this.normalize(await this.call("process", "{BackSpace}"))); }
   clear() { return this.enqueue(async () => this.normalize(await this.call("process", "{Escape}"))); }
