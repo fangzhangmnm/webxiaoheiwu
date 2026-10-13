@@ -91,6 +91,13 @@
 
 Web Speech / Groq / OpenAI 2026-09-03 sunset（语音字节永不外发）；旧 synced 偏好里的 `voiceGroqKey`/`voiceOpenaiKey` 不再读、不删（用户数据）。
 
+## 地址（2026-10-13 起）
+
+- 正式版 `https://write.weebpaint.com/`、开发版 `/dev/`；仓库 Pages 挂自定义域名（Actions 部署，无 CNAME 文件），强制 HTTPS。旧 `fangzhangmnm.github.io/webxiaoheiwu/`（含 `/dev/`）301 到这里。家族背景与搬家清单 = 家族根 `ai-docs/20261011-family-domain-subdomains.md`。
+- 新地址 = 新箱子：旧 github.io 箱子的本机数据不会带过来（同步过的从 OneDrive 回来），语音模型要在新箱子重下。模型源从此是跨域（`pwa-models` 回 `access-control-allow-origin: *`，2026-10-11 实测）。
+- Azure SPA 回调：`https://write.weebpaint.com/`、`/dev/`（user 2026-10-13 加）；旧 github.io 两条保留给旧主屏图标。
+- 离线壳碰到跳转会报错（`service-worker.js` `withNoStore` 用状态码 0 重建跳转响应；家族同款，修法见 MoonSinger wishlist W-21）：按代码推断（未真机验）旧开发版图标打不开，旧正式版图标先读缓存、还能开但停在 2.3.33。
+
 ## 发版 ritual（main → /dev/；prod 分支 → /，push prod 必问）
 
 1. `./bump.sh v0.0.N-YYYY-MM-DD`（patch AI 例行；minor 需 user 说出版本号；2.1.0 = user 2026-09-10「版号可以 bump minor」）。

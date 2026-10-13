@@ -4,8 +4,8 @@
 
 只写字的地方：一张纸、一个标题、一个字数。打开就是上次写到的那一句。
 
-- **用它**：https://fangzhangmnm.github.io/webxiaoheiwu/
-- **开发版**（改完即见，可能坏）：https://fangzhangmnm.github.io/webxiaoheiwu/dev/
+- **用它**：https://write.weebpaint.com/ （2026-10-13 从 `fangzhangmnm.github.io/webxiaoheiwu/` 搬过来，旧地址自动跳到这里）
+- **开发版**（改完即见，可能坏）：https://write.weebpaint.com/dev/
 
 > as-of v0.0.82 · 2026-09-03
 
