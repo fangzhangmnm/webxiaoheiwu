@@ -23,3 +23,4 @@ import { run } from "./runner.mjs";
 console.log("\n  WebXiaoHeiWu —— app 域测试（store 契约在 internal-store/test/）\n");
 await run();
 import "./first-frame-watchdog.test.ts";   // 2026-09-09 首帧看门狗（从 WeebPaint 搬）
+import "./sw-redirect.test.mjs";   // 2026-10-14 离线壳：跳转响应原样交回（家族周账 F-28）
