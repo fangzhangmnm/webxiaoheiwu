@@ -1,12 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  53 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  54 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
     Feather Icons — MIT License, Copyright (c) 2013-2023 Cole Bemis · https://github.com/feathericons/feather
     Lucide — ISC License, Copyright (c) 2020 Lucide Contributors · https://github.com/lucide-icons/lucide
 -->
+  <!-- drawing-tool -->
+  <!-- magic-wand — 魔术棒:实心凹边四角星(控制点 0.12r —— 0.42r 会拉成菱形)在杖头 + 左上左下各一小星 + 斜杖 -45° -->
+  <symbol id="magic-wand" data-cat="drawing-tool" data-src="own" data-note="魔术棒:实心凹边四角星(控制点 0.12r —— 0.42r 会拉成菱形)在杖头 + 左上左下各一小星 + 斜杖 -45°" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5.49 18.51 L12.71 11.29"/><path d="M15.25 4.75 Q15.73 8.27 19.25 8.75 Q15.73 9.23 15.25 12.75 Q14.77 9.23 11.25 8.75 Q14.77 8.27 15.25 4.75 Z" fill="currentColor" stroke="none"/><path d="M6.8 4.4 Q7.02 5.98 8.6 6.2 Q7.02 6.42 6.8 8.0 Q6.58 6.42 5.0 6.2 Q6.58 5.98 6.8 4.4 Z" fill="currentColor" stroke="none"/><path d="M5.0 9.1 Q5.16 10.24 6.3 10.4 Q5.16 10.56 5.0 11.70 Q4.84 10.56 3.7 10.4 Q4.84 10.24 5.0 9.1 Z" fill="currentColor" stroke="none"/></symbol>
   <!-- edit -->
   <!-- move-to-file — 文件+绕行箭头(移到文件) -->
   <symbol id="move-to-file" data-cat="edit" data-src="own" data-note="文件+绕行箭头(移到文件)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3 H10 a2 2 0 0 0 -2 2 v14 a2 2 0 0 0 2 2 h8 a2 2 0 0 0 2 -2 V8 z"/><path d="M15 3 v5 h5"/><path d="M3 17 A7 7 0 0 1 12.5 9"/><g transform="rotate(30 12.8 9)"><path d="M9.7 8 L12.8 9 L12 12"/></g></symbol>

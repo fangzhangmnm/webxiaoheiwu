@@ -48,7 +48,8 @@ import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
 import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
-import { setQuoteStyle } from "./zh-punct.ts";
+import { setQuoteStyle, chineseifyPunctuation, countWesternPunctuation } from "./zh-punct.ts";
+import { replaceRange } from "./text-edit.ts";
 import { createInputPipeline } from "./input/pipeline.ts";
 import { createImeDock } from "./input/dock.ts";
 import type { MicKeyState } from "./input/soft-keyboard.ts";
@@ -250,6 +251,7 @@ const edgeSidebar = createEdgeSidebar({
   orphanCount: () => orphanPages().length, onOrphans: () => { void orphansFlow(); },
   onLibrary: () => { void galleryHost.open(); },
   onExport: () => { void exportSheetFlow(); },
+  onPunct: () => tidyPunctuation(),
   onSettings: () => showSidebarSettings(),
   onSettingsBack: () => hideSidebarSettings(),
   onAddSibling: () => addPageFlow("sibling"), onAddChild: () => addPageFlow("child"), onMove: (name) => movePageFlow(name),
@@ -567,6 +569,22 @@ type ExportFormat = "text" | "image" | "pdf" | "cover";
  *  一条段选定范围（这一页 / 这一支 / 整本；txt 稿只有整篇，不画段选）+ 一条段选定长图 / PDF 的行宽（v2.3.19）+ 三个钮定格式（复制文字 / 长图 / PDF）。一层 sheet。
  *  以前是五个钮（复制只有这一页、长图三个范围各一个钮、PDF 再弹第二层选范围）。「这一支」只在这页底下真有子页时才露（否则和这一页是同一件事）。
  *  书名和封面只属于整本：这一页 / 这一支不带（collectExport 的 front）。 */
+/** 一键规整标点（2026-10-16，user「一键把标点符号或者选中的标点符号全部正则化」）：有选区只改选区，否则整页。
+ *  规则 = src/zh-punct.ts（和语音听写同一个深模块）；改字走 replaceRange（进 undo 栈、发 input → 落盘 / 重排版照常）；选区 / 光标 / 滚动原样放回。 */
+function tidyPunctuation(): void {
+  if (!canEditNow()) { setStatus(t("punct.cantEdit"), { error: true }); return; }
+  const el = editorEl, all = el.value;
+  const hadSel = el.selectionStart !== el.selectionEnd;
+  const s = hadSel ? el.selectionStart : 0, e = hadSel ? el.selectionEnd : all.length;
+  const before = all.slice(s, e), after = chineseifyPunctuation(before);
+  if (after === before) { setStatus(t("punct.none")); return; }
+  const caret = el.selectionStart, top = sheet.scrollTop;
+  el.focus({ preventScroll: true });
+  replaceRange(el, s, e, after);
+  try { if (hadSel) el.setSelectionRange(s, s + after.length); else { const c = Math.min(caret, el.value.length); el.setSelectionRange(c, c); } } catch { /* ignore */ }
+  sheet.scrollTop = top;
+  setStatus(t(hadSel ? "punct.doneSel" : "punct.done", { n: countWesternPunctuation(before, after) }));
+}
 async function exportSheetFlow(): Promise<void> {
   const inBook = project.active();
   if (inBook ? project.locked() : editor.state.locked) { setStatus(t("export.locked"), { error: true }); return; }

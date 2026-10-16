@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-53 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+54 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -9,12 +9,18 @@
 
 ```html
 <!-- 内联 icons.svg -->
-<svg width="24" height="24"><use href="#move-to-file"/></svg>
+<svg width="24" height="24"><use href="#magic-wand"/></svg>
 ```
 
 > 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`one-to-one`、`microphone`、`backspace`、`key-shift`、`key-enter`
 > 见库 `index.html` 的「待过目」栏；过目后进库/打回归库 session。
 
+
+## drawing-tool
+
+| name | 说明 |
+|------|------|
+| `magic-wand` | 魔术棒:实心凹边四角星(控制点 0.12r —— 0.42r 会拉成菱形)在杖头 + 左上左下各一小星 + 斜杖 -45° |
 
 ## edit
 

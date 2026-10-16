@@ -9,6 +9,8 @@ export interface EdgeSidebarDeps {
     /** 顶部三个入口（书库 / 导出 / 设置）。导出 = 当前页（txt 稿整篇 / 书的这一页 / 图片页的图）进剪贴板，app 层做。 */
     onLibrary: () => void;
     onExport: () => void;
+    /** 「规整标点」（2026-10-16，user「一键把标点符号或者选中的标点符号全部正则化」）：有选区只改选区，否则整页；app 层做。 */
+    onPunct: () => void;
     onSettings: () => void;
     /** 设置面板里的「返回」：回到侧栏的导航。 */
     onSettingsBack: () => void;

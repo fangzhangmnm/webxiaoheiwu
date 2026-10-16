@@ -2132,6 +2132,30 @@ export declare const S: {
         readonly zh: "导出：复制文字 / 长图";
         readonly en: "Export: copy text / long image";
     };
+    readonly "sidebar.punct": {
+        readonly zh: "规整标点";
+        readonly en: "Tidy punctuation";
+    };
+    readonly "sidebar.punctTitle": {
+        readonly zh: "规整标点：西文标点换成中文标点（选中了只改选中的，否则整页）";
+        readonly en: "Tidy punctuation: Western marks → Chinese (selection only, else the whole page)";
+    };
+    readonly "punct.done": {
+        readonly zh: "整页已规整 {n} 个标点";
+        readonly en: "Tidied {n} punctuation mark(s) on this page";
+    };
+    readonly "punct.doneSel": {
+        readonly zh: "选中部分已规整 {n} 个标点";
+        readonly en: "Tidied {n} punctuation mark(s) in the selection";
+    };
+    readonly "punct.none": {
+        readonly zh: "标点已经是中文的了";
+        readonly en: "Punctuation is already Chinese";
+    };
+    readonly "punct.cantEdit": {
+        readonly zh: "这页现在不能改（锁定 / 只读）";
+        readonly en: "This page can't be edited right now (locked / read-only)";
+    };
     readonly "copy.done": {
         readonly zh: "已复制全页：{cjk} 字 {en} 词";
         readonly en: "Copied the whole page: {cjk} chars · {en} words";

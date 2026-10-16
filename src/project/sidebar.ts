@@ -21,6 +21,8 @@ export interface EdgeSidebarDeps {
   /** 顶部三个入口（书库 / 导出 / 设置）。导出 = 当前页（txt 稿整篇 / 书的这一页 / 图片页的图）进剪贴板，app 层做。 */
   onLibrary: () => void;
   onExport: () => void;
+  /** 「规整标点」（2026-10-16，user「一键把标点符号或者选中的标点符号全部正则化」）：有选区只改选区，否则整页；app 层做。 */
+  onPunct: () => void;
   onSettings: () => void;
   /** 设置面板里的「返回」：回到侧栏的导航。 */
   onSettingsBack: () => void;
@@ -61,6 +63,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
       <button type="button" class="edge-entry" id="edgeLibrary" title="${esc(t("sidebar.library"))}" aria-label="${esc(t("sidebar.library"))}">${icon("bookshelf")}<span>${esc(t("sidebar.library"))}</span></button>
       <button type="button" class="edge-entry" id="edgeExport" title="${esc(t("sidebar.exportTitle"))}" aria-label="${esc(t("sidebar.export"))}">${icon("export")}<span>${esc(t("sidebar.export"))}</span></button>
       <button type="button" class="edge-entry" id="edgeReference" title="${esc(t("ref.title"))}" aria-label="${esc(t("ref.title"))}">${icon("picture-in-picture")}<span>${esc(t("ref.title"))}</span></button>
+      <button type="button" class="edge-entry" id="edgePunct" title="${esc(t("sidebar.punctTitle"))}" aria-label="${esc(t("sidebar.punct"))}">${icon("magic-wand")}<span>${esc(t("sidebar.punct"))}</span></button>
       <button type="button" class="edge-entry" id="edgeSettings" title="${esc(t("ui.settings"))}" aria-label="${esc(t("ui.settings"))}">${icon("wrench")}<span>${esc(t("ui.settings"))}</span></button>
     </div>
     <div class="edge-settings" id="edgeSettingsPane">
@@ -242,6 +245,7 @@ export function createEdgeSidebar(d: EdgeSidebarDeps) {
   $("edgeExport").addEventListener("click", () => d.onExport());   // 一下 = 复制（不弹菜单：导出分享要顺手，user 2026-09-26「方便的导出分享功能其实很重要」）
   $("edgeLift").addEventListener("click", () => { void d.onLift().then((ok) => { if (ok) render(); }); });
   $("edgeReference").addEventListener("click", () => d.onReference());
+  $("edgePunct").addEventListener("click", () => d.onPunct());
   $("edgeOrphans").addEventListener("click", () => d.onOrphans());
   $("edgeSettings").addEventListener("click", () => d.onSettings());
   $("edgeSettingsBack").addEventListener("click", () => d.onSettingsBack());
