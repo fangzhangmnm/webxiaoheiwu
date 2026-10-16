@@ -358,7 +358,7 @@ scenario("加密 txt · 挂机：锁屏那一下的推送回执丢了 → 醒来
 });
 
 // 已知库缺口（2026-10-16，user「我完全没有动别的电脑，可能只是切换前后台或者挂机较久，就会有」）：页面被回收后重开，本地恢复在登录之前，
-//   open() 的新鲜度门没跑成（未登录 → fetchMeta 抛）→ 这篇在本 tab 没有「云端血统」(_base)；登录回来前打的第一个字 recordEdit 捕到 parent=null
+//   open() 的新鲜度门没跑成（库 isOnline = rawOnline && signedIn → 未登录走 offline 分支，不 markSeen；KudsRocket 10-16 核的）→ 这篇在本 tab 没有「云端血统」(_base)；登录回来前打的第一个字 recordEdit 捕到 parent=null
 //   → 第一次推不带 If-Match → conflictBehavior:fail → 409 → 字节已不同（多了新打的字）→ CloudNameCollisionError → 当冲突面弹出来。
 //   修在库：open() 云端不可达时，本地副本干净 ∧ 有 durable etag → markSeen(durable)（本 tab 刚读进来的字节就是那一版）。等 user 批；批了把下面翻 true。
 const LIBRARY_LINEAGE_FIX_LANDED = false;

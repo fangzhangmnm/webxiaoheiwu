@@ -64,7 +64,7 @@
 §6 修的是「别的设备改过、这台干净」那条；user 的场景是**单设备**。e2e「txt · 单设备：页面被回收后重开…」复现了另一条路：
 
 1. 页面被浏览器回收后重开（iOS 切后台回来常见；Edge 挂机久了也会）。WXHW boot = 建 store → **本地恢复开稿** → initAuth（CatsUp 2026-09-22 立的顺序）。
-2. `open()` 的新鲜度门这时跑不成：未登录 → `cloud.fetchMeta` 抛「Not signed in」→ `cloud-error` 分支 → **不 markSeen** → 本 tab 的 `_base` 空（谱系 per-tab，reload 后全丢；`seenBase` 的 durable 回退只用于比对，按设计永不作 dirty 的 If-Match）。
+2. `open()` 的新鲜度门这时跑不成：库 `create-store` 的 `isOnline = rawOnline() && signedIn()` 传进了 `fresh.open` → 未登录走 `offline` 分支（KudsRocket 10-16 核的；我原写 cloud-error，效果一样）→ **不 markSeen** → 本 tab 的 `_base` 空（谱系 per-tab，reload 后全丢；`seenBase` 的 durable 回退只用于比对，按设计永不作 dirty 的 If-Match）。
 3. 用户在登录回来之前就接着打字（可编辑 ~300 ms，静默续登 0.5–3 s，挂机久了更慢）→ `recordEdit` 捕 `_parent = _base ?? null` = **null**。
 4. 登录回来 → `refreshIfCleanAny` 对脏稿是空操作（dirty-skip，不 markSeen）→ 第一次推 `ifMatchFor` 返回 null → 不带 If-Match → `conflictBehavior:"fail"` → 云端有同名 → 409 → `_confirmOurUpload` 大小不等（多了新字）→ `CloudNameCollisionError` → `surfaceCollision`（既有文件）→ 和 412 同一张冲突面。字节一个不丢，但人被要求「本地覆盖云端 / 云端覆盖本地」二选一——其实两边是同一篇的前后版本。
 5. v2.3.35 之前的无条件推盖不住这条（用户没打字时才盖得住：409 → 大小相等 → 尾字节相等 → 认领）。
@@ -72,3 +72,10 @@
 **提案（库，等 user 批；pwa-cloud-store 流程）**：`freshness.open()` 的三个「门没跑成」分支（`!isOnline()` / `cloud-error` / probe `skipped`）加一行：本地副本干净（`!head.isDirtyAnywhere(name) && !localDirty?.()`）∧ `head.seenBase(name) != null`（有 durable etag）→ `head.markSeen(name, seenBase)`。理由：干净 = 本地字节就是 durable etag 那一版的字节（push 成功 / 快进 / acquire 时才写 etag 并清 dirty），本 tab 此刻读进内存的就是它，谱系成立。不破 W2（「别的 tab 推过的 etag 不能当我的 parent」）：只在 open 时刻、只给本 tab 刚读到的那份标 base，不在 recordEdit 时刻去读共享 etag。云端其实动过（别机改了）→ 第一次推 412 → tryHeal 不等 → 冲突面——那是真分叉，和今天一样。durable etag 因回执丢失而陈旧 → 同样 412 → 面，不比今天差。消费方：WXHW / MoonSinger / WeebPaint / CatsUp boot 顺序相同，都受益；WXHW 收货后把 `test/e2e-sync/run.mjs` 的 `LIBRARY_LINEAGE_FIX_LANDED` 翻 true。
 
 **app 侧替代（不推荐）**：boot 等 `authBootSettled()` 再开稿 → 开门就等 0.5–3 s（离线更久），和 user「启动速度优先」「首键不卡」相悖。
+
+### 6.2 KudsRocket 会话的评估（2026-10-16 晚，user「告诉 kudsrocket 让它来评估一下」；它也直接报给了 user）
+
+- 事实链成立；修正一处：登录前开稿走的是 `offline` 分支（`isOnline = rawOnline() && signedIn()`），不是 cloud-error，效果一样。
+- 安全性：这行 markSeen 只会把 `_base` 设成「本地字节当时同步到的那一版」，永远不可能比字节更新 → B1 静默覆盖不可能；W2 成立（per-tab、open 时刻）；durable dirty 不变量核过（只在 push 成功 / markSynced 清，回执丢失走 deferred 不清脏）；`seenBase` 的所有消费者（offload 守卫、upload-queue、reconcile、safe-resolve、uploadReplay.enqueue）本来就回退到同一个 durable etag，行为不变；三个分支都加。
+- **不要做**「dirty 但 `_parent` 值为 null」的重捕：null 可能是本 tab 真·新文件，捕了会把别 tab 的同名文件从 fail 变成 If-Match replace = 真·静默覆盖。这个窗口留给 409 面。
+- 版本：patch 体量，但是所有消费方的默认行为变化；它建议当 0.16.2 同族 bugfix 默认开、发版说明「行为差异」单列，归 user 定。谁做归 user。
