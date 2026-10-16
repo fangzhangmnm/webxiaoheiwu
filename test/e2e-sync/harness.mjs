@@ -56,7 +56,7 @@ const decW = (v) => { if (v == null || typeof v !== "object") return v; if (Arra
 /** 一朵云 + 若干设备。cloud.provider = 内存云盘本体（测试可直接查 / 注入延迟）。 */
 export async function createWorld() {
   const provider = createMockProvider();
-  const gate = { delayMs: 0, holdUploads: null };   // holdUploads: Promise —— 上传在到达云端前先等它（模拟慢上传，用来在上传窗口里打字）
+  const gate = { delayMs: 0, holdUploads: null, loseUploadOf: null };   // loseUploadOf: 云端路径 —— 下一次对它的 upload 落地但回执丢失   // holdUploads: Promise —— 上传在到达云端前先等它（模拟慢上传，用来在上传窗口里打字）
   const browser = await chromium.launch();
   const log = [];
   async function handle(op, json) {
@@ -64,6 +64,11 @@ export async function createWorld() {
       const args = decW(JSON.parse(json));
       if (gate.delayMs) await new Promise((r) => setTimeout(r, gate.delayMs));
       if (op === "upload" && gate.holdUploads) await gate.holdUploads;
+      if (op === "upload" && gate.loseUploadOf && args[0] === gate.loseUploadOf) {   // 回执丢失（定点）：云端真的写了，响应没回来——设备睡着把在途请求杀了的样子
+        gate.loseUploadOf = null;
+        await provider[op](...args); log.push(op + " " + args[0]);
+        return JSON.stringify({ err: { message: "e2e: network dropped after the upload landed" } });
+      }
       if ((op === "download") && gate.holdDownloads) await gate.holdDownloads;
       let r = await provider[op](...args);
       if (r instanceof Blob) r = new Uint8Array(await r.arrayBuffer());

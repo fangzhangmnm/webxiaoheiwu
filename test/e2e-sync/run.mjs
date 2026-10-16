@@ -296,6 +296,67 @@ scenario("备份箱 · 书冲突选了本地 → 云端输家在备份箱（云�
   await A.close(); await B.close();
 });
 
+// ── 挂机（闲置锁屏）三场景，2026-10-16（user「wxhw 挂机之后还是有要你本地覆盖云端的 bug，这之间我没有动其他的东西」）──
+//   锁屏 = __xhw.idle.show()（onIdle：推送）；醒来 = __xhw.idle.dismiss()（onResume：resumeSync）。不等 2 分钟。
+const uploadsOf = (w, name) => w.log.filter((l) => l === "upload " + name).length;
+
+scenario("txt · 挂机：别的设备改过、这台干净 → 醒来静默快进、不弹面、不白推", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const before = uploadsOf(w, name);
+  await B.eval(() => window.__xhw.idle.show()); await B.wait(1500);          // 锁屏那一下：这台干净，什么都不该推
+  check("锁屏时不弹冲突面", !(await B.gateShown()));
+  await B.eval(() => window.__xhw.idle.dismiss()); await B.wait(2500);       // 醒来：先核云端
+  check("醒来不弹冲突面", !(await B.gateShown()));
+  check("B 的编辑器静默换成云端新版", (await B.text()) === "原文。A改了。", await B.text());
+  check("云端仍是 A 的版本（没被这台的旧版盖掉）", (await w.cloudText(name)) === "原文。A改了。", await w.cloudText(name));
+  check("这台干净 → 锁屏 / 醒来都没有上传（不白推）", uploadsOf(w, name) === before, `uploads ${before} → ${uploadsOf(w, name)}`);
+  check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
+scenario("txt · 挂机：锁屏那一下的推送回执丢了（设备睡着把在途请求杀了）→ 醒来不弹面、云端 = 本地、之后还能推", async (w) => {
+  const A = await w.device("A");
+  await A.boot(server.url); await A.type("原文。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const name = await A.eval(() => window.__xhw.editor.state.name);
+  await A.type("挂机前。"); await A.wait(500);                                   // 本地落盘、15 s 防抖还没推
+  w.gate.loseUploadOf = name;                                                   // 锁屏那一下的上传：云端收到了、回执没回来
+  await A.eval(() => window.__xhw.idle.show()); await A.wait(3000);
+  await A.eval(() => window.__xhw.idle.dismiss()); await A.wait(2500);
+  check("醒来不弹冲突面（回执丢了但字节一样 = 库自愈）", !(await A.gateShown()));
+  check("云端 = 本地", (await w.cloudText(name)) === "原文。挂机前。", await w.cloudText(name));
+  check("顶栏状态 = 已同步", (await A.eval(() => window.__xhw.editor.syncKind())) === "clean", await A.eval(() => window.__xhw.editor.syncKind()));
+  await A.type("之后。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  check("之后打的字推得上云", (await w.cloudText(name)) === "原文。挂机前。之后。", await w.cloudText(name));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("加密 txt · 挂机：锁屏那一下的推送回执丢了 → 醒来不弹面（同一次推里重试复用同一份密文 → 库逐字节自愈；跨 reload 的那条缺口见 handoff）", async (w) => {
+  const A = await w.device("A");
+  await A.boot(server.url);
+  await A.eval(() => window.__xhw.setPassword("e2e-pw")); await A.wait(200);
+  await A.eval(() => window.__xhw.newDraft({ encrypted: true })); await A.wait(500);
+  await A.type("密文原文。"); await A.wait(600); await A.pushNow(); await A.wait(500);
+  const name = await A.eval(() => window.__xhw.editor.state.name);
+  const stem = name.replace(/\.txt$/, "");
+  const cloudName = (await w.cloudList("")).map((i) => i.name).find((n) => n.startsWith(stem));   // 加密容器的云端名另有后缀（docKinds 表）
+  check("加密稿已上云", !!cloudName, JSON.stringify((await w.cloudList("")).map((i) => i.name)));
+  await A.type("挂机前。"); await A.wait(500);
+  w.gate.loseUploadOf = cloudName;                                              // 锁屏那一下对这篇的上传：云端收到了、回执没回来
+  await A.eval(() => window.__xhw.idle.show()); await A.wait(3000);
+  check("锁屏时不弹冲突面（回执丢了：库在同一次推里重试、412 → 拉回来逐字节比对 = 同一份密文 → 自愈）", !(await A.gateShown()));
+  await A.eval(() => window.__xhw.idle.dismiss()); await A.wait(2500);
+  check("醒来不弹冲突面", !(await A.gateShown()));
+  check("顶栏状态 = 已同步", (await A.eval(() => window.__xhw.editor.syncKind())) === "clean", await A.eval(() => window.__xhw.editor.syncKind()));
+  check("本地的字一个不丢", (await A.text()) === "密文原文。挂机前。", await A.text());
+  await A.type("之后。"); await A.wait(500); await Promise.race([A.pushNow(), A.wait(4000)]); await A.wait(300);
+  check("之后打的字落得了盘、还能推（保存链没卡死）", (await A.eval(() => window.__xhw.editor.syncKind())) === "clean", await A.eval(() => window.__xhw.editor.syncKind()));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
 for (const s of scenarios) {
   if (only && !s.name.includes(only)) continue;
   console.log(`\n── ${s.name}`);

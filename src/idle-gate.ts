@@ -12,7 +12,7 @@ export interface IdleGateDeps {
   focusEditor: () => void;
 }
 
-export function initIdleGate(d: IdleGateDeps): { poke: () => void; isShown: () => boolean } {
+export function initIdleGate(d: IdleGateDeps): { poke: () => void; isShown: () => boolean; /** 测试台：不等 2 分钟直接锁屏 / 醒来（test/e2e-sync）。 */ show: () => void; dismiss: () => Promise<void> } {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let shown = false;
 
@@ -46,5 +46,5 @@ export function initIdleGate(d: IdleGateDeps): { poke: () => void; isShown: () =
   document.addEventListener("touchstart", onAnyActivity, { capture: true, passive: true });
   document.addEventListener("scroll", () => { if (!shown) schedule(); }, { passive: true, capture: true });
   schedule();
-  return { poke: schedule, isShown: () => shown };
+  return { poke: schedule, isShown: () => shown, show, dismiss };
 }

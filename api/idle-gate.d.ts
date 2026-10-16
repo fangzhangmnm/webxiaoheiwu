@@ -9,5 +9,7 @@ export interface IdleGateDeps {
 }
 export declare function initIdleGate(d: IdleGateDeps): {
     poke: () => void;
-    isShown: () => boolean;
+    isShown: () => boolean; /** 测试台：不等 2 分钟直接锁屏 / 醒来（test/e2e-sync）。 */
+    show: () => void;
+    dismiss: () => Promise<void>;
 };

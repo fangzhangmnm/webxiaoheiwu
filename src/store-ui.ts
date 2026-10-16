@@ -6,6 +6,7 @@ import type { StoreUI, StoreTextKey, StoreTextParams } from "@internal/store";
 import { withBusy, lockSyncGate, settleSyncGate } from "./sheets.ts";
 import { t, type Key } from "./i18n/index.ts";
 import { reportError } from "./error-badge.ts";
+import { note as diagNote } from "./diag-log.ts";
 
 // 库 14 个 busy 文案 key → 本仓 i18n。穷举 Record：库加 key 本表漏映 = 编译错。
 const STORE_TEXT_KEYS: Record<StoreTextKey, Key> = {
@@ -51,8 +52,10 @@ export const storeUI: StoreUI = {
         })
       : await lockSyncGate<"keepMine" | "takeCloud" | "cancel">({
           title: t("cf.title"), message: t("cf.bodyPush", { name: n }), note: t("cf.noteKeptSafe"),
-          actions: [{ label: t("cf.localWins"), value: "keepMine", primary: true }, { label: t("cf.cloudWins"), value: "takeCloud" }, { label: t("common.cancel"), value: "cancel" }],
+          // primary = 云端（v2.3.35，2026-10-16，user 同日在 KudsRocket「默认云端才是 authority」；挂机醒来撞面的那台通常是旧的一方；本机那份照旧进本机备份箱）
+          actions: [{ label: t("cf.cloudWins"), value: "takeCloud", primary: true }, { label: t("cf.localWins"), value: "keepMine" }, { label: t("common.cancel"), value: "cancel" }],
         });
+    diagNote("sync", `conflict sheet "${name}" occasion=${occasion} → ${choice ?? "cancel"}`);   // 黑匣子：真机上「又弹面了」能对出是哪一次推 / 开
     return choice ?? "cancel";
   },
 

@@ -1360,6 +1360,10 @@ export declare const S: {
         readonly zh: "换行 / 确定";
         readonly en: "Return";
     };
+    readonly "kb.confirm": {
+        readonly zh: "确认";
+        readonly en: "Confirm";
+    };
     readonly "kb.shift": {
         readonly zh: "上档";
         readonly en: "Shift";

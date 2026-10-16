@@ -1,6 +1,7 @@
 # 收 store 0.16.2 + 登录后「无条件重推」改成「快进在前、只推 pending」——交接
 
 > created 20261008 by Claude Fable 5.1 · as-of WXHW main `ab62e23`（dev v2.3.3x）/ @internal/store **0.16.2**（库仓 `20260813 internal-store` 20f828a，tag v0.16.2）
+> **2026-10-16 落地**（v2.3.35，Claude Fable 5.1）：§3 的 1–5 全做了，见 §6；as-of WXHW dev v2.3.35。
 > user 2026-10-08「wxhw 写 handoff」。起因是 MoonSinger 的「写着写着过一会就跳一次云端冲突面」案，查到库的一个缺口；WXHW 没撞上，是因为它登录后把开着的稿**无条件**重推了一遍把窗口盖住了——那一下本身不是拍过的设计，而且有两个毛病。本文 = 库修了什么、WXHW 现状、该怎么改、怎么验。
 
 ## 1. 库修了什么（0.16.1 → 0.16.2，user「修」）
@@ -47,3 +48,13 @@
 - MoonSinger 查案全文：`20261006 MoonSinger/ai-docs/20261008-handoff-to-opus.md` §5；MoonSinger CLAUDE.md「歌库」节 2026-10-08 两条。
 - 库 commit 正文（20f828a）列了全家族消费方：WXHW / WeebPaint / JRB / CatsUp 各自节奏收货；WeebPaint / CatsUp 的 boot 同样「本地恢复先于 initAuth」，理论上同一个窗口（它们登录后有没有别的副作用盖着没查）。
 - 库侧还有一条更深的缺口没动：推到一半页面死掉 + 回来之前又编辑了 → 本地字节 ≠ 云端（自己上次推的）→ `tryHeal` 不等 → 当真分叉弹面。根治 = 推路径记住在途字节的哈希。等 user 要不要。
+
+## 6. 落地（2026-10-16，v2.3.35，Claude Fable 5.1）
+
+起因 user 2026-10-16：「wxhw 挂机之后还是有要你本地覆盖云端的 bug，这之间我没有动其他的东西」「非加密的也有这个问题」。
+
+- **复现**（`test/e2e-sync/run.mjs`「txt · 挂机：别的设备改过、这台干净」）：B 开着一篇干净的稿锁屏（`__xhw.idle.show()`），A 改了这篇推上云；旧码 B 锁屏那一下 `onIdle → pushNowAny` 不看脏整篇重推 → If-Match 旧 base → 412 → `tryHeal` 比字节不等（A 的新字）→ 冲突面「本地覆盖云端」在锁屏时就弹出来；醒来 `resumeSync` 又先推再快进，面继续挡着。单设备「没动别的东西」也会撞：挂机期间在别的设备写了同一篇 = 这台就是旧的一方。
+- **修**：① 收 store 0.16.2（`pull-package.sh 0.16.2`，离线 fallback 产物；接线零改动）② `app.ts` `resumeSync` / `afterSignIn`：`refreshIfCleanAny` 在 `pushNowAny` 之前；`afterSignIn` 末尾那一次快进删掉（换稿走 `open()` 自己的门）③ `editor.ts` `pushNow`：已物化 ∧ 不 pending ∧ 没有待落盘 ∧ 正文 === 上次落盘 → 不推（书的 `session.flush` 本来就 `!dirty && !force → wrote:false`）④ 黑匣子：`editor.persist` 记 `[sync] push "<name>": pushed | not pushed (<reason>) resolution=…`；`store-ui.resolveConflict` 记 `conflict sheet "<name>" occasion=… → <choice>` ⑤ 推送冲突面 primary 改「云端覆盖本地」（user 同日在 KudsRocket 会话「默认云端才是 authority」；挂机醒来撞面的那台通常是旧的一方；本机那份照旧进本机备份箱）。
+- **E2E**：三个挂机场景加进既有的 `test/e2e-sync`（库自带 mock 云 + 两个浏览器上下文；没有另抄 MoonSinger 的 cloud-bridge，WXHW 自己的 bridge 已等价）：别机改过这台干净 → 静默快进、不弹面、零上传；锁屏那一下回执丢失（harness `gate.loseUploadOf = <云端路径>`：云端真的写了、响应不回）→ 库在同一次推里重试 → 412 → 逐字节比对相等 → 自愈，不弹面；加密稿同一场景也自愈（重试复用同一份密文）。全套 14 场景 2m22s 绿。
+- **库侧仍开着的缺口**（本轮没动库，KudsRocket 会话同日在发 0.17.3，别两边同时改）：推到一半**页面死掉**（reload / 标签被回收）→ 下次推是新一次 `sealForWrite`（随机 IV）→ 密文不同 → `tryHeal` 比不出「其实同一篇」→ 弹面；明文稿同场景 `tryHeal` 字节相等能自愈。根治 = 推路径记住在途**明文**的哈希（或对加密容器比解壳后的明文）。要 user 立项。另：0.17.1 的每请求超时（挂死的在途 fetch 永不结束 = 保存链卡死的那种）在 0.17.2 里是显式开关，WXHW 要不要开，user 定。
+- **验收口径**：真机 reload → 写几个字 → 等空闲推 → 不弹；别的设备改过、这台干净锁屏 / 回前台 → 静默换成云端新版 + 不弹；两边都改 → 弹、选哪边都不丢字节；黑匣子里每次登录 / 锁屏只有 pending 的那一推。

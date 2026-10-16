@@ -32,5 +32,7 @@ export interface InputPipeline {
     toggleMode(): Promise<void>;
     /** 把一个已经到手的 keydown 交给输入法（焦点不在任何框上时 app 把第一击救回正文用）。 */
     routeHardwareKey(el: TextField, e: KeyboardEvent): Promise<void>;
+    /** app 道里排着的改字现在就做完（落盘 / 换页 / 离开之前：文本框此刻必须是最新的）。 */
+    flushText(): void;
 }
 export declare function createInputPipeline(d: PipelineDeps): InputPipeline;

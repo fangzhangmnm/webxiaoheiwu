@@ -13,6 +13,8 @@ export interface ImeDockDeps {
         nextPage: string;
         toggleMode: string;
     };
+    /** 手机键盘底排的话筒键（v2.3.31）：点了 = 纸面话筒钮同一个动作。 */
+    onMic?(): void;
     /** 软键盘现在该不该露（设置 + 设备 + 有没有见过实体键盘，app 说了算）。 */
     keyboardWanted(): boolean;
     /** 用户按了「收起键盘」。 */
@@ -29,6 +31,8 @@ export interface ImeDock {
     keyboardShown(): boolean;
     /** 中 / 英 切换了：PC 式悬浮条空着也闪一下芯片（v2.1.26，顶栏不再有「中 / 英」一字；软键盘露着时键盘自己的中 / 英键就是状态，不闪）。 */
     flashMode(): void;
+    /** 话筒此刻在键盘里（手机式那一块露着）：纸面的悬浮话筒钮让位（v2.3.31「语音也收进来」）。 */
+    micInKeyboard(): boolean;
     keyboard: ReturnType<typeof createSoftKeyboard>;
 }
 export declare function createImeDock(d: ImeDockDeps): ImeDock;

@@ -1959,13 +1959,15 @@ function pushDirtyAll(opts: { verbose?: boolean } = {}): Promise<void> {
   return pushDirtyAllInFlight;
 }
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
+//   顺序（v2.3.35，2026-10-16；10-08 handoff 第 3 节）：**先快进、再推**。这台干净而别的设备改过 → 静默接云端新版；脏 → 库的快进是空操作、推送撞 412 才弹面。
+//   以前反过来（先推再快进）+ 推送不看脏，干净的这台也把旧版推一遍 → 412 → 弹「本地覆盖云端」= user 2026-10-16「挂机之后还是有…bug」。
 async function resumeSync(): Promise<void> {
   if (!auth.isSignedIn()) return;
   setStatus(t("st.syncing"));
-  await pushNowAny();
+  await refreshIfCleanAny();   // 干净快进在前
+  await pushNowAny();          // 只推 pending（编辑器 / 书各自的「不脏不推」门）
   await requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
   await pushDirtyAll();   // 2026-09-26：开着的推完再问库还有谁没推（顺序保证开着的那篇不会被推两遍）
-  await refreshIfCleanAny();
   await reconcileCollections();
   drawer.subscribe();   // 2026-09-09 审计 #8：refresh 只重画缓存帧，回线/复查要重拉
   setState(stateAny());
@@ -2098,10 +2100,11 @@ function afterSignIn(): Promise<void> {
   if (afterSignInInFlight) return afterSignInInFlight;
   afterSignInInFlight = (async () => {
     try {
-      diagNote("auth", "afterSignIn: reconcile collections + user dict + push open doc + drain offline queue + push all dirty");
+      diagNote("auth", "afterSignIn: reconcile collections + user dict + refresh open doc + push pending + drain offline queue + push all dirty");
       await reconcileCollections();
       await pullUserDict();
-      await pushNowAny().catch((e) => reportError(e, "log"));   // 2026-09-26：登录那一下先把开着的推上去（以前登录后没人推，登出态写的书一直「未同步」）
+      await refreshIfCleanAny();   // v2.3.35：先快进（登录前开的稿在这里重捕云端 base——store 0.16.2 的 refresh in-sync markSeen），再推
+      await pushNowAny().catch((e) => reportError(e, "log"));   // 2026-09-26：登录那一下把开着的推上去（登出态写的书一直「未同步」）；v2.3.35 起只推 pending
       void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log")).then(() => pushDirtyAll());   // 大文件慢网不阻塞后面的 lastActive / 快进；pushAll 排在队列回放之后
       if (!bootLastActiveHandled) {
         bootLastActiveHandled = true;
@@ -2110,10 +2113,9 @@ function afterSignIn(): Promise<void> {
         const remote = appState.getItem<{ name?: string }>("lastActive");
         if (remote?.name && remote.name !== activeName() && !isDirtyAny() && !editor.state.pendingDate) {
           const known = drawer.findByName(remote.name);
-          if (known && !known.encrypted) await openAny(remote.name);
+          if (known && !known.encrypted) await openAny(remote.name);   // 换稿 = open() 自带新鲜度门，不用再快进一次
         }
       }
-      await refreshIfCleanAny();
       drawer.subscribe();   // 重拉（drawer.refresh 只重画缓存帧——审计 #8）
     } catch (e) { reportError(e, "warning"); }
   })().finally(() => { afterSignInInFlight = null; });
@@ -2129,4 +2131,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

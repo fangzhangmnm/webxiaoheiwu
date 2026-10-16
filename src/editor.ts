@@ -15,6 +15,7 @@ import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileU
 import { deviceKvGet, deviceKvGetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { rescueText } from "./rescue.ts";
+import { note as diagNote } from "./diag-log.ts";
 import { t } from "./i18n/index.ts";
 
 export interface StatusOpts { error?: boolean; unsynced?: boolean }
@@ -136,6 +137,7 @@ export function createEditor(d: EditorDeps) {
       }
       const effPush = push && !encryptPending;
       const r = await saveDoc(name, text, { push: effPush });
+      if (effPush) diagNote("sync", `push "${name}": ${r.pushed ? "pushed" : `not pushed (${r.reason ?? "?"})`}${r.resolution ? ` resolution=${r.resolution}` : ""}`);   // 黑匣子：每一次推和它的结果（book 模式 mode.ts 同款）
       if (gen !== loadGen) return;   // 切走了：字节已落在捕获的 name 上，状态归新稿管
       savedText = text;
       if (effPush) {
@@ -188,6 +190,10 @@ export function createEditor(d: EditorDeps) {
       pushPending = true; d.setState(statusForDoc(), { unsynced: true });
       return;
     }
+    // 不脏不推（v2.3.35，2026-10-16）：以前已有稿不管脏不脏每次登录 / 回前台 / 锁屏 / 解锁都整篇重推一遍（v2.1.10 的实现细节，没拍过）。
+    //   副作用 = 别的设备改过而这台没动时，本该静默快进，却先推 → 412 → 弹「本地覆盖云端」面（user 2026-10-16「挂机之后还是有要你本地覆盖云端的 bug」；
+    //   e2e「txt · 挂机：别的设备改过、这台干净」复现）。pending（落了盘没推 / 上次没推成）照推；新稿（未物化）走 persist 自己的空稿门。
+    if (st.name && !pushPending && !localTimer && d.editor.value === savedText) return;
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     const gen = loadGen;
     d.setStatus(t("st.syncing"));

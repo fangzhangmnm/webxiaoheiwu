@@ -36,6 +36,8 @@ interface Backend {
     clear(): Promise<ImeResult>;
     chooseCandidate(index: number): Promise<ImeResult>;
     commitDefault(withNewline: boolean): Promise<ImeResult>;
+    /** 组字区原样上屏（已选的字 + 剩下的字母；v2.3.33 回车的语义，同 iOS「确认」/ 微软拼音）。 */
+    commitRaw(): Promise<ImeResult>;
     changePage(prev: boolean): Promise<ImeResult>;
     dumpUserDir?(): Promise<UserDictDump>;
     restoreUserDir?(dump: UserDictDump): Promise<void>;
@@ -63,6 +65,10 @@ export declare class NaturalCodeIME {
     pageSize: number;
     setPageSize(n: number): Promise<void>;
     backend: Backend;
+    /** 临时英文（v2.3.33，user 2026-10-04「和ios对齐，嗯和你建议一样」「空格收尾留空格，因为不想留的话可以用回车」）：中文态里一个大写字母（Shift + 字母 / 软键盘上档一次）
+     *  起头，后面的字母、数字原样接着、不出汉字候选——「我用AI写」「Wi-Fi」不用切中英。空格 = 原样 + 一个空格；回车 = 原样；标点 = 原样 + 这个标点（中文标点照旧）；
+     *  退格删一个、删空即退出；Esc / Ctrl+Z 撤掉；点条上那枚原样芯片 = 原样；切中 / 英 = 原样带出去。null = 不在临时英文里。纯 JS，不进 RIME。 */
+    private temp;
     initializeError: string | null;
     initialized: boolean;
     private initPromise;
@@ -78,9 +84,13 @@ export declare class NaturalCodeIME {
     /** 终止 RIME worker（还原出厂前：worker 活着 IDB 删库必 blocked）。之后 initialize 可重来。 */
     dispose(): void;
     getState(): ImeState;
-    /** 首选上屏（同空格）；没在组字 → passthrough。 */
+    /** 临时英文收尾：原样 + suffix 上屏。 */
+    private takeTemp;
+    /** 把 RIME 里正在组的字收掉：先上首选；首选上不完（拼不成字的尾巴）剩下的原样带出——别留看不见的组字。没在组字 = null。 */
+    private flushBackend;
+    /** 首选上屏（同空格；临时英文 = 原样、不带空格）；没在组字 → passthrough。 */
     commitFirst(): Promise<ImeResult>;
-    /** 点第 index 个候选（当前页内，0 起）。 */
+    /** 点第 index 个候选（当前页内，0 起）。临时英文条上只有原样那一枚。 */
     choose(index: number): Promise<ImeResult>;
     /** 候选翻页。 */
     turnPage(prev: boolean): Promise<ImeResult>;
@@ -90,6 +100,8 @@ export declare class NaturalCodeIME {
     restoreUserDir(dump: UserDictDump): Promise<void>;
     /** Shift 单击：中 ↔ EN。切到 EN 时把未完成的拼音原样提交。 */
     toggleAsciiMode(): Promise<ImeResult>;
+    /** 临时英文里的键（见 temp）。 */
+    private onTempKey;
     onKeydown(event: KeyboardEvent): Promise<ImeResult>;
 }
 export {};
