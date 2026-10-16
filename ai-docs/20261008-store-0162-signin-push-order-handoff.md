@@ -79,3 +79,9 @@
 - 安全性：这行 markSeen 只会把 `_base` 设成「本地字节当时同步到的那一版」，永远不可能比字节更新 → B1 静默覆盖不可能；W2 成立（per-tab、open 时刻）；durable dirty 不变量核过（只在 push 成功 / markSynced 清，回执丢失走 deferred 不清脏）；`seenBase` 的所有消费者（offload 守卫、upload-queue、reconcile、safe-resolve、uploadReplay.enqueue）本来就回退到同一个 durable etag，行为不变；三个分支都加。
 - **不要做**「dirty 但 `_parent` 值为 null」的重捕：null 可能是本 tab 真·新文件，捕了会把别 tab 的同名文件从 fail 变成 If-Match replace = 真·静默覆盖。这个窗口留给 409 面。
 - 版本：patch 体量，但是所有消费方的默认行为变化；它建议当 0.16.2 同族 bugfix 默认开、发版说明「行为差异」单列，归 user 定。谁做归 user。
+
+### 6.3 落地（2026-10-16 晚，Claude Fable 5.1，KudsRocket 会话代做）
+
+- 库 **0.18.0**（`20260813 internal-store` 9bc08e2，GitHub release v0.18.0）：`freshness.open()` 的 offline / cloud-error / skipped 三分支，本地副本干净 ∧ 磁盘上有上次同步的 etag → `head.markSeen` 记为本 tab 的 base（`createStore({ openLineageFromDurable })` 默认开，可关）。**不做**「脏副本空基准重捕」（多标签页下会变成静默覆盖）。另加 `file.resolve()`（库主动叫冲突面）。发版说明 `20260813 internal-store/ai-docs/20261016-0.18.0-open-lineage-and-resolve.md`。
+- WXHW **v2.3.38**：收 store 0.18.0 + gallery 0.7.1（冲突面主按钮「云端覆盖本地」，和 v2.3.35 自己那张面一致）；`test/e2e-sync/run.mjs` 的 `LIBRARY_LINEAGE_FIX_LANDED` 翻 true，「单设备：页面被回收后重开…」场景「第一次推不弹冲突面」转硬检查并通过；补 `st.fileUploading` 文案（0.17.0 的 busy key 穷举表）。193 单元 / boot smoke / ui-audit / api 全过；全套 e2e 结果见 commit 信息。
+- 还开着：§6 末尾那条「加密稿页面死掉后重推、新 IV → tryHeal 比不出 → 弹面」，等 user 立项。

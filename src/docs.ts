@@ -32,7 +32,10 @@ const anyFile = (name: string) => (docKind(name) === "project" ? zipFile(name) :
 export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
 /** 干净快进的可选项：localDirty = 还停在编辑器里没落盘的改动（库只认得已落盘的脏）；onReplaceStart = 库决定替换的那一刻（同步），调用方冻结输入。 */
 export interface PullIfCleanOpts { localDirty?: () => boolean; onReplaceStart?: () => void; probe?: Promise<unknown> }
-export function pullProjectIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult> { return zipFile(name).pullIfClean(opts); }
+// 本 app 的每一次干净快进都发生在「怀疑自己过期」的时刻（回前台 / 挂机醒来 / 登录后 / 60 s 轮询），不是「刚列完清单连着开几十个小文件」——
+//   所以一律不采信库 0.17.0 的「30 s 内的旧清单当新鲜度证据」（store 0.18.1 `trustHints:false`）。不传的话 e2e「挂机：别的设备改过、这台干净 → 醒来静默快进」翻红（2026-10-16）。
+const ALWAYS_ASK_CLOUD = { trustHints: false } as const;
+export function pullProjectIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult> { return zipFile(name).pullIfClean({ ...ALWAYS_ASK_CLOUD, ...opts }); }
 /** 本地字节是不是加密容器（两档：txt 走 RawFile、工程走 ZipFile）。 */
 export function isDocEncrypted(name: string): Promise<boolean> { return (docKind(name) === "project" ? zipFile(name) : file(name)).isEncrypted(); }
 export async function saveProjectBlob(name: string, blob: Blob, opts: { push: boolean }): Promise<SaveResult> { return await zipFile(name).save(blob, { tryPush: opts.push }); }
@@ -173,7 +176,7 @@ export function trashDoc(name: string): Promise<DelResult> { return anyFile(name
 
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
 export function pullDocIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult> {
-  return file(name).pullIfClean(opts);
+  return file(name).pullIfClean({ ...ALWAYS_ASK_CLOUD, ...opts });
 }
 
 export function setActiveDoc(name: string | null): void { setActiveFileName(name); }

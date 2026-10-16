@@ -824,6 +824,10 @@ export declare const S: {
         readonly zh: "正在拉取云端版本…";
         readonly en: "Pulling cloud version…";
     };
+    readonly "st.fileUploading": {
+        readonly zh: "正在上传…";
+        readonly en: "Uploading…";
+    };
     readonly "st.cloudChecking": {
         readonly zh: "正在检查云端…";
         readonly en: "Checking cloud…";

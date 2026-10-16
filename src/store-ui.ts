@@ -13,6 +13,7 @@ const STORE_TEXT_KEYS: Record<StoreTextKey, Key> = {
   "sync.pushing": "st.syncPushing",
   "file.renaming": "st.fileRenaming",
   "file.pulling": "st.filePulling",
+  "file.uploading": "st.fileUploading",   // store 0.17.0 files.uploadStream（本 app 不用流式上传，映射只为穷举表完整）
   "cloud.checking": "st.cloudChecking",
   "file.deleting": "st.fileDeleting",
   "trash.restoring": "st.trashRestoring",

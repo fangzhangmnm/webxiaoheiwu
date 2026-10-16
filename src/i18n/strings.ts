@@ -221,6 +221,7 @@ export const S = {
   "st.syncPushing":      { zh: "正在上传…", en: "Uploading…" },
   "st.fileRenaming":     { zh: "正在改名…", en: "Renaming…" },
   "st.filePulling":      { zh: "正在拉取云端版本…", en: "Pulling cloud version…" },
+  "st.fileUploading":    { zh: "正在上传…", en: "Uploading…" },
   "st.cloudChecking":    { zh: "正在检查云端…", en: "Checking cloud…" },
   "st.fileDeleting":     { zh: "正在移到回收站…", en: "Moving to trash…" },
   "st.trashRestoring":   { zh: "正在恢复…", en: "Restoring…" },
