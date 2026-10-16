@@ -48,7 +48,7 @@ import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
 import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
-import { setQuoteStyle, chineseifyPunctuation, countWesternPunctuation } from "./zh-punct.ts";
+import { setQuoteStyle, tidyPunctuation as tidyPunct } from "./zh-punct.ts";
 import { replaceRange } from "./text-edit.ts";
 import { createInputPipeline } from "./input/pipeline.ts";
 import { createImeDock } from "./input/dock.ts";
@@ -576,14 +576,14 @@ function tidyPunctuation(): void {
   const el = editorEl, all = el.value;
   const hadSel = el.selectionStart !== el.selectionEnd;
   const s = hadSel ? el.selectionStart : 0, e = hadSel ? el.selectionEnd : all.length;
-  const before = all.slice(s, e), after = chineseifyPunctuation(before);
+  const before = all.slice(s, e), { text: after, changes } = tidyPunct(before);
   if (after === before) { setStatus(t("punct.none")); return; }
   const caret = el.selectionStart, top = sheet.scrollTop;
   el.focus({ preventScroll: true });
   replaceRange(el, s, e, after);
   try { if (hadSel) el.setSelectionRange(s, s + after.length); else { const c = Math.min(caret, el.value.length); el.setSelectionRange(c, c); } } catch { /* ignore */ }
   sheet.scrollTop = top;
-  setStatus(t(hadSel ? "punct.doneSel" : "punct.done", { n: countWesternPunctuation(before, after) }));
+  setStatus(t(hadSel ? "punct.doneSel" : "punct.done", { n: changes }));
 }
 async function exportSheetFlow(): Promise<void> {
   const inBook = project.active();

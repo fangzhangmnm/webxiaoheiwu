@@ -13,27 +13,34 @@ const isCjk = (ch: string | undefined): boolean => !!ch && CJK_RE.test(ch);
 /** 引号样式（与内置 IME 同一设置；app 层 setQuoteStyle 同步）。 */
 let _corner = false;
 export function setQuoteStyle(style: "curly" | "corner"): void { _corner = style === "corner"; }
-/** 一键规整用：这段文字里会被 chineseifyPunctuation 换掉的西文标点有几个（给 toast 报数；0 = 没有要改的）。 */
-export function countWesternPunctuation(before: string, after: string): number {
-  const n = (s: string): number => (s.match(/[,.?!:;()\[\]"'\-]/g) ?? []).length;
-  return Math.max(before === after ? 0 : 1, n(before) - n(after));   // 只换了 … 的个数这种（西文字符数不变）也至少报 1
-}
-export function chineseifyPunctuation(text: string): string {
-  if (!text || !CJK_RE.test(text)) return text;
+/** 一键规整（user 2026-10-16「一键把标点符号…全部正则化」「标点主要是引号的规范」）：同一套规则，顺带报改了几处。 */
+export function tidyPunctuation(text: string): { text: string; changes: number } {
+  if (!text || !CJK_RE.test(text)) return { text, changes: 0 };
+  let changes = 0;
+  const tick = (from: string, to: string): string => { if (from !== to) changes++; return to; };
   let out = text;
-  // 省略号 / 破折号先于单字规则（否则 ... 会先被逐个换成 。。。）；只认紧邻 CJK（或已是中文标点）的那一串
-  out = out.replace(/(?<=[一-鿿，。？！：；（）【】“”‘’「」『』])(?:\.{3,}|。{3,}|…+)|(?:\.{3,}|。{3,}|…+)(?=[一-鿿])/g, "……");
-  out = out.replace(/(?<=[一-鿿，。？！：；（）【】“”‘’「」『』……])-{2,}|-{2,}(?=[一-鿿])/g, "——");
-  out = out.replace(/([一-鿿，。？！：；（）【】])([,.?!:;])/g, (_, prev: string, p: string) => prev + SINGLE_MAP[p]);
-  out = out.replace(/([,.?!:;])([一-鿿])/g, (_, p: string, next: string) => SINGLE_MAP[p] + next);
-  out = convertPairs(out, "(", ")", "（", "）");
-  out = convertPairs(out, "[", "]", "【", "】");
+  // ── 引号规范：全文统一成设置里的那一种（curly “”‘’ / corner 「」『』）；西文 " ' 交替开闭；英文撇号（don't / it’s）不动 ──
+  const [dO, dC, sO, sC] = _corner ? ["「", "」", "『", "』"] : ["“", "”", "‘", "’"];
+  out = out.replace(/[“「]/g, (m) => tick(m, dO)).replace(/[”」]/g, (m) => tick(m, dC));
+  out = out.replace(/(?<![A-Za-z])[‘『]|[‘『](?![A-Za-z])/g, (m) => tick(m, sO)).replace(/(?<![A-Za-z])[’』]|[’』](?![A-Za-z])/g, (m) => tick(m, sC));
   let openDouble = true;
-  out = out.replace(/"/g, () => { const ch = openDouble ? (_corner ? "「" : "“") : (_corner ? "」" : "”"); openDouble = !openDouble; return ch; });
+  out = out.replace(/"/g, () => { const ch = openDouble ? dO : dC; openDouble = !openDouble; changes++; return ch; });
   let openSingle = true;
-  out = out.replace(/'/g, () => { const ch = openSingle ? (_corner ? "『" : "‘") : (_corner ? "』" : "’"); openSingle = !openSingle; return ch; });
-  return out;
+  out = out.replace(/(?<![A-Za-z])'|'(?![A-Za-z])/g, () => { const ch = openSingle ? sO : sC; openSingle = !openSingle; changes++; return ch; });
+  // 省略号 / 破折号先于单字规则（否则 ... 会先被逐个换成 。。。）；只认紧邻 CJK（或已是中文标点）的那一串
+  out = out.replace(/(?<=[一-鿿，。？！：；（）【】“”‘’「」『』])(?:\.{3,}|。{3,}|…+)|(?:\.{3,}|。{3,}|…+)(?=[一-鿿])/g, (m) => tick(m, "……"));
+  out = out.replace(/(?<=[一-鿿，。？！：；（）【】“”‘’「」『』……])-{2,}|-{2,}(?=[一-鿿])/g, (m) => tick(m, "——"));
+  out = out.replace(/([一-鿿，。？！：；（）【】“”「」])([,.?!:;])/g, (_, prev: string, p: string) => { changes++; return prev + SINGLE_MAP[p]; });
+  out = out.replace(/([,.?!:;])([一-鿿])/g, (_, p: string, next: string) => { changes++; return SINGLE_MAP[p] + next; });
+  const b1 = convertPairs(out, "(", ")", "（", "）"); changes += countDiff(out, b1); out = b1;
+  const b2 = convertPairs(out, "[", "]", "【", "】"); changes += countDiff(out, b2); out = b2;
+  return { text: out, changes };
 }
+/** 等长替换后有几个字符变了（convertPairs 只换字符不改长度）。 */
+function countDiff(a: string, b: string): number { let n = 0; const A = [...a], B = [...b]; for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) n++; return n; }
+/** 语音听写用（SenseVoice 在中文里偶尔吐 ASCII 标点）：和一键规整同一套规则。 */
+export function chineseifyPunctuation(text: string): string { return tidyPunctuation(text).text; }
+
 
 function convertPairs(text: string, openCh: string, closeCh: string, fwOpen: string, fwClose: string): string {
   const chars = [...text];

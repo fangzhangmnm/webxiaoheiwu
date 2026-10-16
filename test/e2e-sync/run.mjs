@@ -357,6 +357,33 @@ scenario("加密 txt · 挂机：锁屏那一下的推送回执丢了 → 醒来
   await A.close();
 });
 
+// 已知库缺口（2026-10-16，user「我完全没有动别的电脑，可能只是切换前后台或者挂机较久，就会有」）：页面被回收后重开，本地恢复在登录之前，
+//   open() 的新鲜度门没跑成（未登录 → fetchMeta 抛）→ 这篇在本 tab 没有「云端血统」(_base)；登录回来前打的第一个字 recordEdit 捕到 parent=null
+//   → 第一次推不带 If-Match → conflictBehavior:fail → 409 → 字节已不同（多了新打的字）→ CloudNameCollisionError → 当冲突面弹出来。
+//   修在库：open() 云端不可达时，本地副本干净 ∧ 有 durable etag → markSeen(durable)（本 tab 刚读进来的字节就是那一版）。等 user 批；批了把下面翻 true。
+const LIBRARY_LINEAGE_FIX_LANDED = false;
+scenario("txt · 单设备：页面被回收后重开（切后台回来 / 挂机久了），登录还没回来就接着打字 → 第一次推不弹面", async (w) => {
+  const A = await w.device("A");
+  await A.boot(server.url); await A.type("原文。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const name = await A.eval(() => window.__xhw.editor.state.name);
+  const before = uploadsOf(w, name);
+  await A.eval(() => localStorage.setItem("e2eStartSignedOut", "1"));
+  await A.boot(server.url);                                                     // 重开：本地恢复在前、登录在后（真机 boot 顺序）
+  await A.eval(() => localStorage.removeItem("e2eStartSignedOut"));
+  check("重开后开的是同一篇", (await A.text()) === "原文。", await A.text());
+  await A.type("重开后。"); await A.wait(500);                                   // 登录回来之前就开打
+  await A.eval(() => window.__e2eAuth.signIn()); await A.wait(2500);           // 静默续登回来 → afterSignIn
+  await Promise.race([A.pushNow(), A.wait(4000)]); await A.wait(500);
+  const shown = await A.gateShown();
+  if (LIBRARY_LINEAGE_FIX_LANDED) check("第一次推不弹冲突面（这台没别人动过云端）", !shown);
+  else console.log(`   ℹ 已知库缺口（等 user 批）：第一次推 ${shown ? "弹了冲突面 —— 复现 user 的「挂机 / 切后台后要我本地覆盖云端」" : "没弹（库已修？把 LIBRARY_LINEAGE_FIX_LANDED 翻 true）"}`);
+  if (shown) { await A.resolveGate(KEEP_MINE).catch(() => {}); await A.wait(1500); }
+  check("选了本地覆盖云端之后：云端 = 本地（原文 + 重开后打的），字不丢", (await w.cloudText(name)) === "原文。重开后。", await w.cloudText(name));
+  if (LIBRARY_LINEAGE_FIX_LANDED) check("只推了一次", uploadsOf(w, name) === before + 1, `uploads ${before} → ${uploadsOf(w, name)}`);
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
 for (const s of scenarios) {
   if (only && !s.name.includes(only)) continue;
   console.log(`\n── ${s.name}`);

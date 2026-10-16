@@ -570,9 +570,9 @@ export const S = {
   "sidebar.exportTitle":    { zh: "导出：复制文字 / 长图", en: "Export: copy text / long image" },
   // ── 2026-10-16 一键规整标点（user「一键把标点符号或者选中的标点符号全部正则化」）──
   "sidebar.punct":          { zh: "规整标点", en: "Tidy punctuation" },
-  "sidebar.punctTitle":     { zh: "规整标点：西文标点换成中文标点（选中了只改选中的，否则整页）", en: "Tidy punctuation: Western marks → Chinese (selection only, else the whole page)" },
-  "punct.done":             { zh: "整页已规整 {n} 个标点", en: "Tidied {n} punctuation mark(s) on this page" },
-  "punct.doneSel":          { zh: "选中部分已规整 {n} 个标点", en: "Tidied {n} punctuation mark(s) in the selection" },
+  "sidebar.punctTitle":     { zh: "规整标点：引号统一成设置里的那种、西文标点换成中文（选中了只改选中的，否则整页）", en: "Tidy punctuation: unify quotes to the configured style, Western marks → Chinese (selection only, else the whole page)" },
+  "punct.done":             { zh: "整页已规整 {n} 处标点", en: "Tidied {n} punctuation mark(s) on this page" },
+  "punct.doneSel":          { zh: "选中部分已规整 {n} 处标点", en: "Tidied {n} punctuation mark(s) in the selection" },
   "punct.none":             { zh: "标点已经是中文的了", en: "Punctuation is already Chinese" },
   "punct.cantEdit":         { zh: "这页现在不能改（锁定 / 只读）", en: "This page can't be edited right now (locked / read-only)" },
   "copy.done":              { zh: "已复制全页：{cjk} 字 {en} 词", en: "Copied the whole page: {cjk} chars · {en} words" },

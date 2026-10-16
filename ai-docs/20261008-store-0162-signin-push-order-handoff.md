@@ -58,3 +58,17 @@
 - **E2E**：三个挂机场景加进既有的 `test/e2e-sync`（库自带 mock 云 + 两个浏览器上下文；没有另抄 MoonSinger 的 cloud-bridge，WXHW 自己的 bridge 已等价）：别机改过这台干净 → 静默快进、不弹面、零上传；锁屏那一下回执丢失（harness `gate.loseUploadOf = <云端路径>`：云端真的写了、响应不回）→ 库在同一次推里重试 → 412 → 逐字节比对相等 → 自愈，不弹面；加密稿同一场景也自愈（重试复用同一份密文）。全套 14 场景 2m22s 绿。
 - **库侧仍开着的缺口**（本轮没动库；同日 KudsRocket 会话提的 `file.takeCloud()` 被 user 否决——「我要的就是本地覆盖云端和云端覆盖本地二选一啊！这个才是安全的模型！」「取消也要」：冲突只能在库弹的 `ui.resolveConflict` 三键面里由人选，app 不许替人回答、不许绕面换字节；WXHW 的 `store-ui.ts` 就是这张面，没有预设答案）：推到一半**页面死掉**（reload / 标签被回收）→ 下次推是新一次 `sealForWrite`（随机 IV）→ 密文不同 → `tryHeal` 比不出「其实同一篇」→ 弹面；明文稿同场景 `tryHeal` 字节相等能自愈。根治 = 推路径记住在途**明文**的哈希（或对加密容器比解壳后的明文）。要 user 立项。另：0.17.1 的每请求超时（挂死的在途 fetch 永不结束 = 保存链卡死的那种）在 0.17.2 里是显式开关，WXHW 要不要开，user 定。
 - **验收口径**：真机 reload → 写几个字 → 等空闲推 → 不弹；别的设备改过、这台干净锁屏 / 回前台 → 静默换成云端新版 + 不弹；两边都改 → 弹、选哪边都不丢字节；黑匣子里每次登录 / 锁屏只有 pending 的那一推。
+
+### 6.1 单设备根因（2026-10-16 晚补；user「是我完全没有动别的电脑，可能只是切换前后台或者挂机较久，就会有」）
+
+§6 修的是「别的设备改过、这台干净」那条；user 的场景是**单设备**。e2e「txt · 单设备：页面被回收后重开…」复现了另一条路：
+
+1. 页面被浏览器回收后重开（iOS 切后台回来常见；Edge 挂机久了也会）。WXHW boot = 建 store → **本地恢复开稿** → initAuth（CatsUp 2026-09-22 立的顺序）。
+2. `open()` 的新鲜度门这时跑不成：未登录 → `cloud.fetchMeta` 抛「Not signed in」→ `cloud-error` 分支 → **不 markSeen** → 本 tab 的 `_base` 空（谱系 per-tab，reload 后全丢；`seenBase` 的 durable 回退只用于比对，按设计永不作 dirty 的 If-Match）。
+3. 用户在登录回来之前就接着打字（可编辑 ~300 ms，静默续登 0.5–3 s，挂机久了更慢）→ `recordEdit` 捕 `_parent = _base ?? null` = **null**。
+4. 登录回来 → `refreshIfCleanAny` 对脏稿是空操作（dirty-skip，不 markSeen）→ 第一次推 `ifMatchFor` 返回 null → 不带 If-Match → `conflictBehavior:"fail"` → 云端有同名 → 409 → `_confirmOurUpload` 大小不等（多了新字）→ `CloudNameCollisionError` → `surfaceCollision`（既有文件）→ 和 412 同一张冲突面。字节一个不丢，但人被要求「本地覆盖云端 / 云端覆盖本地」二选一——其实两边是同一篇的前后版本。
+5. v2.3.35 之前的无条件推盖不住这条（用户没打字时才盖得住：409 → 大小相等 → 尾字节相等 → 认领）。
+
+**提案（库，等 user 批；pwa-cloud-store 流程）**：`freshness.open()` 的三个「门没跑成」分支（`!isOnline()` / `cloud-error` / probe `skipped`）加一行：本地副本干净（`!head.isDirtyAnywhere(name) && !localDirty?.()`）∧ `head.seenBase(name) != null`（有 durable etag）→ `head.markSeen(name, seenBase)`。理由：干净 = 本地字节就是 durable etag 那一版的字节（push 成功 / 快进 / acquire 时才写 etag 并清 dirty），本 tab 此刻读进内存的就是它，谱系成立。不破 W2（「别的 tab 推过的 etag 不能当我的 parent」）：只在 open 时刻、只给本 tab 刚读到的那份标 base，不在 recordEdit 时刻去读共享 etag。云端其实动过（别机改了）→ 第一次推 412 → tryHeal 不等 → 冲突面——那是真分叉，和今天一样。durable etag 因回执丢失而陈旧 → 同样 412 → 面，不比今天差。消费方：WXHW / MoonSinger / WeebPaint / CatsUp boot 顺序相同，都受益；WXHW 收货后把 `test/e2e-sync/run.mjs` 的 `LIBRARY_LINEAGE_FIX_LANDED` 翻 true。
+
+**app 侧替代（不推荐）**：boot 等 `authBootSettled()` 再开稿 → 开门就等 0.5–3 s（离线更久），和 user「启动速度优先」「首键不卡」相悖。

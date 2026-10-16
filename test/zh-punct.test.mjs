@@ -1,6 +1,6 @@
 // zh-punct：中文语境标点全角化（自 v1 模块头注释的案例钉子）。created 2026-09-03 by Claude Fable 5.1
 import { describe, it, eq } from "./runner.mjs";
-import { chineseifyPunctuation as z, countWesternPunctuation as cnt } from "../src/zh-punct.ts";
+import { chineseifyPunctuation as z, tidyPunctuation as tidy, setQuoteStyle } from "../src/zh-punct.ts";
 
 describe("zh-punct", () => {
   it("无 CJK 原样", () => { eq(z("Hello, world. 3.14"), "Hello, world. 3.14"); });
@@ -13,5 +13,15 @@ describe("zh-punct", () => {
     eq(z("Wait... what"), "Wait... what");
   });
   it("破折号：紧邻 CJK 的 -- 收成「——」；a--b 不动", () => { eq(z("他--说"), "他——说"); eq(z("a--b"), "a--b"); eq(z("3-4 个"), "3-4 个"); });
-  it("报数：换掉了几个西文标点", () => { eq(cnt("你好,世界...", z("你好,世界...")), 4); eq(cnt("Hello, world", z("Hello, world")), 0); });
+  it("报数：改了几处", () => { eq(tidy("你好,世界...").changes, 2); eq(tidy("Hello, world").changes, 0); eq(tidy("试(1)").changes, 2); });
+  // user 2026-10-16「标点主要是引号的规范」：全文统一成设置里的那一种；英文撇号不动
+  it("引号规范 · curly：「」『』 → “”‘’；撇号不动", () => {
+    setQuoteStyle("curly");
+    eq(z("他说「好」，又说『行』"), "他说“好”，又说‘行’"); eq(z('我说 don\'t 和 it’s 都行'), "我说 don't 和 it’s 都行"); eq(z('混用"引号"和「引号」'), "混用“引号”和“引号”");
+  });
+  it("引号规范 · corner：“”‘’ → 「」『』；撇号不动", () => {
+    setQuoteStyle("corner");
+    eq(z("他说“好”，又说‘行’"), "他说「好」，又说『行』"); eq(z('他说"好"'), "他说「好」"); eq(z("我说 it’s 行"), "我说 it’s 行");
+    setQuoteStyle("curly");
+  });
 });

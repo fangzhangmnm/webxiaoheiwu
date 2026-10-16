@@ -2137,15 +2137,15 @@ export declare const S: {
         readonly en: "Tidy punctuation";
     };
     readonly "sidebar.punctTitle": {
-        readonly zh: "规整标点：西文标点换成中文标点（选中了只改选中的，否则整页）";
-        readonly en: "Tidy punctuation: Western marks → Chinese (selection only, else the whole page)";
+        readonly zh: "规整标点：引号统一成设置里的那种、西文标点换成中文（选中了只改选中的，否则整页）";
+        readonly en: "Tidy punctuation: unify quotes to the configured style, Western marks → Chinese (selection only, else the whole page)";
     };
     readonly "punct.done": {
-        readonly zh: "整页已规整 {n} 个标点";
+        readonly zh: "整页已规整 {n} 处标点";
         readonly en: "Tidied {n} punctuation mark(s) on this page";
     };
     readonly "punct.doneSel": {
-        readonly zh: "选中部分已规整 {n} 个标点";
+        readonly zh: "选中部分已规整 {n} 处标点";
         readonly en: "Tidied {n} punctuation mark(s) in the selection";
     };
     readonly "punct.none": {

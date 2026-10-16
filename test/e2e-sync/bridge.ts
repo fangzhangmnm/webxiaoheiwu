@@ -38,7 +38,7 @@ const blobOf = (u: unknown): Blob => new Blob([u as Uint8Array]);
 
 export function createBridgeProvider(): { provider: CloudProvider; auth: unknown } {
   const account = { username: "e2e@example.com", name: "e2e", homeAccountId: "e2e" };
-  let signedIn = true;
+  let signedIn = (() => { try { return localStorage.getItem("e2eStartSignedOut") !== "1"; } catch { return true; } })();   // 测试台：登出态启动（模拟页面被回收后重开、静默续登还没回来）
   const subs = new Set<(st: unknown) => void>();
   const state = (reason?: string) => ({ signedIn, account: signedIn ? account : null, reason });
   const emit = (reason: string) => { for (const cb of subs) cb(state(reason)); };
@@ -54,6 +54,7 @@ export function createBridgeProvider(): { provider: CloudProvider; auth: unknown
     onAuthChanged: (cb: (st: unknown) => void) => { subs.add(cb); return () => subs.delete(cb); },
     getAuthState: () => state(),
   };
+  (window as unknown as { __e2eAuth?: unknown }).__e2eAuth = auth;   // 测试台手动登录 / 登出
   const provider = {
     list: (folder?: string) => call("list", folder) as Promise<CloudItem[]>,
     getItemByPath: (path: string) => call("getItemByPath", path) as Promise<CloudItem | null>,
