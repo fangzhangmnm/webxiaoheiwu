@@ -417,9 +417,10 @@ function followCaret(): void {
   const atEnd = (editorEl.selectionEnd ?? 0) >= editorEl.value.length;
   const bottom = editorEl.getBoundingClientRect().top + (atEnd ? editorEl.clientHeight : paper.caretBottom());   // 光标行底边（视口坐标）；光标在末尾 = 正文框高度（框高 = 内容行数 × 行高），不量孪生框
   const top = bottom - lh;
+  // 可见区 = scroll-padding（顶栏之下、键盘之上，各再留 8px）。不读 padding：底部让位是 .surface::after 占位块（v2.3.40，WebKit bug 316902，见 styles.css「一张纸模型」）
   const cs = getComputedStyle(sheet);
-  const viewTop = sheet.getBoundingClientRect().top + (parseFloat(cs.paddingTop) || 0);
-  const viewBottom = sheet.getBoundingClientRect().bottom - (parseFloat(cs.paddingBottom) || 0);
+  const viewTop = sheet.getBoundingClientRect().top + (parseFloat(cs.scrollPaddingTop) || 0) - 8;
+  const viewBottom = sheet.getBoundingClientRect().bottom - (parseFloat(cs.scrollPaddingBottom) || 0) + 8;
   // 只补到边距，不再多滚一行（v2.1.33，user 2026-09-30「打字的时候为什么页面会往下滚」：以前两支各多加一个 lh → 每次换行跳两行，
   //   手机上可见区只有十来行，手感就是「页面往下滚」；「WXHW 更新」量到 delta = 2 × lh）。文字全走管线的 setRangeText，浏览器不做 reveal，这里多少就是多少。
   //   滚动量对齐设备像素：光标行底边是小数，直接加上去 scrollTop 就带小数，dpr 3 上字和线的相位对不上（ruled-audit drift 0.50 抓到）。

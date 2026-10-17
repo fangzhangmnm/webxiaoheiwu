@@ -57,6 +57,29 @@ for (const [w, h, tag] of SIZES) {
   // 页面外延底色（v2.3.33，Edge iPad「最下面还是空一点」= WebKit 用根背景色填底部安全区那一截）：键盘露着时根背景 = 键盘底色，那一截像键盘自己的底边
   probe(tag, "docked: the root (html) background equals the keyboard's own background (Edge's bottom safe-area strip continues the keyboard)", await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor === getComputedStyle(document.getElementById("imeDock")).backgroundColor), await page.evaluate(() => `${getComputedStyle(document.documentElement).backgroundColor} vs ${getComputedStyle(document.getElementById("imeDock")).backgroundColor}`));
   await shot("01-keyboard");
+  // 底部让位 + 大半页余量（v2.3.40，user 2026-10-17 iOS「有些页面弹出键盘后没有变矮导致没法滚动…下面的字被键盘挡住」= WebKit bug 316902：flex 滚动容器的 padding 不进 scrollHeight，
+  //   Chromium 复现不了 → 这里守结构：让位不许是 padding；再拿「没键盘一屏放得下、有键盘放不下」那种长度的页（iOS 上坏的就是它）量滚到底的样子）
+  {
+    const keep = await page.evaluate(() => document.getElementById("editor").value);
+    const g = await page.evaluate(() => {
+      const sf = document.querySelector("main.surface"), e = document.getElementById("editor"), dock = document.getElementById("imeDock");
+      const lh = parseFloat(getComputedStyle(e).lineHeight), top = parseFloat(getComputedStyle(sf).paddingTop), dockTop = dock.getBoundingClientRect().top;
+      const n = Math.max(2, Math.floor((innerHeight - top - 120) / lh) - 1);   // 正文 n 行 ≈ 没有键盘时一屏放得下
+      e.value = Array.from({ length: n }, (_, i) => "国国国" + i).join("\n"); e.setSelectionRange(e.value.length, e.value.length); e.dispatchEvent(new Event("input", { bubbles: true }));
+      return { n, padB: getComputedStyle(sf).paddingBottom, spacer: parseFloat(getComputedStyle(sf, "::after").height), dockH: innerHeight - dockTop, dockTop, top };
+    });
+    await wait(200);
+    const m = await page.evaluate(() => {
+      const sf = document.querySelector("main.surface"), e = document.getElementById("editor"); sf.scrollTop = sf.scrollHeight;
+      const r = e.getBoundingClientRect(), viewTop = sf.getBoundingClientRect().top + parseFloat(getComputedStyle(sf).scrollPaddingTop) - 8;
+      return { endBottom: r.bottom, viewTop, scrollTop: sf.scrollTop, pageBottom: document.querySelector(".page").getBoundingClientRect().bottom };
+    });
+    probe(tag, "bottom reservation is a real box (.surface::after), not scroll-container padding (WebKit 316902 drops it)", g.padB === "0px" && g.spacer >= g.dockH - 0.5, JSON.stringify(g));
+    probe(tag, "page ~one screen long (fits without the keyboard): scrolled to the end, its last line sits above the keyboard", m.scrollTop > 0 && m.endBottom <= g.dockTop + 0.5, JSON.stringify({ ...m, dockTop: g.dockTop, n: g.n }));
+    probe(tag, "overscroll ≈ more than half a page: the last line can be pushed into the upper half of the visible paper", m.endBottom <= m.viewTop + (g.dockTop - m.viewTop) / 2, JSON.stringify({ ...m, dockTop: g.dockTop }));
+    await page.evaluate((v) => { const e = document.getElementById("editor"); e.value = v; e.setSelectionRange(v.length, v.length); e.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector("main.surface").scrollTop = 0; }, keep);
+    await wait(200);
+  }
   // 键位几何照 iOS（v2.1.33，user「ios 的键位会宽一点，然后 s 和 z 对齐的」）：所有字母键等宽；z 的左边 == s 的左边；第二排两端各空半键
   // v2.3.29（user 2026-10-04 键位对齐肌肉记忆 + iPad mini / iPhone SE2 截图；「数字收到符号里面省空间吧」）：
   //   手机 = iPhone：回车在最右下角、宽 2.5 格；空格 3 格；字母层没有「收起」（在符号层话筒那格）。
@@ -120,7 +143,7 @@ for (const [w, h, tag] of SIZES) {
   probe(tag, "long pinyin: 1st candidate still starts at the strip's left edge and is fully on screen; pinyin shown as a small (≤11px) overlay that costs no width or height (v2.1.33, user「拼音还是用比较小的字体显示一下吧」); no hide column, strip ≤ 40px; hide key lives in the bottom row", !!long.first && long.first.l >= 0 && long.first.l - long.stripLeft < 12 && long.first.r <= w && long.smallPinyin && long.noHideInStrip && long.hideKey && long.stripH <= (phoneForm ? 40 : 60), JSON.stringify(long));   // 平板的候选条照 iPad 系统键盘 57（v2.3.32，user「候选字也太矮了？量一下截图」）；手机仍 ≤ 40
   await shot("03-long-pinyin");
   // 候选字号跟字号档（v2.3.20，user「候选条跟会有什么坏处吗」「好，那么做」）：现值 × 档（调小不缩、封顶 1.5）；条长高多少，键盘那一块就长高多少，纸面跟着让
-  { const m = () => page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"), dock = document.getElementById("imeDock"), small = document.querySelector("#imeDock .ime-preedit-small"), key = document.querySelector("#imeDock .ime-key"); return { cand: c ? parseFloat(getComputedStyle(c).fontSize) : null, strip: document.querySelector("#imeDock .ime-cands").getBoundingClientRect().height, dock: dock.getBoundingClientRect().height, dockTop: dock.getBoundingClientRect().top, dockVar: parseFloat(document.documentElement.style.getPropertyValue("--dock-h")), visBottom: innerHeight - parseFloat(getComputedStyle(document.querySelector("main.surface")).paddingBottom), small: small ? parseFloat(getComputedStyle(small).fontSize) : null, key: key.getBoundingClientRect().height, first: c ? c.getBoundingClientRect().right <= innerWidth : false }; });
+  { const m = () => page.evaluate(() => { const c = document.querySelector("#imeDock .cand:not(.nav)"), dock = document.getElementById("imeDock"), small = document.querySelector("#imeDock .ime-preedit-small"), key = document.querySelector("#imeDock .ime-key"); return { cand: c ? parseFloat(getComputedStyle(c).fontSize) : null, strip: document.querySelector("#imeDock .ime-cands").getBoundingClientRect().height, dock: dock.getBoundingClientRect().height, dockTop: dock.getBoundingClientRect().top, dockVar: parseFloat(document.documentElement.style.getPropertyValue("--dock-h")), visBottom: innerHeight - parseFloat(getComputedStyle(document.querySelector("main.surface")).scrollPaddingBottom) + 8, small: small ? parseFloat(getComputedStyle(small).fontSize) : null, key: key.getBoundingClientRect().height, first: c ? c.getBoundingClientRect().right <= innerWidth : false }; });
     const setScale = async (v) => { await page.evaluate((v) => { const s = document.getElementById("fontScaleSelect"); s.value = v; s.dispatchEvent(new Event("change")); }, v); await wait(300); };
     const cur = await page.evaluate(() => document.getElementById("fontScaleSelect").value);
     await setScale("1"); const a = await m(); await setScale("1.5"); const b = await m(); await setScale("0.85"); const c = await m(); await setScale(cur);
