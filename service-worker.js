@@ -8,6 +8,7 @@
 const STATIC_PRECACHE = [
   "./",
   "./index.html",
+  "./boot-fatal.js",
   "./manifest.webmanifest",
   "./icon.svg",
   "./icon-192.png",

@@ -1,7 +1,7 @@
 // 图库屏（@internal/gallery 的 WXHW 消费面）：card view 独立一屏，替代抽屉的文件列表（user 2026-09-09「gallery 应该和 weebpaint 一样是一个独立的、不依赖于 editor 的东西」）。
 // created 2026-09-10 by Claude Fable 5.1。包出屏幕 + 动词 + 数据面；本文件只出：Vue 注入、DocHost（编辑器端口）、policy（两档扩展名、身份=全名、缩略图 = 书的 Thumbnails/thumbnail.png 尾读，2.1）、
 //   加密适配（crypto-state）、chrome 按钮（返回 / 新建 / 回收站 / 设置）。文案 = 包内 zh/en 默认（按 lang 切）。
-import { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick, Teleport } from "../vendor/vue/vue.esm-browser.prod.js";
+import * as Vue from "../vendor/vue/vue.esm-browser.prod.js";   // 整个模块原样递给 gallery（0.8.4：有全部 helper = 用构建时编好的 render、运行时零 eval，CSP 不放行 eval 也能开）
 import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type TileInfo, type VerbStore, type DataFaceStore, type Gallery, type GalleryView, type AsideKind, type AsideScope } from "@internal/gallery";
 import { humanSize } from "@internal/gallery";
 import { requireStore, auth } from "./app-store.ts";
@@ -48,7 +48,7 @@ const THUMB_PEEK_BYTES = 128 * 1024;
 const THUMB_DB = "webxiaoheiwu-thumbs";   // 派生缓存 IDB（user 2026-09-10「weebpaint 不是一直 idb 的吗」= 批）；CLAUDE.md 持久层白名单表登记
 
 export function initGalleryHost(d: GalleryHostDeps) {
-  const vue = { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick, Teleport } as unknown as VueRuntime;   // Teleport：gallery 0.6.2 把卡片 ⋯ 菜单搬出卡片（z order 进菜单 band）
+  const vue = Vue as unknown as VueRuntime;
   const isProjectName = (n: string) => docKind(n) === "project";
   const storeFace = (): (VerbStore & DataFaceStore) | null => {
     let s: ReturnType<typeof requireStore>;

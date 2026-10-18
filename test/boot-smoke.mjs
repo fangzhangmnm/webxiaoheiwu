@@ -29,6 +29,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok, detail }); c
 const browser = await chromium.launch({ args: ["--disable-gpu"] });   // 开发机的显卡可能在跑别的长任务
 const page = await browser.newPage();
   await page.addInitScript(() => { try { localStorage.setItem("webxiaoheiwu-7c2e9a41b3d05f68:imeEnabled", "0"); } catch {} });   // 内置 IME 默认开（2026-09-03）：无头打字走裸字母，先用逃生开关关掉
+await page.addInitScript(() => { window.__csp = []; document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(`${e.effectiveDirective} ${e.blockedURI}`)); });   // 2026-10-17 CSP：任何拦截 = 策略挡了真功能
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 page.on("console", (m) => { if (m.type() === "error") pageErrors.push("console.error: " + m.text()); });
@@ -308,6 +309,8 @@ try {
   check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);
   await page.waitForTimeout(500);
   check("零页面错误", pageErrors.length === 0, pageErrors.join(" | "));
+  const cspHits = await page.evaluate(() => window.__csp ?? []);
+  check("CSP 零拦截（index.html 的策略没挡到任何真功能）", cspHits.length === 0, cspHits.join(" | "));
   // 还原出厂真跑：新 context（无稿）→ 两道 sheet → wipe → reload → 残留归零
   const ctx2 = await browser.newContext(); const page2 = await ctx2.newPage();
   await page2.addInitScript(() => { try { localStorage.setItem("webxiaoheiwu-7c2e9a41b3d05f68:imeEnabled", "0"); } catch {} });   // 关内置 IME：reload 后 boot 不重建 RIME 库，残留检查才有意义

@@ -1148,6 +1148,34 @@ export declare const S: {
         readonly zh: "已设置 · 当前已锁定";
         readonly en: "Set · currently locked";
     };
+    readonly "pw.status.remembered": {
+        readonly zh: "已设置 · 已解锁 · 这台设备记着密码，{date} 自动忘记";
+        readonly en: "Set · unlocked · this device remembers it until {date}";
+    };
+    readonly "pw.remember": {
+        readonly zh: "在这台设备上记住 30 天（能解锁这台设备的人就能打开你的加密稿）";
+        readonly en: "Remember on this device for 30 days (anyone who can unlock this device can open your encrypted drafts)";
+    };
+    readonly "pw.rememberedToast": {
+        readonly zh: "这台设备会记住密码到 {date}（设置里能忘记）";
+        readonly en: "This device remembers the password until {date} (forget it in Settings)";
+    };
+    readonly "pw.rememberFailed": {
+        readonly zh: "没记住密码：{e}";
+        readonly en: "Could not remember the password: {e}";
+    };
+    readonly "pw.rememberedStale": {
+        readonly zh: "这台设备记着的密码对不上（别的设备改过？），已经忘掉；要用时再输一次";
+        readonly en: "The password remembered on this device no longer matches (changed elsewhere?) and was forgotten; enter it again when needed";
+    };
+    readonly "pw.forgotDevice": {
+        readonly zh: "这台设备不再记着密码（这次仍解锁，关页后要重输）";
+        readonly en: "This device no longer remembers the password (still unlocked for now; enter it again next time)";
+    };
+    readonly "ui.pw.forgetDevice": {
+        readonly zh: "忘记这台设备记着的密码";
+        readonly en: "Forget it on this device";
+    };
     readonly "ui.pw.reset": {
         readonly zh: "忘记密码，重置…";
         readonly en: "Forgot password — reset…";
@@ -1243,6 +1271,10 @@ export declare const S: {
     readonly "enc.lockedNow": {
         readonly zh: "加密已锁定";
         readonly en: "Encryption locked";
+    };
+    readonly "enc.lockedNowForgot": {
+        readonly zh: "加密已锁定，这台设备也不再记着密码";
+        readonly en: "Encryption locked; this device no longer remembers the password";
     };
     readonly "ime.system": {
         readonly zh: "系统输入法";

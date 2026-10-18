@@ -44,6 +44,8 @@ import { isLocalVoiceSupported, LocalSession } from "./voice/local.ts";
 import { asr } from "./asr/engine.ts";
 import { MODELS, modelKeyFrom, type ModelKey } from "./asr/packs.ts";
 import { MODEL_SOURCE_DEFAULT } from "./config.ts";
+import { passwordKeeper } from "./encryption.ts";
+import { wireRememberPassword, restoreRemembered, rememberCurrent, forgetRemembered, rememberedUntil, onRememberChange, setRememberChoice, rememberChoice, takeRememberChoice } from "./remember-password.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
 import { runFactoryReset } from "./factory-reset.ts";
@@ -182,19 +184,34 @@ if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset�
 
 // ── 密码政策接线（弹窗 = 输入 sheet；verifier 住 synced-app-state）──
 wireCryptoState({
-  prompt: (o) => openInputSheet(o.title, {
-    message: o.message, password: true, confirmField: o.confirmField, error: o.error, okLabel: o.okLabel,
-    validate: o.confirmField ? (v, v2) => (v !== v2 ? t("pw.mismatch") : null) : undefined,
-  }),
+  prompt: async (o) => {
+    const r = await openInputSheetEx(o.title, {
+      message: o.message, password: true, confirmField: o.confirmField, error: o.error, okLabel: o.okLabel,
+      validate: o.confirmField ? (v, v2) => (v !== v2 ? t("pw.mismatch") : null) : undefined,
+      checkbox: o.offerRemember ? { label: t("pw.remember"), checked: rememberChoice() } : undefined,   // 2026-10-17「在这台设备上记住」，默认不勾
+    });
+    if (r && o.offerRemember) setRememberChoice(r.checked);
+    return r ? r.value : null;
+  },
   verifiers: { get: () => (appState.getItem("passwordVerifier") as VerifierRecord | undefined) ?? null, set: (rec) => appState.setItem("passwordVerifier", rec) },
 });
+// 「在这台设备上记住密码」（src/remember-password.ts；user 2026-10-17，≤ 30 天）。keeper 只在这里递进去。
+wireRememberPassword({ keeper: passwordKeeper, onError: (e) => reportError(e, "warning") });
+const dayText = (ms: number): string => new Date(ms).toLocaleDateString(lang() === "zh" ? "zh-CN" : "en", { month: "long", day: "numeric" });
 const ensureUnlocked = async (): Promise<boolean> => {
   // 首次设密码前：已登录就先把 synced-app-state 拉齐——否则新设备会用 LWW 盖掉云端已有的 verifier，老设备从此「密码错」（审计 L6）
   if (!hasVerifier() && auth.isSignedIn()) {
     try { await reconcileCollections(); } catch (e) { reportError(e, "log"); setStatus(t("pw.setupNeedsNetwork"), { error: true }); return false; }
     if (typeof navigator !== "undefined" && navigator.onLine === false) { setStatus(t("pw.setupNeedsNetwork"), { error: true }); return false; }
   }
-  return cryptoEnsureUnlocked(labelsForUnlock());
+  setRememberChoice(false);   // 每次弹面板都从「不勾」开始
+  const ok = await cryptoEnsureUnlocked(labelsForUnlock());
+  const pw = currentPassword();
+  if (ok && takeRememberChoice() && pw) {
+    try { setStatus(t("pw.rememberedToast", { date: dayText(await rememberCurrent(pw)) })); }
+    catch (e) { reportError(e, "log"); setStatus(t("pw.rememberFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+  }
+  return ok;
 };
 const labelsForUnlock = () => ({
   unlockTitle: t("pw.unlockTitle"), unlockHint: t("pw.unlockHint"), setupTitle: t("pw.setupTitle"), setupHint: t("pw.setupHint"),
@@ -1762,16 +1779,19 @@ async function onSignIn(opts: { later?: boolean } = {}): Promise<boolean | null>
 async function onSignOut(): Promise<void> {
   if (!(await openConfirmSheet(t("auth.signOutTitle"), t("auth.signOutMsg")))) return;
   await flushLocalAny();
-  try { await flushCollections(); cryptoLock(); await auth.signOut(); setStatus(t("auth.signedOut")); }
+  try { await flushCollections(); cryptoLock(); await forgetRemembered(); await auth.signOut(); setStatus(t("auth.signedOut")); }
   catch (e) { reportError(e); }
   renderAuthRow(); renderTopbar();
 }
 async function lockCryptoNow(): Promise<void> {
   await flushLocalAny();    // 先把最后几秒的字加密落盘，再丢密码（工程的锁态由 mode.onLockChange 接手）
+  const wasRemembered = rememberedUntil() != null;
   cryptoLock();
+  try { await forgetRemembered(); } catch (e) { reportError(e); }   // 锁定 = 这台设备也忘掉（订阅里已经在忘，这里等它落地）
   if (editor.state.name && editor.state.encrypted) await editor.reload(editor.state.name);
   renderAuthRow(); renderTopbar(); drawer.refresh();
-  setStatus(t("enc.lockedNow"));
+  if (settingsShown()) renderPasswordSection();
+  setStatus(t(wasRemembered ? "enc.lockedNowForgot" : "enc.lockedNow"));
 }
 
 const voiceModelSelect = $<HTMLSelectElement>("voiceModelSelect");
@@ -1867,6 +1887,7 @@ async function changePasswordFlow(): Promise<void> {
 async function resetPasswordFlow(): Promise<void> {
   if (!(await openConfirmSheet(t("rp.title"), t("rp.msg"), { danger: true, warning: true, okLabel: t("rp.action") }))) return;
   resetVerifier();
+  try { await forgetRemembered(); } catch (e) { reportError(e); }
   if (editor.state.name && editor.state.encrypted) await editor.reload(editor.state.name);
   renderTopbar(); drawer.refresh();
   setStatus(t("rp.done"));
@@ -1901,8 +1922,14 @@ systemImeToggle.addEventListener("change", () => { void setImeEnabled(!systemIme
 $("changePasswordButton").addEventListener("click", () => { void changePasswordFlow(); });
 $("resetPasswordButton").addEventListener("click", () => { void resetPasswordFlow(); });
 $("lockNowButton").addEventListener("click", () => { void lockCryptoNow(); });
+$("forgetRememberedButton").addEventListener("click", () => {
+  void forgetRemembered().then(() => setStatus(t("pw.forgotDevice")), (e) => reportError(e));
+});
+onRememberChange(() => { if (settingsShown()) renderPasswordSection(); });
 function renderPasswordSection(): void {
-  $("passwordStatus").textContent = !hasVerifier() ? t("pw.status.none") : isUnlocked() ? t("pw.status.unlocked") : t("pw.status.locked");
+  const until = rememberedUntil();
+  $("passwordStatus").textContent = !hasVerifier() ? t("pw.status.none") : !isUnlocked() ? t("pw.status.locked") : until != null ? t("pw.status.remembered", { date: dayText(until) }) : t("pw.status.unlocked");
+  $<HTMLButtonElement>("forgetRememberedButton").hidden = until == null;
   $<HTMLButtonElement>("lockNowButton").hidden = !isUnlocked();
   $<HTMLButtonElement>("changePasswordButton").hidden = !hasVerifier();
   $<HTMLButtonElement>("resetPasswordButton").hidden = !hasVerifier();
@@ -1911,7 +1938,7 @@ function renderPasswordSection(): void {
 const factoryReset = () => runFactoryReset({
   setStatus,
   unsyncedCount: async () => { await flushLocalAny(); return (await dirtyDocCount()) + (isDirtyAny() ? 1 : 0); },   // 全库 dirty 标量（不只当前夹）
-  beforeWipe: async () => { await flushLocalAny(); await flushCollections(); await leaveProject(); editor.clear(); ime.dispose(); },
+  beforeWipe: async () => { await flushLocalAny(); await flushCollections(); await leaveProject(); editor.clear(); ime.dispose(); await forgetRemembered(); },   // 记着的密码先删记录；库本身由 factory-reset.ts 删
 });
 $("factoryResetButton").addEventListener("click", () => { void factoryReset(); });
 initDiagLogUi({ status: (text) => setStatus(text) });   // 2026-09-09 黑匣子：看/复制/分享或下载 .txt/清空（数据源 diag-log）
@@ -2060,6 +2087,10 @@ if (shell.isDevRoute) $("settingsBuild").textContent += " · dev";
 // ── boot ──
 async function boot(): Promise<void> {
   await initCollections();
+  // 这台设备记着密码 → 先和 verifier 比、对了就解锁（要在开上次那篇之前，不然加密稿先开成锁卡）。没记 = 一次 IDB 读；记着 = 多一次 PBKDF2。
+  const restored = await restoreRemembered().catch((e) => { reportError(e, "log"); return "none" as const; });
+  diagNote("crypto", `remembered password on boot: ${restored}`);
+  if (restored === "stale") setStatus(t("pw.rememberedStale"));
   applyEditorChars(editorCharsPref());
   applyEditorFont(editorFontPref());
   applyRuledLines(ruledLinesPref());
@@ -2142,6 +2173,8 @@ function afterSignIn(): Promise<void> {
 }
 
 window.addEventListener("error", (event) => { reportError(new Error(`[window] ${(event.message || "").slice(0, 160)}`)); });
+// CSP（index.html 的 meta，2026-10-17）拦下的东西进黑匣子：真机上某个功能突然不灵时，先看这里是不是策略挡了它。
+document.addEventListener("securitypolicyviolation", (e) => { diagNote("csp", `blocked ${e.effectiveDirective} ${String(e.blockedURI).slice(0, 120)} (${e.sourceFile ? e.sourceFile.split("/").pop() : "?"}:${e.lineNumber})`); console.warn("[csp] blocked", e.effectiveDirective, e.blockedURI); });
 window.addEventListener("unhandledrejection", (event) => {
   const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
   reportError(err, err.message === "Not signed in" ? "log" : "error");   // 未登录 = 正常态（库后台云动作的 getToken 抛），只记日志
@@ -2150,4 +2183,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

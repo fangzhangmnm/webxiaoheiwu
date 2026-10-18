@@ -1,4 +1,6 @@
 export declare const APP_ID = "webxiaoheiwu";
+/** 「在这台设备上记住密码」的本机库（@internal/encryption createPasswordKeeper；2026-10-17）。用连字符不用点：`webxiaoheiwu.` 前缀归 store 命名空间（库的 wipe / scan 按它枚举）。 */
+export declare const REMEMBER_DB = "webxiaoheiwu-remember";
 export declare const CLIENT_ID = "39d8afca-f47b-43cb-b962-0803f556520f";
 export declare const AUTHORITY = "https://login.microsoftonline.com/consumers";
 export declare const SCOPES: string[];

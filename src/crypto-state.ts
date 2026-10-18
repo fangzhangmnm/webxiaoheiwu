@@ -1,5 +1,7 @@
 // 密码**政策**模块（WeebPaint crypto-state + password-verifier 塌成一个；统一密码模型）。created 2026-09-03 by Claude Fable 5.1
-//   · store 对密码非交互（seam 只要 getPassword）；本模块持有**内存**密码——永不持久化，关 tab / 锁定即忘。
+//   · store 对密码非交互（seam 只要 getPassword）；本模块持有**内存**密码——本模块自己永不持久化，关 tab / 锁定即忘。
+//     「在这台设备上记住」（2026-10-17 user 批，≤ 30 天）是 `remember-password.ts` 的事：它经 `unlockWith` 把记着的密码送进来（先比 verifier），
+//     经 `onCurrentPasswordChange` 跟着锁定 / 改密码走。edited by Claude Opus 5.5 2026-10-17
 //   · 「已经设过密码吗 / 密码是不是 X」= verifier 记录（跟账号走的 synced collection）：{v,salt,iv,ct}，
 //     ct = AES-GCM(PBKDF2(pw,salt), 固定明文)，GCM tag 即验证。不存明文/密钥/可逆物。
 //     发源地 = v1 的 `.crypto/verifier.bin` 同一思想（错密码绝不碰任何用户文件），只是搬进 collection。
@@ -10,7 +12,7 @@
 // 弹窗由 composition root 注入（无 DOM 依赖）；「弹框→验证→重试」循环在 busy 之外做。
 
 export interface VerifierRecord { v: 1; salt: string; iv: string; ct: string }
-export interface PromptOpts { title: string; message?: string; error?: string; confirmField?: boolean; okLabel?: string }
+export interface PromptOpts { title: string; message?: string; error?: string; confirmField?: boolean; okLabel?: string; /** 解锁 / 首次设密码 = true：面板上给「在这台设备上记住」的勾（每篇自己的密码不给）。 */ offerRemember?: boolean }
 type PasswordPrompt = (opts: PromptOpts) => Promise<string | null>;
 type VerifierStore = { get(): VerifierRecord | null; set(rec: VerifierRecord | null): void };
 
@@ -48,13 +50,27 @@ const _filePw = new Map<string, string>();   // 每篇自己的密码（与当�
 let _prompt: PasswordPrompt | null = null;
 let _verifiers: VerifierStore | null = null;
 const _subs = new Set<(unlocked: boolean) => void>();
-function _notify() { for (const cb of _subs) { try { cb(_password != null); } catch { /* subscriber bug must not break lock state */ } } }
+const _pwSubs = new Set<(pw: string | null) => void>();
+function _notify() {
+  for (const cb of _subs) { try { cb(_password != null); } catch { /* subscriber bug must not break lock state */ } }
+  for (const cb of _pwSubs) { try { cb(_password); } catch { /* same */ } }
+}
 
 export function wireCryptoState(deps: { prompt: PasswordPrompt; verifiers: VerifierStore }): void { _prompt = deps.prompt; _verifiers = deps.verifiers; }
 export function isUnlocked(): boolean { return _password != null; }
 /** 锁定 = 忘掉密码（内存清除）。加密文件回到锁样式；保存路径会报 LOCKED 而非静默。 */
 export function lock(): void { _password = null; _filePw.clear(); _notify(); }
 export function onLockChange(cb: (unlocked: boolean) => void): () => void { _subs.add(cb); return () => _subs.delete(cb); }
+/** 当前密码变了（解锁 / 设新密码 / 锁定 = null）。只给 remember-password.ts 用：锁定即忘、改密码跟着换。 */
+export function onCurrentPasswordChange(cb: (pw: string | null) => void): () => void { _pwSubs.add(cb); return () => _pwSubs.delete(cb); }
+/** 用一个现成的密码解锁（这台设备记着的那个）：只和 verifier 比，对了才进内存；错了什么都不碰。没 verifier = 没东西可比 = 不认。 */
+export async function unlockWith(pw: string): Promise<boolean> {
+  if (_password != null) return _password === pw;
+  const rec = _verifiers?.get();
+  if (!rec || !(await verifyRecord(rec, pw))) return false;
+  if (_password != null) return _password === pw;   // 比的这段时间里人手动解锁了：以人输的为准
+  _password = pw; _notify(); return true;
+}
 /** store crypt seam：唯一密码源（同步、非交互）——这篇自己的密码优先，否则当前密码。 */
 export function getPassword(name: string | null): string | null { return (name != null ? _filePw.get(name) : undefined) ?? _password; }
 export function hasVerifier(): boolean { return _verifiers?.get() != null; }
@@ -98,12 +114,12 @@ export async function ensureUnlocked(labels: {
   let error: string | undefined;
   for (;;) {
     if (rec) {
-      const pw = await _prompt({ title: labels.unlockTitle, message: labels.unlockHint, error, okLabel: labels.okUnlock });
+      const pw = await _prompt({ title: labels.unlockTitle, message: labels.unlockHint, error, okLabel: labels.okUnlock, offerRemember: true });
       if (pw == null) return false;
       if (await verifyRecord(rec, pw)) { _password = pw; _notify(); return true; }
       error = labels.wrong;
     } else {
-      const pw = await _prompt({ title: labels.setupTitle, message: labels.setupHint, error, confirmField: true, okLabel: labels.okSetup });
+      const pw = await _prompt({ title: labels.setupTitle, message: labels.setupHint, error, confirmField: true, okLabel: labels.okSetup, offerRemember: true });
       if (pw == null) return false;
       // 无最少位数检查（user 2026-09-03：「去掉密码的最少位数检查」——密码强弱归用户自己判断）
       _verifiers.set(await createVerifierRecord(pw));

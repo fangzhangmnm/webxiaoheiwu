@@ -44,4 +44,16 @@ describe("storage-whitelist", () => {
     const ghosts = Object.keys(ALLOW).filter((p) => { try { return hitsIn(p).length === 0; } catch { return true; } });
     assert(ghosts.length === 0, "whitelist entries that no longer touch storage (prune): " + ghosts.join(", "));
   });
+  // 库里替 app 开的 IDB（上面的 token 扫不到——indexedDB 在 tgz 里）：按把手名登记。2026-10-17 by Claude Opus 5.5
+  //   `@internal/encryption` createPasswordKeeper = IDB `webxiaoheiwu-remember`（在这台设备上记住密码，≤ 30 天；user 2026-10-17 批）。
+  //   建 = 只在 src/encryption.ts；递 = 只在组装点 src/app.ts；用 = 只在 src/remember-password.ts（注入进来的，不认这个名字）。
+  const LIB_HANDLES = { createPasswordKeeper: ["src/encryption.ts"], passwordKeeper: ["src/encryption.ts", "src/app.ts"] };
+  it("库持有的 IDB（记住密码）只经登记过的接缝", () => {
+    const bad = [];
+    for (const p of [...walk("src")].map((x) => x.replace(/\\/g, "/"))) {
+      const code = readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n");   // 注释里提到不算
+      for (const [name, allowed] of Object.entries(LIB_HANDLES)) if (new RegExp(`\\b${name}\\b`).test(code) && !allowed.includes(p)) bad.push(`${p}: ${name}`);
+    }
+    assert(bad.length === 0, "library-held IndexedDB handle used outside its seam:\n" + bad.join("\n"));
+  });
 });

@@ -9,7 +9,8 @@ export interface PromptOpts {
     message?: string;
     error?: string;
     confirmField?: boolean;
-    okLabel?: string;
+    okLabel?: string; /** 解锁 / 首次设密码 = true：面板上给「在这台设备上记住」的勾（每篇自己的密码不给）。 */
+    offerRemember?: boolean;
 }
 type PasswordPrompt = (opts: PromptOpts) => Promise<string | null>;
 type VerifierStore = {
@@ -26,6 +27,10 @@ export declare function isUnlocked(): boolean;
 /** 锁定 = 忘掉密码（内存清除）。加密文件回到锁样式；保存路径会报 LOCKED 而非静默。 */
 export declare function lock(): void;
 export declare function onLockChange(cb: (unlocked: boolean) => void): () => void;
+/** 当前密码变了（解锁 / 设新密码 / 锁定 = null）。只给 remember-password.ts 用：锁定即忘、改密码跟着换。 */
+export declare function onCurrentPasswordChange(cb: (pw: string | null) => void): () => void;
+/** 用一个现成的密码解锁（这台设备记着的那个）：只和 verifier 比，对了才进内存；错了什么都不碰。没 verifier = 没东西可比 = 不认。 */
+export declare function unlockWith(pw: string): Promise<boolean>;
 /** store crypt seam：唯一密码源（同步、非交互）——这篇自己的密码优先，否则当前密码。 */
 export declare function getPassword(name: string | null): string | null;
 export declare function hasVerifier(): boolean;

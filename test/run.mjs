@@ -5,8 +5,10 @@ import "./redline-guard.test.mjs";
 import "./i18n-and-assets.test.mjs";
 import "./sw-strategy.test.mjs";
 import "./crypto-state.test.mjs";
+import "./remember-password.test.mjs";   // 2026-10-17 在这台设备上记住密码（≤ 30 天）
 import "./asr.test.mjs";
 import "./storage-whitelist.test.mjs";
+import "./csp-guard.test.mjs";   // 2026-10-17 CSP 不许悄悄放松
 import "./project-format.test.mjs";
 import "./project-graph.test.mjs";
 import "./project-session.test.mjs";

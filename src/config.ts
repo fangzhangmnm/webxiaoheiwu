@@ -4,6 +4,8 @@
 // 旧 v1 注册同一个 clientId，Entra 已翻 Personal only + 加了 /dev/ redirect（user 2026-09-03）。
 //   2026-10-13 搬到 write.weebpaint.com：user 在 Entra 加了 `https://write.weebpaint.com/` 与 `/dev/` 两条；旧 github.io 两条保留（旧主屏图标还要靠它登录）。
 export const APP_ID = "webxiaoheiwu";   // 本 origin 内唯一命名空间：IDB `webxiaoheiwu.defaultStore` + localStorage 前缀。2026-10-13 起 origin = write.weebpaint.com（自己独占）；之前和 JRP/BR 等兄弟共用 fangzhangmnm.github.io，旧箱子里的数据仍用这个前缀。有数据后永不改
+/** 「在这台设备上记住密码」的本机库（@internal/encryption createPasswordKeeper；2026-10-17）。用连字符不用点：`webxiaoheiwu.` 前缀归 store 命名空间（库的 wipe / scan 按它枚举）。 */
+export const REMEMBER_DB = `${APP_ID}-remember`;
 export const CLIENT_ID = "39d8afca-f47b-43cb-b962-0803f556520f";
 export const AUTHORITY = "https://login.microsoftonline.com/consumers";
 export const SCOPES = ["Files.ReadWrite.AppFolder", "offline_access"];

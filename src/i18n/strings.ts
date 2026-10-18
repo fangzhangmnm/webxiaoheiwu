@@ -310,6 +310,14 @@ export const S = {
   "pw.status.none":      { zh: "还没设置密码——新建加密稿或点锁图标时设置", en: "No password yet — set it when you create an encrypted draft or tap the lock" },
   "pw.status.unlocked":  { zh: "已设置 · 当前已解锁（本机内存里，关页即忘）", en: "Set · currently unlocked (in memory only, forgotten when the page closes)" },
   "pw.status.locked":    { zh: "已设置 · 当前已锁定", en: "Set · currently locked" },
+  // 「在这台设备上记住密码」（2026-10-17 user 批，最多一个月）
+  "pw.status.remembered": { zh: "已设置 · 已解锁 · 这台设备记着密码，{date} 自动忘记", en: "Set · unlocked · this device remembers it until {date}" },
+  "pw.remember":         { zh: "在这台设备上记住 30 天（能解锁这台设备的人就能打开你的加密稿）", en: "Remember on this device for 30 days (anyone who can unlock this device can open your encrypted drafts)" },
+  "pw.rememberedToast":  { zh: "这台设备会记住密码到 {date}（设置里能忘记）", en: "This device remembers the password until {date} (forget it in Settings)" },
+  "pw.rememberFailed":   { zh: "没记住密码：{e}", en: "Could not remember the password: {e}" },
+  "pw.rememberedStale":  { zh: "这台设备记着的密码对不上（别的设备改过？），已经忘掉；要用时再输一次", en: "The password remembered on this device no longer matches (changed elsewhere?) and was forgotten; enter it again when needed" },
+  "pw.forgotDevice":     { zh: "这台设备不再记着密码（这次仍解锁，关页后要重输）", en: "This device no longer remembers the password (still unlocked for now; enter it again next time)" },
+  "ui.pw.forgetDevice":  { zh: "忘记这台设备记着的密码", en: "Forget it on this device" },
   "ui.pw.reset":         { zh: "忘记密码，重置…", en: "Forgot password — reset…" },
   "cp.newTitle":         { zh: "新密码", en: "New password" },
   "cp.newHint":          { zh: "之后新建的加密稿用这个密码。已有的稿下一步决定。", en: "New encrypted drafts will use this password. Existing drafts are decided next." },
@@ -334,6 +342,7 @@ export const S = {
   "enc.decryptWarning":  { zh: "解密会把明文上传到 OneDrive——即使你之后再次加密，这一次的明文有可能已被云端扫描。", en: "Decrypting uploads plaintext to OneDrive. Even if you re-encrypt later, this plaintext may already have been scanned." },
   "enc.decryptAction":   { zh: "解密", en: "Decrypt" },
   "enc.lockedNow":       { zh: "加密已锁定", en: "Encryption locked" },
+  "enc.lockedNowForgot": { zh: "加密已锁定，这台设备也不再记着密码", en: "Encryption locked; this device no longer remembers the password" },
 
   // ── IME / 语音 ──
   "ime.system":          { zh: "系统输入法", en: "System IME" },
