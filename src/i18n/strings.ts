@@ -720,7 +720,7 @@ export const S = {
   "ref.prev":               { zh: "上一张", en: "Previous" },
   "ref.next":               { zh: "下一张", en: "Next" },
   "ref.menu":               { zh: "参考窗菜单", en: "Reference menu" },
-  "ref.move":               { zh: "拖动", en: "Move" },
+  "ref.move":               { zh: "点一下缩成小图标，按住拖动挪位置", en: "Tap to minimize, drag to move" },
   "ref.resize":             { zh: "调整大小", en: "Resize" },
   "ref.moveEarlier":        { zh: "往前挪一位", en: "Move earlier" },
   "ref.moveLater":          { zh: "往后挪一位", en: "Move later" },
