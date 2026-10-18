@@ -3,7 +3,7 @@
 // 红线全在库里 enforce（If-Match / .trash / 冲突 sheet / dirty 永不驱逐）；本层只做：文件名约定、文本编码、把库的结果式返回翻成 UI 能画的东西。
 // 类型只从 @internal/store 拿（import type）；值级 store 面一律经 app-store 的 requireStore()。
 
-import type { SyncState, FolderSnapshot, SaveResult, FreshResult, DelResult, TrashItem, RawFile, WatchFolderErrorPhase } from "@internal/store";
+import type { SyncState, FolderSnapshot, SaveResult, FreshResult, TrashOutcome, TrashItem, RawFile, WatchFolderErrorPhase } from "@internal/store";
 import { requireStore, isCached, isDirty, setActiveFileName } from "./app-store.ts";
 import { isUnlocked } from "./crypto-state.ts";
 import { isDocName, docKind, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, type TextEncodingName } from "./doc-model.ts";
@@ -172,7 +172,7 @@ async function tryMoveWithCollision(name: string, target: string): Promise<Renam
   return null;
 }
 
-export function trashDoc(name: string): Promise<DelResult> { return anyFile(name).delete(); }
+export function trashDoc(name: string): Promise<TrashOutcome> { return anyFile(name).trash(); }   // store 2.1.2：delete() 改叫 trash()（移进回收站）
 
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
 export function pullDocIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult> {
