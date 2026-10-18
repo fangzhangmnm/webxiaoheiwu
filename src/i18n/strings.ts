@@ -713,6 +713,10 @@ export const S = {
   "ref.delete":             { zh: "删除这张", en: "Remove this card" },
   "ref.deleteConfirm":      { zh: "确认删除", en: "Confirm remove" },
   "ref.closeWin":           { zh: "关闭参考窗", en: "Close reference window" },
+  "ref.minimize":           { zh: "缩成小图标", en: "Minimize to icon" },   // 参考窗 0.4.1（10-18）
+  "ref.restore":            { zh: "点一下恢复，按住拖动挪位置", en: "Tap to restore, drag to move" },
+  "ref.ram":                { zh: "只放内存（不存进书里）", en: "Keep in memory only (not saved in the book)" },   // 参考窗 0.4.0
+  "ref.ramMissing":         { zh: "只在内存里，没存进书里——把这个文件拖进来，或者点 ＋ 重新导入，就补回这里", en: "Kept in memory only, not saved — drop the file in or re-import with ＋ to put it back here" },
   "ref.prev":               { zh: "上一张", en: "Previous" },
   "ref.next":               { zh: "下一张", en: "Next" },
   "ref.menu":               { zh: "参考窗菜单", en: "Reference menu" },

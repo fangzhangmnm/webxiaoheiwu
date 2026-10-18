@@ -52,6 +52,7 @@ export function createReferenceHost(d: ReferenceHostDeps) {
   el.labels = {
     load: t("ref.load"), paste: t("ref.paste"), oneToOne: t("ref.oneToOne"),
     del: t("ref.delete"), delConfirm: t("ref.deleteConfirm"), closeWin: t("ref.closeWin"),
+    minimize: t("ref.minimize"), restore: t("ref.restore"), ram: t("ref.ram"), ramMissing: t("ref.ramMissing"),   // 参考窗 0.4.x
     prev: t("ref.prev"), next: t("ref.next"), menu: t("ref.menu"), move: t("ref.move"), resize: t("ref.resize"), resizeAria: t("ref.resize"),
     moveEarlier: t("ref.moveEarlier"), moveLater: t("ref.moveLater"), jump: t("ref.jump"),
     kindNames: { image: t("ref.kindImage"), text: t("ref.kindText") },
