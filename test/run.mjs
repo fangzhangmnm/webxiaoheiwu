@@ -9,6 +9,7 @@ import "./remember-password.test.mjs";   // 2026-10-17 在这台设备上记住�
 import "./asr.test.mjs";
 import "./storage-whitelist.test.mjs";
 import "./csp-guard.test.mjs";   // 2026-10-17 CSP 不许悄悄放松
+import "./deploy-list.test.mjs";   // 2026-10-17 新根文件要进部署清单
 import "./project-format.test.mjs";
 import "./project-graph.test.mjs";
 import "./project-session.test.mjs";
