@@ -1,3 +1,4 @@
+import { type FuzzyPair } from "./ime-fuzzy.ts";
 export declare const IME_SCHEMAS: readonly ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin_mspy", "double_pinyin", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "wubi86"];
 export type ImeSchema = (typeof IME_SCHEMAS)[number];
 export declare const DEFAULT_SCHEMA: ImeSchema;
@@ -44,6 +45,9 @@ interface Backend {
     setSimplified?(v: boolean): Promise<void>;
     /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
     setPageSize?(n: number): Promise<void>;
+    /** 模糊音（ime-fuzzy.ts）：编不成 = reject，fuzzyError 留着原因。 */
+    setFuzzy?(pairs: FuzzyPair[]): Promise<void>;
+    readonly fuzzyError?: string | null;
 }
 export interface UserDictDump {
     files: {
@@ -64,6 +68,11 @@ export declare class NaturalCodeIME {
     /** 候选每页几个（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」）：后端换掉 / 重建也要记住，所以存在这里。 */
     pageSize: number;
     setPageSize(n: number): Promise<void>;
+    /** 模糊音（synced prefs `imeFuzzy`，缺省全关）：app 层在 initialize 前灌入；改了走 setFuzzy（编不成 = reject，app 报出来）。 */
+    fuzzy: FuzzyPair[];
+    setFuzzy(pairs: FuzzyPair[]): Promise<void>;
+    /** 上一次对齐模糊音失败的原因（换方案 / 开机时那次也算）；null = 没问题或没开。 */
+    get fuzzyError(): string | null;
     backend: Backend;
     /** 临时英文（v2.3.33，user 2026-10-04「和ios对齐，嗯和你建议一样」「空格收尾留空格，因为不想留的话可以用回车」）：中文态里一个大写字母（Shift + 字母 / 软键盘上档一次）
      *  起头，后面的字母、数字原样接着、不出汉字候选——「我用AI写」「Wi-Fi」不用切中英。空格 = 原样 + 一个空格；回车 = 原样；标点 = 原样 + 这个标点（中文标点照旧）；

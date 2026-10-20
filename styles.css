@@ -784,6 +784,13 @@ body[data-page-kind="image"] { --sheet-overscroll: 0px; }
 
 .voice-config-field[hidden] { display: none; }
 
+/* 模糊音十对：两列（v2.3.45） */
+.ime-fuzzy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 12px;
+}
+
 .voice-config-label {
   font-size: 11px;
   color: var(--ink-muted);

@@ -412,6 +412,22 @@
               <option value="wubi86" data-i18n="ime.schema.wubi">五笔 86</option>
             </select>
           </label>
+          <div class="voice-config-field" id="imeFuzzyField">
+            <span class="voice-config-label" data-i18n="ui.ime.fuzzy">模糊音</span>
+            <div class="ime-fuzzy-grid">
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="zh-z" /><span>zh, z</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ch-c" /><span>ch, c</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="sh-s" /><span>sh, s</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="n-l" /><span>n, l</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="l-r" /><span>l, r</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ang-an" /><span>ang, an</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="eng-en" /><span>eng, en</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ing-in" /><span>ing, in</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="f-h" /><span>f, h</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="wang-huang" /><span>wang, huang</span></label>
+            </div>
+            <p class="reading-mode-hint" data-i18n="ui.ime.fuzzyHint">勾上的每一对互通：打其中一个也出另一个的字（zi 也出「知」）。默认全关；跟账号走，换设备也一样。只对全拼 / 双拼生效，五笔不受影响。</p>
+          </div>
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.ime.script">字形</span>
             <select id="imeScriptSelect" class="voice-config-select">
@@ -540,6 +556,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-95f2e1dd8334.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-0f73f099bdfd.mjs"></script>
   </body>
 </html>

@@ -39,6 +39,7 @@ import { holdUntilSettled } from "./settle-hold.ts";   // 2026-09-09 更新提�
 import { setStoreQuietStatus } from "./store-ui.ts";
 import { initDiagLogUi } from "./diag-log-ui.ts";
 import { NaturalCodeIME, DEFAULT_SCHEMA, isImeSchema, type ImeSchema, type UserDictDump } from "./ime.ts";
+import { normalizeFuzzy, type FuzzyPair } from "./ime-fuzzy.ts";
 import type { VoiceSession, VoiceState } from "./voice/session.ts";
 import { isLocalVoiceSupported, LocalSession } from "./voice/local.ts";
 import { asr } from "./asr/engine.ts";
@@ -1404,6 +1405,8 @@ const imeSchemaPref = (): ImeSchema => { const v = prefs.getItem<string>("imeSch
 const SCHEMA_NAME_KEY = { luna_pinyin: "ime.schema.luna", luna_pinyin_fluency: "ime.schema.fluency", double_pinyin_mspy: "ime.schema.mspy", double_pinyin: "ime.schema.ziranma", double_pinyin_flypy: "ime.schema.flypy", double_pinyin_abc: "ime.schema.abc", double_pinyin_pyjj: "ime.schema.pyjj", wubi86: "ime.schema.wubi" } as const;
 const schemaName = (s: ImeSchema) => t(SCHEMA_NAME_KEY[s]);
 const imeSimplifiedPref = (): boolean => prefs.getItem<boolean>("imeSimplified") !== false;   // 简/繁跟人走（synced prefs）；缺省简体
+const imeFuzzyPref = (): FuzzyPair[] => normalizeFuzzy(prefs.getItem<unknown>("imeFuzzy"));   // 模糊音跟人走（synced prefs，user 2026-10-19「用synced-user-preference」）；缺省全关
+const reportFuzzyError = (): void => { if (ime.fuzzyError) setStatus(t("ime.fuzzyFailed", { e: ime.fuzzyError }), { error: true }); };
 const quoteStylePref = (): "curly" | "corner" => (prefs.getItem<string>("quoteStyle") === "corner" ? "corner" : "curly");   // 引号样式跟人走
 function applyQuoteStyle(v: "curly" | "corner"): void { ime.quoteStyle = v; setQuoteStyle(v); imeDock?.keyboard.refresh(); }   // 软键盘符号层的引号跟着换（v2.1.33）
 let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
@@ -1458,7 +1461,7 @@ function renderImeState(): void {
 }
 async function setImeEnabled(on: boolean): Promise<void> {
   if (on) {
-    if (!ime.initialized) { setStatus(t("ime.loading")); ime.simplified = imeSimplifiedPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); }
+    if (!ime.initialized) { setStatus(t("ime.loading")); ime.simplified = imeSimplifiedPref(); ime.fuzzy = imeFuzzyPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); else reportFuzzyError(); }
     ime.enabled = true;
   } else { ime.enabled = false; ime.resetComposition(); }
   deviceKvSet("imeEnabled", ime.enabled ? "1" : "0");   // 默认开：键缺省 = 开；"0" = 逃生开关「用系统输入法」
@@ -1898,7 +1901,26 @@ const systemImeToggle = $<HTMLInputElement>("systemImeToggle");
 const softKeyboardSelect = $<HTMLSelectElement>("softKeyboardSelect");
 const imeScriptSelect = $<HTMLSelectElement>("imeScriptSelect");
 const quoteStyleSelect = $<HTMLSelectElement>("quoteStyleSelect");
-function renderImeSection(): void { imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; softKeyboardSelect.value = softKeyboardPref(); imeScriptSelect.value = imeSimplifiedPref() ? "simp" : "trad"; quoteStyleSelect.value = quoteStylePref(); }
+const fuzzyBoxes = [...document.querySelectorAll<HTMLInputElement>("#imeFuzzyField input[data-fuzzy]")];
+function renderImeSection(): void {
+  imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; softKeyboardSelect.value = softKeyboardPref(); imeScriptSelect.value = imeSimplifiedPref() ? "simp" : "trad"; quoteStyleSelect.value = quoteStylePref();
+  const fuzzy = imeFuzzyPref(); for (const box of fuzzyBoxes) box.checked = fuzzy.includes(box.dataset.fuzzy as FuzzyPair);
+}
+/** 模糊音：勾 / 取消 = 写 synced prefs + 让输入法重编（全量部署，PC 约 0.2 s）。编不成如实报。 */
+function applyFuzzy(pairs: FuzzyPair[]): void {
+  if (ime.initialized) setStatus(t("ime.fuzzyApplying"));
+  void ime.setFuzzy(pairs).then(() => { if (ime.initialized) setStatus(t("ime.fuzzyApplied")); }, () => reportFuzzyError());
+}
+for (const box of fuzzyBoxes) box.addEventListener("change", () => {
+  const pairs = normalizeFuzzy(fuzzyBoxes.filter((b) => b.checked).map((b) => b.dataset.fuzzy));
+  prefs.setItem("imeFuzzy", pairs);
+  applyFuzzy(pairs);
+});
+prefs.onChange("imeFuzzy", () => {   // 别的设备改了 → 本机跟上
+  const pairs = imeFuzzyPref();
+  if (pairs.join() !== ime.fuzzy.join()) applyFuzzy(pairs);
+  if (settingsShown()) renderImeSection();
+});
 quoteStyleSelect.addEventListener("change", () => { const v = quoteStyleSelect.value === "corner" ? "corner" : "curly"; prefs.setItem("quoteStyle", v); applyQuoteStyle(v); });
 prefs.onChange("quoteStyle", () => { applyQuoteStyle(quoteStylePref()); if (settingsShown()) renderImeSection(); });
 imeScriptSelect.addEventListener("change", () => { const v = imeScriptSelect.value === "simp"; prefs.setItem("imeSimplified", v); void ime.setSimplified(v); });
@@ -1912,11 +1934,11 @@ softKeyboardSelect.addEventListener("change", () => {
 imeSchemaSelect.addEventListener("change", () => {
   const v = imeSchemaSelect.value; if (!isImeSchema(v)) return;
   prefs.setItem("imeSchema", v);
-  void ime.setSchema(v).then(() => { renderImeState(); setStatus(t("ime.schemaSwitched", { name: schemaName(v) })); });
+  void ime.setSchema(v).then(() => { renderImeState(); setStatus(t("ime.schemaSwitched", { name: schemaName(v) })); reportFuzzyError(); });
 });
 prefs.onChange("imeSchema", () => {   // 别的设备改了方案 → 本机跟上
   const v = imeSchemaPref();
-  if (ime.schema !== v) void ime.setSchema(v).then(() => { renderImeState(); if (settingsShown()) renderImeSection(); });
+  if (ime.schema !== v) void ime.setSchema(v).then(() => { renderImeState(); if (settingsShown()) renderImeSection(); reportFuzzyError(); });
 });
 systemImeToggle.addEventListener("change", () => { void setImeEnabled(!systemImeToggle.checked).then(renderImeSection); });
 $("changePasswordButton").addEventListener("click", () => { void changePasswordFlow(); });
@@ -2100,10 +2122,11 @@ async function boot(): Promise<void> {
   // 输入法默认开（2026-09-03）。v2.1.24：初始化**不挡启动**——先开文档；RIME 后端一创建就接管，加载期间打的字排队等它（ime.ts initialize 注释）。
   //   就绪后：状态行刷新、拉用户词库、然后在空闲片里预热一次（首键比后续键慢 6 倍，量于 tmp/round0929/probe-first-key.mjs；预热不设强制 timeout，家规「启动速度优先」）。
   if (deviceKvGet("imeEnabled") !== "0") {
-    ime.simplified = imeSimplifiedPref(); ime.enabled = true;
+    ime.simplified = imeSimplifiedPref(); ime.fuzzy = imeFuzzyPref(); ime.enabled = true;
     void ime.initialize(imeSchemaPref()).then(async () => {
       if (deviceKvGet("imeEnabled") === "0") ime.enabled = false;
       if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true });
+      else reportFuzzyError();
       renderImeState();
       await pullUserDict();
       const idle = (fn: () => void) => (typeof requestIdleCallback === "function" ? requestIdleCallback(() => fn()) : setTimeout(fn, 1));

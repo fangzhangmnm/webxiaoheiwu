@@ -4,6 +4,7 @@
 //   方案 = 全拼（luna_pinyin，默认）/ 微软双拼（double_pinyin_mspy）（user 2026-09-03「就全拼微软」；不开笔画——但 stroke 文件必须留：worker 清单里全拼反查硬依赖它）。
 // worker 内部自持两个 IDB（"ime" 词典下载缓存 + IDBFS /rime 用户词库）——第三方派生缓存，可再生（词典来自 vendored 文件；
 //   用户词库经 rime-user-dict collection 跨设备同步）。
+import { type FuzzyPair, normalizeFuzzy, fuzzyApplies, fuzzyCustomYaml, sourceSchemaYaml, fuzzyArtifacts, isFuzzyArtifactPath, fuzzyRules } from "./ime-fuzzy.ts";
 
 const NATURAL_CODE_STARTER_MAP: Record<string, string[]> = {
   ni: ["你", "呢", "泥"], wo: ["我", "握", "窝"], ta: ["他", "她", "它"], men: ["们", "门", "闷"], shi: ["是", "时", "事"],
@@ -40,6 +41,9 @@ interface Backend {
   setSimplified?(v: boolean): Promise<void>;
   /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
   setPageSize?(n: number): Promise<void>;
+  /** 模糊音（ime-fuzzy.ts）：编不成 = reject，fuzzyError 留着原因。 */
+  setFuzzy?(pairs: FuzzyPair[]): Promise<void>;
+  readonly fuzzyError?: string | null;
 }
 export interface UserDictDump { files: { path: string; data: string }[]; savedAt?: number; device?: string }
 
@@ -112,7 +116,71 @@ class RimeWorkerBackend implements Backend {
   setPageSize(n: number): Promise<void> { if (this.pageSize === n) return Promise.resolve(); this.pageSize = n; return this.enqueue(() => this.applyOptions(), { compose: false }); }
   setSchema(schema: ImeSchema): Promise<void> {
     this.schema = schema;
-    return this.enqueue(async () => { await this.call("setIME", schema); await this.applyOptions(); this.resetState(); }, { compose: false });
+    return this.enqueue(async () => { await this.call("setIME", schema); await this.syncFuzzy(); await this.applyOptions(); this.resetState(); }, { compose: false });
+  }
+  /** 模糊音（v2.3.45，user 2026-10-19「默认不用开，用户自己配置」「用synced-user-preference」「你先试试rime自己能不能做到吧」）：
+   *  RIME 原生的方案补丁 `/rime/<方案>.custom.yaml`（ime-fuzzy.ts 生成）+ 全量 deploy，librime 拿预编译词典表里的音节表重编 prism 到 `/rime/build/`（worker 的持久盘）。
+   *  wasm 只导出全量 deploy，而且只认共享目录里的「源」方案——worker 只往 `build/` 放编译版 → 部署前把编译版（去掉 import_preset）写一份到共享目录（内存盘，每次重写）。
+   *  整体状态总报 failure（default.yaml 列的别的方案本机没有）；成不成看 `build/<方案>.schema.yaml` 编出来没有、里面有没有我们的规则。 */
+  fuzzy: FuzzyPair[] = [];
+  fuzzyError: string | null = null;
+  setFuzzy(pairs: FuzzyPair[]): Promise<void> {
+    this.fuzzy = normalizeFuzzy(pairs);
+    return this.enqueue(async () => {
+      await this.syncFuzzy(); await this.applyOptions(); this.resetState();
+      if (this.fuzzyError) throw new Error(this.fuzzyError);
+    }, { compose: false });
+  }
+  /** 让当前方案的编译结果对上 this.fuzzy。补丁与现存的逐字相同 ∧ 编出来的在 = 什么都不做（开机就是这条，零部署）。失败不抛，记 fuzzyError、回到不模糊。 */
+  private async syncFuzzy(): Promise<void> {
+    const schema = this.schema;
+    try {
+      if (!this.fuzzy.length) { this.fuzzyError = null; await this.clearFuzzy(); return; }   // 关：所有拼音方案一起清（语句流和全拼共用一个 prism）
+      if (!fuzzyApplies(schema)) { this.fuzzyError = null; return; }   // 五笔：别的方案编好的留着，切回去不用重编
+      const compiled = await this.readText(`/usr/share/rime-data/build/${schema}.schema.yaml`);
+      const want = fuzzyCustomYaml(schema, compiled, this.fuzzy)!;
+      const built = `/rime/build/${schema}.schema.yaml`;
+      const marker = fuzzyRules(this.fuzzy).at(-1)!;
+      if (await this.readText(`/rime/${schema}.custom.yaml`).catch(() => null) === want && (await this.readText(built).catch(() => "")).includes(marker)) { this.fuzzyError = null; return; }
+      await this.call("fsOperate", "writeFile", `/rime/${schema}.custom.yaml`, want);
+      await this.call("fsOperate", "writeFile", `/usr/share/rime-data/${schema}.schema.yaml`, sourceSchemaYaml(compiled));
+      try { await this.call("fsOperate", "unlink", built); } catch { /* 没编过 */ }   // 旧的先删：编完在不在才说明这一次成没成
+      const status = await this.deploy();
+      if (!(await this.readText(built).catch(() => "")).includes(marker)) {
+        try { await this.call("fsOperate", "unlink", `/rime/${schema}.custom.yaml`); } catch { /* ignore */ }   // 记号不留：下次还会重试
+        throw new Error(`fuzzy pinyin build failed for ${schema} (deploy ${status})`);
+      }
+      await this.call("setIME", schema);   // 换上新 prism；setIME 顺带把 worker 的持久盘落下去
+      this.fuzzyError = null;
+    } catch (e) {
+      this.fuzzyError = e instanceof Error ? e.message : String(e);
+      console.warn("[ime] fuzzy pinyin", this.fuzzyError);
+    }
+  }
+  /** 删掉所有拼音方案的补丁和编出来的方案 / prism → 回到 vendored 预编译那份。只删真在的（开机默认走这里：两次 readdir）。 */
+  private async clearFuzzy(): Promise<void> {
+    const ls = async (dir: string) => { try { return (await this.call("fsOperate", "readdir", dir)) as string[]; } catch { return []; } };
+    const present = new Set([...(await ls("/rime")), ...(await ls("/rime/build")).map((n) => `build/${n}`)]);
+    const doomed = fuzzyArtifacts().filter((rel) => present.has(rel));
+    if (!doomed.length) return;
+    for (const rel of doomed) { try { await this.call("fsOperate", "unlink", `/rime/${rel}`); } catch { /* ignore */ } }
+    await this.call("setIME", this.schema);
+  }
+  private async readText(path: string): Promise<string> {
+    const data = await this.call("fsOperate", "readFile", path);   // 按字节读：文本回包会被 rawCall 当 JSON 试解析
+    return new TextDecoder().decode(data instanceof Uint8Array ? data : new Uint8Array(data));
+  }
+  /** 全量 deploy，等 worker 报结束（deployStatus 非 start）。 */
+  private deploy(): Promise<string> {
+    const w = this.worker;
+    if (!w) return Promise.reject(new Error("RIME worker is not ready"));
+    return new Promise((resolve, reject) => {
+      const done = (fn: () => void) => { clearTimeout(timer); w.removeEventListener("message", on); fn(); };
+      const on = (e: MessageEvent) => { const m = e.data as { type?: string; name?: string; args?: unknown[] } | null; if (m?.type === "control" && m.name === "deployStatus" && m.args?.[0] !== "start") done(() => resolve(String(m.args?.[0]))); };
+      const timer = setTimeout(() => done(() => resolve("timeout")), 60_000);
+      w.addEventListener("message", on);
+      this.call("deploy").catch((err) => done(() => reject(err)));
+    });
   }
   setSimplified(v: boolean): Promise<void> { this.simplified = v; return this.enqueue(() => this.applyOptions(), { compose: false }); }
   getState() { return { buffer: this.buffer, candidates: this.candidates, engine: this.engine, page: this.page, hasMore: this.hasMore }; }
@@ -200,6 +268,7 @@ class RimeWorkerBackend implements Backend {
     for (const name of entries) {
       if (name === "." || name === "..") continue;
       const childRel = relPath ? `${relPath}/${name}` : name;
+      if (isFuzzyArtifactPath(childRel)) continue;   // 模糊音的补丁 / 编译产物不进词库同步：偏好跟人走、每台自己编
       const childAbs = `${absRoot}/${childRel}`;
       let stat: { mode?: number } | null;
       try { stat = await this.call("fsOperate", "stat", childAbs); } catch { continue; }
@@ -215,6 +284,7 @@ class RimeWorkerBackend implements Backend {
     if (!dump?.files?.length) return;
     const root = "/rime";
     for (const entry of dump.files) {
+      if (isFuzzyArtifactPath(entry.path)) continue;   // 同 dump：别的设备的编译产物不写回来
       const parts = entry.path.split("/").slice(0, -1);
       let cur = root;
       for (const part of parts) { cur = `${cur}/${part}`; try { await this.call("fsOperate", "mkdir", cur); } catch { /* EEXIST */ } }
@@ -230,7 +300,7 @@ export class NaturalCodeIME {
   enabled = false;
   asciiMode = false;
   simplified = true;   // 简体（默认）/ 繁體；synced pref 跟人走，app 层在 initialize 前灌入
-  // JS 层标点覆盖（方案层的 punctuation 改不了：wasm librime 重建 schema 要源 yaml）：
+  // JS 层标点覆盖（当时以为方案层的 punctuation 改不了：wasm librime 重建 schema 要源 yaml。v2.3.45 起知道补一份源 yaml + 全量部署就能改，见 syncFuzzy；标点没搬过去）：
   //   ` 中文态出间隔号「·」、~ 出全角「～」（user 2026-09-04「我说的是反引号…波浪号和 windows 一样吧」）；
   //   引号样式 = 设置项（user「引号变成方形的…我觉得设置」）：curly = 交给 RIME 的 “” ‘’；corner = 「」『』 交替开合（语音标点同步走 zh-punct）。
   quoteStyle: "curly" | "corner" = "curly";
@@ -258,6 +328,11 @@ export class NaturalCodeIME {
   /** 候选每页几个（v2.1.34，user 2026-09-30「如果是软键盘的话候选词就不用翻页了而是手指滑」）：后端换掉 / 重建也要记住，所以存在这里。 */
   pageSize = 5;   // 悬浮条缺省 5（dock.ts FLOAT_PAGE_SIZE 同值；软键盘露着时 dock 改 40）
   async setPageSize(n: number): Promise<void> { this.pageSize = n; if (this.backend.setPageSize) { try { await this.backend.setPageSize(n); } catch (e) { console.warn("[ime] setPageSize failed", e); } } }
+  /** 模糊音（synced prefs `imeFuzzy`，缺省全关）：app 层在 initialize 前灌入；改了走 setFuzzy（编不成 = reject，app 报出来）。 */
+  fuzzy: FuzzyPair[] = [];
+  async setFuzzy(pairs: FuzzyPair[]): Promise<void> { this.fuzzy = normalizeFuzzy(pairs); if (this.backend.setFuzzy) await this.backend.setFuzzy(this.fuzzy); }
+  /** 上一次对齐模糊音失败的原因（换方案 / 开机时那次也算）；null = 没问题或没开。 */
+  get fuzzyError(): string | null { return this.backend.fuzzyError ?? null; }
   backend: Backend = new StarterMapBackend();
   /** 临时英文（v2.3.33，user 2026-10-04「和ios对齐，嗯和你建议一样」「空格收尾留空格，因为不想留的话可以用回车」）：中文态里一个大写字母（Shift + 字母 / 软键盘上档一次）
    *  起头，后面的字母、数字原样接着、不出汉字候选——「我用AI写」「Wi-Fi」不用切中英。空格 = 原样 + 一个空格；回车 = 原样；标点 = 原样 + 这个标点（中文标点照旧）；
@@ -276,7 +351,7 @@ export class NaturalCodeIME {
     if (this.initialized) return;
     if (!this.initPromise) {   // 加载中连点不起第二个 worker（审计 UI-21）
       const rime = new RimeWorkerBackend();
-      rime.simplified = this.simplified; rime.pageSize = this.pageSize;
+      rime.simplified = this.simplified; rime.pageSize = this.pageSize; rime.fuzzy = this.fuzzy;
       this.backend = rime;
       this.initPromise = (async () => {
         try { await rime.initialize(schema); this.initializeError = null; }

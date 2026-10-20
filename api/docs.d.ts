@@ -1,4 +1,4 @@
-import type { SyncState, SaveResult, FreshResult, DelResult, TrashItem, WatchFolderErrorPhase } from "@internal/store";
+import type { SyncState, SaveResult, FreshResult, TrashOutcome, TrashItem, WatchFolderErrorPhase } from "@internal/store";
 import { type TextEncodingName } from "./doc-model.ts";
 export interface DocListItem {
     name: string;
@@ -77,7 +77,7 @@ export interface RenameResult {
 export declare function renameDoc(name: string, newTitle: string): Promise<RenameResult | null>;
 /** 移到别的夹（身份变 = tryMove，同名撞则追加后缀）。toDir "" = 根。 */
 export declare function moveDoc(name: string, toDir: string): Promise<RenameResult | null>;
-export declare function trashDoc(name: string): Promise<DelResult>;
+export declare function trashDoc(name: string): Promise<TrashOutcome>;
 /** 事件驱动干净快进（focus/online/idle 复查）。status: fast-forwarded → 调用方整体重载；escaped/其余 → 不动。 */
 export declare function pullDocIfClean(name: string, opts?: PullIfCleanOpts): Promise<FreshResult>;
 export declare function setActiveDoc(name: string | null): void;

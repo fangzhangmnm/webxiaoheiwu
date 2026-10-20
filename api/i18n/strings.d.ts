@@ -1324,6 +1324,26 @@ export declare const S: {
         readonly zh: "已切换到「{name}」";
         readonly en: "Switched to {name}";
     };
+    readonly "ime.fuzzyApplying": {
+        readonly zh: "正在应用模糊音…";
+        readonly en: "Applying fuzzy pinyin…";
+    };
+    readonly "ime.fuzzyApplied": {
+        readonly zh: "模糊音已更新";
+        readonly en: "Fuzzy pinyin updated";
+    };
+    readonly "ime.fuzzyFailed": {
+        readonly zh: "模糊音没能生效：{e}";
+        readonly en: "Fuzzy pinyin could not be applied: {e}";
+    };
+    readonly "ui.ime.fuzzy": {
+        readonly zh: "模糊音";
+        readonly en: "Fuzzy pinyin";
+    };
+    readonly "ui.ime.fuzzyHint": {
+        readonly zh: "勾上的每一对互通：打其中一个也出另一个的字（zi 也出「知」）。默认全关；跟账号走，换设备也一样。只对全拼 / 双拼生效，五笔不受影响。";
+        readonly en: "Each ticked pair works both ways: typing one also offers words spelled with the other (zi also gives 知). All off by default; follows your account across devices. Applies to pinyin and double-pinyin schemes, not Wubi.";
+    };
     readonly "ui.sec.ime": {
         readonly zh: "输入法";
         readonly en: "Input method";
@@ -2672,6 +2692,22 @@ export declare const S: {
         readonly zh: "关闭参考窗";
         readonly en: "Close reference window";
     };
+    readonly "ref.minimize": {
+        readonly zh: "缩成小图标";
+        readonly en: "Minimize to icon";
+    };
+    readonly "ref.restore": {
+        readonly zh: "点一下恢复，按住拖动挪位置";
+        readonly en: "Tap to restore, drag to move";
+    };
+    readonly "ref.ram": {
+        readonly zh: "只放内存（不存进书里）";
+        readonly en: "Keep in memory only (not saved in the book)";
+    };
+    readonly "ref.ramMissing": {
+        readonly zh: "只在内存里，没存进书里——把这个文件拖进来，或者点 ＋ 重新导入，就补回这里";
+        readonly en: "Kept in memory only, not saved — drop the file in or re-import with ＋ to put it back here";
+    };
     readonly "ref.prev": {
         readonly zh: "上一张";
         readonly en: "Previous";
@@ -2685,8 +2721,8 @@ export declare const S: {
         readonly en: "Reference menu";
     };
     readonly "ref.move": {
-        readonly zh: "拖动";
-        readonly en: "Move";
+        readonly zh: "点一下缩成小图标，按住拖动挪位置";
+        readonly en: "Tap to minimize, drag to move";
     };
     readonly "ref.resize": {
         readonly zh: "调整大小";
