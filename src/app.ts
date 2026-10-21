@@ -4,7 +4,7 @@ import { APP_VERSION } from "./version.ts";
 import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
-import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openScopedChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice } from "./sheets.ts";
+import { initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openScopedChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice, isSheetOpen, isBusyActive } from "./sheets.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
@@ -2013,6 +2013,10 @@ document.addEventListener("keydown", (event) => {
 //   为什么需要它：书 / 稿在登出态落盘走 tryPush:false，**不进**库的离线上传队列（那队列只收「推过但没落地」的）；编辑器内存里的「待推」标记重开后归零；
 //   加密文件的推送还必须内存里有密码（库 pushLocalBytes 先解壳，锁着 = locked 算失败）。所以三个时刻都得问库一遍：登录后 / 回前台回线 / **解锁后**。
 //   pushAll 不开文档、per-name 串行与用户操作互斥；failed 是错误报告不是列举面（进黑匣子；verbose 时 toast 一句）。
+//   **问一次再推**（v2.3.52，2026-10-21；user 答统筹稿问题 3 = 全家「登录 / 回线后问一次」，JRB 0.2.20 同款）：登出 / 离线时落盘的稿走 tryPush:false，
+//   从没传过、只在本机——以前登录后静默 pushAll（v2.3.35），现在 offerPushLocalOnly：有 N 篇没传 → 问一次「传上去吗」，点了才 pushAll；
+//   「先不传」= 这次打开不再问也不再补传（下次打开再问）；点过「传上去」= 这次打开里之后的回线 / 解锁都自动补传（consent 已给）。
+//   开着的那篇照旧经 pushNowAny 自动推（那是正常 save 路径，不在这个问句里）；库的离线补推队列（推过但没落地）照旧自动排空。
 let pushDirtyAllInFlight: Promise<void> | null = null;
 function pushDirtyAll(opts: { verbose?: boolean } = {}): Promise<void> {
   if (pushDirtyAllInFlight) return pushDirtyAllInFlight;
@@ -2027,6 +2031,24 @@ function pushDirtyAll(opts: { verbose?: boolean } = {}): Promise<void> {
   })().finally(() => { pushDirtyAllInFlight = null; });
   return pushDirtyAllInFlight;
 }
+let askedPushLocalOnly = false;      // 这次打开问过了（「先不传」）
+let consentedPushAll = false;        // 这次打开点过「传上去」→ 之后自动补传
+async function offerPushLocalOnly(opts: { verbose?: boolean } = {}): Promise<void> {
+  if (!auth.isSignedIn() || navigator.onLine === false) return;
+  if (consentedPushAll) { await pushDirtyAll(opts); return; }
+  if (askedPushLocalOnly) return;
+  const n = await dirtyDocCount().catch((e) => { reportError(e, "log"); return 0; });
+  if (n <= 0) return;
+  if (isSheetOpen() || isBusyActive()) { diagNote("sync", `local-only drafts: ${n}, sheet / busy open → ask later`); return; }   // 别盖住冲突面；下次回线 / 解锁再问
+  askedPushLocalOnly = true;
+  diagNote("sync", `local-only drafts after sign-in / online: ${n} → ask`);
+  let yes = false;
+  try { yes = await openConfirmSheet(t("pushAll.askTitle"), t("pushAll.askMsg", { n: String(n) }), { okLabel: t("pushAll.ok"), cancelLabel: t("pushAll.later") }); }
+  catch (e) { askedPushLocalOnly = false; reportError(e, "log"); return; }   // 和别的 sheet 撞了 → 这次没问成，下次再问
+  if (!yes) { diagNote("sync", "local-only drafts: user said not now"); return; }
+  consentedPushAll = true;
+  await pushDirtyAll({ verbose: true });
+}
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
 //   顺序（v2.3.35，2026-10-16；10-08 handoff 第 3 节）：**先快进、再推**。这台干净而别的设备改过 → 静默接云端新版；脏 → 库的快进是空操作、推送撞 412 才弹面。
 //   以前反过来（先推再快进）+ 推送不看脏，干净的这台也把旧版推一遍 → 412 → 弹「本地覆盖云端」= user 2026-10-16「挂机之后还是有…bug」。
@@ -2036,12 +2058,12 @@ async function resumeSync(): Promise<void> {
   await refreshIfCleanAny();   // 干净快进在前
   await pushNowAny();          // 只推 pending（编辑器 / 书各自的「不脏不推」门）
   await requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
-  await pushDirtyAll();   // 2026-09-26：开着的推完再问库还有谁没推（顺序保证开着的那篇不会被推两遍）
+  await offerPushLocalOnly();   // 2026-09-26：开着的推完再问库还有谁没推（顺序保证开着的那篇不会被推两遍）；v2.3.52 起问一次再推
   await reconcileCollections();
   drawer.subscribe();   // 2026-09-09 审计 #8：refresh 只重画缓存帧，回线/复查要重拉
   setState(stateAny());
 }
-onLockChange((unlocked) => { if (unlocked) void pushDirtyAll({ verbose: true }); });   // 2026-09-26：解锁 = 加密文件的推送第一次有钥匙；登录 / 回前台那两下如果当时锁着都推不动（库 locked 算失败留 dirty）
+onLockChange((unlocked) => { if (unlocked) void offerPushLocalOnly({ verbose: true }); });   // v2.3.52：也走「问一次」闸门（点过传上去才自动补）   // 2026-09-26：解锁 = 加密文件的推送第一次有钥匙；登录 / 回前台那两下如果当时锁着都推不动（库 locked 算失败留 dirty）
 const idle = initIdleGate({
   overlay: $("idleOverlay"),
   onIdle: () => { if (auth.isSignedIn()) { void pushNowAny(); void pushUserDict(); rememberLastActive(); } else void flushLocalAny(); },
@@ -2179,7 +2201,7 @@ function afterSignIn(): Promise<void> {
       await pullUserDict();
       await refreshIfCleanAny();   // v2.3.35：先快进（登录前开的稿在这里重捕云端 base——store 0.16.2 的 refresh in-sync markSeen），再推
       await pushNowAny().catch((e) => reportError(e, "log"));   // 2026-09-26：登录那一下把开着的推上去（登出态写的书一直「未同步」）；v2.3.35 起只推 pending
-      void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log")).then(() => pushDirtyAll());   // 大文件慢网不阻塞后面的 lastActive / 快进；pushAll 排在队列回放之后
+      void requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log")).then(() => offerPushLocalOnly());   // 大文件慢网不阻塞后面的 lastActive / 快进；pushAll 排在队列回放之后
       if (!bootLastActiveHandled) {
         bootLastActiveHandled = true;
         // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切。

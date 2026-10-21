@@ -51,6 +51,8 @@ let _open: (() => void) | null = null;   // 当前 sheet 的 cancel 路径（bac
 let _submit: (() => void) | null = null;   // 当前输入 sheet 的确定路径（form submit 事件用；别的 sheet 为 null = 只拦默认提交）
 
 function _show(): void { g.sheet().classList.remove("hidden"); }
+/** 有 sheet 开着（别的流程想弹面前先看一眼，别盖住冲突面）。 */
+export function isSheetOpen(): boolean { return !g.sheet().classList.contains("hidden"); }
 function _hide(): void {
   g.sheet().classList.add("hidden");
   if (document.activeElement instanceof HTMLElement && g.sheet().contains(document.activeElement)) document.activeElement.blur();
