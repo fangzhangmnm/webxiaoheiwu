@@ -68,26 +68,18 @@ export interface FactoryResetDeps {
   beforeWipe: () => Promise<void>;
 }
 
-/** 还原出厂主流程（设置页按钮调）。全程 in-app sheet。**有一篇没同步就拒绝**（A12：不造逃生副本）。 */
+/** 还原出厂主流程（设置 → 开发者 节的钮调；全程 in-app sheet）。家族规矩 2½（2026-10-21 user「全家swipe的语义统一，然后full swipe应该有二次确定护栏，而且是开发者菜单里面」）：
+ *  整个 app 自己的命名空间清成新装；**两步护栏** = ① 说明 sheet（有 N 篇没同步会一起删、不造逃生副本，可取消）② 逐字确认（库内比对）；**不硬拦**——
+ *  2026-09-03～10-21 的「有一篇没同步就拒绝」是硬拦，和家规 09-29「app 不许硬拦」打架，同日撤；A12 的「不造逃生副本」照旧。 */
 export async function runFactoryReset(d: FactoryResetDeps): Promise<void> {
   if (typeof navigator !== "undefined" && navigator.onLine === false) { d.setStatus(t("fr.needOnline"), { error: true }); return; }   // 清壳后 reload 要联网，不然白屏
   const unsynced = await d.unsyncedCount();
-  if (unsynced > 0) { d.setStatus(t("fr.needSync", { n: String(unsynced) }), { error: true }); return; }
-  if (!(await openConfirmSheet(t("fr.introTitle"), t("fr.introMsg"), { danger: true, okLabel: t("common.continue") }))) return;
+  const msg = unsynced > 0 ? t("fr.introMsgUnsynced", { n: String(unsynced) }) : t("fr.introMsg");
+  if (!(await openConfirmSheet(t("fr.introTitle"), msg, { danger: true, okLabel: t("common.continue") }))) return;
   await consentThenWipe(d, t("fr.introTitle"));
 }
 
-/** 「彻底删除，变成新的」（debug 用；user 2026-10-21 经统筹转述「点了之后变成新的」）：和还原出厂并存、**不拒绝**——有没同步的稿只提示一次有 N 份会一起丢，
- *  可取消、不硬拦（家规：app 不许硬拦，上限 = 警告可取消）。打字确认照旧（库内比对）。之后的清理和还原出厂同一条路。 */
-export async function runWipeToFresh(d: FactoryResetDeps): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) { d.setStatus(t("fr.needOnline"), { error: true }); return; }
-  const unsynced = await d.unsyncedCount();
-  const msg = unsynced > 0 ? t("fr.freshMsgUnsynced", { n: String(unsynced) }) : t("fr.freshMsg");
-  if (!(await openConfirmSheet(t("fr.freshTitle"), msg, { danger: true, okLabel: t("common.continue") }))) return;
-  await consentThenWipe(d, t("fr.freshTitle"));
-}
-
-/** 两个钮共用的后半：逐字 consent（库内再比一次）→ dispose → 库命名空间 wipe → 自家足迹 → 残留扫 → reload。 */
+/** 后半：逐字 consent（库内再比一次）→ dispose → 库命名空间 wipe → 自家足迹（RIME / remember / thumbs 库 + device-kv + 只删自己前缀的缓存 + 只注销管着本页的 SW）→ 残留扫 → reload。 */
 async function consentThenWipe(d: FactoryResetDeps, title: string): Promise<void> {
   const phrase = t("fr.consentPhrase");
   const typed = await openInputSheet(title, { placeholder: phrase, message: t("fr.consentPrompt", { phrase }), okLabel: title });

@@ -49,7 +49,7 @@ import { passwordKeeper } from "./encryption.ts";
 import { wireRememberPassword, restoreRemembered, rememberCurrent, forgetRemembered, rememberedUntil, onRememberChange, setRememberChoice, rememberChoice, takeRememberChoice } from "./remember-password.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
-import { runFactoryReset, runWipeToFresh } from "./factory-reset.ts";
+import { runFactoryReset } from "./factory-reset.ts";
 import { togglePopupMenu, currentPopupMenu } from "./ui/popup-menu.ts";
 import { setQuoteStyle, tidyPunctuation as tidyPunct } from "./zh-punct.ts";
 import { replaceRange } from "./text-edit.ts";
@@ -1963,9 +1963,7 @@ const wipeDeps = {
   beforeWipe: async () => { await flushLocalAny(); await flushCollections(); await leaveProject(); editor.clear(); ime.dispose(); await forgetRemembered(); },   // 记着的密码先删记录；库本身由 factory-reset.ts 删
 };
 const factoryReset = () => runFactoryReset(wipeDeps);
-const wipeToFresh = () => runWipeToFresh(wipeDeps);   // 「彻底删除 = 变成新的」：不等同步、只提示一次（user 2026-10-21，经统筹转述）
 $("factoryResetButton").addEventListener("click", () => { void factoryReset(); });
-$("wipeFreshButton").addEventListener("click", () => { void wipeToFresh(); });
 initDiagLogUi({ status: (text) => setStatus(text) });   // 2026-09-09 黑匣子：看/复制/分享或下载 .txt/清空（数据源 diag-log）
 function renderSettings(): void { renderAuthRow(); renderImeSection(); renderPasswordSection(); renderVoiceConfig(); }
 
@@ -2209,4 +2207,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, wipeToFresh, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

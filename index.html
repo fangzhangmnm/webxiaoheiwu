@@ -513,9 +513,15 @@
           <p class="voice-config-hint" data-i18n="ui.font.credit">正文字体：思源黑体（Noto Sans SC）© Adobe，SIL OFL 1.1。拼音字体：萌神手写体 © 萌神 PROJECT / LXGW，SIL OFL 1.1。像素字体：Mono8px（fangzhangmnm 整理；汉字取自观致 8px，观致基于美咲フォント），可自由使用、修改、再分发。许可证全文随 app 附带（vendor/fonts/）。</p>
           <div class="settings-row">
             <button class="auth-action" id="forceUpdateButton" type="button" data-i18n="ui.forceUpdate">强制更新（清缓存重启）</button>
-            <button class="auth-action danger" id="factoryResetButton" type="button" data-i18n="ui.factoryReset">还原出厂设置（清本机全部数据）…</button>
-            <button class="auth-action danger" id="wipeFreshButton" type="button" data-i18n="ui.wipeFresh">彻底删除，变成新的（调试用，不等同步）…</button>
+          </div>
+          <div class="settings-build" id="settingsBuild" title="构建版本" data-i18n-title="ui.buildTitle"></div>
+        </details>
+        <!-- 开发者（家族规矩 2½，2026-10-21）：还原出厂 = 整个命名空间清成新装，两步护栏、不硬拦；黑匣子一起住这里。「强制更新」留在维护。 -->
+        <details class="settings-section" id="developerSection">
+          <summary class="settings-section-title" data-i18n="ui.sec.developer">开发者</summary>
+          <div class="settings-row">
             <button class="auth-action" id="diagButton" type="button" data-i18n="ui.diag">诊断日志</button>
+            <button class="auth-action danger" id="factoryResetButton" type="button" data-i18n="ui.factoryReset">还原出厂设置（清本机全部数据）…</button>
           </div>
           <div class="settings-row" id="diagLogActions" hidden>
             <button class="auth-action" id="diagLogCopy" type="button" data-i18n="diag.copy">复制</button>
@@ -523,7 +529,6 @@
             <button class="auth-action" id="diagLogClear" type="button" data-i18n="diag.clear">清空</button>
           </div>
           <pre id="diagLog" class="diag-log" hidden></pre>
-          <div class="settings-build" id="settingsBuild" title="构建版本" data-i18n-title="ui.buildTitle"></div>
         </details>
       </div>
 
@@ -557,6 +562,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-bc5ce099aed6.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-867f00f89958.mjs"></script>
   </body>
 </html>
