@@ -5,7 +5,7 @@
     <!-- CSP（2026-10-17，user「csp…一起上」）：脚本只准本站文件 + wasm（不放行内联脚本 / eval）；iframe 只准微软登录（MSAL 后台续登录）；
          connect-src 放 https: 是因为模型镜像地址人能改、OneDrive 的下载 / 上传主机不固定。改这条 = 跑 test/csp-guard + boot smoke（拦截即红）。 -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https: blob: data:; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self' https://login.microsoftonline.com https://login.live.com; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'" />
-    <meta name="asr-worker" content="./dist/asr-worker-32f86e59bf57.js" />
+    <meta name="asr-worker" content="./dist/asr-worker-669f40d9966f.js" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#d8c8a8" />
     <meta name="color-scheme" content="light" />
@@ -556,6 +556,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-0f73f099bdfd.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-e04ca78e3852.mjs"></script>
   </body>
 </html>

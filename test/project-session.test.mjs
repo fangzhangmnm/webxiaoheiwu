@@ -221,3 +221,38 @@ describe("project/session · setTimes（「改时间…」；user 2026-09-30「�
     ps.setReadOnly(true); assert(throwsName(() => ps.setTimes("目录.txt", 1), "LockedBookError"), "锁着拒");
   });
 });
+
+// ── 书级偏好动词 setEditorPrefs（2026-10-21，周账 F-23；Claude Fable 5.1）：直写 editorState 不标脏 → 关书前没打字就丢（10-06 审计）──
+describe("project/session · 书级偏好 setEditorPrefs 标脏 + 往返；锁着 / 太新只改内存（F-23）", () => {
+  it("lineWidth / font / exportCovers 标脏、flush 落进 editor-state、重开回来；undefined = 删键", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("p.webxiaoheiwu.zip", "a.txt"); ps.setCurrentText("A"); await ps.flush(false); assert(!ps.dirty);
+    ps.setEditorPrefs({ lineWidth: { charsPerLine: 14 }, font: "pinyin", exportCovers: { "a.txt": "a.txt" } });
+    assert(ps.dirty, "书级偏好 = 正经改动");
+    const r = await ps.flush(false); eq(r.wrote, true); assert(!ps.dirty);
+    const ps2 = createProjectSession(s.deps); eq((await ps2.open("p.webxiaoheiwu.zip")).kind, "ok");
+    eq(ps2.project.editorState.lineWidth.charsPerLine, 14); eq(ps2.project.editorState.font, "pinyin"); eq(ps2.project.editorState.exportCovers["a.txt"], "a.txt");
+    ps2.setEditorPrefs({ font: undefined, exportCovers: undefined }); assert(ps2.dirty); await ps2.flush(false);
+    const ps3 = createProjectSession(s.deps); await ps3.open("p.webxiaoheiwu.zip");
+    eq(ps3.project.editorState.font, undefined, "undefined 删键"); eq(ps3.project.editorState.exportCovers, undefined); eq(ps3.project.editorState.lineWidth.charsPerLine, 14, "没动的留着");
+  });
+  it("修改锁着：只改内存、不标脏、flush 不写；格式太新同理", async () => {
+    const s = fakeStore(); const ps = createProjectSession(s.deps);
+    ps.create("p.webxiaoheiwu.zip", "a.txt"); ps.setCurrentText("A"); ps.setReadOnly(true); await ps.flush(false); assert(!ps.dirty);
+    ps.setEditorPrefs({ lineWidth: { charsPerLine: 28 } });
+    eq(ps.project.editorState.lineWidth.charsPerLine, 28, "内存里生效（这次打开的显示）"); assert(!ps.dirty, "锁着不标脏");
+    eq((await ps.flush(false)).wrote, false);
+    const { zipPack } = await import("../src/zip.ts");
+    s.files.set("new.webxiaoheiwu.zip", await zipPack([{ path: "graph.json", data: JSON.stringify({ format: "webxiaoheiwu", version: 99, wroteWith: "x", tree: [], pages: {} }) }]));
+    const pn = createProjectSession(s.deps); eq((await pn.open("new.webxiaoheiwu.zip")).kind, "too-new");
+    pn.setEditorPrefs({ font: "pinyin" }); assert(!pn.dirty); eq((await pn.flush(false)).wrote, false, "太新：禁覆盖");
+  });
+  it("接口纪律：editor-state 的键只经 session 动词写——app.ts / mode.ts 里不许直写 / delete（10-06 审计「越窄接口摸内部」）", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["src/app.ts", "src/project/mode.ts"]) {
+      const src = readFileSync(f, "utf8");
+      const bad = src.match(/editorState\.[A-Za-z]+\s*=[^=]|delete\s+[^;]*editorState\./g) ?? [];
+      eq(bad.length, 0, `${f} 直写 editorState：${bad.join(" | ")}`);
+    }
+  });
+});

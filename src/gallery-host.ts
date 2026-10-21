@@ -45,7 +45,7 @@ const GALLERY_TEXT_OVERRIDES: Record<string, Parameters<typeof t>[0]> = {
 };
 /** 封面尾读（ADR-0012）：Thumbnails/thumbnail.png 是书 zip 的最后一个 entry；尾窗 128 KB（300 页的书 central directory 约 30 KB + 封面 ≤70 KB 一次命中）。 */
 const THUMB_PEEK_BYTES = 128 * 1024;
-const THUMB_DB = "webxiaoheiwu-thumbs";   // 派生缓存 IDB（user 2026-09-10「weebpaint 不是一直 idb 的吗」= 批）；CLAUDE.md 持久层白名单表登记
+import { THUMB_DB } from "./config.ts";   // 派生缓存 IDB（user 2026-09-10「weebpaint 不是一直 idb 的吗」= 批）；CLAUDE.md 持久层白名单表登记；库名归 config（还原出厂也认它）
 
 export function initGalleryHost(d: GalleryHostDeps) {
   const vue = Vue as unknown as VueRuntime;

@@ -7,7 +7,7 @@
 //   「默认节点就叫第一章」）；新边加末尾（「节点应该加在末尾」）；显示不带扩展名（「吃书：还是不显示扩展名吧」）。
 import { PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "../config.ts";
 import { bookLocalDebounceMs } from "./cadence.ts";
-import { createProjectSession, type ProjectSession, type OpenResult, type ReferenceHooks } from "./session.ts";
+import { createProjectSession, type ProjectSession, type OpenResult, type ReferenceHooks, type EditorPrefsPatch } from "./session.ts";
 import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc } from "../docs.ts";
 import { rescueBook } from "../rescue.ts";
 import { note as diagNote } from "../diag-log.ts";
@@ -126,6 +126,14 @@ export function createProjectMode(d: ProjectModeDeps) {
     session.touchReferences();
     scheduleLocalSave(); schedulePush();
     d.setState(stateText()); d.onChanged();
+  }
+  /** 书级偏好（行宽 / 字体 / 导出设置）改了：经 session 动词写进 editor-state 并标脏，走和正文一样的落盘 / 推云节律（F-23）。没书 = 不做（txt 稿的草稿值归调用方）。 */
+  function setBookPrefs(patch: EditorPrefsPatch): void {
+    if (!session) return;
+    session.setEditorPrefs(patch);
+    if (!canEdit()) return;   // 锁着 / 太新 / 替换中：session 只改了内存，不落盘
+    scheduleLocalSave(); schedulePush();
+    d.setState(stateText(), { unsynced: d.isSignedIn() && home?.kind === "store" }); d.onChanged();
   }
   function commitTitle(): boolean {
     if (titleField.composing()) return true;   // 系统输入法正在组字：半截拼音不是名字，等它上屏（blur / Enter 再来）
@@ -633,7 +641,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, setPageTime, pageTime: (n: string) => session?.project.nodes.get(n)?.modified ?? 0, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,
     cutIncoming, backlinksOfCurrent, backlinksOfPage, addImagePages, lastAdded: () => lastAdded, lastPlaced: () => lastPlaced, pageBytes, replaceImage, setThumbnail, thumbnail, coverPage, setHidden, isHidden, isHiddenInTree, hiddenAncestor,
-    noteReferencesChanged,
+    noteReferencesChanged, setBookPrefs,
   };
 }
 export type ProjectMode = ReturnType<typeof createProjectMode>;

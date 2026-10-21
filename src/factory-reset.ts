@@ -13,11 +13,11 @@ import { deviceKvWipeAll, deviceKvCount } from "./device-kv.ts";
 import { openConfirmSheet, openInputSheet } from "./sheets.ts";
 import { t } from "./i18n/index.ts";
 import { reportError } from "./error-badge.ts";
-import { APP_ID, MODEL_CACHE_NAME, SHELL_CACHE_PREFIX, REMEMBER_DB } from "./config.ts";
+import { APP_ID, MODEL_CACHE_NAME, SHELL_CACHE_PREFIX, REMEMBER_DB, THUMB_DB } from "./config.ts";
 import { PACK_MANIFESTS } from "./asr/packs.generated.ts";
 
 // 本 app 在 store 命名空间之外自开的 IDB：RIME 的两个 + 「在这台设备上记住密码」（2026-10-17；记录在 beforeWipe 里先删，这里删库本身）
-const RIME_DBS = new Set(["ime", "/rime", REMEMBER_DB]);
+const RIME_DBS = new Set(["ime", "/rime", REMEMBER_DB, THUMB_DB]);   // + 封面缩略图库（2026-10-21 F-58 盘点查出漏删；可再生）
 const BLOCKED_TIMEOUT_MS = 2000;
 
 function deleteDbOrBlocked(name: string): Promise<"deleted" | "blocked"> {

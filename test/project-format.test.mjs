@@ -295,3 +295,45 @@ describe("project/format · 参考目录 `.webxiaoheiwu/references/`（ADR-0016�
     r = await unpackProject(bad); eq(r.kind, "ok"); eq(r.project.editorState.refPanel, undefined, "坏值 → 当没有");
   });
 });
+
+// ── 格式版本纪律（2026-10-21，周账 F-23 / 安全模型 A15；Claude Fable 5.1）：加字段不 bump、未知键直通、已知键登记 ──
+const { KNOWN_GRAPH_FIELDS, KNOWN_PAGE_FIELDS, KNOWN_EDITOR_STATE_FIELDS } = await import("../src/project/format.ts");
+describe("project/format · 格式版本纪律：未知字段直通 + 已知键登记（F-23）", () => {
+  it("已知键三张表钉死：加字段 = 改表 + format.ts 纪律段 + CLAUDE.md 记一笔（不改表 = 这里红）", () => {
+    eq(KNOWN_GRAPH_FIELDS.join("|"), "format|version|wroteWith|readOnly|cover|tree|pages");
+    eq(KNOWN_PAGE_FIELDS.join("|"), "links|created|modified|hidden");
+    eq(KNOWN_EDITOR_STATE_FIELDS.join("|"), "last|back|refPanel|lineWidth|exportLineWidth|exportFont|font|exportCovers|exportEmbedText");
+  });
+  it("更新客户端写的未知键（graph 顶层 / 页级 / editor-state 顶层）解包→打包原样带回；已知键永远由本版写", async () => {
+    const graph = { format: "webxiaoheiwu", version: 2, wroteWith: "v9.9.9-future", tree: ["a.txt"], futureTop: { x: 1 }, pages: { "a.txt": { links: [], created: 1, modified: 2, futurePage: "yes" } } };
+    const es = { last: "a.txt", back: [], futureEs: [1, 2, 3], lineWidth: { charsPerLine: 20, futureNested: true } };
+    const r = await unpackProject(await zipOf([{ path: "graph.json", data: JSON.stringify(graph) }, { path: "pages/a.txt", data: "A" }, { path: ".webxiaoheiwu/editor-state.json", data: JSON.stringify(es) }]));
+    eq(r.kind, "ok"); eq(r.warnings.length, 0);
+    eq(JSON.stringify(r.project.graphExtra), JSON.stringify({ futureTop: { x: 1 } }));
+    eq(JSON.stringify(r.project.nodes.get("a.txt").extra), JSON.stringify({ futurePage: "yes" }));
+    eq(JSON.stringify(r.project.editorStateExtra), JSON.stringify({ futureEs: [1, 2, 3] }));
+    const out = await zipUnpack(await packProject(r.project));
+    const g = JSON.parse(td.decode(out["graph.json"]));
+    eq(JSON.stringify(g.futureTop), JSON.stringify({ x: 1 }), "graph 顶层未知键带回");
+    eq(g.pages["a.txt"].futurePage, "yes", "页级未知键带回");
+    eq(g.version, 2); assert(g.wroteWith !== "v9.9.9-future", "wroteWith 由本版写，不直通");
+    const e2 = JSON.parse(td.decode(out[".webxiaoheiwu/editor-state.json"]));
+    eq(JSON.stringify(e2.futureEs), JSON.stringify([1, 2, 3]), "editor-state 顶层未知键带回");
+    eq(e2.lineWidth.charsPerLine, 20);
+    eq(e2.lineWidth.futureNested, undefined, "已知对象里的未知子键不直通（纪律段写明的限制；要加子字段改父字段解析）");
+    const r2 = await unpackProject(await packProject(r.project));
+    eq(r2.kind, "ok"); eq(JSON.stringify(r2.project.graphExtra), JSON.stringify({ futureTop: { x: 1 } }), "二次往返仍在");
+  });
+  it("本版自己写的书：三张 JSON 只有已知键（直通袋为空，同内容同字节不变量不受影响）", async () => {
+    const p = emptyProject(); createNode(p, "a.txt", "A", () => 1); p.tree = ["a.txt"]; p.editorState.last = "a.txt";
+    eq(JSON.stringify(p.graphExtra), "{}"); eq(JSON.stringify(p.editorStateExtra), "{}");
+    const out = await zipUnpack(await packProject(p));
+    for (const k of Object.keys(JSON.parse(td.decode(out["graph.json"])))) assert(KNOWN_GRAPH_FIELDS.includes(k), `graph.json 冒出未登记的键 ${k}`);
+    for (const k of Object.keys(JSON.parse(td.decode(out[".webxiaoheiwu/editor-state.json"])))) assert(KNOWN_EDITOR_STATE_FIELDS.includes(k), `editor-state 冒出未登记的键 ${k}`);
+    for (const k of Object.keys(JSON.parse(td.decode(out["graph.json"])).pages["a.txt"])) assert(KNOWN_PAGE_FIELDS.includes(k), `pages[] 冒出未登记的键 ${k}`);
+  });
+  it("editor-state 不是对象 / graph 非对象字段：直通袋为空，不炸", async () => {
+    const r = await unpackProject(await zipOf([{ path: "graph.json", data: graphOf({}) }, { path: "pages/a.txt", data: "A" }, { path: ".webxiaoheiwu/editor-state.json", data: "[1,2]" }]));
+    eq(r.kind, "ok"); eq(JSON.stringify(r.project.editorStateExtra), "{}");
+  });
+});

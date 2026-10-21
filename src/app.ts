@@ -547,7 +547,7 @@ async function copyCurrentImage(): Promise<void> {
 type LongImageScope = "page" | "branch" | "book" | "draft";
 // ── 导出排版跟编辑器的行宽走（user 2026-09-30「导出跟编辑器的行宽走啊」）：每行几个字 = 设置 → 行宽（同步偏好跟人走，14 / 20 / 28），像素/字定死（long-image PX_PER_CHAR），行距跟档。
 //   v2.3.19（user 2026-10-01「所以轻小说我写的时候用14来逼对话和节奏，20导出？那么导出是否还是需要一个随着书持久化的另外的节奏选项？」「好，同意。加」）：
-//   导出可以另有一个行宽——只在导出面板里选，**默认跟编辑器**；选过就记进这本书 editor-state 的 `exportLineWidth`（随保存写、不标脏）；txt 稿没有 editor-state → 只记到这次打开为止（不为它新开持久化的键）。
+//   导出可以另有一个行宽——只在导出面板里选，**默认跟编辑器**；选过就记进这本书 editor-state 的 `exportLineWidth`（算正经改动、标脏——2026-10-21 F-23；之前直写不标脏，关书前没打字就丢）；txt 稿没有 editor-state → 只记到这次打开为止（不为它新开持久化的键）。
 //   选回和编辑器一样的那一档 = 撤掉另选（重新跟着走）。只管长图和 PDF，复制文字不看它。
 let draftExportChars: number | null = null;   // txt 稿的另选（只在内存里）
 function exportCharsPref(): number {
@@ -557,13 +557,13 @@ function exportCharsPref(): number {
 function setExportChars(n: number): void {
   const follow = n === editorCharsPref();
   const s = project.active() ? project.session() : null;
-  if (s) { if (follow) delete s.project.editorState.exportLineWidth; else s.project.editorState.exportLineWidth = { charsPerLine: n }; }
+  if (s) project.setBookPrefs({ exportLineWidth: follow ? undefined : { charsPerLine: n } });   // 书的属性：标脏、走落盘节律（F-23）
   else draftExportChars = follow ? null : n;
 }
 const currentTypeset = (): ExportTypeset => typesetFor(exportCharsPref());
 // ── 导出字体（v2.3.21，user 2026-10-01「萌神拼音也vendor进去吧，导出的时候还蛮需要的（需要导出和编辑分开配置吗？）」）：
 //   编辑器永远是黑体，不给选；**只有导出**（长图 / PDF）可以换成萌神拼音（汉字头上带拼音）。和导出行宽同一套：导出面板里选，记进这本书 editor-state 的 `exportFont`
-//   （没有 = 黑体；随保存写、不标脏），txt 稿只记到这次打开为止。拼音字体 12 MB，选了、真要导出时才取。
+//   （没有 = 黑体；算正经改动、标脏——2026-10-21 F-23），txt 稿只记到这次打开为止。拼音字体 12 MB，选了、真要导出时才取。
 /** 像素字体画进长图时一个字多少像素：8×8 的格子 × 4（30 不是 8 的倍数，会糊）。图宽跟着变（20 字档 730）。 */
 const PIXEL_FONT_PX = 32;
 let draftExportFont: FontId | null = null;
@@ -572,7 +572,7 @@ const asFontId = (v: unknown): FontId | null => (typeof v === "string" && (FONT_
 function exportFontPref(): FontId { return asFontId(project.active() ? project.session()?.project.editorState.exportFont : draftExportFont) ?? editorFontPref(); }
 function setExportFont(id: FontId): void {
   const follow = id === editorFontPref(); const s = project.active() ? project.session() : null;
-  if (s) { if (follow) delete s.project.editorState.exportFont; else s.project.editorState.exportFont = id; }
+  if (s) project.setBookPrefs({ exportFont: follow ? undefined : id });
   else draftExportFont = follow ? null : id;
 }
 /** 导出用的字体到位：黑体 = 开机就在装的那一款；拼音 = 现在取、现在装（盖一层「取字体」）。拿不到 → 说清楚、返回 false。 */
@@ -649,7 +649,7 @@ async function exportSheetFlow(): Promise<void> {
     return;
   }
 }
-/** 「这一页 / 这一支」导出用的封面：起点页 → 图片页，记在这本书的 editor-state（exportCovers；随保存写、不标脏）。指的页没了 / 不是图片 → 当没有。 */
+/** 「这一页 / 这一支」导出用的封面：起点页 → 图片页，记在这本书的 editor-state（exportCovers；算正经改动、标脏——2026-10-21 F-23）。指的页没了 / 不是图片 → 当没有。 */
 function partCoverOf(root: string): string | null {
   const s = project.session(); const v = s?.project.editorState.exportCovers?.[root];
   return v && s!.project.contents.has(v) && nodeKind(v) === "image" ? v : null;
@@ -658,7 +658,7 @@ function setPartCover(root: string, img: string | null): void {
   const s = project.session(); if (!s) return;
   const m = { ...(s.project.editorState.exportCovers ?? {}) };
   if (img) m[root] = img; else delete m[root];
-  if (Object.keys(m).length) s.project.editorState.exportCovers = m; else delete s.project.editorState.exportCovers;
+  project.setBookPrefs({ exportCovers: Object.keys(m).length ? m : undefined });
 }
 const PART_COVER_NONE = "\u0000none";
 async function pickPartCoverFlow(root: string): Promise<void> {
@@ -699,7 +699,7 @@ let draftExportEmbed = true;
 function exportEmbedPref(): boolean { return project.active() ? project.session()?.project.editorState.exportEmbedText !== false : draftExportEmbed; }
 function setExportEmbed(on: boolean): void {
   const s = project.active() ? project.session() : null;
-  if (s) { if (on) delete s.project.editorState.exportEmbedText; else s.project.editorState.exportEmbedText = false; }
+  if (s) project.setBookPrefs({ exportEmbedText: on ? undefined : false });
   else draftExportEmbed = on;
 }
 /** 「复制文字」：这一页 / 整篇 = v2.1.9 那一下（图片页 = 图片本身）；这一支 / 整本 = 正文页按目录顺序拼成一篇（和「导出这一支」的 txt 同一种拼法：只拼正文、页与页之间空一行）。 */
@@ -1617,7 +1617,7 @@ pttKeySelect.addEventListener("change", () => { pttAbort(); pttArmedNoPack = fal
 applyPttKey();
 
 // ── 行宽（每行几个字；v2.3.11 user「现在阅读节奏为什么还是只有两档，而且你不是说去语义化吗」「editor state 里面的行宽是跟着书走的吧。这个语义上确实是书的属性」）：
-//   三档 14 / 20 / 28 与导出同一张表，行距跟档（styles.css body[data-chars]）。**书的属性**：书开着 → 读 / 写这本书的 editor-state `lineWidth`（随保存写、不标脏，手动保存顺手捞）；
+//   三档 14 / 20 / 28 与导出同一张表，行距跟档（styles.css body[data-chars]）。**书的属性**：书开着 → 读 / 写这本书的 editor-state `lineWidth`（算正经改动、标脏——2026-10-21 F-23）；
 //   没书（txt 稿）或这本书还没定过 → 账号默认（synced prefs charsPerLine）；旧「阅读节奏」两档（readingMode：novel / classic）只当迁移来源：classic → 28、其余 → 20。导出读同一个数。
 const EDITOR_CHARS_TIERS: readonly number[] = CHARS_PRESETS;   // 与导出同一张表
 function defaultCharsPref(): number {
@@ -1655,7 +1655,7 @@ function syncEditorFont(): void { const id = editorFontPref(); if (document.body
 $("editorFontPicker").addEventListener("change", (event) => {
   const v = asFontId((event.target as HTMLInputElement | null)?.value); if (!v) return;
   const s = project.active() ? project.session() : null;
-  if (s) s.project.editorState.font = v;   // 这本书的（随下次保存 / 顺手捞落盘）
+  if (s) project.setBookPrefs({ font: v });   // 这本书的属性：标脏、走落盘节律（F-23）
   else prefs.setItem("font", v);            // 默认（txt 稿 / 新书）
   applyEditorFont(v);
 });
@@ -1666,7 +1666,7 @@ $("readingModePicker").addEventListener("change", (event) => {
   const v = Number((event.target as HTMLInputElement | null)?.value);
   if (!EDITOR_CHARS_TIERS.includes(v)) return;
   const s = project.active() ? project.session() : null;
-  if (s) s.project.editorState.lineWidth = { charsPerLine: v };   // 这本书的（随下次保存 / 顺手捞落盘）
+  if (s) project.setBookPrefs({ lineWidth: { charsPerLine: v } });   // 同上
   else prefs.setItem("charsPerLine", v);                              // 默认（txt 稿 / 新书）
   applyEditorChars(v);
 });

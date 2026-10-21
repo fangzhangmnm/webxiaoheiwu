@@ -6,6 +6,8 @@
 export const APP_ID = "webxiaoheiwu";   // 本 origin 内唯一命名空间：IDB `webxiaoheiwu.defaultStore` + localStorage 前缀。2026-10-13 起 origin = write.weebpaint.com（自己独占）；之前和 JRP/BR 等兄弟共用 fangzhangmnm.github.io，旧箱子里的数据仍用这个前缀。有数据后永不改
 /** 「在这台设备上记住密码」的本机库（@internal/encryption createPasswordKeeper；2026-10-17）。用连字符不用点：`webxiaoheiwu.` 前缀归 store 命名空间（库的 wipe / scan 按它枚举）。 */
 export const REMEMBER_DB = `${APP_ID}-remember`;
+/** 书库封面缩略图的派生缓存 IDB（@internal/gallery 建；user 2026-09-10 批）。库名在这里 = 还原出厂能认得它（2026-10-21 F-58 盘点查出漏删）。 */
+export const THUMB_DB = `${APP_ID}-thumbs`;
 export const CLIENT_ID = "39d8afca-f47b-43cb-b962-0803f556520f";
 export const AUTHORITY = "https://login.microsoftonline.com/consumers";
 export const SCOPES = ["Files.ReadWrite.AppFolder", "offline_access"];

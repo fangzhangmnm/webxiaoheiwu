@@ -5,7 +5,9 @@
 //   · 撞名 = 链接不是新建；占位符已废（ADR-0014 §4）：跳到没有的名字 = 抛，不再「跳上去才生文件」
 //   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 废弃 / 彻底删 /
 //     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页（可指定位置）/ 封面 / 断入边 / 修改锁本身。删除模型 = 断开链接 / 废弃 / 彻底删除 三个显式动词，无引用计数（ADR-0014 §8）
-import { type Project, type UnpackResult, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
+import { type Project, type UnpackResult, type EditorState, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
+/** 书级偏好（editor-state 里跟着书走、算正经改动的那几个键）；值 undefined = 删掉这个键（回到「跟默认走」）。 */
+export type EditorPrefsPatch = Partial<Pick<EditorState, "lineWidth" | "exportLineWidth" | "exportFont" | "font" | "exportCovers" | "exportEmbedText">>;
 import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes, subtreeOrder, visibleOrder, visibleSubtreeOrder, isHidden as isHiddenNode, isHiddenInTree as isHiddenInTreeNode, hiddenAncestor as hiddenAncestorOf, setHidden as setHiddenNode,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 
@@ -183,9 +185,16 @@ export function createProjectSession(d: ProjectSessionDeps) {
   const toBlob = async () => { if (d.references) project.references = await d.references.collect(); return packProject(project); };
   /** 参考目录的内容变了（加 / 删 / 挪卡）= 正经改动，标脏（ADR-0016；只翻页 / 滚动 / 改字号不走这里）。 */
   function touchReferences(): void { if (!canMutate()) return; touch(); }
+  /** 书级偏好（行宽 / 导出行宽 / 字体 / 导出字体 / 分支封面 / 嵌字）：写进 editor-state 并**算正经改动**（2026-10-06 审计：app 直写不标脏 →
+   *  关书前没打字就丢；周账 F-23，2026-10-21）。锁着的书 / 格式太新：只改内存、不标脏、不落盘（锁的语义：成品不被改写）。 */
+  function setEditorPrefs(patch: EditorPrefsPatch): void {
+    const es = project.editorState as unknown as Record<string, unknown>;
+    for (const [k, v] of Object.entries(patch)) { if (v === undefined) delete es[k]; else es[k] = v; }
+    if (canMutate()) touch();
+  }
 
   return {
-    open, create, close, flush, toBlob, adoptName, setBack, touchReferences,
+    open, create, close, flush, toBlob, adoptName, setBack, touchReferences, setEditorPrefs,
     get name() { return name; }, get dirty() { return dirty; }, get readOnly() { return readOnly; }, get project() { return project; },
     current, currentText, setCurrentText, jump, spawn, addLink, removeLink, setLinksOrder, rename, setTimes, remove, discard, purge, setReadOnly,
     cutIncoming, addBytesPage, replaceBytes, currentBytes, bytesOf, setThumbnail, thumbnail, coverPage,
