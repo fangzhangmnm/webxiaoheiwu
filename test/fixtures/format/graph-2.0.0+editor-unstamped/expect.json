@@ -1,0 +1,40 @@
+{
+ "stamps": {
+  "graph": "2.0.0",
+  "editorState": "1.0.0"
+ },
+ "newerThanApp": [],
+ "warnings": [],
+ "pages": [
+  "插图.png",
+  "正文.txt",
+  "第一话.txt",
+  "设定.txt"
+ ],
+ "tree": [
+  {
+   "name": "正文.txt",
+   "children": [
+    "第一话.txt"
+   ]
+  },
+  "设定.txt"
+ ],
+ "editorState": {
+  "last": "第一话.txt",
+  "back": [
+   "正文.txt"
+  ],
+  "lineWidth": {
+   "charsPerLine": 14
+  },
+  "exportFont": "pinyin"
+ },
+ "graphExtra": {},
+ "editorStateExtra": {},
+ "pageExtra": {},
+ "hidden": [
+  "第一话.txt"
+ ],
+ "cover": "插图.png"
+}

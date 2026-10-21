@@ -482,6 +482,7 @@ export const S = {
   "project.saved":          { zh: "已写回", en: "Written back" },
   "project.downloaded":     { zh: "已下载一份", en: "Downloaded a copy" },
   "project.tooNew":         { zh: "这本书是更新版本的小黑屋写的（格式 v{v}），本版只读不覆盖", en: "This book was written by a newer WebXiaoHeiWu (format v{v}); read-only here, never overwritten" },
+  "project.newerMinor":     { zh: "这本书是更新版本的小黑屋写的；这版没有的设置保存时不会丢，只是看不到", en: "This book was written by a newer WebXiaoHeiWu; settings this version lacks are kept on save, just not shown" },
   "project.corrupt":        { zh: "这本书的文件坏了，打不开（zip 或 graph.json 不对）", en: "The book file is damaged (bad zip or graph.json)" },
   "project.notProject":     { zh: "这个 zip 不是本版小黑屋的书：没有 graph.json / pages/，或是 v2 之前的旧格式（本版只读 v2，不读也不覆盖旧书）", en: "This zip is not a book this version reads: no graph.json / pages/, or a pre-v2 format (only v2 is read; old books are neither read nor overwritten)" },
   "lift.entry":             { zh: "把这篇变成书…", en: "Turn this draft into a book…" },

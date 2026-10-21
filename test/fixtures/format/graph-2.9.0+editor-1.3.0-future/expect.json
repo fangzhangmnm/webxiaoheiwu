@@ -1,0 +1,44 @@
+{
+ "stamps": {
+  "graph": "2.9.0",
+  "editorState": "1.3.0"
+ },
+ "newerThanApp": [
+  "graph",
+  "editorState"
+ ],
+ "warnings": [],
+ "pages": [
+  "正文.txt"
+ ],
+ "tree": [
+  "正文.txt"
+ ],
+ "editorState": {
+  "last": "正文.txt",
+  "back": [],
+  "lineWidth": {
+   "charsPerLine": 20
+  }
+ },
+ "graphExtra": {
+  "futureTop": {
+   "mood": "☀"
+  }
+ },
+ "editorStateExtra": {
+  "futureEs": {
+   "a": 1
+  }
+ },
+ "pageExtra": {
+  "正文.txt": {
+   "futurePage": [
+    1,
+    2
+   ]
+  }
+ },
+ "hidden": [],
+ "cover": null
+}

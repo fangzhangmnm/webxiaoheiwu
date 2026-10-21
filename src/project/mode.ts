@@ -296,8 +296,12 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.setState(stateText(), { unsynced: pushPending && d.isSignedIn() }); d.onChanged();
   }
   function reportOpen(r: OpenResult): boolean {
-    if (r.kind === "ok") { if (r.warnings.length) reportError(new Error("[project] open warnings: " + r.warnings.join("; ")), "log"); return true; }
-    if (r.kind === "too-new") { d.setStatus(t("project.tooNew", { v: r.version }), { error: true }); return true; }
+    if (r.kind === "ok") {
+      if (r.warnings.length) reportError(new Error("[project] open warnings: " + r.warnings.join("; ")), "log");
+      if (r.newerThanApp.length) d.setStatus(t("project.newerMinor"));   // 格式纪律：minor 比本版新 = 能开能存，告诉一次，不拦
+      return true;
+    }
+    if (r.kind === "too-new") { d.setStatus(t("project.tooNew", { v: `${r.stamp.major}.${r.stamp.minor}.${r.stamp.patch}` }), { error: true }); reportError(new Error(`[project] too-new ${r.component} ${r.stamp.major}.${r.stamp.minor}.${r.stamp.patch}`), "log"); return true; }
     d.setStatus(t(r.kind === "corrupt" ? "project.corrupt" : r.kind === "not-project" ? "project.notProject" : "project.unavailable"), { error: true });
     return false;
   }

@@ -41,7 +41,7 @@ describe("project/format · 目录清单（ADR-0008 §3）与往返", () => {
     eq([...r.project.contents.keys()].sort().join("|"), "散.txt|正文.txt|第一幕.txt|第一话.txt|第二话.txt|设定.txt");
     eq(r.project.nodes.get("第一话.txt").links.join("|"), "设定.txt"); eq(r.project.nodes.get("第二话.txt").links.join("|"), "散.txt");
     eq(r.project.nodes.get("第一话.txt").created, 3); eq(r.project.editorState.last, "第一话.txt");
-    eq(r.project.readVersion, 2);
+    eq(r.project.readStamps.graph.major, 2);
   });
   it("txt DEFLATE、jpg STORE：压得动的才压", async () => {
     const p = emptyProject();
@@ -300,9 +300,9 @@ describe("project/format · 参考目录 `.webxiaoheiwu/references/`（ADR-0016�
 const { KNOWN_GRAPH_FIELDS, KNOWN_PAGE_FIELDS, KNOWN_EDITOR_STATE_FIELDS } = await import("../src/project/format.ts");
 describe("project/format · 格式版本纪律：未知字段直通 + 已知键登记（F-23）", () => {
   it("已知键三张表钉死：加字段 = 改表 + format.ts 纪律段 + CLAUDE.md 记一笔（不改表 = 这里红）", () => {
-    eq(KNOWN_GRAPH_FIELDS.join("|"), "format|version|wroteWith|readOnly|cover|tree|pages");
+    eq(KNOWN_GRAPH_FIELDS.join("|"), "format|version|minor|patch|wroteWith|readOnly|cover|tree|pages");
     eq(KNOWN_PAGE_FIELDS.join("|"), "links|created|modified|hidden");
-    eq(KNOWN_EDITOR_STATE_FIELDS.join("|"), "last|back|refPanel|lineWidth|exportLineWidth|exportFont|font|exportCovers|exportEmbedText");
+    eq(KNOWN_EDITOR_STATE_FIELDS.join("|"), "version|minor|patch|last|back|refPanel|lineWidth|exportLineWidth|exportFont|font|exportCovers|exportEmbedText");
   });
   it("更新客户端写的未知键（graph 顶层 / 页级 / editor-state 顶层）解包→打包原样带回；已知键永远由本版写", async () => {
     const graph = { format: "webxiaoheiwu", version: 2, wroteWith: "v9.9.9-future", tree: ["a.txt"], futureTop: { x: 1 }, pages: { "a.txt": { links: [], created: 1, modified: 2, futurePage: "yes" } } };

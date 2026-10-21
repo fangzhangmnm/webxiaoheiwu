@@ -6,6 +6,7 @@
 //   · 改动动词表（全部经 assertMutable 一道守卫；user 2026-09-10「不要 ad hoc add hooks…workpiece 级别」）：正文 / spawn / 兄弟·子节新建 / 连·断·排序 / 改名 / 删 / 废弃 / 彻底删 /
 //     树移动六件（上移·下移·升级·降级·移出树·归档）/ 图片页（可指定位置）/ 封面 / 断入边 / 修改锁本身。删除模型 = 断开链接 / 废弃 / 彻底删除 三个显式动词，无引用计数（ADR-0014 §8）
 import { type Project, type UnpackResult, type EditorState, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
+import type { Component } from "./migrate/index.ts";
 /** 书级偏好（editor-state 里跟着书走、算正经改动的那几个键）；值 undefined = 删掉这个键（回到「跟默认走」）。 */
 export type EditorPrefsPatch = Partial<Pick<EditorState, "lineWidth" | "exportLineWidth" | "exportFont" | "font" | "exportCovers" | "exportEmbedText">>;
 import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes, subtreeOrder, visibleOrder, visibleSubtreeOrder, isHidden as isHiddenNode, isHiddenInTree as isHiddenInTreeNode, hiddenAncestor as hiddenAncestorOf, setHidden as setHiddenNode,
@@ -23,7 +24,7 @@ export interface ProjectSessionDeps {
   write(name: string, blob: Blob, opts: { push: boolean }): Promise<{ pushed?: boolean; reason?: string; resolution?: "keepMine" | "takeCloud" }>;   // reason / resolution 原样透传（store SaveResult）：takeCloud = 本地 IDB 已换成云端版本，调用方必须整体重载
   now?: NowFn;
 }
-export type OpenResult = { kind: "ok"; warnings: string[] } | { kind: "unavailable" } | Exclude<UnpackResult, { kind: "ok" }>;
+export type OpenResult = { kind: "ok"; warnings: string[]; /** minor 比本版新的子结构（宿主告诉用户一次；能开能存） */ newerThanApp: Component[] } | { kind: "unavailable" } | Exclude<UnpackResult, { kind: "ok" }>;
 
 export function createProjectSession(d: ProjectSessionDeps) {
   const now: NowFn = d.now ?? (() => Date.now());
@@ -53,7 +54,7 @@ export function createProjectSession(d: ProjectSessionDeps) {
     }
     name = projectName; project = r.project; dirty = false; readOnly = false;
     if (!project.editorState.last) project.editorState.last = dfsOrder(project)[0] ?? [...project.contents.keys()].sort()[0] ?? null;   // 没记位置：树首；没树：名字序第一
-    return { kind: "ok", warnings: r.warnings };
+    return { kind: "ok", warnings: r.warnings, newerThanApp: project.newerThanApp };
   }
   /** 新书：空图 + 一个空页（名字由调用方给）= 树的第一个节点。 */
   function create(projectName: string, firstNode: string): void {

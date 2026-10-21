@@ -12,6 +12,8 @@ import "./storage-whitelist.test.mjs";
 import "./csp-guard.test.mjs";   // 2026-10-17 CSP 不许悄悄放松
 import "./deploy-list.test.mjs";   // 2026-10-17 新根文件要进部署清单
 import "./project-format.test.mjs";
+import "./project-migrate.test.mjs";   // 2026-10-21 格式版本纪律：拍子 / 三级语义 / 迁移链
+import "./project-fixtures.test.mjs";   // 2026-10-21 冻结样本语料
 import "./project-graph.test.mjs";
 import "./project-session.test.mjs";
 import "./project-naming.test.mjs";

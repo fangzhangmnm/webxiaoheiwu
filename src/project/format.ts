@@ -22,16 +22,18 @@
 import { zipPack, zipUnpackRaw, zipReadRaw, levelForPath, type RawEntry, type ZipEntryIn } from "../zip.ts";
 import { encodeText, decodeTextBytes } from "../doc-model.ts";
 import { APP_VERSION } from "../version.ts";
+import { FORMAT, migrate, stampFields, FormatTooNewError, FormatTooOldError, type Component, type Stamp } from "./migrate/index.ts";
 
-// ── 格式版本纪律（2026-10-21，周账 F-23 / 家族安全模型 A15；Claude Fable 5.1 定稿，等 user 过目）──
-//   · graph.json 的 `version` 只在**老读者会读错**时才 bump（改含义 / 改形状 / 删字段）；bump 后老版本拒开（too-new → 只读、禁覆盖）。
-//   · **加字段不 bump**：新字段必须是「缺省 = 老行为」的可选字段。老读者读不懂就忽略，但要**原样带回**——三张 JSON（graph.json 顶层 /
+// ── 格式版本纪律（2026-10-21，周账 F-23 / F-69，家族规矩 = 家族根 ai-docs/20261021-format-version-discipline.md，user「三级语义 同意」）──
+//   · 拍子（major.minor.patch）、升级代码、too-new / too-old 判定全住 `./migrate/`（SSoT = FORMAT 表）；本文件只负责字段的解析与直通。
+//   · major 只在**老读者会读错**时才 +1（改含义 / 改形状 / 删字段 / 重大安全）；+1 后老版本拒开（too-new → 整本只读、禁覆盖）。
+//   · **加字段 = minor +1，不动 major**：新字段必须是「缺省 = 老行为」的可选字段。老读者读不懂就忽略，但要**原样带回**——三张 JSON（graph.json 顶层 /
 //     pages[名] / editor-state.json 顶层）里本版不认识的键，解包时装进 extra 袋、打包时原样写回（CatsUp 立宪同款）。所以 ≥ v2.3.46 的任何客户端
 //     都不会把更新客户端写的字段静默截掉。诚实账：v2.3.45 及以前（含今天的 prod）没有这条，它们保存一次就截掉自己不认识的字段——治法只有推 prod。
 //   · 已知字段登记在下面 KNOWN_*_FIELDS 三张表（test/project-format.test.mjs 钉死）：加字段 = 改表 + 改这段 + CLAUDE.md 记一笔；漏了测试红。
 //   · 嵌套在已知对象里的未知键（如 lineWidth.futureProp）不直通——已知对象按类型重建；要加子字段就改父字段的解析。
 export const PROJECT_FORMAT = "webxiaoheiwu";
-export const PROJECT_FORMAT_VERSION = 2;
+export const PROJECT_FORMAT_VERSION = FORMAT.graph.major;   // = 清单的 major；拍子 SSoT 在 ./migrate/index.ts
 export const GRAPH_ENTRY = "graph.json";
 export const CONTENTS_DIR = "pages/";   // 目录名 pages/（2026-09-10 吃书）；内存里的 Map 仍叫 contents/nodes（代码标识符不动）
 export const EDITOR_STATE_ENTRY = ".webxiaoheiwu/editor-state.json";
@@ -45,9 +47,9 @@ export type NodeKind = "txt" | "image" | "other";
 /** entry 时间戳钉死 → 同内容同字节（ADR-0008 §4/§6）。 */
 export const PINNED_MTIME = new Date(Date.UTC(1980, 0, 1));
 /** 三张 JSON 的已知键（格式版本纪律，见上）：不在表里的键 = 未知，原样直通。改表前读上面那段。 */
-export const KNOWN_GRAPH_FIELDS: readonly string[] = ["format", "version", "wroteWith", "readOnly", "cover", "tree", "pages"];
+export const KNOWN_GRAPH_FIELDS: readonly string[] = ["format", "version", "minor", "patch", "wroteWith", "readOnly", "cover", "tree", "pages"];
 export const KNOWN_PAGE_FIELDS: readonly string[] = ["links", "created", "modified", "hidden"];
-export const KNOWN_EDITOR_STATE_FIELDS: readonly string[] = ["last", "back", "refPanel", "lineWidth", "exportLineWidth", "exportFont", "font", "exportCovers", "exportEmbedText"];
+export const KNOWN_EDITOR_STATE_FIELDS: readonly string[] = ["version", "minor", "patch", "last", "back", "refPanel", "lineWidth", "exportLineWidth", "exportFont", "font", "exportCovers", "exportEmbedText"];
 /** o 里不在 known 表上的键（非对象 / 数组 / 空 → {}）。 */
 function extraOf(o: unknown, known: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -58,7 +60,7 @@ function extraOf(o: unknown, known: readonly string[]): Record<string, unknown> 
 export interface NodeMeta { links: string[]; created: number; modified: number; /** 这页自己的「不出门」旗子（Unity activeSelf；有效值看树上祖先，graph.ts isHiddenInTree）。缺 = 出门。 */ hidden?: boolean; /** 本版不认识的键，原样带回（格式版本纪律）。 */ extra?: Record<string, unknown> }
 /** 主干树节点：名字字符串（叶）或 { name, children }（组 = 有孩子的页）。`{ name, children: [] }` 与字符串同义，写出时折成字符串。 */
 export type TreeNode = string | { name: string; children: TreeNode[] };
-export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; wroteWith: string; readOnly?: boolean; cover?: string; tree: TreeNode[]; pages: Record<string, NodeMeta> }
+export interface ProjectGraphJson { format: typeof PROJECT_FORMAT; version: number; minor?: number; patch?: number; wroteWith: string; readOnly?: boolean; cover?: string; tree: TreeNode[]; pages: Record<string, NodeMeta> }
 /** 参考窗的窗口状态（ADR-0016）：开没开、在哪、多大。随 editor-state 走，不标脏（同 last / back）。 */
 export interface RefPanelState { open: boolean; left: number; top: number; width: number; height: number }
 /** 这本书的行宽（每行几个字；2026-09-30 user「editor state 里面的行宽是跟着书走的吧。这个语义上确实是书的属性」）。编辑器和导出都读它；没有 = 用账号默认。随 editor-state 走、不标脏（同 refPanel；手动保存顺手捞）。 */
@@ -75,8 +77,10 @@ export interface Project {
   /** 格式版本纪律：graph.json 顶层 / editor-state.json 顶层里本版不认识的键，原样带回（写时先铺它们、再铺已知键，已知键永远赢）。 */
   graphExtra: Record<string, unknown>;
   editorStateExtra: Record<string, unknown>;
-  /** 读到的清单 version（太新 → 横幅 + 禁覆盖，宿主看这个）。 */
-  readVersion: number;
+  /** 读到的各子结构的拍子（./migrate/ 判过：老的已升到本版 major；minor / patch 可能比本版新）。 */
+  readStamps: Record<Component, Stamp>;
+  /** minor 比本版新的子结构（能开能存、未知键带回；宿主告诉用户一次）。patch 比本版新不列（静默）。 */
+  newerThanApp: Component[];
   /** 修改锁（user 2026-09-10「zip 锁跟着作品」）：成品不想被误改。切换 = 正经改动（标脏、推云）。 */
   readOnly: boolean;
   /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
@@ -93,7 +97,7 @@ export interface PackStats { passThrough: number; encoded: number }
 export type UnpackResult =
   | { kind: "ok"; project: Project; warnings: string[] }
   | { kind: "not-project"; reason: string }          // 不是本版的书：没 graph.json 也没 pages/，或 graph.json version < 2（v1 链表格式，零 legacy 分支）
-  | { kind: "too-new"; version: number }             // 清单 version > 本版能懂的 → 只读、禁覆盖
+  | { kind: "too-new"; version: number; component: Component; stamp: Stamp }   // 某子结构 major > 本版 → 整本只读、禁覆盖（version = 那个 major，老字段名保留）
   | { kind: "corrupt"; reason: string };
 
 /** 撞名口径（ADR-0009 §5）：完整文件名，大小写不敏感 + NFC。 */
@@ -107,7 +111,7 @@ export const nodeExt = (name: string): string => { const i = name.lastIndexOf(".
 /** 页的种类（只看扩展名）：txt 正文 / image 图片页 / other（合法但不打开）。 */
 export const nodeKind = (name: string): NodeKind => { const e = nodeExt(name); return e === "txt" ? "txt" : IMAGE_EXTS.includes(e) ? "image" : "other"; };
 
-export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, graphExtra: {}, editorStateExtra: {}, readVersion: PROJECT_FORMAT_VERSION, readOnly: false, thumbnail: null, cover: null, references: new Map(), rawCache: new WeakMap() }; }
+export function emptyProject(): Project { return { nodes: new Map(), contents: new Map(), tree: [], editorState: { last: null, back: [] }, graphExtra: {}, editorStateExtra: {}, readStamps: { graph: { ...FORMAT.graph }, editorState: { ...FORMAT.editorState } }, newerThanApp: [], readOnly: false, thumbnail: null, cover: null, references: new Map(), rawCache: new WeakMap() }; }
 
 // ── 树的形状工具（纯函数，graph.ts 的树操作也用）──
 export const treeNodeName = (n: TreeNode): string => (typeof n === "string" ? n : n.name);
@@ -137,7 +141,7 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
     const m = p.nodes.get(name) ?? { links: [], created: 0, modified: 0 };
     nodes[name] = { ...(m.extra ?? {}), links: m.links.filter(has), created: m.created, modified: m.modified, ...(m.hidden ? { hidden: true } : {}) };
   }
-  const graph: ProjectGraphJson = { ...p.graphExtra, format: PROJECT_FORMAT, version: PROJECT_FORMAT_VERSION, wroteWith: APP_VERSION, ...(p.readOnly ? { readOnly: true } : {}), ...(p.cover && has(p.cover) ? { cover: p.cover } : {}), tree: normalizeTree(pruneTree(p.tree, has)), pages: nodes };   // cover 严格写：来源页没文件就不写（不产生悬空）
+  const graph: ProjectGraphJson = { ...p.graphExtra, format: PROJECT_FORMAT, ...stampFields("graph"), wroteWith: APP_VERSION, ...(p.readOnly ? { readOnly: true } : {}), ...(p.cover && has(p.cover) ? { cover: p.cover } : {}), tree: normalizeTree(pruneTree(p.tree, has)), pages: nodes };   // cover 严格写：来源页没文件就不写（不产生悬空）
   const stats: PackStats = opts.stats ?? { passThrough: 0, encoded: 0 };
   const fresh: { path: string; bytes: Uint8Array }[] = [];   // 这次真压的字节对象：打完收割 raw 进缓存
   const bytesEntry = (path: string, bytes: Uint8Array): ZipEntryIn => {
@@ -152,7 +156,7 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
     if (!path.startsWith(REFERENCES_DIR)) throw new Error(`reference entry outside ${REFERENCES_DIR}: ${path}`);
     entries.push(bytesEntry(path, bytes));
   }
-  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ ...p.editorStateExtra, last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}), ...(p.editorState.lineWidth ? { lineWidth: p.editorState.lineWidth } : {}), ...(p.editorState.exportLineWidth ? { exportLineWidth: p.editorState.exportLineWidth } : {}), ...(p.editorState.exportFont ? { exportFont: p.editorState.exportFont } : {}), ...(p.editorState.font ? { font: p.editorState.font } : {}), ...(p.editorState.exportCovers && Object.keys(p.editorState.exportCovers).length ? { exportCovers: p.editorState.exportCovers } : {}), ...(p.editorState.exportEmbedText === false ? { exportEmbedText: false } : {}) }) });
+  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ ...p.editorStateExtra, ...stampFields("editorState"), last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}), ...(p.editorState.lineWidth ? { lineWidth: p.editorState.lineWidth } : {}), ...(p.editorState.exportLineWidth ? { exportLineWidth: p.editorState.exportLineWidth } : {}), ...(p.editorState.exportFont ? { exportFont: p.editorState.exportFont } : {}), ...(p.editorState.font ? { font: p.editorState.font } : {}), ...(p.editorState.exportCovers && Object.keys(p.editorState.exportCovers).length ? { exportCovers: p.editorState.exportCovers } : {}), ...(p.editorState.exportEmbedText === false ? { exportEmbedText: false } : {}) }) });
   if (p.thumbnail && p.thumbnail.length) entries.push(bytesEntry(THUMBNAIL_ENTRY, p.thumbnail));   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
   stats.encoded += 2;   // graph.json + editor-state
   const blob = await zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
@@ -192,18 +196,26 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
   if (!hasGraph && contentNames.length === 0) return { kind: "not-project", reason: "no graph.json and no pages/" };
   const warnings: string[] = [];
   let graph: ProjectGraphJson | null = null;
+  let graphStamp: Stamp = { ...FORMAT.graph };   // 没 graph.json 的裸 pages/ 包 = 当本版写的
+  const newer: Component[] = [];
   if (hasGraph) {
     try { graph = JSON.parse(new TextDecoder().decode(entries[GRAPH_ENTRY]!)) as ProjectGraphJson; }
     catch (e) { return { kind: "corrupt", reason: "graph.json is not JSON: " + String(e) }; }
     if (!graph || typeof graph !== "object") return { kind: "corrupt", reason: "graph.json is not an object" };
     if (graph.format !== PROJECT_FORMAT) return { kind: "not-project", reason: `graph.json format=${String(graph.format)}` };
     if (typeof graph.version !== "number") return { kind: "corrupt", reason: "graph.json version missing" };
-    if (graph.version > PROJECT_FORMAT_VERSION) return { kind: "too-new", version: graph.version };
-    if (graph.version < PROJECT_FORMAT_VERSION) return { kind: "not-project", reason: `graph.json version ${graph.version} (pre-v2 format; this version reads only v${PROJECT_FORMAT_VERSION})` };
+    try {   // 拍子判定 + 老 major 链式升级（./migrate/）
+      const m = migrate("graph", graph as unknown as Record<string, unknown>);
+      graph = m.json as unknown as ProjectGraphJson; graphStamp = m.stamp; if (m.verdict === "newer-minor") newer.push("graph");
+    } catch (e) {
+      if (e instanceof FormatTooNewError) return { kind: "too-new", version: e.fileStamp.major, component: "graph", stamp: e.fileStamp };
+      if (e instanceof FormatTooOldError) return { kind: "not-project", reason: `graph.json version ${e.fileStamp.major} (pre-v2 format; this version reads only v${FORMAT.graph.major})` };
+      return { kind: "corrupt", reason: "graph.json: " + (e instanceof Error ? e.message : String(e)) };
+    }
     if (graph.pages != null && (typeof graph.pages !== "object" || Array.isArray(graph.pages))) return { kind: "corrupt", reason: "graph.json pages is not an object" };
   }
   const p = emptyProject();
-  p.readVersion = graph?.version ?? PROJECT_FORMAT_VERSION;
+  p.readStamps.graph = graphStamp;
   p.readOnly = graph?.readOnly === true;
   p.graphExtra = extraOf(graph, KNOWN_GRAPH_FIELDS);   // 未知顶层键直通（格式版本纪律）
   const seen = new Map<string, string>();
@@ -251,7 +263,15 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
   }
   if (EDITOR_STATE_ENTRY in entries) {
     try {
-      const st = JSON.parse(new TextDecoder().decode(entries[EDITOR_STATE_ENTRY]!)) as Partial<EditorState>;
+      const raw = JSON.parse(new TextDecoder().decode(entries[EDITOR_STATE_ENTRY]!)) as unknown;
+      let st: Partial<EditorState>;
+      try {   // 拍子判定（./migrate/）：缺 version = 1.0.0（以前从没写过）；非对象当空（下面全走默认）
+        const m = migrate("editorState", (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>);
+        st = m.json as Partial<EditorState>; p.readStamps.editorState = m.stamp; if (m.verdict === "newer-minor") newer.push("editorState");
+      } catch (e) {
+        if (e instanceof FormatTooNewError) return { kind: "too-new", version: e.fileStamp.major, component: "editorState", stamp: e.fileStamp };
+        throw e;   // 其余 = 读不懂 → 外层 catch 记 warning，当没有 editor-state
+      }
       p.editorStateExtra = extraOf(st, KNOWN_EDITOR_STATE_FIELDS);   // 未知顶层键直通（格式版本纪律）
       p.editorState.last = typeof st.last === "string" ? (resolve(st.last) ?? null) : null;
       p.editorState.back = Array.isArray(st.back) ? st.back.filter((x): x is string => typeof x === "string").map((x) => resolve(x)).filter((x): x is string => !!x).slice(-BACK_STACK_MAX) : [];
@@ -279,6 +299,7 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
     p.references.set(path, entries[path]!);
     p.rawCache.set(entries[path]!, unpacked[path]!.raw);
   }
+  p.newerThanApp = newer;
   return { kind: "ok", project: p, warnings };
 }
 
