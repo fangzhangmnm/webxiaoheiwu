@@ -187,7 +187,7 @@ if (window.visualViewport) {   // iOS 软键盘：键盘高度 → --kb-offset�
 wireCryptoState({
   prompt: async (o) => {
     const r = await openInputSheetEx(o.title, {
-      message: o.message, password: true, confirmField: o.confirmField, error: o.error, okLabel: o.okLabel,
+      message: o.message, password: true, confirmField: o.confirmField, newPassword: o.confirmField, error: o.error, okLabel: o.okLabel,   // 设密码 = new-password；解锁 = current-password（密码管理器）
       validate: o.confirmField ? (v, v2) => (v !== v2 ? t("pw.mismatch") : null) : undefined,
       checkbox: o.offerRemember ? { label: t("pw.remember"), checked: rememberChoice() } : undefined,   // 2026-10-17「在这台设备上记住」，默认不勾
     });
@@ -1859,7 +1859,7 @@ $("forceUpdateButton").addEventListener("click", () => {
 async function changePasswordFlow(): Promise<void> {
   if (!(await ensureUnlocked())) return;
   const old = currentPassword()!;
-  const next = await openInputSheet(t("cp.newTitle"), { message: t("cp.newHint"), password: true, confirmField: true, okLabel: t("pw.set"), validate: (v, v2) => (v !== v2 ? t("pw.mismatch") : null) });
+  const next = await openInputSheet(t("cp.newTitle"), { message: t("cp.newHint"), password: true, confirmField: true, newPassword: true, okLabel: t("pw.set"), validate: (v, v2) => (v !== v2 ? t("pw.mismatch") : null) });
   if (next == null) return;
   if (next === old) { setStatus(t("cp.same")); return; }
   const mode = await openChoiceSheet<"migrate" | "keep">(t("cp.migrateTitle"), t("cp.migrateMsg"), [{ label: t("cp.migrate"), value: "migrate" }, { label: t("cp.keep"), value: "keep" }]);

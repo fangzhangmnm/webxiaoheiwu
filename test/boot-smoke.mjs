@@ -107,9 +107,11 @@ try {
         const sheet = document.getElementById("sheet");
         if (!sheet.classList.contains("hidden")) {
           clearInterval(tick);
-          document.getElementById("sheetInput").value = "smoke-password-1";
+          const form = document.getElementById("sheetCard"), inp = document.getElementById("sheetInput");
+          window.__smokeForm = { tag: form.tagName, type: inp.type, ac: inp.autocomplete, ac2: document.getElementById("sheetInput2").autocomplete, user: document.getElementById("sheetUser").autocomplete, userVal: document.getElementById("sheetUser").value, confirmType: document.getElementById("sheetConfirm").type };
+          inp.value = "smoke-password-1";
           document.getElementById("sheetInput2").value = "smoke-password-1";
-          document.getElementById("sheetConfirm").click();
+          form.requestSubmit();   // 真表单提交路径（密码管理器靠 submit 事件认「提交了」）；sheets.ts 接 submit → 确定
           for (let i = 0; i < 100; i++) { await new Promise((r) => setTimeout(r, 200)); if (window.__xhw.editor.state.encrypted) return resolve("encrypted"); }
           resolve("timeout");
         }
@@ -119,6 +121,9 @@ try {
     return await p;
   });
   check("加密流程（设密码 → 7z 容器落地）", encOk === "encrypted", String(encOk));
+  // 口令面板 = 真表单（2026-10-21）：设密码时 form + type=password + new-password 两框 + 账号键 username = app 名 + 确定钮 submit；上面那步就是经 requestSubmit() 走通的
+  const pwForm = await page.evaluate(() => window.__smokeForm ?? null);
+  check("口令面板是真表单：FORM / password / new-password×2 / username=webxiaoheiwu / submit 钮；requestSubmit 路径走通", !!pwForm && pwForm.tag === "FORM" && pwForm.type === "password" && pwForm.ac === "new-password" && pwForm.ac2 === "new-password" && pwForm.user === "username" && pwForm.userVal === "webxiaoheiwu" && pwForm.confirmType === "submit", JSON.stringify(pwForm));
   // 新建即加密（user 2026-09-03「加密是一开始就定好的」）：密码已在内存 → newDoc({encrypted}) 直接成 → 打字物化 → 文件落地就是密文
   const bornEncrypted = await page.evaluate(async () => {
     const ok = await window.__xhw.editor.newDoc({ encrypted: true });

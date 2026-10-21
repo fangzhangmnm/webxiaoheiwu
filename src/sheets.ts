@@ -5,6 +5,7 @@
 //   → 交互输入必须在 withBusy 之外；这里对 confirm/input/choice **响亮 throw**。gate 不受此限（自带 spinner，与 busy 协同）。
 
 import { isCompositionKey } from "./ui/text-field.ts";   // v2.1.13：系统输入法合成态守卫（窄接口）
+import { APP_ID } from "./config.ts";   // 密码管理器的账号键默认值（口令态 sheetUser.value）
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -31,6 +32,8 @@ function _assertNotBusy(what: string): void {
 // ── 通用 sheet（#sheet：title / message / input / choices / confirm / cancel）──
 const g = {
   sheet: () => $("sheet"),      // 全屏容器（.crypto-modal 自带 dim 背景）；点容器空白处 = 取消
+  card: () => $("sheetCard") as HTMLFormElement,   // 真 <form>（2026-10-21）：submit 事件 = 确定；永不真提交（initSheets 里 preventDefault）
+  user: () => $("sheetUser") as HTMLInputElement,   // 密码管理器的账号键（sr-only、只读）；只在口令态有值
   title: () => $("sheetTitle"),
   message: () => $("sheetMessage"),
   input: () => $("sheetInput") as HTMLInputElement,
@@ -45,6 +48,7 @@ const g = {
   cancel: () => $("sheetCancel") as HTMLButtonElement,
 };
 let _open: (() => void) | null = null;   // 当前 sheet 的 cancel 路径（backdrop / Escape 用）
+let _submit: (() => void) | null = null;   // 当前输入 sheet 的确定路径（form submit 事件用；别的 sheet 为 null = 只拦默认提交）
 
 function _show(): void { g.sheet().classList.remove("hidden"); }
 function _hide(): void {
@@ -60,13 +64,14 @@ function _reset(): void {
   g.pick().classList.add("hidden"); g.pick().innerHTML = "";
   g.check().classList.add("hidden"); g.checkInput().checked = false;
   g.confirm().classList.remove("hidden", "danger"); g.cancel().classList.remove("hidden");
-  g.input().value = ""; g.input2().value = "";
-  g.input().style.setProperty("-webkit-text-security", ""); g.input2().style.setProperty("-webkit-text-security", "");
+  g.input().value = ""; g.input2().value = ""; g.user().value = "";
+  g.input().type = "text"; g.input().autocomplete = "off"; g.input().name = ""; g.input2().type = "text"; g.input2().autocomplete = "off"; g.input2().name = "";
 }
 export function initSheets(labels: { ok: string; cancel: string }): void {
   g.confirm().textContent = labels.ok;
   g.cancel().textContent = labels.cancel;
   g.sheet().addEventListener("click", (e) => { if (e.target === g.sheet()) _open?.(); });
+  g.card().addEventListener("submit", (e) => { e.preventDefault(); _submit?.(); });   // 真表单：确定钮 type=submit / Enter → 这里；永不导航
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && _open && !e.defaultPrevented) { e.preventDefault(); _open(); }
   }, true);
@@ -105,6 +110,10 @@ export function openConfirmSheetEx(title: string, message: string, opts: Confirm
 
 export interface InputOpts {
   message?: string; placeholder?: string; password?: boolean; defaultValue?: string; okLabel?: string;
+  /** 口令态细分：设密码 / 换密码 = new-password（密码管理器问「要更新吗」）；解锁 = current-password（默认）。 */
+  newPassword?: boolean;
+  /** 密码管理器的账号键（sheetUser.value）；默认 app 名——一个账号一个口令。 */
+  account?: string;
   /** 密码二次确认（首次设密码）。 */
   confirmField?: boolean;
   /** 同步校验：返回错误文案则不关 sheet（显示在 #sheetError）。 */
@@ -118,7 +127,8 @@ export interface InputOpts {
 }
 /** openInputSheet 的副按钮结果哨兵（不会和用户输入撞：含 NUL）。 */
 export const INPUT_SECONDARY = "\u0000secondary";
-/** 输入 sheet → string | null（取消）。密码态用 -webkit-text-security 打码（不用 type=password：绕开浏览器记密码弹窗——WeebPaint 教训）。 */
+/** 输入 sheet → string | null（取消）。口令态 = 真 type=password + autocomplete=current-password（newPassword → new-password）+ 账号键 sheetUser，
+ *  让浏览器密码管理器能记能填（2026-10-21 user「口令面板改成真表单让 Edge 密码管理器记住 做，全家做」；之前用 -webkit-text-security 躲记密码弹窗，撤）。 */
 export function openInputSheet(title: string, opts: InputOpts = {}): Promise<string | null> { return openInputSheetEx(title, opts).then((r) => (r ? r.value : null)); }
 /** 输入 sheet 带勾态 → { value, checked } | null（取消）；副按钮 → value = INPUT_SECONDARY。 */
 export function openInputSheetEx(title: string, opts: InputOpts = {}): Promise<{ value: string; checked: boolean } | null> {
@@ -129,9 +139,13 @@ export function openInputSheetEx(title: string, opts: InputOpts = {}): Promise<{
     if (opts.message) { g.message().textContent = opts.message; g.message().classList.remove("hidden"); }
     const inp = g.input(), inp2 = g.input2();
     inp.classList.remove("hidden");
-    inp.type = "text"; inp.autocomplete = "off"; inp.placeholder = opts.placeholder ?? ""; inp.value = opts.defaultValue ?? "";
-    if (opts.password) { inp.style.setProperty("-webkit-text-security", "disc"); inp2.style.setProperty("-webkit-text-security", "disc"); }
-    if (opts.confirmField) { inp2.classList.remove("hidden"); inp2.type = "text"; inp2.autocomplete = "off"; }
+    inp.placeholder = opts.placeholder ?? ""; inp.value = opts.defaultValue ?? "";
+    if (opts.password) {   // 真口令框（_reset 已把两框复位成 text / off）
+      inp.type = "password"; inp.autocomplete = opts.newPassword || opts.confirmField ? "new-password" : "current-password"; inp.name = inp.autocomplete;
+      inp2.type = "password"; inp2.autocomplete = "new-password"; inp2.name = "confirm-password";
+      g.user().value = opts.account ?? APP_ID;
+    }
+    if (opts.confirmField) inp2.classList.remove("hidden");
     if (opts.error) { g.error().textContent = opts.error; g.error().classList.remove("hidden"); }
     const okDefault = g.confirm().textContent;
     if (opts.okLabel) g.confirm().textContent = opts.okLabel;
@@ -142,7 +156,7 @@ export function openInputSheetEx(title: string, opts: InputOpts = {}): Promise<{
     }
     if (opts.checkbox) { g.checkLabel().textContent = opts.checkbox.label; g.checkInput().checked = !!opts.checkbox.checked; g.check().classList.remove("hidden"); }
     const cleanup = () => {
-      g.confirm().removeEventListener("click", onOk); g.cancel().removeEventListener("click", onCancel);
+      _submit = null; g.cancel().removeEventListener("click", onCancel);
       inp.removeEventListener("keydown", onKey); inp2.removeEventListener("keydown", onKey);
       g.confirm().textContent = okDefault;
       inp.value = ""; inp2.value = "";
@@ -156,10 +170,10 @@ export function openInputSheetEx(title: string, opts: InputOpts = {}): Promise<{
     const onCancel = () => { cleanup(); _hide(); resolve(null); };
     const onKey = (e: KeyboardEvent) => {
       if (isCompositionKey(e)) return;   // 系统输入法组字中的 Enter = 上屏、Esc = 取消组字，不是确认 / 取消（v2.1.13：以前拿半截拼音当名字 / 密码确认）
-      if (e.key === "Enter") { e.preventDefault(); if (opts.confirmField && e.target === inp) inp2.focus(); else onOk(); }
+      if (e.key === "Enter") { e.preventDefault(); if (opts.confirmField && e.target === inp) inp2.focus(); else if (typeof g.card().requestSubmit === "function") g.card().requestSubmit(); else onOk(); }   // 走 submit 事件：密码管理器认「提交了」
       else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
     };
-    g.confirm().addEventListener("click", onOk); g.cancel().addEventListener("click", onCancel);
+    _submit = onOk; g.cancel().addEventListener("click", onCancel);   // 确定钮 type=submit → form submit → _submit
     inp.addEventListener("keydown", onKey); inp2.addEventListener("keydown", onKey);
     _open = onCancel;
     _show();

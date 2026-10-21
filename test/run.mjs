@@ -7,6 +7,7 @@ import "./i18n-and-assets.test.mjs";
 import "./sw-strategy.test.mjs";
 import "./crypto-state.test.mjs";
 import "./remember-password.test.mjs";   // 2026-10-17 在这台设备上记住密码（≤ 30 天）
+import "./password-form.test.mjs";   // 2026-10-21 口令面板 = 真表单（密码管理器能记能填）
 import "./asr.test.mjs";
 import "./storage-whitelist.test.mjs";
 import "./csp-guard.test.mjs";   // 2026-10-17 CSP 不许悄悄放松
