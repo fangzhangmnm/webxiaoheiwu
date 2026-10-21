@@ -68,14 +68,29 @@ export interface FactoryResetDeps {
   beforeWipe: () => Promise<void>;
 }
 
-/** 还原出厂主流程（设置页按钮调）。全程 in-app sheet。 */
+/** 还原出厂主流程（设置页按钮调）。全程 in-app sheet。**有一篇没同步就拒绝**（A12：不造逃生副本）。 */
 export async function runFactoryReset(d: FactoryResetDeps): Promise<void> {
   if (typeof navigator !== "undefined" && navigator.onLine === false) { d.setStatus(t("fr.needOnline"), { error: true }); return; }   // 清壳后 reload 要联网，不然白屏
   const unsynced = await d.unsyncedCount();
   if (unsynced > 0) { d.setStatus(t("fr.needSync", { n: String(unsynced) }), { error: true }); return; }
   if (!(await openConfirmSheet(t("fr.introTitle"), t("fr.introMsg"), { danger: true, okLabel: t("common.continue") }))) return;
+  await consentThenWipe(d, t("fr.introTitle"));
+}
+
+/** 「彻底删除，变成新的」（debug 用；user 2026-10-21 经统筹转述「点了之后变成新的」）：和还原出厂并存、**不拒绝**——有没同步的稿只提示一次有 N 份会一起丢，
+ *  可取消、不硬拦（家规：app 不许硬拦，上限 = 警告可取消）。打字确认照旧（库内比对）。之后的清理和还原出厂同一条路。 */
+export async function runWipeToFresh(d: FactoryResetDeps): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) { d.setStatus(t("fr.needOnline"), { error: true }); return; }
+  const unsynced = await d.unsyncedCount();
+  const msg = unsynced > 0 ? t("fr.freshMsgUnsynced", { n: String(unsynced) }) : t("fr.freshMsg");
+  if (!(await openConfirmSheet(t("fr.freshTitle"), msg, { danger: true, okLabel: t("common.continue") }))) return;
+  await consentThenWipe(d, t("fr.freshTitle"));
+}
+
+/** 两个钮共用的后半：逐字 consent（库内再比一次）→ dispose → 库命名空间 wipe → 自家足迹 → 残留扫 → reload。 */
+async function consentThenWipe(d: FactoryResetDeps, title: string): Promise<void> {
   const phrase = t("fr.consentPhrase");
-  const typed = await openInputSheet(t("fr.introTitle"), { placeholder: phrase, message: t("fr.consentPrompt", { phrase }), okLabel: t("fr.introTitle") });
+  const typed = await openInputSheet(title, { placeholder: phrase, message: t("fr.consentPrompt", { phrase }), okLabel: title });
   if (typed == null) return;
   if (typed.trim() !== phrase) { d.setStatus(t("fr.mismatch"), { error: true }); return; }   // 库内还会再比一次；先挡省一次 dispose
   try {
@@ -86,7 +101,7 @@ export async function runFactoryReset(d: FactoryResetDeps): Promise<void> {
     const scan = await scanAppNamespace(APP_ID);
     const blocked = storeReport.blockedDatabases.length + app.blocked.length;
     if (blocked > 0) {
-      await openConfirmSheet(t("fr.introTitle"), t("fr.blocked", { n: String(blocked) }));
+      await openConfirmSheet(title, t("fr.blocked", { n: String(blocked) }));
       location.reload();   // store 已 dispose，页面只能重来；wipe 幂等，关掉其他标签页后再跑一次
       return;
     }

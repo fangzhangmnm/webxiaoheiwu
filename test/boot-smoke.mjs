@@ -307,6 +307,15 @@ try {
   // 还原出厂：有未同步稿（本页刚建的 local-only）→ 必须拒绝
   const frRefused = await page.evaluate(async () => { await window.__xhw.factoryReset(); return document.getElementById("toast").textContent; });
   check("还原出厂：有未同步稿时拒绝", /未同步|not synced/.test(frRefused), frRefused);
+  // 「彻底删除，变成新的」：同样有未同步稿 → 不拒绝，弹说明 sheet 提示有 1 篇会一起丢；取消 = 什么都不动
+  const wfPrompt = await page.evaluate(async () => {
+    const p = window.__xhw.wipeToFresh(); const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 50 && document.getElementById("sheet").classList.contains("hidden"); i++) await wait(100);
+    const text = document.getElementById("sheet").textContent;
+    document.getElementById("sheetCancel").click(); await p;
+    return { text, hidden: document.getElementById("sheet").classList.contains("hidden") };
+  });
+  check("彻底删除变成新的：有未同步稿不拒绝，提示「有 N 篇…一起删掉」，取消即收", /有 \d+ 篇|\d+ draft/.test(wfPrompt.text) && /一起删掉|deletes them too/.test(wfPrompt.text) && wfPrompt.hidden, JSON.stringify(wfPrompt));
   await page.waitForTimeout(500);
   check("零页面错误", pageErrors.length === 0, pageErrors.join(" | "));
   const cspHits = await page.evaluate(() => window.__csp ?? []);
