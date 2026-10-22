@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-54 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+56 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -29,6 +29,13 @@
 | `move-to-file` | 文件+绕行箭头(移到文件) |
 | `copy` | 两个文件叠放 |
 | `paste` | 粘贴:剪贴板不缩(库尺寸)+文档探出右下角, 按 copy 的前后件比例 |
+
+## media
+
+| name | 说明 |
+|------|------|
+| `skip-prev` | 上一曲 ⏮: skip-next 的精确镜像(translate+scale(-1,1), 同 replay 画法)。20260821 入库 |
+| `skip-next` | 下一曲 ⏭(BR 播放器): 实心右三角+竖杠(stroke 2.8 圆帽), 体量对齐 fast-forward; 与 fast-forward(双三角=快进)分工。20260821 甲方拍板候选1号入库(实心 rect 杠版/轻量版落选) |
 
 ## file
 

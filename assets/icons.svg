@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  54 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  56 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
@@ -17,6 +17,11 @@
   <symbol id="copy" data-cat="edit" data-src="own" data-note="两个文件叠放" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2 h5 l4 4 v10 a1 1 0 0 1 -1 1 h-8 a1 1 0 0 1 -1 -1 V3 a1 1 0 0 1 1 -1 z"/><path d="M14 2 v4 h4"/><path d="M6 6 H5 a1 1 0 0 0 -1 1 v13 a1 1 0 0 0 1 1 h8 a1 1 0 0 0 1 -1 v-1"/></symbol>
   <!-- paste — 粘贴:剪贴板不缩(库尺寸)+文档探出右下角, 按 copy 的前后件比例 -->
   <symbol id="paste" data-cat="edit" data-src="own" data-note="粘贴:剪贴板不缩(库尺寸)+文档探出右下角, 按 copy 的前后件比例" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><mask id="icPaC"><rect width="24" height="24" fill="#fff" stroke="none"/><g transform="translate(6.76 3.85) scale(0.860)" fill="#000" stroke="#000" stroke-width="3.14" stroke-linejoin="round"><path d="M4 5.6a1.7 1.7 0 0 1 1.7-1.7h6.6l4 4v11.5a1.7 1.7 0 0 1-1.7 1.7H5.7A1.7 1.7 0 0 1 4 20.8z"/></g></mask><g mask="url(#icPaC)"><mask id="icPbTC"><rect width="24" height="24" fill="#fff"/><rect x="6.0" y="1.0000000000000002" width="6" height="4.2" rx="1.2" fill="#000" stroke="#000" stroke-width="2.4"/></mask><g mask="url(#icPbTC)"><rect x="2.0" y="3.3" width="14" height="17" rx="2"/></g><rect x="6.0" y="1.0000000000000002" width="6" height="4.2" rx="1.2"/></g><g transform="translate(6.76 3.85) scale(0.860)" stroke-width="1.98"><path d="M4 5.6a1.7 1.7 0 0 1 1.7-1.7h6.6l4 4v11.5a1.7 1.7 0 0 1-1.7 1.7H5.7A1.7 1.7 0 0 1 4 20.8z"/><path d="M12.3 3.9V8h4"/><path d="M6.6 12.4h7.2M6.6 15.4h5"/></g></symbol>
+  <!-- media -->
+  <!-- skip-prev — 上一曲 ⏮: skip-next 的精确镜像(translate+scale(-1,1), 同 replay 画法)。20260821 入库 -->
+  <symbol id="skip-prev" data-cat="media" data-src="own" data-note="上一曲 ⏮: skip-next 的精确镜像(translate+scale(-1,1), 同 replay 画法)。20260821 入库" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(24,0) scale(-1,1)"><path d="M5.5 6.4 L14.7 12 L5.5 17.6 Z" fill="currentColor"/><path d="M17.9 7.0 V17.0" stroke-width="2.8"/></g></symbol>
+  <!-- skip-next — 下一曲 ⏭(BR 播放器): 实心右三角+竖杠(stroke 2.8 圆帽), 体量对齐 fast-forward; 与 fast-forward(双三角=快进)分工。20260821 甲方拍板候选1号入库(实心 rect 杠版/轻量版落选) -->
+  <symbol id="skip-next" data-cat="media" data-src="own" data-note="下一曲 ⏭(BR 播放器): 实心右三角+竖杠(stroke 2.8 圆帽), 体量对齐 fast-forward; 与 fast-forward(双三角=快进)分工。20260821 甲方拍板候选1号入库(实心 rect 杠版/轻量版落选)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 6.4 L14.7 12 L5.5 17.6 Z" fill="currentColor"/><path d="M17.9 7.0 V17.0" stroke-width="2.8"/></symbol>
   <!-- file -->
   <!-- new — 新建:纯加号(等长十字线) -->
   <symbol id="new" data-cat="file" data-src="own" data-note="新建:纯加号(等长十字线)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/> <line x1="5" y1="12" x2="19" y2="12"/></symbol>

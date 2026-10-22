@@ -2740,6 +2740,18 @@ export declare const S: {
         readonly zh: "下一张";
         readonly en: "Next";
     };
+    readonly "ref.prevFrame": {
+        readonly zh: "上一帧";
+        readonly en: "Previous frame";
+    };
+    readonly "ref.nextFrame": {
+        readonly zh: "下一帧";
+        readonly en: "Next frame";
+    };
+    readonly "ref.newerMinor": {
+        readonly zh: "参考窗的内容是更新版本写的；这版没有的功能保存时不丢，只是看不到";
+        readonly en: "The reference panel was saved by a newer version; features this version lacks are kept on save, just not shown";
+    };
     readonly "ref.menu": {
         readonly zh: "参考窗菜单";
         readonly en: "Reference menu";

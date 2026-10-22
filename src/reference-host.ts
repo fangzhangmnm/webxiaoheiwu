@@ -53,7 +53,8 @@ export function createReferenceHost(d: ReferenceHostDeps) {
     load: t("ref.load"), paste: t("ref.paste"), oneToOne: t("ref.oneToOne"),
     del: t("ref.delete"), delConfirm: t("ref.deleteConfirm"), closeWin: t("ref.closeWin"),
     minimize: t("ref.minimize"), restore: t("ref.restore"), ram: t("ref.ram"), ramMissing: t("ref.ramMissing"),   // 参考窗 0.4.x
-    prev: t("ref.prev"), next: t("ref.next"), menu: t("ref.menu"), move: t("ref.move"), resize: t("ref.resize"), resizeAria: t("ref.resize"),
+    prev: t("ref.prev"), next: t("ref.next"), prevFrame: t("ref.prevFrame"), nextFrame: t("ref.nextFrame"), menu: t("ref.menu"),   // prevFrame / nextFrame = 参考窗 0.5.0 视频卡（本宿主 KINDS 不画视频，带着不显示；标签照给）
+    move: t("ref.move"), resize: t("ref.resize"), resizeAria: t("ref.resize"),
     moveEarlier: t("ref.moveEarlier"), moveLater: t("ref.moveLater"), jump: t("ref.jump"),
     kindNames: { image: t("ref.kindImage"), text: t("ref.kindText") },
     linkMissing: t("ref.linkMissing"),
@@ -178,6 +179,8 @@ export function createReferenceHost(d: ReferenceHostDeps) {
             getFile: (path) => { const b = files.get(path); return b ? new Blob([b as unknown as BlobPart], { type: mimeForName(path) }) : null; },
           });
           el.deck.restore(decoded);
+          // 参考窗 0.5.0 清单拍子（家族格式版本纪律）：minor 比库新 = 照样读写、未知键库自己带着；告诉用户一次，不弹窗不拦
+          if (decoded.verdict === "newer-minor") d.setStatus(t("ref.newerMinor"));
         } catch (e) {
           if (e instanceof DeckManifestTooNewError) {
             carried = files;
