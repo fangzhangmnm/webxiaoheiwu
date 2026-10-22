@@ -2,6 +2,8 @@ export declare function showBusy(label: string, hint?: string): void;
 export declare function hideBusy(): void;
 export declare function isBusyActive(): boolean;
 export declare function withBusy<T>(label: string, fn: () => Promise<T> | T, hint?: string): Promise<T>;
+/** 有 sheet 开着（别的流程想弹面前先看一眼，别盖住冲突面）。 */
+export declare function isSheetOpen(): boolean;
 export declare function initSheets(labels: {
     ok: string;
     cancel: string;
@@ -28,6 +30,10 @@ export interface InputOpts {
     password?: boolean;
     defaultValue?: string;
     okLabel?: string;
+    /** 口令态细分：设密码 / 换密码 = new-password（密码管理器问「要更新吗」）；解锁 = current-password（默认）。 */
+    newPassword?: boolean;
+    /** 密码管理器的账号键（sheetUser.value）；默认 app 名——一个账号一个口令。 */
+    account?: string;
     /** 密码二次确认（首次设密码）。 */
     confirmField?: boolean;
     /** 同步校验：返回错误文案则不关 sheet（显示在 #sheetError）。 */
@@ -46,7 +52,8 @@ export interface InputOpts {
 }
 /** openInputSheet 的副按钮结果哨兵（不会和用户输入撞：含 NUL）。 */
 export declare const INPUT_SECONDARY = "\0secondary";
-/** 输入 sheet → string | null（取消）。密码态用 -webkit-text-security 打码（不用 type=password：绕开浏览器记密码弹窗——WeebPaint 教训）。 */
+/** 输入 sheet → string | null（取消）。口令态 = 真 type=password + autocomplete=current-password（newPassword → new-password）+ 账号键 sheetUser，
+ *  让浏览器密码管理器能记能填（2026-10-21 user「口令面板改成真表单让 Edge 密码管理器记住 做，全家做」；之前用 -webkit-text-security 躲记密码弹窗，撤）。 */
 export declare function openInputSheet(title: string, opts?: InputOpts): Promise<string | null>;
 /** 输入 sheet 带勾态 → { value, checked } | null（取消）；副按钮 → value = INPUT_SECONDARY。 */
 export declare function openInputSheetEx(title: string, opts?: InputOpts): Promise<{

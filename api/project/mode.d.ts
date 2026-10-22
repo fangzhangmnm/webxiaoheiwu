@@ -1,4 +1,4 @@
-import { type OpenResult, type ReferenceHooks } from "./session.ts";
+import { type OpenResult, type ReferenceHooks, type EditorPrefsPatch } from "./session.ts";
 import { type LocalHome } from "./local-home.ts";
 import { type NodeKind } from "./format.ts";
 import type { SyncKind } from "../editor.ts";
@@ -84,6 +84,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         adoptName: (newName: string) => void;
         setBack: (list: readonly string[]) => void;
         touchReferences: () => void;
+        setEditorPrefs: (patch: EditorPrefsPatch) => void;
         readonly name: string | null;
         readonly dirty: boolean;
         readonly readOnly: boolean;
@@ -265,6 +266,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     isHiddenInTree: (target: string) => boolean;
     hiddenAncestor: (target: string) => string | null;
     noteReferencesChanged: () => void;
+    setBookPrefs: (patch: EditorPrefsPatch) => void;
 };
 export type ProjectMode = ReturnType<typeof createProjectMode>;
 /** 挪到… 的落点：某页之下（孩子末尾）/ 之后（同层）/ 书的末尾（顶层）。 */

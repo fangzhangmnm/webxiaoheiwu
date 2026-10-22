@@ -1,4 +1,7 @@
-import { type Project, type UnpackResult } from "./format.ts";
+import { type Project, type UnpackResult, type EditorState } from "./format.ts";
+import type { Component } from "./migrate/index.ts";
+/** 书级偏好（editor-state 里跟着书走、算正经改动的那几个键）；值 undefined = 删掉这个键（回到「跟默认走」）。 */
+export type EditorPrefsPatch = Partial<Pick<EditorState, "lineWidth" | "exportLineWidth" | "exportFont" | "font" | "exportCovers" | "exportEmbedText">>;
 import { type NowFn } from "./graph.ts";
 /** 参考窗目录的进出口（ADR-0016）：session 对目录零知识——保存前向宿主要一份，读到的整份由 mode 交出去。 */
 export interface ReferenceHooks {
@@ -20,7 +23,8 @@ export interface ProjectSessionDeps {
 }
 export type OpenResult = {
     kind: "ok";
-    warnings: string[];
+    warnings: string[]; /** minor 比本版新的子结构（宿主告诉用户一次；能开能存） */
+    newerThanApp: Component[];
 } | {
     kind: "unavailable";
 } | Exclude<UnpackResult, {
@@ -42,6 +46,7 @@ export declare function createProjectSession(d: ProjectSessionDeps): {
     adoptName: (newName: string) => void;
     setBack: (list: readonly string[]) => void;
     touchReferences: () => void;
+    setEditorPrefs: (patch: EditorPrefsPatch) => void;
     readonly name: string | null;
     readonly dirty: boolean;
     readonly readOnly: boolean;

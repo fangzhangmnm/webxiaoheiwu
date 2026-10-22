@@ -636,6 +636,10 @@ export declare const S: {
         readonly zh: "维护";
         readonly en: "Maintenance";
     };
+    readonly "ui.sec.developer": {
+        readonly zh: "开发者";
+        readonly en: "Developer";
+    };
     readonly "ui.forceUpdate": {
         readonly zh: "强制更新（清缓存重启）";
         readonly en: "Force update (clear cache & restart)";
@@ -723,6 +727,22 @@ export declare const S: {
     readonly "st.pushedAll": {
         readonly zh: "已补传 {n} 个文件";
         readonly en: "Caught up: {n} file(s) uploaded";
+    };
+    readonly "pushAll.askTitle": {
+        readonly zh: "有稿还没传上去";
+        readonly en: "Drafts not uploaded yet";
+    };
+    readonly "pushAll.askMsg": {
+        readonly zh: "有 {n} 篇稿还没传上去，现在传吗？云端已有同名的不会覆盖，会留着等你处理。";
+        readonly en: "{n} draft(s) have not been uploaded yet. Upload now? Existing cloud files with the same name are never overwritten; those stay for you to resolve.";
+    };
+    readonly "pushAll.ok": {
+        readonly zh: "传上去";
+        readonly en: "Upload";
+    };
+    readonly "pushAll.later": {
+        readonly zh: "先不传";
+        readonly en: "Not now";
     };
     readonly "st.pushAllFailed": {
         readonly zh: "{n} 个文件没传上去（加密未解锁 / 冲突 / 网络），详见诊断日志";
@@ -1700,9 +1720,9 @@ export declare const S: {
         readonly zh: "还原出厂要联网（清掉缓存后需要重新下载 app）";
         readonly en: "Factory reset needs a network connection (the app is re-downloaded afterwards)";
     };
-    readonly "fr.needSync": {
-        readonly zh: "有 {n} 篇未同步到云端的稿，先登录并同步再还原（不造逃生副本）";
-        readonly en: "{n} draft(s) not synced to the cloud — sign in and sync first (no escape copies are made)";
+    readonly "fr.introMsgUnsynced": {
+        readonly zh: "有 {n} 篇还没同步到云端的稿，继续就会连它们一起删掉，不造逃生副本——想保住就先取消、登录同步。其余同还原出厂：删除这台设备上的全部本地数据（稿件缓存、设置、密码记忆、输入法词典缓存、语音模型包、app 缓存）。OneDrive 上已有的稿不受影响。";
+        readonly en: "{n} draft(s) are not synced to the cloud yet; continuing deletes them too, with no escape copy — cancel and sync first if you want to keep them. Otherwise same as a factory reset: all local data on this device (draft cache, settings, remembered password, IME dictionary cache, speech model packs, app cache). Files already on OneDrive are unaffected.";
     };
     readonly "fr.consentPhrase": {
         readonly zh: "删除全部本地数据";
@@ -1795,6 +1815,10 @@ export declare const S: {
     readonly "project.tooNew": {
         readonly zh: "这本书是更新版本的小黑屋写的（格式 v{v}），本版只读不覆盖";
         readonly en: "This book was written by a newer WebXiaoHeiWu (format v{v}); read-only here, never overwritten";
+    };
+    readonly "project.newerMinor": {
+        readonly zh: "这本书是更新版本的小黑屋写的；这版没有的设置保存时不会丢，只是看不到";
+        readonly en: "This book was written by a newer WebXiaoHeiWu; settings this version lacks are kept on save, just not shown";
     };
     readonly "project.corrupt": {
         readonly zh: "这本书的文件坏了，打不开（zip 或 graph.json 不对）";

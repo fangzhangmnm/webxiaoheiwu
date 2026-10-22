@@ -1,6 +1,7 @@
 import { type RawEntry } from "../zip.ts";
+import { type Component, type Stamp } from "./migrate/index.ts";
 export declare const PROJECT_FORMAT = "webxiaoheiwu";
-export declare const PROJECT_FORMAT_VERSION = 2;
+export declare const PROJECT_FORMAT_VERSION: number;
 export declare const GRAPH_ENTRY = "graph.json";
 export declare const CONTENTS_DIR = "pages/";
 export declare const EDITOR_STATE_ENTRY = ".webxiaoheiwu/editor-state.json";
@@ -13,11 +14,16 @@ export declare const IMAGE_EXTS: readonly string[];
 export type NodeKind = "txt" | "image" | "other";
 /** entry 时间戳钉死 → 同内容同字节（ADR-0008 §4/§6）。 */
 export declare const PINNED_MTIME: Date;
+/** 三张 JSON 的已知键（格式版本纪律，见上）：不在表里的键 = 未知，原样直通。改表前读上面那段。 */
+export declare const KNOWN_GRAPH_FIELDS: readonly string[];
+export declare const KNOWN_PAGE_FIELDS: readonly string[];
+export declare const KNOWN_EDITOR_STATE_FIELDS: readonly string[];
 export interface NodeMeta {
     links: string[];
     created: number;
     modified: number; /** 这页自己的「不出门」旗子（Unity activeSelf；有效值看树上祖先，graph.ts isHiddenInTree）。缺 = 出门。 */
-    hidden?: boolean;
+    hidden?: boolean; /** 本版不认识的键，原样带回（格式版本纪律）。 */
+    extra?: Record<string, unknown>;
 }
 /** 主干树节点：名字字符串（叶）或 { name, children }（组 = 有孩子的页）。`{ name, children: [] }` 与字符串同义，写出时折成字符串。 */
 export type TreeNode = string | {
@@ -27,6 +33,8 @@ export type TreeNode = string | {
 export interface ProjectGraphJson {
     format: typeof PROJECT_FORMAT;
     version: number;
+    minor?: number;
+    patch?: number;
     wroteWith: string;
     readOnly?: boolean;
     cover?: string;
@@ -64,8 +72,13 @@ export interface Project {
     /** 主干树（ADR-0014）。只经 graph.ts 的树操作改；散页 = 有文件但不在这里。 */
     tree: TreeNode[];
     editorState: EditorState;
-    /** 读到的清单 version（太新 → 横幅 + 禁覆盖，宿主看这个）。 */
-    readVersion: number;
+    /** 格式版本纪律：graph.json 顶层 / editor-state.json 顶层里本版不认识的键，原样带回（写时先铺它们、再铺已知键，已知键永远赢）。 */
+    graphExtra: Record<string, unknown>;
+    editorStateExtra: Record<string, unknown>;
+    /** 读到的各子结构的拍子（./migrate/ 判过：老的已升到本版 major；minor / patch 可能比本版新）。 */
+    readStamps: Record<Component, Stamp>;
+    /** minor 比本版新的子结构（能开能存、未知键带回；宿主告诉用户一次）。patch 比本版新不列（静默）。 */
+    newerThanApp: Component[];
     /** 修改锁（user 2026-09-10「zip 锁跟着作品」）：成品不想被误改。切换 = 正经改动（标脏、推云）。 */
     readOnly: boolean;
     /** 封面 PNG 字节（Thumbnails/thumbnail.png）；null = 没有封面（书库显示 book 图标）。 */
@@ -92,6 +105,8 @@ export type UnpackResult = {
 } | {
     kind: "too-new";
     version: number;
+    component: Component;
+    stamp: Stamp;
 } | {
     kind: "corrupt";
     reason: string;
