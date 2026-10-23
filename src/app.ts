@@ -717,19 +717,31 @@ async function copyScopeText(scope: LongImageScope): Promise<void> {
   try { await writeClipboardText(text); const st = statsForText(text); setStatus(t("copy.doneScope", { cjk: st.cjk, en: st.en, pages })); }
   catch (e) { reportError(e, "log"); setStatus(t("copy.failed", { e: errText(e) }), { error: true }); }
 }
-/** 「TXT」（v2.3.55，user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」）：和「复制文字」同一份纯文字（plainTextOf：只拼正文、页与页之间空一行），
- *  存成一个 .txt（UTF-8），走长图 / PDF 同一张「好了」sheet（分享 / 下载）。文件名同 PDF（书名 · 页名）。这个范围一页正文都没有 → 没有可导出的。 */
-function renderTxtFile(scope: LongImageScope): { file: File; pages: number; cjk: number; en: number } | null {
+/** TXT 的内容 = markdown 树（v2.3.56，user 2026-10-23「章节名是markdown那种啊，分级」；wishlist M-02）：每页 =「#」×（层级 + 1）+ 页名，空一行，正文；页与页之间空一行。
+ *  层级从这次导出的起点算（同 PDF 书签：这一支的起点页 = #，整本最外层 = #），超过 6 级按 6 级写（markdown 只认到 6 个 #）。
+ *  txt 稿没有页名（文件名是管理句柄，不是标题——ADR-0007）→ 只有正文。图片页不出（txt 里放不了图）。正文原样——正文里自己写的 # 标题怎么摆还没定。 */
+function markdownTreeOf(src: ExportSource): string {
+  return src.items.flatMap((it) => {
+    if (it.kind !== "text") return [];
+    const body = it.text.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/\s+$/, "");   // 头上的空行去掉（首行的缩进留着）
+    if (it.heading == null) return [body];
+    const h = "#".repeat(Math.min(6, (it.level ?? 0) + 1)) + " " + it.heading;
+    return [body ? h + "\n\n" + body : h];
+  }).join("\n\n") + "\n";
+}
+/** 「TXT」（v2.3.55，user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」）：markdown 树（markdownTreeOf）存成一个 .txt（UTF-8），
+ *  走长图 / PDF 同一张「好了」sheet（分享 / 下载）。文件名同 PDF（书名 · 页名）。这个范围一页正文都没有 → 没有可导出的。字数 = 正文的（同导出面板那一行，不算页名）。 */
+function renderTxtFile(scope: LongImageScope): { file: File; pages: number; cjk: number; en: number; tree: boolean } | null {
   const src = collectExport(scope); const pages = (src?.items ?? []).filter((it) => it.kind === "text").length;
   if (!src || !pages) return null;
-  const text = plainTextOf(src), st = statsForText(text);
+  const st = statsForText(plainTextOf(src));
   const name = (src.title || "export").replace(/[\\/:*?"<>|]/g, "-") + ".txt";
-  return { file: new File([text], name, { type: "text/plain" }), pages, cjk: st.cjk, en: st.en };
+  return { file: new File([markdownTreeOf(src)], name, { type: "text/plain" }), pages, cjk: st.cjk, en: st.en, tree: src.kind === "book" };
 }
 async function exportTxtFlow(scope: LongImageScope): Promise<void> {
   const r = renderTxtFile(scope);
   if (!r) { setStatus(t("export.empty")); return; }
-  await offerFiles([r.file], t("txt.readyTitle", { pages: r.pages }), t("txt.readyMsg", { cjk: r.cjk, en: r.en, size: humanSize(r.file.size) }));
+  await offerFiles([r.file], t("txt.readyTitle", { pages: r.pages }), t("txt.readyMsg", { cjk: r.cjk, en: r.en, size: humanSize(r.file.size) }) + (r.tree ? t("txt.readyTree") : ""));
 }
 /** 编辑器贡献的「样子」（字体栈、纸色墨色、写字线）；字号档 / 框宽 / 行距不抄（字号档是每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样；行距跟导出档走）。 */
 function editorLook(): LongImageLook {

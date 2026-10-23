@@ -664,9 +664,10 @@ export const S = {
   "edge.hiddenDone":        { zh: "已隐藏「{name}」（连同子节不出门）", en: "Hidden “{name}” (with its children)" },
   "edge.unhiddenDone":      { zh: "「{name}」已取消隐藏", en: "“{name}” is visible again" },
   // ── v2.3.14 PDF（user 2026-09-30「老老实实做pdf吧」）──
-  // ── v2.3.55 TXT（user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」）──
+  // ── v2.3.55 TXT（user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」；v2.3.56 = markdown 树，user 同日「章节名是markdown那种啊，分级」）──
   "txt.readyTitle":         { zh: "TXT 好了：{pages} 页正文", en: "TXT ready: {pages} text pages" },
-  "txt.readyMsg":           { zh: "{cjk} 字 {en} 词 · {size}。和「复制文字」同一份：只拼正文，页与页之间空一行，不带页名和图片", en: "{cjk} chars · {en} words · {size}. Same as Copy text: body text only, a blank line between pages, no page names or images" },
+  "txt.readyMsg":           { zh: "{cjk} 字 {en} 词 · {size}", en: "{cjk} chars · {en} words · {size}" },
+  "txt.readyTree":          { zh: "。markdown 格式：页名按目录层级写成 # / ## / ### 标题，正文跟在后面；不带图片", en: ". Markdown: page names become # / ## / ### headings by their place in the tree, each followed by its text; no images" },
   "pdf.making":             { zh: "生成 PDF…", en: "Making the PDF…" },
   "pdf.readyTitle":         { zh: "PDF 好了：{pages} 页", en: "PDF ready: {pages} pages" },
   "pdf.readyMsg":           { zh: "{cjk} 字 {en} 词 · {size} · 字体 {font}", en: "{cjk} chars · {en} words · {size} · font {font}" },

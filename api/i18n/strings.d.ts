@@ -2501,8 +2501,12 @@ export declare const S: {
         readonly en: "TXT ready: {pages} text pages";
     };
     readonly "txt.readyMsg": {
-        readonly zh: "{cjk} 字 {en} 词 · {size}。和「复制文字」同一份：只拼正文，页与页之间空一行，不带页名和图片";
-        readonly en: "{cjk} chars · {en} words · {size}. Same as Copy text: body text only, a blank line between pages, no page names or images";
+        readonly zh: "{cjk} 字 {en} 词 · {size}";
+        readonly en: "{cjk} chars · {en} words · {size}";
+    };
+    readonly "txt.readyTree": {
+        readonly zh: "。markdown 格式：页名按目录层级写成 # / ## / ### 标题，正文跟在后面；不带图片";
+        readonly en: ". Markdown: page names become # / ## / ### headings by their place in the tree, each followed by its text; no images";
     };
     readonly "pdf.making": {
         readonly zh: "生成 PDF…";
