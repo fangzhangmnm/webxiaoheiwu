@@ -2292,6 +2292,10 @@ export declare const S: {
         readonly zh: "PDF";
         readonly en: "PDF";
     };
+    readonly "export.fmt.txt": {
+        readonly zh: "TXT";
+        readonly en: "TXT";
+    };
     readonly "export.widthLabel": {
         readonly zh: "长图 / PDF 每行字数";
         readonly en: "Long image / PDF characters per line";
@@ -2436,6 +2440,14 @@ export declare const S: {
         readonly zh: "已下载 {n} 张";
         readonly en: "Downloaded {n}";
     };
+    readonly "export.downloadedName": {
+        readonly zh: "已下载「{name}」";
+        readonly en: "Downloaded “{name}”";
+    };
+    readonly "export.deliverFailed": {
+        readonly zh: "分享 / 下载没成功：{e}";
+        readonly en: "Share / download failed: {e}";
+    };
     readonly "export.copied": {
         readonly zh: "已复制长图";
         readonly en: "Long image copied";
@@ -2483,6 +2495,14 @@ export declare const S: {
     readonly "edge.unhiddenDone": {
         readonly zh: "「{name}」已取消隐藏";
         readonly en: "“{name}” is visible again";
+    };
+    readonly "txt.readyTitle": {
+        readonly zh: "TXT 好了：{pages} 页正文";
+        readonly en: "TXT ready: {pages} text pages";
+    };
+    readonly "txt.readyMsg": {
+        readonly zh: "{cjk} 字 {en} 词 · {size}。和「复制文字」同一份：只拼正文，页与页之间空一行，不带页名和图片";
+        readonly en: "{cjk} chars · {en} words · {size}. Same as Copy text: body text only, a blank line between pages, no page names or images";
     };
     readonly "pdf.making": {
         readonly zh: "生成 PDF…";

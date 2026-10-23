@@ -583,7 +583,7 @@ async function ensureExportFont(): Promise<boolean> {
   if (!ok) setStatus(t("export.fontFailed"), { error: true });
   return ok;
 }
-type ExportFormat = "text" | "image" | "pdf" | "cover";
+type ExportFormat = "text" | "image" | "pdf" | "txt" | "cover";
 /** 导出 sheet（v2.3.17，user 2026-10-01「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：范围和格式是两条正交的轴——
  *  一条段选定范围（这一页 / 这一支 / 整本；txt 稿只有整篇，不画段选）+ 一条段选定长图 / PDF 的行宽（v2.3.19）+ 三个钮定格式（复制文字 / 长图 / PDF）。一层 sheet。
  *  以前是五个钮（复制只有这一页、长图三个范围各一个钮、PDF 再弹第二层选范围）。「这一支」只在这页底下真有子页时才露（否则和这一页是同一件事）。
@@ -626,9 +626,14 @@ async function exportSheetFlow(): Promise<void> {
     { label: t("export.widthLabel"), options: CHARS_PRESETS.map((n) => ({ label: String(n), value: n })), initial: exportCharsPref(), onChange: (n: number) => setExportChars(n) },
     { label: t("export.fontLabel"), options: [{ label: t("export.font.sans"), value: "sans" as FontId }, { label: t("export.font.pinyin"), value: "pinyin" as FontId }, { label: t("export.font.pixel"), value: "pixel" as FontId }], initial: exportFontPref(), onChange: (id: FontId) => setExportFont(id) },
   ];
-  const choices = (scope: LongImageScope): Choice<ExportFormat>[] => [
-    { label: t(scope === "page" && inBook && project.currentKind() === "image" ? "export.fmt.copyImage" : "export.fmt.text"), value: "text", primary: true },
-    { label: t("export.fmt.image"), value: "image" }, { label: t("export.fmt.pdf"), value: "pdf" }];
+  // 第四个钮 TXT（v2.3.55）：图片页的「这一页」没有正文，不露
+  const choices = (scope: LongImageScope): Choice<ExportFormat>[] => {
+    const imagePage = scope === "page" && inBook && project.currentKind() === "image";
+    return [
+      { label: t(imagePage ? "export.fmt.copyImage" : "export.fmt.text"), value: "text", primary: true },
+      { label: t("export.fmt.image"), value: "image" }, { label: t("export.fmt.pdf"), value: "pdf" },
+      ...(imagePage ? [] : [{ label: t("export.fmt.txt"), value: "txt" as const }])];
+  };
   // 这一页 / 这一支可以另指一张图片页当封面（v2.3.25，user 2026-10-01「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）：书里有图片页才露这颗钮；选完回到这张 sheet
   const hasImages = !!s && [...s.project.nodes.keys()].some((n) => nodeKind(n) === "image");
   const aux = (scope: LongImageScope): Choice<ExportFormat> | null => {
@@ -645,6 +650,7 @@ async function exportSheetFlow(): Promise<void> {
     if (r.value === "cover") { if (cur) await pickPartCoverFlow(cur); scope0 = r.scope; continue; }
     if (r.value === "text") await copyScopeText(r.scope);
     else if (r.value === "image") await exportLongImageFlow(r.scope);
+    else if (r.value === "txt") await exportTxtFlow(r.scope);
     else await exportPdfFlow(r.scope);
     return;
   }
@@ -710,6 +716,20 @@ async function copyScopeText(scope: LongImageScope): Promise<void> {
   const text = plainTextOf(src);
   try { await writeClipboardText(text); const st = statsForText(text); setStatus(t("copy.doneScope", { cjk: st.cjk, en: st.en, pages })); }
   catch (e) { reportError(e, "log"); setStatus(t("copy.failed", { e: errText(e) }), { error: true }); }
+}
+/** 「TXT」（v2.3.55，user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」）：和「复制文字」同一份纯文字（plainTextOf：只拼正文、页与页之间空一行），
+ *  存成一个 .txt（UTF-8），走长图 / PDF 同一张「好了」sheet（分享 / 下载）。文件名同 PDF（书名 · 页名）。这个范围一页正文都没有 → 没有可导出的。 */
+function renderTxtFile(scope: LongImageScope): { file: File; pages: number; cjk: number; en: number } | null {
+  const src = collectExport(scope); const pages = (src?.items ?? []).filter((it) => it.kind === "text").length;
+  if (!src || !pages) return null;
+  const text = plainTextOf(src), st = statsForText(text);
+  const name = (src.title || "export").replace(/[\\/:*?"<>|]/g, "-") + ".txt";
+  return { file: new File([text], name, { type: "text/plain" }), pages, cjk: st.cjk, en: st.en };
+}
+async function exportTxtFlow(scope: LongImageScope): Promise<void> {
+  const r = renderTxtFile(scope);
+  if (!r) { setStatus(t("export.empty")); return; }
+  await offerFiles([r.file], t("txt.readyTitle", { pages: r.pages }), t("txt.readyMsg", { cjk: r.cjk, en: r.en, size: humanSize(r.file.size) }));
 }
 /** 编辑器贡献的「样子」（字体栈、纸色墨色、写字线）；字号档 / 框宽 / 行距不抄（字号档是每台设备的无障碍设置，抄进图 = 从 iPad 和 Win Mini 导出来的图不一样；行距跟导出档走）。 */
 function editorLook(): LongImageLook {
@@ -829,7 +849,7 @@ async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
   catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); return; }
   await offerFiles(files, t("export.readyTitle", { n: files.length }), t("export.readyMsg", { cjk: plan.cjk, en: plan.en, pages: plan.textPages, images: plan.imagePages, size: humanSize(files.reduce((a, f) => a + f.size, 0)) }), { copyPng: true });
 }
-/** 「好了」sheet：分享（系统分享面板，要在用户手势里调）/ 下载 /（单张 PNG 时）进剪贴板。长图与 PDF 共用。 */
+/** 「好了」sheet：分享（系统分享面板，要在用户手势里调）/ 下载 /（单张 PNG 时）进剪贴板。长图、PDF、TXT 共用。 */
 async function offerFiles(files: File[], title: string, message: string, opts: { copyPng?: boolean } = {}): Promise<void> {
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   const canShare = typeof navigator.share === "function" && !!nav.canShare?.({ files });
@@ -843,8 +863,11 @@ async function offerFiles(files: File[], title: string, message: string, opts: {
   try {
     if (v === "share") { await navigator.share({ files, title: files[0]!.name }); setStatus(t("export.shared")); }
     else if (v === "copy") { await navigator.clipboard.write([new ClipboardItem({ "image/png": files[0]! })]); setStatus(t("export.copied")); }
-    else { for (let i = 0; i < files.length; i++) { triggerDownload(files[i]!, files[i]!.name); if (i < files.length - 1) await new Promise((res) => setTimeout(res, 350)); } setStatus(t("export.downloaded", { n: files.length })); }
-  } catch (e) { if ((e as { name?: string })?.name === "AbortError") return; reportError(e, "log"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); }
+    else {
+      for (let i = 0; i < files.length; i++) { triggerDownload(files[i]!, files[i]!.name); if (i < files.length - 1) await new Promise((res) => setTimeout(res, 350)); }
+      setStatus(files.length === 1 && !files[0]!.type.startsWith("image/") ? t("export.downloadedName", { name: files[0]!.name }) : t("export.downloaded", { n: files.length }));   // PDF / TXT 不按「张」数
+    }
+  } catch (e) { if ((e as { name?: string })?.name === "AbortError") return; reportError(e, "log"); setStatus(t("export.deliverFailed", { e: errText(e) }), { error: true }); }
 }
 // ── PDF 导出（v2.3.14，user 2026-09-30「只要比高考作文和童话长一点的，导出长图都很费劲。老老实实做 pdf 吧」「先把 pdf 导出给做出来」）：
 //   引擎 = src/export/{ttf,pdf,pdf-book}.ts（纯函数）：行宽三档 + 行距跟档（同长图），嵌一款 TrueType 字体的子集，可搜索可复制，带书签。
@@ -2229,4 +2252,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };
+(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus };

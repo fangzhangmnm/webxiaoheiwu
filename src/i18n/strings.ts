@@ -611,6 +611,7 @@ export const S = {
   "export.fmt.copyImage":   { zh: "复制图片", en: "Copy image" },
   "export.fmt.image":       { zh: "长图", en: "Long image" },
   "export.fmt.pdf":         { zh: "PDF", en: "PDF" },
+  "export.fmt.txt":         { zh: "TXT", en: "TXT" },
   "export.widthLabel":      { zh: "长图 / PDF 每行字数", en: "Long image / PDF characters per line" },
   "export.fontLabel":       { zh: "长图 / PDF 字体", en: "Long image / PDF font" },
   "export.font.sans":       { zh: "黑体", en: "Sans" },
@@ -647,6 +648,8 @@ export const S = {
   "export.copyPng":         { zh: "复制到剪贴板", en: "Copy to clipboard" },
   "export.shared":          { zh: "已分享", en: "Shared" },
   "export.downloaded":      { zh: "已下载 {n} 张", en: "Downloaded {n}" },
+  "export.downloadedName":  { zh: "已下载「{name}」", en: "Downloaded “{name}”" },
+  "export.deliverFailed":   { zh: "分享 / 下载没成功：{e}", en: "Share / download failed: {e}" },
   "export.copied":          { zh: "已复制长图", en: "Long image copied" },
   "export.sliceLabel":      { zh: "{i} / {n}", en: "{i} / {n}" },
   "export.empty":           { zh: "没有可导出的内容", en: "Nothing to export" },
@@ -661,6 +664,9 @@ export const S = {
   "edge.hiddenDone":        { zh: "已隐藏「{name}」（连同子节不出门）", en: "Hidden “{name}” (with its children)" },
   "edge.unhiddenDone":      { zh: "「{name}」已取消隐藏", en: "“{name}” is visible again" },
   // ── v2.3.14 PDF（user 2026-09-30「老老实实做pdf吧」）──
+  // ── v2.3.55 TXT（user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」）──
+  "txt.readyTitle":         { zh: "TXT 好了：{pages} 页正文", en: "TXT ready: {pages} text pages" },
+  "txt.readyMsg":           { zh: "{cjk} 字 {en} 词 · {size}。和「复制文字」同一份：只拼正文，页与页之间空一行，不带页名和图片", en: "{cjk} chars · {en} words · {size}. Same as Copy text: body text only, a blank line between pages, no page names or images" },
   "pdf.making":             { zh: "生成 PDF…", en: "Making the PDF…" },
   "pdf.readyTitle":         { zh: "PDF 好了：{pages} 页", en: "PDF ready: {pages} pages" },
   "pdf.readyMsg":           { zh: "{cjk} 字 {en} 词 · {size} · 字体 {font}", en: "{cjk} chars · {en} words · {size} · font {font}" },
