@@ -738,6 +738,9 @@ body[data-page-kind="image"] { --sheet-overscroll: 0px; }
 }
 /* 全部节都折叠得起来（v2.3.10，user 2026-09-30「输入法等其他节能不能也折叠防误触」）：只有「账号」默认开；展开后标题和内容之间留一口气 */
 .settings-section[open] > .settings-section-title + * { margin-top: 10px; }
+/* 输入法节的「内置输入法才有用的」那一组（v2.3.58）：组本身不多占间距——节头下那口气给组，组里第一行不再叠自己的；组藏起来时那口气落到下面露出来的第一行 */
+#imeBuiltinOptions > :first-child { margin-top: 0; }
+#imeBuiltinOptions[hidden] + * { margin-top: 10px; }
 
 .voice-config-form {
   display: flex;

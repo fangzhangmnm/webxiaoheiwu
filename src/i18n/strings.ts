@@ -376,6 +376,7 @@ export const S = {
   "ui.ime.quotes":       { zh: "引号样式（打字与语音同用）", en: "Quote style (typing and voice)" },
   "ui.ime.quotes.curly": { zh: "弯引号 “ ” ‘ ’（默认）", en: "Curly “ ” ‘ ’ (default)" },
   "ui.ime.quotes.corner": { zh: "方引号 「 」『 』", en: "Corner brackets 「 」『 』" },
+  "ui.ime.autoTidy":        { zh: "打字时自动规整标点（现在只管引号：跟上面的引号样式走）", en: "Tidy punctuation as you type (for now just quotes, following the quote style above)" },
   "ui.ime.softKeyboard":  { zh: "内置软键盘（本机）", en: "Built-in on-screen keyboard (this device)" },
   "ui.ime.softKeyboard.auto": { zh: "自动（触屏设备上露出；敲了实体键盘就让位）", en: "Auto (shown on touch devices; steps aside for a hardware keyboard)" },
   "ui.ime.softKeyboard.on":   { zh: "总是露出", en: "Always shown" },

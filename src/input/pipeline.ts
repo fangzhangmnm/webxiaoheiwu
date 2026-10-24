@@ -29,6 +29,8 @@ export interface PipelineDeps {
 export interface InputPipeline {
   /** CapsLock 是语音键时 app 设 true：实体键盘打进内置输入法的单字母折回小写（CapsLock 翻大小写锁；2026-09-30）。 */
   foldCapsLock: boolean;
+  /** 系统输入法下打字时自动规整的总开关（v2.3.58，user 2026-10-23「引号正则之类的有一个总体的开关，以后别的正则也一起控制」）：现在管引号，以后别的规整也挂这里。app 按设置设。 */
+  autoTidy: boolean;
   /** app 自己的键要打进哪个框：焦点所在的文本框；焦点丢了就回到上一个还在屏上的文本框并把焦点还给它。没有 → null。 */
   target(): TextField | null;
   /** 只看不动（画候选用）：焦点所在的文本框。 */
@@ -148,11 +150,11 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
   // ── 系统层组字 / 系统软键盘（逃生开关「改用系统输入法」关着、但系统仍插手的平台：Quest / 安卓把实体键盘的字母也过一遍系统输入法）──
   //   纯 ASCII 组字 = 系统替我们攒的拼音 → 结束时删掉系统留下的裸字母、逐字喂给内置输入法；含非 ASCII（系统输入法已出汉字）→ 原样保留。
   //   insertCompositionText 不可 preventDefault，只能事后处理。不撤字（撤字 = 「无法输入」，user 2026-09-04 Quest 回归）。
-  // ── 系统输入法（「改用系统输入法」开着 = ime.enabled 关）打的引号跟设置走（v2.3.57，user 2026-10-23「做，跟设置走」；规则 = zh-punct quotesToStyle）──
+  // ── 系统输入法（「改用系统输入法」开着 = ime.enabled 关）打的引号跟设置走（v2.3.57，user 2026-10-23「做，跟设置走」；规则 = zh-punct quotesToStyle；总开关 = api.autoTidy，v2.3.58）──
   //   能拦的（insertText：系统键盘直出的标点）在 beforeinput 里换好再落 → 撤销一步；组字上屏的拦不住 → compositionend 时把刚上屏那一段换掉（撤销多一步）。组字途中一律不碰。
   const QUOTE_RE = /[“”‘’「」『』]/;
   const charBefore = (el: TextField, at: number): string => [...el.value.slice(Math.max(0, at - 2), at)].pop() ?? "";
-  const systemQuotes = (el: TextField): boolean => !ime.enabled && !isProgrammaticEdit() && !isMasked(el) && editable(el);
+  const systemQuotes = (el: TextField): boolean => api.autoTidy && !ime.enabled && !isProgrammaticEdit() && !isMasked(el) && editable(el);
   window.addEventListener("compositionend", (event: Event) => {
     const el = asTextField(event.target);
     if (el && systemQuotes(el)) {
@@ -265,6 +267,6 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
   document.addEventListener("pointerdown", (e) => { if (textOps.length && !(e.target instanceof Element && e.target.closest("[data-ime-ui]"))) drainText(); }, true);
   window.addEventListener("pagehide", drainText);
   document.addEventListener("visibilitychange", drainText);
-  const api = { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey, flushText: drainText, /** CapsLock 是语音键时开：实体键盘单字母折回小写（见 routeHardwareKey）。 */ foldCapsLock: false };
+  const api = { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey, flushText: drainText, /** CapsLock 是语音键时开：实体键盘单字母折回小写（见 routeHardwareKey）。 */ foldCapsLock: false, autoTidy: true };
   return api;
 }

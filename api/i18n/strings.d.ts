@@ -1400,6 +1400,10 @@ export declare const S: {
         readonly zh: "方引号 「 」『 』";
         readonly en: "Corner brackets 「 」『 』";
     };
+    readonly "ui.ime.autoTidy": {
+        readonly zh: "打字时自动规整标点（现在只管引号：跟上面的引号样式走）";
+        readonly en: "Tidy punctuation as you type (for now just quotes, following the quote style above)";
+    };
     readonly "ui.ime.softKeyboard": {
         readonly zh: "内置软键盘（本机）";
         readonly en: "Built-in on-screen keyboard (this device)";

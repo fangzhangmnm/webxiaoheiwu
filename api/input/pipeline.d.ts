@@ -16,6 +16,8 @@ export interface PipelineDeps {
 export interface InputPipeline {
     /** CapsLock 是语音键时 app 设 true：实体键盘打进内置输入法的单字母折回小写（CapsLock 翻大小写锁；2026-09-30）。 */
     foldCapsLock: boolean;
+    /** 系统输入法下打字时自动规整的总开关（v2.3.58，user 2026-10-23「引号正则之类的有一个总体的开关，以后别的正则也一起控制」）：现在管引号，以后别的规整也挂这里。app 按设置设。 */
+    autoTidy: boolean;
     /** app 自己的键要打进哪个框：焦点所在的文本框；焦点丢了就回到上一个还在屏上的文本框并把焦点还给它。没有 → null。 */
     target(): TextField | null;
     /** 只看不动（画候选用）：焦点所在的文本框。 */

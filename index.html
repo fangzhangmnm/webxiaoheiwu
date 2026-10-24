@@ -406,43 +406,54 @@
 
         <details class="settings-section" id="imeSection">
           <summary class="settings-section-title" data-i18n="ui.sec.ime">输入法</summary>
-          <p class="reading-mode-hint" data-i18n="ui.ime.hint">内置输入法在本机运行（RIME），你敲的每个字不经过任何系统或云端输入法；会自动学习词汇并跨设备同步。</p>
-          <label class="voice-config-field">
-            <span class="voice-config-label" data-i18n="ui.ime.schema">输入方案</span>
-            <select id="imeSchemaSelect" class="voice-config-select">
-              <option value="luna_pinyin" data-i18n="ime.schema.luna">全拼</option>
-              <option value="luna_pinyin_fluency" data-i18n="ime.schema.fluency">全拼 · 语句流（整句连打）</option>
-              <option value="double_pinyin_mspy" data-i18n="ime.schema.mspy">微软双拼</option>
-              <option value="double_pinyin" data-i18n="ime.schema.ziranma">自然码双拼</option>
-              <option value="double_pinyin_flypy" data-i18n="ime.schema.flypy">小鹤双拼</option>
-              <option value="double_pinyin_abc" data-i18n="ime.schema.abc">智能 ABC 双拼</option>
-              <option value="double_pinyin_pyjj" data-i18n="ime.schema.pyjj">拼音加加双拼</option>
-              <option value="wubi86" data-i18n="ime.schema.wubi">五笔 86</option>
-            </select>
-          </label>
-          <div class="voice-config-field" id="imeFuzzyField">
-            <span class="voice-config-label" data-i18n="ui.ime.fuzzy">模糊音</span>
-            <div class="ime-fuzzy-grid">
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="zh-z" /><span>zh, z</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ch-c" /><span>ch, c</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="sh-s" /><span>sh, s</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="n-l" /><span>n, l</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="l-r" /><span>l, r</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ang-an" /><span>ang, an</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="eng-en" /><span>eng, en</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ing-in" /><span>ing, in</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="f-h" /><span>f, h</span></label>
-              <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="wang-huang" /><span>wang, huang</span></label>
+          <!-- 内置输入法才有用的（v2.3.58：用系统输入法时整组藏起来）-->
+          <div id="imeBuiltinOptions">
+            <p class="reading-mode-hint" data-i18n="ui.ime.hint">内置输入法在本机运行（RIME），你敲的每个字不经过任何系统或云端输入法；会自动学习词汇并跨设备同步。</p>
+            <label class="voice-config-field">
+              <span class="voice-config-label" data-i18n="ui.ime.schema">输入方案</span>
+              <select id="imeSchemaSelect" class="voice-config-select">
+                <option value="luna_pinyin" data-i18n="ime.schema.luna">全拼</option>
+                <option value="luna_pinyin_fluency" data-i18n="ime.schema.fluency">全拼 · 语句流（整句连打）</option>
+                <option value="double_pinyin_mspy" data-i18n="ime.schema.mspy">微软双拼</option>
+                <option value="double_pinyin" data-i18n="ime.schema.ziranma">自然码双拼</option>
+                <option value="double_pinyin_flypy" data-i18n="ime.schema.flypy">小鹤双拼</option>
+                <option value="double_pinyin_abc" data-i18n="ime.schema.abc">智能 ABC 双拼</option>
+                <option value="double_pinyin_pyjj" data-i18n="ime.schema.pyjj">拼音加加双拼</option>
+                <option value="wubi86" data-i18n="ime.schema.wubi">五笔 86</option>
+              </select>
+            </label>
+            <div class="voice-config-field" id="imeFuzzyField">
+              <span class="voice-config-label" data-i18n="ui.ime.fuzzy">模糊音</span>
+              <div class="ime-fuzzy-grid">
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="zh-z" /><span>zh, z</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ch-c" /><span>ch, c</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="sh-s" /><span>sh, s</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="n-l" /><span>n, l</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="l-r" /><span>l, r</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ang-an" /><span>ang, an</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="eng-en" /><span>eng, en</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="ing-in" /><span>ing, in</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="f-h" /><span>f, h</span></label>
+                <label class="voice-config-toggle"><input type="checkbox" data-fuzzy="wang-huang" /><span>wang, huang</span></label>
+              </div>
+              <p class="reading-mode-hint" data-i18n="ui.ime.fuzzyHint">勾上的每一对互通：打其中一个也出另一个的字（zi 也出「知」）。默认全关；跟账号走，换设备也一样。只对全拼 / 双拼生效，五笔不受影响。</p>
             </div>
-            <p class="reading-mode-hint" data-i18n="ui.ime.fuzzyHint">勾上的每一对互通：打其中一个也出另一个的字（zi 也出「知」）。默认全关；跟账号走，换设备也一样。只对全拼 / 双拼生效，五笔不受影响。</p>
+            <label class="voice-config-field">
+              <span class="voice-config-label" data-i18n="ui.ime.script">字形</span>
+              <select id="imeScriptSelect" class="voice-config-select">
+                <option value="simp" data-i18n="ui.ime.script.simp">简体（默认）</option>
+                <option value="trad" data-i18n="ui.ime.script.trad">繁體</option>
+              </select>
+            </label>
+            <label class="voice-config-field">
+              <span class="voice-config-label" data-i18n="ui.ime.softKeyboard">内置软键盘（本机）</span>
+              <select id="softKeyboardSelect" class="voice-config-select">
+                <option value="auto" data-i18n="ui.ime.softKeyboard.auto">自动（触屏设备上露出；敲了实体键盘就让位）</option>
+                <option value="on" data-i18n="ui.ime.softKeyboard.on">总是露出</option>
+                <option value="off" data-i18n="ui.ime.softKeyboard.off">不用（只用实体键盘）</option>
+              </select>
+            </label>
           </div>
-          <label class="voice-config-field">
-            <span class="voice-config-label" data-i18n="ui.ime.script">字形</span>
-            <select id="imeScriptSelect" class="voice-config-select">
-              <option value="simp" data-i18n="ui.ime.script.simp">简体（默认）</option>
-              <option value="trad" data-i18n="ui.ime.script.trad">繁體</option>
-            </select>
-          </label>
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.ime.quotes">引号样式（打字与语音同用）</span>
             <select id="quoteStyleSelect" class="voice-config-select">
@@ -450,14 +461,13 @@
               <option value="corner" data-i18n="ui.ime.quotes.corner">方引号 「 」『 』</option>
             </select>
           </label>
-          <label class="voice-config-field">
-            <span class="voice-config-label" data-i18n="ui.ime.softKeyboard">内置软键盘（本机）</span>
-            <select id="softKeyboardSelect" class="voice-config-select">
-              <option value="auto" data-i18n="ui.ime.softKeyboard.auto">自动（触屏设备上露出；敲了实体键盘就让位）</option>
-              <option value="on" data-i18n="ui.ime.softKeyboard.on">总是露出</option>
-              <option value="off" data-i18n="ui.ime.softKeyboard.off">不用（只用实体键盘）</option>
-            </select>
-          </label>
+          <!-- 系统输入法才有用的（v2.3.58：用内置输入法时整组藏起来）-->
+          <div id="imeSystemOptions" hidden>
+            <label class="voice-config-toggle">
+              <input type="checkbox" id="autoTidyToggle" checked />
+              <span data-i18n="ui.ime.autoTidy">打字时自动规整标点（现在只管引号：跟上面的引号样式走）</span>
+            </label>
+          </div>
           <label class="voice-config-toggle">
             <input type="checkbox" id="systemImeToggle" />
             <span data-i18n="ui.ime.useSystem">改用系统输入法（关闭内置输入法；系统/云端输入法可能上传击键）</span>
@@ -570,6 +580,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-7bd6bf71d570.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-fb9ff306cd11.mjs"></script>
   </body>
 </html>

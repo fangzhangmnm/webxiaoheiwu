@@ -1440,6 +1440,8 @@ const imeFuzzyPref = (): FuzzyPair[] => normalizeFuzzy(prefs.getItem<unknown>("i
 const reportFuzzyError = (): void => { if (ime.fuzzyError) setStatus(t("ime.fuzzyFailed", { e: ime.fuzzyError }), { error: true }); };
 const quoteStylePref = (): "curly" | "corner" => (prefs.getItem<string>("quoteStyle") === "corner" ? "corner" : "curly");   // 引号样式跟人走
 function applyQuoteStyle(v: "curly" | "corner"): void { ime.quoteStyle = v; setQuoteStyle(v); imeDock?.keyboard.refresh(); }   // 软键盘符号层的引号跟着换（v2.1.33）
+/** 系统输入法下打字时自动规整（v2.3.58，user 2026-10-23「引号正则之类的有一个总体的开关，以后别的正则也一起控制。只有在用系统输入法的时候才有这个选项」）：跟人走（synced prefs），缺省开。 */
+const autoTidyPref = (): boolean => prefs.getItem<boolean>("autoTidy") !== false;
 let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
 const input = createInputPipeline({
   ime,
@@ -1932,8 +1934,14 @@ const systemImeToggle = $<HTMLInputElement>("systemImeToggle");
 const softKeyboardSelect = $<HTMLSelectElement>("softKeyboardSelect");
 const imeScriptSelect = $<HTMLSelectElement>("imeScriptSelect");
 const quoteStyleSelect = $<HTMLSelectElement>("quoteStyleSelect");
+const imeBuiltinOptions = $("imeBuiltinOptions"), imeSystemOptions = $("imeSystemOptions"), autoTidyToggle = $<HTMLInputElement>("autoTidyToggle");   // 输入法节的两组（index.html）
+autoTidyToggle.addEventListener("change", () => { prefs.setItem("autoTidy", autoTidyToggle.checked); input.autoTidy = autoTidyToggle.checked; });
+prefs.onChange("autoTidy", () => { input.autoTidy = autoTidyPref(); if (settingsShown()) renderImeSection(); });
 const fuzzyBoxes = [...document.querySelectorAll<HTMLInputElement>("#imeFuzzyField input[data-fuzzy]")];
 function renderImeSection(): void {
+  // 用系统输入法时（v2.3.58，user 2026-10-23「然后系统输入法的时候其他选项能隐藏吗」）：只对内置输入法有用的（说明 / 方案 / 模糊音 / 字形 / 软键盘）藏起来；
+  //   引号样式两边都用（内置输入法 / 系统输入法自动规整 / 规整标点）留着；自动规整的总开关只在这时露
+  imeBuiltinOptions.hidden = !ime.enabled; imeSystemOptions.hidden = ime.enabled; autoTidyToggle.checked = autoTidyPref();
   imeSchemaSelect.value = imeSchemaPref(); systemImeToggle.checked = !ime.enabled; softKeyboardSelect.value = softKeyboardPref(); imeScriptSelect.value = imeSimplifiedPref() ? "simp" : "trad"; quoteStyleSelect.value = quoteStylePref();
   const fuzzy = imeFuzzyPref(); for (const box of fuzzyBoxes) box.checked = fuzzy.includes(box.dataset.fuzzy as FuzzyPair);
 }
@@ -2172,7 +2180,7 @@ async function boot(): Promise<void> {
   applyRuledLines(ruledLinesPref());
   applyWordCount(wordCountPref());
   applyFontScale(fontScalePref());
-  applyQuoteStyle(quoteStylePref());
+  applyQuoteStyle(quoteStylePref()); input.autoTidy = autoTidyPref();
   // 输入法默认开（2026-09-03）。v2.1.24：初始化**不挡启动**——先开文档；RIME 后端一创建就接管，加载期间打的字排队等它（ime.ts initialize 注释）。
   //   就绪后：状态行刷新、拉用户词库、然后在空闲片里预热一次（首键比后续键慢 6 倍，量于 tmp/round0929/probe-first-key.mjs；预热不设强制 timeout，家规「启动速度优先」）。
   if (deviceKvGet("imeEnabled") !== "0") {
