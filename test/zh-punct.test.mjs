@@ -1,6 +1,6 @@
 // zh-punct：中文语境标点全角化（自 v1 模块头注释的案例钉子）。created 2026-09-03 by Claude Fable 5.1
 import { describe, it, eq } from "./runner.mjs";
-import { chineseifyPunctuation as z, tidyPunctuation as tidy, setQuoteStyle } from "../src/zh-punct.ts";
+import { chineseifyPunctuation as z, tidyPunctuation as tidy, setQuoteStyle, quotesToStyle } from "../src/zh-punct.ts";
 
 describe("zh-punct", () => {
   it("无 CJK 原样", () => { eq(z("Hello, world. 3.14"), "Hello, world. 3.14"); });
@@ -23,5 +23,22 @@ describe("zh-punct", () => {
     setQuoteStyle("corner");
     eq(z("他说“好”，又说‘行’"), "他说「好」，又说『行』"); eq(z('他说"好"'), "他说「好」"); eq(z("我说 it’s 行"), "我说 it’s 行");
     setQuoteStyle("curly");
+  });
+});
+
+describe("zh-punct · 系统输入法上屏的引号跟设置走（quotesToStyle，v2.3.57）", () => {
+  it("直角：弯引号换成「」『』；英文撇号（前一个字是字母）不动；直引号不动", () => {
+    setQuoteStyle("corner");
+    eq(quotesToStyle("他说“你好”"), "他说「你好」");
+    eq(quotesToStyle("‘嗯’"), "『嗯』");
+    eq(quotesToStyle("it’s"), "it’s"); eq(quotesToStyle("’s", "t"), "’s", "插入点前是字母");
+    eq(quotesToStyle("’", "好"), "』", "插入点前是汉字 = 收尾引号");
+    eq(quotesToStyle('"x\''), '"x\'');
+    setQuoteStyle("curly");
+  });
+  it("弯引号：系统输入法出的「」『』换回 “”‘’；本来就是弯的不动", () => {
+    setQuoteStyle("curly");
+    eq(quotesToStyle("「你好」『嗯』"), "“你好”‘嗯’");
+    eq(quotesToStyle("“你好”"), "“你好”");
   });
 });

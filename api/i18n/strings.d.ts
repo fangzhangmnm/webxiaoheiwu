@@ -2304,6 +2304,22 @@ export declare const S: {
         readonly zh: "长图 / PDF 字体";
         readonly en: "Long image / PDF font";
     };
+    readonly "export.bodyHeadingsLabel": {
+        readonly zh: "TXT 正文里的 # 标题";
+        readonly en: "TXT: # headings in page text";
+    };
+    readonly "export.bodyHeadings.shift": {
+        readonly zh: "加级";
+        readonly en: "Shift down";
+    };
+    readonly "export.bodyHeadings.escape": {
+        readonly zh: "转义";
+        readonly en: "Escape";
+    };
+    readonly "export.bodyHeadings.raw": {
+        readonly zh: "原样";
+        readonly en: "As is";
+    };
     readonly "export.font.sans": {
         readonly zh: "黑体";
         readonly en: "Sans";

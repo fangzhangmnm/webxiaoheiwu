@@ -26,6 +26,7 @@ import { installSansFont, installFont, loadFontBytes, FONT_FAMILY, FONT_IDS, typ
 import { embedTextPng, embedTextJpeg } from "./image/embed-text.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
 import { planPdfBook, estimatePdfPages, type PdfSection, type CoverLook } from "./export/pdf-book.ts";
+import { markdownTree, type BodyHeadings, type MarkdownPage } from "./export/markdown-tree.ts";
 import { estimateLongImageHeight, planLongImage, SINGLE_IMAGE_MAX_HEIGHT, screenHeightFor, socialSliceHeightFor, CHARS_PRESETS, typesetFor, widthFor, type ExportTypeset, type LongImageSpec, type LongImageSection, type LongImageLook, type LongImagePlan, type ImageRef } from "./export/long-image.ts";
 import { seedBook, treeChildren, treePath } from "./project/graph.ts";
 import { normalizeNodeName } from "./project/mode.ts";
@@ -626,6 +627,9 @@ async function exportSheetFlow(): Promise<void> {
     { label: t("export.widthLabel"), options: CHARS_PRESETS.map((n) => ({ label: String(n), value: n })), initial: exportCharsPref(), onChange: (n: number) => setExportChars(n) },
     { label: t("export.fontLabel"), options: [{ label: t("export.font.sans"), value: "sans" as FontId }, { label: t("export.font.pinyin"), value: "pinyin" as FontId }, { label: t("export.font.pixel"), value: "pixel" as FontId }], initial: exportFontPref(), onChange: (id: FontId) => setExportFont(id) },
   ];
+  // 第四条 = TXT 正文里自己的 # 标题（v2.3.57）：书才有（txt 稿没有页名，正文原样）
+  const headingsRow = { label: t("export.bodyHeadingsLabel"), options: (["shift", "escape", "raw"] as const).map((v) => ({ label: t(`export.bodyHeadings.${v}`), value: v as BodyHeadings })), initial: exportBodyHeadingsPref(), onChange: (v: BodyHeadings) => setExportBodyHeadings(v) };
+  const rows = inBook ? [...extras, headingsRow] : extras;
   // 第四个钮 TXT（v2.3.55）：图片页的「这一页」没有正文，不露
   const choices = (scope: LongImageScope): Choice<ExportFormat>[] => {
     const imagePage = scope === "page" && inBook && project.currentKind() === "image";
@@ -643,9 +647,9 @@ async function exportSheetFlow(): Promise<void> {
   };
   let scope0: LongImageScope = inBook ? "page" : "draft";
   for (;;) {
-    extras[0]!.initial = exportCharsPref(); extras[1]!.initial = exportFontPref();
+    extras[0]!.initial = exportCharsPref(); extras[1]!.initial = exportFontPref(); headingsRow.initial = exportBodyHeadingsPref();
     const check = { label: t("export.embedText"), checked: exportEmbedPref(), onChange: (v: boolean) => setExportEmbed(v) };
-    const r: { scope: LongImageScope; value: ExportFormat } | null = await openScopedChoiceSheet<LongImageScope, ExportFormat>(t("export.title"), { scopes, initial: scope0, extras, note, choices, aux, check });
+    const r: { scope: LongImageScope; value: ExportFormat } | null = await openScopedChoiceSheet<LongImageScope, ExportFormat>(t("export.title"), { scopes, initial: scope0, extras: rows, note, choices, aux, check });
     if (!r) return;
     if (r.value === "cover") { if (cur) await pickPartCoverFlow(cur); scope0 = r.scope; continue; }
     if (r.value === "text") await copyScopeText(r.scope);
@@ -717,26 +721,18 @@ async function copyScopeText(scope: LongImageScope): Promise<void> {
   try { await writeClipboardText(text); const st = statsForText(text); setStatus(t("copy.doneScope", { cjk: st.cjk, en: st.en, pages })); }
   catch (e) { reportError(e, "log"); setStatus(t("copy.failed", { e: errText(e) }), { error: true }); }
 }
-/** TXT 的内容 = markdown 树（v2.3.56，user 2026-10-23「章节名是markdown那种啊，分级」；wishlist M-02）：每页 =「#」×（层级 + 1）+ 页名，空一行，正文；页与页之间空一行。
- *  层级从这次导出的起点算（同 PDF 书签：这一支的起点页 = #，整本最外层 = #），超过 6 级按 6 级写（markdown 只认到 6 个 #）。
- *  txt 稿没有页名（文件名是管理句柄，不是标题——ADR-0007）→ 只有正文。图片页不出（txt 里放不了图）。正文原样——正文里自己写的 # 标题怎么摆还没定。 */
-function markdownTreeOf(src: ExportSource): string {
-  return src.items.flatMap((it) => {
-    if (it.kind !== "text") return [];
-    const body = it.text.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/\s+$/, "");   // 头上的空行去掉（首行的缩进留着）
-    if (it.heading == null) return [body];
-    const h = "#".repeat(Math.min(6, (it.level ?? 0) + 1)) + " " + it.heading;
-    return [body ? h + "\n\n" + body : h];
-  }).join("\n\n") + "\n";
-}
-/** 「TXT」（v2.3.55，user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」）：markdown 树（markdownTreeOf）存成一个 .txt（UTF-8），
+/** TXT 正文里自己写的 # 标题怎么办（v2.3.57，user 2026-10-23「加一行段选」）：缺省 = 加级（挪到页名底下，规则见 export/markdown-tree.ts）；另选记进这本书 editor-state 的 exportBodyHeadings（1.1.0，算正经改动、标脏）。txt 稿没有页名，这一行不露。 */
+function exportBodyHeadingsPref(): BodyHeadings { return project.session()?.project.editorState.exportBodyHeadings ?? "shift"; }
+function setExportBodyHeadings(v: BodyHeadings): void { if (project.active()) project.setBookPrefs({ exportBodyHeadings: v === "shift" ? undefined : v }); }
+/** 「TXT」（v2.3.55，user 2026-10-23「导出应该还有一个txt的方案，也是和其他导出一样分三个scope」）：markdown 树（v2.3.56 页名分级、v2.3.57 正文标题三选，export/markdown-tree.ts）存成一个 .txt（UTF-8），
  *  走长图 / PDF 同一张「好了」sheet（分享 / 下载）。文件名同 PDF（书名 · 页名）。这个范围一页正文都没有 → 没有可导出的。字数 = 正文的（同导出面板那一行，不算页名）。 */
 function renderTxtFile(scope: LongImageScope): { file: File; pages: number; cjk: number; en: number; tree: boolean } | null {
   const src = collectExport(scope); const pages = (src?.items ?? []).filter((it) => it.kind === "text").length;
   if (!src || !pages) return null;
   const st = statsForText(plainTextOf(src));
   const name = (src.title || "export").replace(/[\\/:*?"<>|]/g, "-") + ".txt";
-  return { file: new File([markdownTreeOf(src)], name, { type: "text/plain" }), pages, cjk: st.cjk, en: st.en, tree: src.kind === "book" };
+  const pagesMd: MarkdownPage[] = src.items.flatMap((it) => (it.kind === "text" ? [it] : []));
+  return { file: new File([markdownTree(pagesMd, src.kind === "book" ? exportBodyHeadingsPref() : "raw")], name, { type: "text/plain" }), pages, cjk: st.cjk, en: st.en, tree: src.kind === "book" };
 }
 async function exportTxtFlow(scope: LongImageScope): Promise<void> {
   const r = renderTxtFile(scope);

@@ -26,6 +26,7 @@ import "./book-cover.test.mjs";   // 2026-09-29 书库封面印书名 + 日期�
 import "./long-image.test.mjs";   // 2026-09-30 长图排版：折行 / 避头尾 / 切片（纯函数）
 import "./pdf.test.mjs";
 import "./cover-title.test.mjs";
+import "./markdown-tree.test.mjs";   // 2026-10-23 TXT 导出 = markdown 树（页名分级 + 正文标题加级 / 转义 / 原样）
 import "./embed-text.test.mjs";   // 2026-09-30 PDF 引擎：TTF 解析 / 子集 + PDF 结构（要一款真字体，没有就 SKIP）
 import { run } from "./runner.mjs";
 console.log("\n  WebXiaoHeiWu —— app 域测试（store 契约在 internal-store/test/）\n");

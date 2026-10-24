@@ -1,0 +1,60 @@
+{
+ "stamps": {
+  "graph": "2.1.0",
+  "editorState": "1.1.0"
+ },
+ "newerThanApp": [],
+ "warnings": [],
+ "pages": [
+  "废稿.txt",
+  "插图.png",
+  "正文.txt",
+  "第一话.txt",
+  "第二话.txt",
+  "设定.txt"
+ ],
+ "tree": [
+  {
+   "name": "正文.txt",
+   "children": [
+    "第一话.txt",
+    "第二话.txt"
+   ]
+  },
+  "设定.txt",
+  "废稿.txt"
+ ],
+ "editorState": {
+  "last": "第一话.txt",
+  "back": [
+   "正文.txt"
+  ],
+  "refPanel": {
+   "open": false,
+   "left": 10,
+   "top": 20,
+   "width": 300,
+   "height": 200
+  },
+  "lineWidth": {
+   "charsPerLine": 20
+  },
+  "exportLineWidth": {
+   "charsPerLine": 14
+  },
+  "exportFont": "pinyin",
+  "font": "sans",
+  "exportEmbedText": false,
+  "exportBodyHeadings": "escape",
+  "exportCovers": {
+   "正文.txt": "插图.png"
+  }
+ },
+ "graphExtra": {},
+ "editorStateExtra": {},
+ "pageExtra": {},
+ "hidden": [
+  "废稿.txt"
+ ],
+ "cover": "插图.png"
+}

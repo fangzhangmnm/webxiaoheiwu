@@ -54,7 +54,7 @@ async function write(dir, blob) {
   link(p, "第一话.txt", "设定.txt", { now }); link(p, "第二话.txt", "插图.png", { now });
   setHidden(p, "废稿.txt", true);
   p.readOnly = false; p.thumbnail = PNG; p.cover = "插图.png";
-  p.editorState = { last: "第一话.txt", back: ["正文.txt"], refPanel: { open: false, left: 10, top: 20, width: 300, height: 200 }, lineWidth: { charsPerLine: 20 }, exportLineWidth: { charsPerLine: 14 }, font: "sans", exportFont: "pinyin", exportCovers: { "正文.txt": "插图.png" }, exportEmbedText: false };
+  p.editorState = { last: "第一话.txt", back: ["正文.txt"], refPanel: { open: false, left: 10, top: 20, width: 300, height: 200 }, lineWidth: { charsPerLine: 20 }, exportLineWidth: { charsPerLine: 14 }, font: "sans", exportFont: "pinyin", exportCovers: { "正文.txt": "插图.png" }, exportEmbedText: false, exportBodyHeadings: "escape" };
   await write(`graph-${fmt(FORMAT.graph)}+editor-${fmt(FORMAT.editorState)}`, await packProject(p));
 }
 // ② v2.3.45 及以前的形状（没拍子）

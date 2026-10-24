@@ -6,8 +6,8 @@ export interface Stamp {
 }
 /** 本版写出的拍子（SSoT）。
  *  graph 2.0 = 2026-09-10 v2（主干树 + links，ADR-0014）；2.1 = 09-30～10-01 加的可选键 hidden / cover（2026-10-21 追认为 minor 1）。
- *  editorState 1.0 = 今天的形状（last / back / refPanel / lineWidth / exportLineWidth / exportFont / font / exportCovers / exportEmbedText）；
- *    以前从没写过 version，缺 = 1.0.0。 */
+ *  editorState 1.0 = 2026-10-21 的形状（last / back / refPanel / lineWidth / exportLineWidth / exportFont / font / exportCovers / exportEmbedText）；
+ *    以前从没写过 version，缺 = 1.0.0。1.1 = 2026-10-23 加可选键 exportBodyHeadings（TXT 正文标题：转义 / 原样；缺 = 加级）——老读者原样带回、提示一次。 */
 export declare const FORMAT: Readonly<Record<Component, Readonly<Stamp>>>;
 /** 缺 `version` 时当几：graph 没有 version = 损坏（一直如此，null = 调用方自己拒）；editor-state 从没写过 version = 1。 */
 export declare const MISSING_MAJOR: Readonly<Record<Component, number | null>>;

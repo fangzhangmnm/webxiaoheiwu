@@ -49,7 +49,7 @@ export const PINNED_MTIME = new Date(Date.UTC(1980, 0, 1));
 /** 三张 JSON 的已知键（格式版本纪律，见上）：不在表里的键 = 未知，原样直通。改表前读上面那段。 */
 export const KNOWN_GRAPH_FIELDS: readonly string[] = ["format", "version", "minor", "patch", "wroteWith", "readOnly", "cover", "tree", "pages"];
 export const KNOWN_PAGE_FIELDS: readonly string[] = ["links", "created", "modified", "hidden"];
-export const KNOWN_EDITOR_STATE_FIELDS: readonly string[] = ["version", "minor", "patch", "last", "back", "refPanel", "lineWidth", "exportLineWidth", "exportFont", "font", "exportCovers", "exportEmbedText"];
+export const KNOWN_EDITOR_STATE_FIELDS: readonly string[] = ["version", "minor", "patch", "last", "back", "refPanel", "lineWidth", "exportLineWidth", "exportFont", "font", "exportCovers", "exportEmbedText", "exportBodyHeadings"];
 /** o 里不在 known 表上的键（非对象 / 数组 / 空 → {}）。 */
 function extraOf(o: unknown, known: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -66,7 +66,7 @@ export interface RefPanelState { open: boolean; left: number; top: number; width
 /** 这本书的行宽（每行几个字；2026-09-30 user「editor state 里面的行宽是跟着书走的吧。这个语义上确实是书的属性」）。编辑器和导出都读它；没有 = 用账号默认。随 editor-state 走、不标脏（同 refPanel；手动保存顺手捞）。 */
 export interface LineWidthState { charsPerLine: number }
 /** `exportLineWidth`（2026-10-01）= 这本书导出（长图 / PDF）用的行宽；没有 = 跟 `lineWidth` 走。user「所以轻小说我写的时候用14来逼对话和节奏，20导出？」「好，同意。加」。同样随保存写、不标脏。 */
-export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState; lineWidth?: LineWidthState; exportLineWidth?: LineWidthState; /** 这本书导出（长图 / PDF）用的字体；没有 = 黑体。目前只认 "pinyin"（萌神拼音，2026-10-01）。 */ exportFont?: string; /** 这本书在编辑器里用的字体（2026-10-01 user「编辑器换字体 做，书的属性，导出默认跟随」）："sans" / "pinyin"；没有 = 账号默认。导出没另选（exportFont）时跟它走。 */ font?: string; /** 「这一页 / 这一支」导出时用的封面：起点页名 → 图片页名（2026-10-01 user「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）。整本的封面是 graph.json 的 cover，不在这里。 */ exportCovers?: Record<string, string>; /** 长图里要不要附上文字（藏在图片文件的元数据里）。缺省附；只有关掉才写 false（2026-10-01 user「也可以选择不嵌入」）。 */ exportEmbedText?: false }
+export interface EditorState { last: string | null; back: string[]; refPanel?: RefPanelState; lineWidth?: LineWidthState; exportLineWidth?: LineWidthState; /** 这本书导出（长图 / PDF）用的字体；没有 = 黑体。目前只认 "pinyin"（萌神拼音，2026-10-01）。 */ exportFont?: string; /** 这本书在编辑器里用的字体（2026-10-01 user「编辑器换字体 做，书的属性，导出默认跟随」）："sans" / "pinyin"；没有 = 账号默认。导出没另选（exportFont）时跟它走。 */ font?: string; /** 「这一页 / 这一支」导出时用的封面：起点页名 → 图片页名（2026-10-01 user「导出非整本的时候可以指定封面图片（某一页），然后长图也有效」）。整本的封面是 graph.json 的 cover，不在这里。 */ exportCovers?: Record<string, string>; /** 长图里要不要附上文字（藏在图片文件的元数据里）。缺省附；只有关掉才写 false（2026-10-01 user「也可以选择不嵌入」）。 */ exportEmbedText?: false; /** TXT（markdown 树）导出时正文里自己写的 # 标题怎么办：缺省 = 加级（挪到页名底下）；"escape" = 转义成 \#；"raw" = 原样（2026-10-23 user「加一行段选」；editor-state 1.1.0）。 */ exportBodyHeadings?: "escape" | "raw" }
 export const BACK_STACK_MAX = 50;
 export interface Project {
   nodes: Map<string, NodeMeta>;               // key = 完整文件名（pages/ 下 entry 名）
@@ -156,7 +156,7 @@ export async function packProject(p: Project, opts: { stats?: PackStats } = {}):
     if (!path.startsWith(REFERENCES_DIR)) throw new Error(`reference entry outside ${REFERENCES_DIR}: ${path}`);
     entries.push(bytesEntry(path, bytes));
   }
-  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ ...p.editorStateExtra, ...stampFields("editorState"), last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}), ...(p.editorState.lineWidth ? { lineWidth: p.editorState.lineWidth } : {}), ...(p.editorState.exportLineWidth ? { exportLineWidth: p.editorState.exportLineWidth } : {}), ...(p.editorState.exportFont ? { exportFont: p.editorState.exportFont } : {}), ...(p.editorState.font ? { font: p.editorState.font } : {}), ...(p.editorState.exportCovers && Object.keys(p.editorState.exportCovers).length ? { exportCovers: p.editorState.exportCovers } : {}), ...(p.editorState.exportEmbedText === false ? { exportEmbedText: false } : {}) }) });
+  entries.push({ path: EDITOR_STATE_ENTRY, data: JSON.stringify({ ...p.editorStateExtra, ...stampFields("editorState"), last: p.editorState.last ?? null, back: p.editorState.back.slice(-BACK_STACK_MAX), ...(p.editorState.refPanel ? { refPanel: p.editorState.refPanel } : {}), ...(p.editorState.lineWidth ? { lineWidth: p.editorState.lineWidth } : {}), ...(p.editorState.exportLineWidth ? { exportLineWidth: p.editorState.exportLineWidth } : {}), ...(p.editorState.exportFont ? { exportFont: p.editorState.exportFont } : {}), ...(p.editorState.font ? { font: p.editorState.font } : {}), ...(p.editorState.exportCovers && Object.keys(p.editorState.exportCovers).length ? { exportCovers: p.editorState.exportCovers } : {}), ...(p.editorState.exportEmbedText === false ? { exportEmbedText: false } : {}), ...(p.editorState.exportBodyHeadings ? { exportBodyHeadings: p.editorState.exportBodyHeadings } : {}) }) });
   if (p.thumbnail && p.thumbnail.length) entries.push(bytesEntry(THUMBNAIL_ENTRY, p.thumbnail));   // 永远最后一个 entry（ADR-0012；WeebPaint v398 学费：不是最后就会被别的东西挤出尾窗）
   stats.encoded += 2;   // graph.json + editor-state
   const blob = await zipPack(entries, { levelFor: levelForPath, lastModDate: PINNED_MTIME });
@@ -284,6 +284,7 @@ export async function unpackProject(blob: Blob): Promise<UnpackResult> {
       if (typeof st.exportFont === "string" && st.exportFont) p.editorState.exportFont = st.exportFont;
       if (typeof st.font === "string" && st.font) p.editorState.font = st.font;
       if (st.exportEmbedText === false) p.editorState.exportEmbedText = false;
+      if (st.exportBodyHeadings === "escape" || st.exportBodyHeadings === "raw") p.editorState.exportBodyHeadings = st.exportBodyHeadings;   // 1.1.0；别的值 = 缺省（加级）
       if (st.exportCovers && typeof st.exportCovers === "object" && !Array.isArray(st.exportCovers)) {   // 两头都得是书里真有的页，悬空的丢掉
         const ec: Record<string, string> = {};
         for (const [k, v] of Object.entries(st.exportCovers as Record<string, unknown>)) { const a = resolve(k), b = typeof v === "string" ? resolve(v) : null; if (a && b) ec[a] = b; }

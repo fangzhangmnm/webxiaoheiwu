@@ -10,6 +10,7 @@
 //   不管的事：键盘长什么样（soft-keyboard.ts）、候选画在哪（dock.ts）、哪个框能不能改（deps.canEdit）。
 import type { NaturalCodeIME, ImeResult } from "../ime.ts";
 import { replaceRange, isProgrammaticEdit } from "../text-edit.ts";
+import { quotesToStyle } from "../zh-punct.ts";
 import { asTextField, isMasked, isWritable, insertText, deleteBackward, moveCaret, pressEnter, isOwnSyntheticKey, type TextField } from "./field.ts";
 
 export interface PipelineDeps {
@@ -147,8 +148,22 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
   // ── 系统层组字 / 系统软键盘（逃生开关「改用系统输入法」关着、但系统仍插手的平台：Quest / 安卓把实体键盘的字母也过一遍系统输入法）──
   //   纯 ASCII 组字 = 系统替我们攒的拼音 → 结束时删掉系统留下的裸字母、逐字喂给内置输入法；含非 ASCII（系统输入法已出汉字）→ 原样保留。
   //   insertCompositionText 不可 preventDefault，只能事后处理。不撤字（撤字 = 「无法输入」，user 2026-09-04 Quest 回归）。
+  // ── 系统输入法（「改用系统输入法」开着 = ime.enabled 关）打的引号跟设置走（v2.3.57，user 2026-10-23「做，跟设置走」；规则 = zh-punct quotesToStyle）──
+  //   能拦的（insertText：系统键盘直出的标点）在 beforeinput 里换好再落 → 撤销一步；组字上屏的拦不住 → compositionend 时把刚上屏那一段换掉（撤销多一步）。组字途中一律不碰。
+  const QUOTE_RE = /[“”‘’「」『』]/;
+  const charBefore = (el: TextField, at: number): string => [...el.value.slice(Math.max(0, at - 2), at)].pop() ?? "";
+  const systemQuotes = (el: TextField): boolean => !ime.enabled && !isProgrammaticEdit() && !isMasked(el) && editable(el);
   window.addEventListener("compositionend", (event: Event) => {
     const el = asTextField(event.target);
+    if (el && systemQuotes(el)) {
+      const data = (event as CompositionEvent).data ?? "";
+      if (!QUOTE_RE.test(data)) return;
+      const end = el.selectionEnd ?? el.value.length, start = Math.max(0, end - data.length);
+      if (el.value.slice(start, end) !== data) return;
+      const out = quotesToStyle(data, charBefore(el, start));
+      if (out !== data) { replaceRange(el, start, end, out); d.onChange(); }
+      return;
+    }
     if (!el || !ime.enabled || isProgrammaticEdit() || isMasked(el)) return;
     const data = (event as CompositionEvent).data ?? "";
     if (!data || !/^[a-zA-Z0-9;]+$/.test(data)) return;
@@ -161,6 +176,12 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     if (!isProgrammaticEdit()) drainText();   // 系统层插字之前，软键盘排着的改字先落（自己落字时发的 beforeinput 不算）
     const el = asTextField(event.target);
     const ie = event as InputEvent;
+    if (el && systemQuotes(el)) {
+      if (ie.inputType !== "insertText" || ie.isComposing || !ie.data || !QUOTE_RE.test(ie.data)) return;
+      const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? s, out = quotesToStyle(ie.data, charBefore(el, s));
+      if (out !== ie.data) { event.preventDefault(); replaceRange(el, s, e, out); d.onChange(); }
+      return;
+    }
     if (!el || !ime.enabled || isProgrammaticEdit() || isMasked(el)) return;   // 自己落的字别再路由一遍
     if (Date.now() - lastRealKeydownAt < 80) {   // 实体键盘：keydown 已路由；这里只挡组字中的裸字符
       if (!ime.isComposing()) return;

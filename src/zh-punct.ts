@@ -13,6 +13,22 @@ const isCjk = (ch: string | undefined): boolean => !!ch && CJK_RE.test(ch);
 /** 引号样式（与内置 IME 同一设置；app 层 setQuoteStyle 同步）。 */
 let _corner = false;
 export function setQuoteStyle(style: "curly" | "corner"): void { _corner = style === "corner"; }
+/** 系统输入法上屏的引号跟设置走（v2.3.57，user 2026-10-23「做，跟设置走」；接线 = input/pipeline.ts）：只换已经分好开闭的弯引号 / 直角引号（“”‘’ ↔ 「」『』）。
+ *  ‘ ’ 前一个字是拉丁字母 = 英文撇号（it’s / rock ‘n’ roll）→ 不动（打字当下后一个字还没来，看不到，宁可漏换——漏的「规整标点」一键收）；直引号 " ' 不动（英文 / 代码）。
+ *  prev = 插入点前一个字（文本框里的）。 */
+export function quotesToStyle(text: string, prev = ""): string {
+  const [dO, dC, sO, sC] = _corner ? ["「", "」", "『", "』"] : ["“", "”", "‘", "’"];
+  let out = "", p = prev;
+  for (const ch of text) {
+    let c = ch;
+    if (ch === "“" || ch === "「") c = dO;
+    else if (ch === "”" || ch === "」") c = dC;
+    else if (ch === "‘" || ch === "『") c = ch === "‘" && /[A-Za-z]/.test(p) ? ch : sO;
+    else if (ch === "’" || ch === "』") c = ch === "’" && /[A-Za-z]/.test(p) ? ch : sC;
+    out += c; p = ch;
+  }
+  return out;
+}
 /** 一键规整（user 2026-10-16「一键把标点符号…全部正则化」「标点主要是引号的规范」）：同一套规则，顺带报改了几处。 */
 export function tidyPunctuation(text: string): { text: string; changes: number } {
   if (!text || !CJK_RE.test(text)) return { text, changes: 0 };
