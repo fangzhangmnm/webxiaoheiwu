@@ -13,3 +13,5 @@ ADR（决策与否决，防 re-litigate）：
 - [adr/0006](adr/0006-one-level-folders.md) 多文件夹：身份 = `[夹/]YYYYMMDD 标题.txt`，只一层（修订 0001 的根平铺）
 
 v1 时代 how-doc（2026-05，顶部戳标明哪些仍有效）：sync-design · encryption · msal-onedrive · pwa-service-worker · filename-conventions · editor-ux · quest-ime · voice-input · push-to-talk · working-with-this-user。
+
+提案（进行中）：[20261024-mini-window-proposal.md](20261024-mini-window-proposal.md) 小窗（老板键）设计稿——2026-10-24 user 已拍主干，没写代码。
