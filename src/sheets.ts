@@ -50,7 +50,10 @@ const g = {
 let _open: (() => void) | null = null;   // 当前 sheet 的 cancel 路径（backdrop / Escape 用）
 let _submit: (() => void) | null = null;   // 当前输入 sheet 的确定路径（form submit 事件用；别的 sheet 为 null = 只拦默认提交）
 
-function _show(): void { g.sheet().classList.remove("hidden"); }
+let _beforeModal: (() => void) | null = null;
+/** 弹面之前先做的事（v2.3.60：小窗开着 → 先把纸收回大窗；面只画在主页面上，人在小窗里看不见）。sheet 和冲突锁屏面都走它。 */
+export function setBeforeModal(fn: (() => void) | null): void { _beforeModal = fn; }
+function _show(): void { _beforeModal?.(); g.sheet().classList.remove("hidden"); }
 /** 有 sheet 开着（别的流程想弹面前先看一眼，别盖住冲突面）。 */
 export function isSheetOpen(): boolean { return !g.sheet().classList.contains("hidden"); }
 function _hide(): void {
@@ -360,6 +363,7 @@ interface GateOpts<T> { title: string; message: string; note?: string; showSpinn
 let _gatePending: ((v: unknown) => void) | null = null;
 let _gateFocusBack: HTMLElement | null = null;
 export function lockSyncGate<T = string>({ title, message, note, showSpinner, actions }: GateOpts<T>): Promise<T> {
+  _beforeModal?.();   // 小窗开着 → 先收回（冲突面必须被人看见）
   // 冲突面是不可 dismiss 的锁屏：焦点还留在正文里的话，键盘会隔着遮罩继续往里打字（推云是 30 s 心跳，弹出来时常常正在打字）——先把焦点拿走，关了再还（2026-09-29）。
   const a = document.activeElement;
   if (a instanceof HTMLElement && a !== document.body && !$("gateSheet").contains(a)) { _gateFocusBack = a; a.blur(); }

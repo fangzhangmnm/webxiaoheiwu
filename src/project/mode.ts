@@ -40,7 +40,8 @@ export interface ProjectModeDeps {
   onReplacing?: (on: boolean) => void;
   editorEl: HTMLTextAreaElement;
   /** 纸的滚动容器（main.surface；v2.1.26 一张纸模型：正文框自己不滚）。换页滚回顶；重载后放回原位。 */
-  sheet: HTMLElement;
+  /** 纸在哪滚：只用 scrollTop（换页回到开头 / 重载放回原位）。平时 = main.surface，小窗开着 = 小窗的 body（v2.3.60，app.ts paperScroll）。 */
+  sheet: { scrollTop: number };
   /** 章节名框（纸面顶部；工程模式才显示）：显示当前节点名（不带 .txt），改了 = 改名。图片页显示 stem，扩展名锁死。 */
   titleEl: HTMLInputElement | HTMLTextAreaElement;
   /** 章节名框内容变了（打字 / 程序回写）→ 宿主让框随内容长高并重算纸面（v2.1.30 自动加行，user 2026-09-30「也自动加行？」「自动加行同意」）。 */

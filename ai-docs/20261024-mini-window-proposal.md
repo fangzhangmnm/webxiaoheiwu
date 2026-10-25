@@ -1,6 +1,6 @@
 # 小窗（老板键）设计稿
 
-> created 20261024 · by Claude Opus 5.5 (claude-opus-5-5) · as-of v2.3.59 / 2026-10-24 · status: **设计稿，§2 user 已拍，§5 user 已答，没写代码**。edited by Claude Opus 5.5 2026-10-24
+> created 20261024 · by Claude Opus 5.5 (claude-opus-5-5) · as-of v2.3.60 / 2026-10-24 · status: **v2.3.60 已做**（做法和稿子的差别见 §6）。edited by Claude Opus 5.5 2026-10-24
 > 讨论全程记在 user 的私仓里，这里是洗过的版本：只留设计要用的话。
 
 ## 0. user 原话（2026-10-24）
@@ -84,3 +84,12 @@
 - 字数和标题：「不放，都不放，盲人。说出去的话泼出去的水」。
 - `pip.ts` 抄还是抽库：user「感觉共用的东西应该不多？如果我错了可以pushback」→ Claude 同意不抽库：两家真能共用的只有五六十行（检测 API、开窗、抄样式、抄图标 sprite、搬过去搬回来）；收窗的判据不同（KudsRocket 按画面比例、WXHW 收到整行）；WXHW 最费事的接缝改造本来就不共用。照形状抄一份，第三家要用时再抽。
 - 小窗里能不能翻页（user：「不过打字机小窗能做页面导航吗？」）：能。WXHW 已有 Alt+↑ / Alt+↓（上一页 / 下一页，全树前序）和 Alt+←（回退），挂在 `app.ts` 的 document keydown 上；这条监听按 §4 改走接缝之后，在小窗里照样能按。小窗里不加按钮。
+
+## 6. 做的时候和稿子不一样 / 稿子没写到的（v2.3.60）
+
+- **入口**：除了 Alt+P，侧栏顶行加了「小窗」图标（stopgap「窗」字）。`picture-in-picture` 在本 app 已经是参考窗，所以另登记了 `mini-window`。浏览器没有这个 API 时入口**不露**（稿子原写「照 KudsRocket 写明不支持的原因」；改成不露，免得 iPad / Quest 上多一个点不了的图标），Alt+P 只在状态行说一句。
+- **候选条在小窗顶上**（和 §3 原稿一致）：贴底会压到正在写的第三行。
+- **点名藏，不能写 `.page > :not(.page-body)`**：paper.ts 的量尺探针和孪生框也是 `.page` 的直接子元素，藏了正文高度会量成一行。toast、锁卡也在 `.page` 里，一起藏。
+- **`html` 要 `overflow: hidden`**：不然 `body` 的 overflow 被提到视口上，`body.scrollTop` 没用，光标钉不住。
+- **占位多一句**「关掉这个标签页，小窗也会一起关」（照 KudsRocket）。
+- **没做**：按住说话（Left Ctrl / CapsLock）的监听没挂进小窗；拖出半行后「收成整行」只有单测，探针里没法模拟人拖窗口。

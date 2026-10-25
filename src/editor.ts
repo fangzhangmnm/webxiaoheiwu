@@ -23,7 +23,8 @@ export type SyncKind = "none" | "locked" | "unavailable" | "encryptPending" | "l
 export interface EditorDeps {
   editor: HTMLTextAreaElement;
   /** 纸的滚动容器（main.surface；v2.1.26 一张纸模型：正文框自己不滚，打开落在开头 = 纸滚回顶）。 */
-  sheet: HTMLElement;
+  /** 纸在哪滚：只用 scrollTop（换页回到开头 / 重载放回原位）。平时 = main.surface，小窗开着 = 小窗的 body（v2.3.60，app.ts paperScroll）。 */
+  sheet: { scrollTop: number };
   setStatus: (text: string, opts?: StatusOpts) => void;   // 瞬时事件 → toast
   setState: (text: string, opts?: StatusOpts) => void;    // 粘性稿态 → 顶栏（空 = 留白）
   isSignedIn: () => boolean;

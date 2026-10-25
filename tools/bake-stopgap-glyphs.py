@@ -57,6 +57,7 @@ SPECS = [
     # 2026-09-29（Claude Fable 5.1）：microphone / backspace 两枚真图标已从图标库收货（PENDING，待过目），stopgap 清零。
     # 新缺口照旧在这里加一行 (id, 字, (x, y, w, h), 说明) 再重烤，并去图标库 TODO.md 登记。
     ('typewriter', '打', (3, 3, 18, 18), '打字机模式（v2.3.59 顶栏钮，2026-10-24 Claude Opus 5.5）stopgap：库里没有打字机，已登记图标库 TODO.md'),
+    ('mini-window', '窗', (3, 3, 18, 18), '小窗（v2.3.60 侧栏顶行入口，2026-10-24 Claude Opus 5.5）stopgap：picture-in-picture 在本 app 已经是参考窗，另要一枚，已登记图标库 TODO.md'),
 ]
 syms = []
 for sid, text, box, note in SPECS:

@@ -149,6 +149,21 @@ body.typewriter:not([data-page-kind="image"]) .tw-band {
   background-size: 100% 100dvh; background-repeat: no-repeat; background-position: 0 calc(-1 * var(--bar-h));   /* 接着顶栏的渐变往下画：和 body 逐像素相同，没有接缝 */
   z-index: var(--z-typewriter);
 }
+/* 小窗（v2.3.60，src/pip.ts；设计稿 ai-docs/20261024-mini-window-proposal.md）：纸（.page）搬进 Document PiP 小窗，body.pip-body 是唯一的滚动容器。
+   「非常 borderless 精简」（user 2026-10-24）：纸贴满窗口，没有纸边 / 阴影 / 页边距；页名、页脚、子节目录、话筒、键盘钮全藏（「不放，都不放，盲人」）。
+   边距和 app.ts 的 PIP_PAD_* 同值：上下 8px = 光标跟随的边距（scroll-padding），右 32px 留给状态小图标；纸底多一行 = 光标行下面那行空的（三行字 + 一行空的）。 */
+html:has(> body.pip-body) { overflow: hidden; height: 100%; }   /* 挡住 body 的 overflow 被提到视口上（html 是 visible 时浏览器会这么做）：不挡的话 body 不是滚动容器，设 scrollTop 没用 */
+.pip-body { margin: 0; height: 100vh; overflow-x: hidden; overflow-y: auto; background: var(--bg-1); scroll-padding: 8px 0; scrollbar-width: none; }
+.pip-body::-webkit-scrollbar { display: none; }
+.pip-body .page { margin: 0; width: auto; max-width: none; min-height: 0; border: 0; border-radius: 0; box-shadow: none; padding: 8px 32px calc(var(--editor-lh) + 8px) 14px; }
+/* 点名藏，不用 .page > :not(.page-body)：稿纸量尺的探针和孪生框（paper.ts）也是 .page 的直接子元素，藏了就量不出正文高度 */
+.pip-body .parent-link, .pip-body .node-title-row, .pip-body .page-image, .pip-body .page-foot-row, .pip-body .mic-button, .pip-body .toast, .pip-body .lock-card, .pip-body .child-toc { display: none !important; }
+.pip-body .candidates { top: 2px; bottom: auto; max-width: calc(100% - 8px); }   /* 候选条在小窗顶上：盖住最旧的一两行，正在写的那一行（第三行）一直露着 */
+.pip-status { position: fixed; top: 7px; right: 8px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-muted); opacity: 0.45; pointer-events: none; z-index: var(--z-page); }   /* 小、淡、不压字、悬停不变样 */
+.pip-status svg { display: block; width: 14px; height: 14px; }
+.pip-status span:empty { display: none; }
+.pip-placeholder { display: grid; place-content: center; justify-items: center; gap: 10px; min-height: 30vh; color: var(--ink-muted); }   /* 纸搬走后主页面原位：一句话 + 收回 */
+.pip-placeholder p { margin: 0; }
 .surface {
   position: relative;
   height: 100dvh;

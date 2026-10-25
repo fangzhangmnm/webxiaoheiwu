@@ -49,6 +49,8 @@ export interface InputPipeline {
   routeHardwareKey(el: TextField, e: KeyboardEvent): Promise<void>;
   /** app 道里排着的改字现在就做完（落盘 / 换页 / 离开之前：文本框此刻必须是最新的）。 */
   flushText(): void;
+  /** 再挂一个窗口（小窗，v2.3.60）：实体键盘 / 系统组字 / 焦点这些整页监听多挂一份；「焦点所在的文本框」也认这个窗口。返回解绑。 */
+  attachWindow(win: Window): () => void;
 }
 
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn", "FnLock", "NumLock", "ScrollLock", "OS", "Hyper", "Super", "AltGraph"]);
@@ -59,7 +61,11 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
   let shiftCleanPress = false;
   let lastRealKeydownAt = 0;   // 系统软键盘路由判据：80 ms 内见过可辨认的 keydown = 实体键盘那条路已经处理过，beforeinput 不再重复路由
 
-  const focused = (): TextField | null => asTextField(document.activeElement);
+  const docs = new Set<Document>([document]);   // 挂着监听的文档：主页面 + 开着的小窗（attachWindow）
+  const focused = (): TextField | null => {
+    for (const doc of docs) if (doc !== document && doc.hasFocus()) return asTextField(doc.activeElement);   // 小窗有焦点 = 人在小窗里打字
+    return asTextField(document.activeElement);
+  };
   function target(): TextField | null {
     const a = focused();
     if (a) return a;
@@ -130,22 +136,23 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     apply(el, r);
     d.onChange();
   }
-  window.addEventListener("keydown", (e: KeyboardEvent) => {
+  // 整页监听都写成具名函数，统一由文件末尾的 bind() 挂（主窗口一份；小窗开着时 attachWindow 多挂一份）
+  const onKeydown = (e: KeyboardEvent): void => {
     if (isOwnSyntheticKey(e)) return;
     const el = asTextField(e.target);
     d.onActivity?.();
     if (e.key !== "Unidentified" && e.key !== "Process" && !MODIFIER_KEYS.has(e.key)) d.onKeydown?.(el, e);
     if (el) void routeHardwareKey(el, e);
-  }, true);
-  window.addEventListener("keyup", (e: KeyboardEvent) => {
+  };
+  const onKeyup = (e: KeyboardEvent): void => {
     if (e.key !== "Shift" || !shiftCleanPress) return;
     shiftCleanPress = false;
     const el = asTextField(e.target);
     if (!el || isMasked(el)) return;
     void ime.toggleAsciiMode().then((r) => { apply(el, r); d.onChange(); });
-  }, true);
-  window.addEventListener("blur", () => { shiftCleanPress = false; });
-  document.addEventListener("focusin", (e) => { const el = asTextField(e.target); if (el) lastField = el; shiftCleanPress = false; });
+  };
+  const onBlur = (): void => { shiftCleanPress = false; };
+  const onFocusin = (e: FocusEvent): void => { const el = asTextField(e.target); if (el) lastField = el; shiftCleanPress = false; };
 
   // ── 系统层组字 / 系统软键盘（逃生开关「改用系统输入法」关着、但系统仍插手的平台：Quest / 安卓把实体键盘的字母也过一遍系统输入法）──
   //   纯 ASCII 组字 = 系统替我们攒的拼音 → 结束时删掉系统留下的裸字母、逐字喂给内置输入法；含非 ASCII（系统输入法已出汉字）→ 原样保留。
@@ -155,7 +162,7 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
   const QUOTE_RE = /[“”‘’「」『』]/;
   const charBefore = (el: TextField, at: number): string => [...el.value.slice(Math.max(0, at - 2), at)].pop() ?? "";
   const systemQuotes = (el: TextField): boolean => api.autoTidy && !ime.enabled && !isProgrammaticEdit() && !isMasked(el) && editable(el);
-  window.addEventListener("compositionend", (event: Event) => {
+  const onCompositionEnd = (event: Event): void => {
     const el = asTextField(event.target);
     if (el && systemQuotes(el)) {
       const data = (event as CompositionEvent).data ?? "";
@@ -173,8 +180,8 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     if (el.value.slice(start, end) !== data) return;
     replaceRange(el, start, end, "");
     for (const ch of data) void press(ch.toLowerCase());
-  }, true);
-  window.addEventListener("beforeinput", (event: Event) => {
+  };
+  const onBeforeInput = (event: Event): void => {
     if (!isProgrammaticEdit()) drainText();   // 系统层插字之前，软键盘排着的改字先落（自己落字时发的 beforeinput 不算）
     const el = asTextField(event.target);
     const ie = event as InputEvent;
@@ -202,7 +209,7 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     if (!fake.defaultPrevented) return;   // 输入法放行 → 浏览器照常插入
     event.preventDefault();
     void pending.then((r) => { apply(el, r); d.onChange(); });
-  }, true);
+  };
 
   // ── app 自己的键（软键盘 / 候选条 / 退格钮）：一条队 ──
   let chain: Promise<void> = Promise.resolve();
@@ -264,9 +271,22 @@ export function createInputPipeline(d: PipelineDeps): InputPipeline {
     return chain.then(() => done);
   }
   // 在键盘以外按下手指 / 离开页面：先把排着的改字落掉（手指可能正要去点下一页、另一个框）
-  document.addEventListener("pointerdown", (e) => { if (textOps.length && !(e.target instanceof Element && e.target.closest("[data-ime-ui]"))) drainText(); }, true);
+  const onPointerdown = (e: PointerEvent): void => { if (textOps.length && !((e.target as Element | null)?.closest?.("[data-ime-ui]"))) drainText(); };   // 不用 instanceof：小窗里的元素是另一个 realm 的
+  /** 整页监听挂到一个窗口上；返回解绑。主窗口一份（下面），小窗一份（attachWindow，v2.3.60）。离开页面的落字（pagehide / visibilitychange）只认主窗口：代码都在主页面里跑。 */
+  function bind(win: Window): () => void {
+    const doc = win.document;
+    const subs: Array<[EventTarget, string, EventListener, boolean]> = [
+      [win, "keydown", onKeydown as EventListener, true], [win, "keyup", onKeyup as EventListener, true], [win, "blur", onBlur, false],
+      [doc, "focusin", onFocusin as EventListener, false], [win, "compositionend", onCompositionEnd, true], [win, "beforeinput", onBeforeInput, true],
+      [doc, "pointerdown", onPointerdown as EventListener, true],
+    ];
+    for (const [t, type, fn, cap] of subs) t.addEventListener(type, fn, cap);
+    docs.add(doc);
+    return () => { for (const [t, type, fn, cap] of subs) t.removeEventListener(type, fn, cap); if (doc !== document) docs.delete(doc); };
+  }
+  bind(window);
   window.addEventListener("pagehide", drainText);
   document.addEventListener("visibilitychange", drainText);
-  const api = { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey, flushText: drainText, /** CapsLock 是语音键时开：实体键盘单字母折回小写（见 routeHardwareKey）。 */ foldCapsLock: false, autoTidy: true };
+  const api = { target, focused, press, literal, pick, page, toggleMode, routeHardwareKey, flushText: drainText, attachWindow: bind, /** CapsLock 是语音键时开：实体键盘单字母折回小写（见 routeHardwareKey）。 */ foldCapsLock: false, autoTidy: true };
   return api;
 }

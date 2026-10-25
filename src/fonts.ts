@@ -48,5 +48,19 @@ export function installFont(id: FontId): Promise<boolean> {
   }
   return p;
 }
+/** 把已经装进主页面的字体再装一份进另一个文档（小窗，v2.3.60）。FontFace 属于创建它的那个窗口，要用那个窗口自己的 FontFace 构造；
+ *  不装的话小窗里落到系统字体，稿纸行高和横线都对不上。字节重新取一次（走 HTTP / SW 缓存）。 */
+export async function installFontsInto(doc: Document): Promise<void> {
+  const W = doc.defaultView as (Window & { FontFace?: typeof FontFace }) | null;
+  if (!W?.FontFace) return;
+  for (const [id, p] of installed) {
+    if (!(await p)) continue;
+    const bytes = await loadFontBytes(id); if (!bytes) continue;
+    try {
+      const face = new W.FontFace(FONT_FAMILY[id], bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+      await face.load(); doc.fonts.add(face);
+    } catch (e) { console.warn("[fonts] font into mini window failed", id, e); }
+  }
+}
 export const loadSansBytes = (): Promise<Uint8Array | null> => loadFontBytes("sans");
 export const installSansFont = (): Promise<boolean> => installFont("sans");

@@ -2,6 +2,8 @@ export declare function showBusy(label: string, hint?: string): void;
 export declare function hideBusy(): void;
 export declare function isBusyActive(): boolean;
 export declare function withBusy<T>(label: string, fn: () => Promise<T> | T, hint?: string): Promise<T>;
+/** 弹面之前先做的事（v2.3.60：小窗开着 → 先把纸收回大窗；面只画在主页面上，人在小窗里看不见）。sheet 和冲突锁屏面都走它。 */
+export declare function setBeforeModal(fn: (() => void) | null): void;
 /** 有 sheet 开着（别的流程想弹面前先看一眼，别盖住冲突面）。 */
 export declare function isSheetOpen(): boolean;
 export declare function initSheets(labels: {

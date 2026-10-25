@@ -1876,6 +1876,34 @@ export declare const S: {
         readonly zh: "这一页…（加页 / 挪到）";
         readonly en: "This page… (add / move)";
     };
+    readonly "top.typewriter": {
+        readonly zh: "打字机模式（Alt+T）";
+        readonly en: "Typewriter mode (Alt+T)";
+    };
+    readonly "pip.entry": {
+        readonly zh: "小窗（Alt+P）：纸搬进一个置顶的小窗口";
+        readonly en: "Mini window (Alt+P): move the page into a small always-on-top window";
+    };
+    readonly "pip.entryShort": {
+        readonly zh: "小窗";
+        readonly en: "Mini window";
+    };
+    readonly "pip.placeholder": {
+        readonly zh: "正在小窗里写。关掉这个标签页，小窗也会一起关。";
+        readonly en: "Writing in the mini window. Closing this tab closes the mini window too.";
+    };
+    readonly "pip.restore": {
+        readonly zh: "收回";
+        readonly en: "Bring back";
+    };
+    readonly "pip.unsupported": {
+        readonly zh: "这个浏览器没有小窗（电脑上的 Edge / Chrome 才有）";
+        readonly en: "This browser has no mini window (desktop Edge / Chrome only)";
+    };
+    readonly "pip.failed": {
+        readonly zh: "小窗没能打开";
+        readonly en: "The mini window could not open";
+    };
     readonly "edge.back": {
         readonly zh: "回到上一页";
         readonly en: "Back to the previous page";

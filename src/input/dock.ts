@@ -47,6 +47,8 @@ export interface ImeDock {
   flashMode(): void;
   /** 话筒此刻在键盘里（手机式那一块露着）：纸面的悬浮话筒钮让位（v2.3.31「语音也收进来」）。 */
   micInKeyboard(): boolean;
+  /** 再挂一个文档（小窗，v2.3.60）：那里的焦点变化也重画候选。返回解绑。 */
+  attachDocument(doc: Document): () => void;
   keyboard: ReturnType<typeof createSoftKeyboard>;
 }
 
@@ -160,8 +162,13 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     renderFloating(); setTimeout(renderFloating, MODE_FLASH_MS + 20);
   }
 
-  document.addEventListener("focusin", () => render());
-  document.addEventListener("focusout", () => { setTimeout(render, 0); });   // focusout 时 activeElement 还没换，下一拍再看
+  const onFocusIn = (): void => render();
+  const onFocusOut = (): void => { setTimeout(render, 0); };   // focusout 时 activeElement 还没换，下一拍再看
+  function attachDocument(doc: Document): () => void {
+    doc.addEventListener("focusin", onFocusIn); doc.addEventListener("focusout", onFocusOut);
+    return () => { doc.removeEventListener("focusin", onFocusIn); doc.removeEventListener("focusout", onFocusOut); };
+  }
+  attachDocument(document);
   window.addEventListener("resize", () => { if (shown) { keyboard.setForm(form()); stripHide.hidden = form() !== "phone"; setLayoutVar(); } });
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => setLayoutVar()).observe(d.dock);
 
@@ -176,5 +183,5 @@ export function createImeDock(d: ImeDockDeps): ImeDock {
     fPreedit.textContent = ""; fCands.innerHTML = "";
     if (shown) { cands.innerHTML = candHtml(sample, false); void cands.offsetHeight; cands.innerHTML = lastCandHtml; }   // 手机式那一块露着时，它的候选行也过一遍（同一帧内清掉，看不见）
   }
-  return { render, keyboardShown: () => shown, keyboard, warmUp, flashMode, micInKeyboard: () => shown && form() === "phone" };
+  return { render, keyboardShown: () => shown, keyboard, warmUp, flashMode, attachDocument, micInKeyboard: () => shown && form() === "phone" };
 }

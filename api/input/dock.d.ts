@@ -33,6 +33,8 @@ export interface ImeDock {
     flashMode(): void;
     /** 话筒此刻在键盘里（手机式那一块露着）：纸面的悬浮话筒钮让位（v2.3.31「语音也收进来」）。 */
     micInKeyboard(): boolean;
+    /** 再挂一个文档（小窗，v2.3.60）：那里的焦点变化也重画候选。返回解绑。 */
+    attachDocument(doc: Document): () => void;
     keyboard: ReturnType<typeof createSoftKeyboard>;
 }
 export declare function createImeDock(d: ImeDockDeps): ImeDock;

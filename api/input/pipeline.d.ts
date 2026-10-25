@@ -36,5 +36,7 @@ export interface InputPipeline {
     routeHardwareKey(el: TextField, e: KeyboardEvent): Promise<void>;
     /** app 道里排着的改字现在就做完（落盘 / 换页 / 离开之前：文本框此刻必须是最新的）。 */
     flushText(): void;
+    /** 再挂一个窗口（小窗，v2.3.60）：实体键盘 / 系统组字 / 焦点这些整页监听多挂一份；「焦点所在的文本框」也认这个窗口。返回解绑。 */
+    attachWindow(win: Window): () => void;
 }
 export declare function createInputPipeline(d: PipelineDeps): InputPipeline;
