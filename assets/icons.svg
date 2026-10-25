@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!--
-  56 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
+  57 icons extracted from the family icon library (../20260708 SVG Icons/icons.svg) by extract-icons.py — do not hand-edit; re-run the script instead.
   Family SVG Icons — MIT License, Copyright (c) 2026 fangzhangmnm.
   Contains work derived from (per-icon provenance in data-src):
     Bootstrap Icons — MIT License, Copyright (c) 2019-2024 The Bootstrap Authors · https://github.com/twbs/icons
@@ -106,6 +106,8 @@
   <symbol id="picture-in-picture" data-cat="viewport" data-src="own" data-note="画中画:大框(主画布) + 右下角内嵌小窗(参考小窗自己)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><!-- 大框（主画布）+ 内嵌小窗（参考小窗自己）—— picture-in-picture 隐喻 --> <rect x="3" y="4" width="18" height="14" rx="2"/> <rect x="12" y="10" width="7" height="5" rx="1"/></symbol>
   <!-- one-to-one — 1:1 像素:四角括号 + 中心一颗实心像素=「一图像素对一屏像素」(不写 1:1 文字)【WeebPaint 参考窗 ＋ 菜单「1:1 像素」项；fable 自画未过目】 -->
   <symbol id="one-to-one" data-cat="viewport" data-src="own" data-note="1:1 像素:四角括号 + 中心一颗实心像素=「一图像素对一屏像素」(不写 1:1 文字)【WeebPaint 参考窗 ＋ 菜单「1:1 像素」项；fable 自画未过目】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8 V3.5 H8"/><path d="M16 3.5 H20.5 V8"/><path d="M20.5 16 V20.5 H16"/><path d="M8 20.5 H3.5 V16"/><rect x="9.6" y="9.6" width="4.8" height="4.8" fill="currentColor" stroke="none"/></symbol>
+  <!-- mini-window — 小窗:比满格小一圈的窗口(14×12 圆角框) + 顶上一条实心标题栏 = 置顶小窗（Document PiP，Alt+P）；与 picture-in-picture(大框里嵌小框 = 参考窗)分工【WebXiaoHeiWu 侧栏顶行「小窗」入口 + KudsRocket 工具栏 / ☰「小窗」钮；2026-10-25 Claude Opus 5.5 自画未过目（渲过亮 / 暗底 16 / 24 px，四案里选的实心标题栏）】 -->
+  <symbol id="mini-window" data-cat="viewport" data-src="own" data-note="小窗:比满格小一圈的窗口(14×12 圆角框) + 顶上一条实心标题栏 = 置顶小窗（Document PiP，Alt+P）；与 picture-in-picture(大框里嵌小框 = 参考窗)分工【WebXiaoHeiWu 侧栏顶行「小窗」入口 + KudsRocket 工具栏 / ☰「小窗」钮；2026-10-25 Claude Opus 5.5 自画未过目（渲过亮 / 暗底 16 / 24 px，四案里选的实心标题栏）】" data-review="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6 H17 A2 2 0 0 1 19 8 V9.8 H5 V8 A2 2 0 0 1 7 6 Z" fill="currentColor" stroke="none"/><rect x="5" y="6" width="14" height="12" rx="2"/></symbol>
   <!-- ui -->
   <!-- menu — 汉堡菜单:三条等长横线(y=7/12/17) -->
   <symbol id="menu" data-cat="ui" data-src="own" data-note="汉堡菜单:三条等长横线(y=7/12/17)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line> <line x1="4" y1="12" x2="20" y2="12"></line> <line x1="4" y1="17" x2="20" y2="17"></line></symbol>

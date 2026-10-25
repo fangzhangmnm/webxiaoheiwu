@@ -1,6 +1,6 @@
 # 本 app 的图标
 
-56 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
+57 icons · 提取自家族图标库 `../20260708 SVG Icons/icons.svg` · 由 `extract-icons.py` 生成，别手改。
 
 用法：把 sprite 整段内联到 `<body>` 顶部，然后按 id 引用；
 ⚠ sprite 根自带的隐藏样式（1×1 + `opacity:0`）别换成 `display:none`——
@@ -12,7 +12,7 @@
 <svg width="24" height="24"><use href="#magic-wand"/></svg>
 ```
 
-> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`one-to-one`、`microphone`、`backspace`、`key-shift`、`key-enter`
+> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`one-to-one`、`mini-window`、`microphone`、`backspace`、`key-shift`、`key-enter`
 > 见库 `index.html` 的「待过目」栏；过目后进库/打回归库 session。
 
 
@@ -101,6 +101,7 @@
 |------|------|
 | `picture-in-picture` | 画中画:大框(主画布) + 右下角内嵌小窗(参考小窗自己) |
 | `one-to-one` 👁待过目 | 1:1 像素:四角括号 + 中心一颗实心像素=「一图像素对一屏像素」(不写 1:1 文字)【WeebPaint 参考窗 ＋ 菜单「1:1 像素」项；fable 自画未过目】 |
+| `mini-window` 👁待过目 | 小窗:比满格小一圈的窗口(14×12 圆角框) + 顶上一条实心标题栏 = 置顶小窗（Document PiP，Alt+P）；与 picture-in-picture(大框里嵌小框 = 参考窗)分工【WebXiaoHeiWu 侧栏顶行「小窗」入口 + KudsRocket 工具栏 / ☰「小窗」钮；2026-10-25 Claude Opus 5.5 自画未过目（渲过亮 / 暗底 16 / 24 px，四案里选的实心标题栏）】 |
 
 ## ui
 
