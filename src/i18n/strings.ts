@@ -502,6 +502,7 @@ export const S = {
   "project.unavailable":    { zh: "本地没有这本书，云端也拿不到", en: "Book not available locally, and the cloud is unreachable" },
   "edge.aria":              { zh: "侧栏", en: "Sidebar" },
   "top.addPage":            { zh: "这一页…（加页 / 挪到）", en: "This page… (add / move)" },
+  "top.typewriter":         { zh: "打字机模式（Alt+T）", en: "Typewriter mode (Alt+T)" },
   "edge.back":              { zh: "回到上一页", en: "Back to the previous page" },
   "edge.forward":           { zh: "前进（回退之后再回去）", en: "Forward (after going back)" },
   "edge.search":            { zh: "检索", en: "Search" },

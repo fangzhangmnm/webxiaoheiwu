@@ -4,6 +4,7 @@
    user 2026-09-10「麦克风按钮和边栏的 z order 乱了。z order 的问题系统解决一下」：话筒以前 7 > 侧栏 5。 ═══ */
 :root {
   --z-page: 5;
+  --z-typewriter: 7;   /* 打字机模式的遮挡带（v2.3.59）：纸面浮件（page）之上、参考窗（chrome − 2）之下——参考窗要能放在纸条上方那块空地上 */
   --z-chrome: 10;
   --z-overlay: 300;
   --z-drawer: 350;
@@ -128,8 +129,26 @@ body {
    WebKit 回退 bug 316902（iOS 26.4 起，26.3.1 正常；iOS 上的 Edge 同一个引擎）flex 列滚动容器的 padding 不进 scrollHeight——
    一屏左右长的页整张滚不动、纸底压在键盘下，长页最后一截够不着；短页靠 min-height 缩，所以「只有部分页面」。Chromium 无头复现不了，结构修。
    占位块再多一截 --sheet-overscroll = 大半页（可见纸高 × 0.6；user 同日「能不能加入大半页的额外滚动余量」）：最后一行能推到屏幕上半截写。图片页没有。 */
-:root { --sheet-top: calc(var(--top-floor) + 32px); --sheet-bottom: calc(var(--bottom-floor) + var(--kb-offset, 0px) + var(--dock-h, 0px)); --sheet-h: calc(100dvh - var(--sheet-top) - var(--sheet-bottom)); --sheet-overscroll: calc(var(--sheet-h) * 0.6); }
+:root { --bar-h: calc(var(--top-floor) + 32px); --sheet-top: var(--bar-h); --sheet-bottom: calc(var(--bottom-floor) + var(--kb-offset, 0px) + var(--dock-h, 0px)); --sheet-h: calc(100dvh - var(--sheet-top) - var(--sheet-bottom)); --sheet-overscroll: calc(var(--sheet-h) * 0.6); }
 body[data-page-kind="image"] { --sheet-overscroll: 0px; }
+/* 打字机模式（v2.3.59，user 2026-10-24「就是相当于页的那个top放到很下面。像是打字机的纸一样」「写字留三行，然后下面一行新的，所以一共四行，其他的胖子占多少地方还是占多少」）：
+   只挪纸的上沿 --sheet-top，别的（顶栏那一排 --bar-h、章节名、页脚、键盘、话筒）原样。--tw-strip = 4 行 + 上下各 8px 的光标跟随边距，app.ts 按行高写；
+   followCaret 本来就在光标行下面留一行看头 → 三行字 + 一行空的。--sheet-h / --sheet-overscroll 要在这里重算（:root 上的是按 :root 的 --sheet-top 算好的值）。
+   没写 --tw-strip 之前回落 100dvh = 上沿不动。body.typewriter 只在能写字的页上挂（app.ts applyTypewriter：锁着 / 图片页 / 没稿都不挂），图片页这里再挡一道。 */
+body.typewriter:not([data-page-kind="image"]) {
+  --sheet-top: max(var(--bar-h), calc(100dvh - var(--sheet-bottom) - var(--tw-strip, 100dvh)));
+  --sheet-h: calc(100dvh - var(--sheet-top) - var(--sheet-bottom)); --sheet-overscroll: calc(var(--sheet-h) * 0.6);
+}
+.tw-band { display: none; }
+body.typewriter:not([data-page-kind="image"]) .tw-band {
+  display: block; position: fixed; left: 0; right: 0; top: var(--bar-h); height: calc(var(--sheet-top) - var(--bar-h));
+  background-color: var(--bg-0);
+  background-image:
+    radial-gradient(80% 60% at 50% 0%, rgba(255, 250, 235, 0.45), transparent 60%),
+    radial-gradient(60% 50% at 100% 100%, rgba(160, 88, 38, 0.06), transparent 65%);
+  background-size: 100% 100dvh; background-repeat: no-repeat; background-position: 0 calc(-1 * var(--bar-h));   /* 接着顶栏的渐变往下画：和 body 逐像素相同，没有接缝 */
+  z-index: var(--z-typewriter);
+}
 .surface {
   position: relative;
   height: 100dvh;
@@ -150,7 +169,7 @@ body[data-page-kind="image"] { --sheet-overscroll: 0px; }
 .top-bar {
   position: fixed;
   top: 0; left: 0; right: 0;
-  height: var(--sheet-top);
+  height: var(--bar-h);   /* 打字机模式下 --sheet-top 会变高，顶栏这一排不跟（下面那截由 .tw-band 盖） */
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
@@ -240,6 +259,7 @@ body[data-page-kind="image"] { --sheet-overscroll: 0px; }
   background: var(--bg-2);
   outline: none;
 }
+.menu-button[aria-pressed="true"] { color: var(--accent-strong); }   /* 开着的模式钮（打字机）：图标换成强调色，底色不变 */
 
 /* 文件名（顶栏）：管理句柄不是标题（ADR-0007）——小字、可点改名、溢出省略 */
 .doc-name {
@@ -1469,7 +1489,7 @@ body[data-page-kind="image"] { --sheet-overscroll: 0px; }
 
 /* ── 审计修补（2026-09-03）── */
 .crypto-toggle[hidden], .lock-toggle[hidden] { display: none !important; }   /* 作者层 display 压掉了 UA 的 [hidden]（审计 UI-2） */
-.key-banner { position: fixed; top: calc(var(--sheet-top) + 4px); left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: var(--z-page); margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
+.key-banner { position: fixed; top: calc(var(--bar-h) + 4px); left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: var(--z-page); margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
 .status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* 长状态别把标题挤没（审计 UI-11） */
 .voice-config-save.is-danger { color: var(--danger, #b0413e); }   /* 暗色遗留的 #ff8a8a 在淡底上看不见（审计 UI-17） */
 .drawer.hidden { visibility: hidden; transition: transform 0.25s ease, visibility 0s linear 0.25s; }   /* 屏外按钮不可 Tab 到（审计 UI-18） */
@@ -1584,7 +1604,7 @@ body[data-project] .parent-link:not([hidden]) { display: inline-flex; }
 
 /* 子节目录：样式在文件末尾「稿纸几何」一节（v2.1.17） */
 /* 锁卡（0.2 护栏，2026-09-04）：锁着 / 不可用的稿不再假装是编辑器 */
-.lock-card { position: fixed; top: var(--sheet-top); bottom: var(--sheet-bottom); left: max(0px, 50% - var(--box-max) / 2); right: max(0px, 50% - var(--box-max) / 2); z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
+.lock-card { position: fixed; top: var(--bar-h); bottom: var(--sheet-bottom); left: max(0px, 50% - var(--box-max) / 2); right: max(0px, 50% - var(--box-max) / 2); z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
 .lock-card[hidden] { display: none; }
 .lock-card-ico { width: 28px; height: 28px; color: var(--enc); }
 .lock-card-text { margin: 0; font-family: var(--font-ui); font-size: 14px; color: var(--ink-soft); max-width: 36em; }

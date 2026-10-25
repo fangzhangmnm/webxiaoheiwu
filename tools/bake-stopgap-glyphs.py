@@ -11,12 +11,19 @@ from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.misc.transform import Transform
 
-FONTS = {'cjk': '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 'sans': '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'}
+# 每类按顺序取第一个存在的 (路径, TTC 里第几个, 出处标注)。Droid 不在的机器退回 Noto Sans CJK SC（OFL-1.1；2026-10-24 Claude Opus 5.5 加，fzMiniWin 上没装 Droid）
+import os
+FONTS = {'cjk': [('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 0, 'DroidSansFallbackFull(Apache-2.0)'),
+                 ('/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc', 2, 'NotoSansCJK-SC-Medium(OFL-1.1)')],
+         'sans': [('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 0, 'DejaVuSans-Bold(Bitstream-Vera)')]}
+USED = {}
 _fts = {}
 def fontfor(name):
     if name not in _fts:
-        ft = TTFont(FONTS[name], lazy=True)
+        path, num, label = next(f for f in FONTS[name] if os.path.exists(f[0]))
+        ft = TTFont(path, lazy=True, fontNumber=num)
         _fts[name] = (ft.getGlyphSet(), ft.getBestCmap())
+        USED[name] = label
     return _fts[name]
 
 def text_path(text, box, font='cjk'):
@@ -49,11 +56,13 @@ def text_path(text, box, font='cjk'):
 SPECS = [
     # 2026-09-29（Claude Fable 5.1）：microphone / backspace 两枚真图标已从图标库收货（PENDING，待过目），stopgap 清零。
     # 新缺口照旧在这里加一行 (id, 字, (x, y, w, h), 说明) 再重烤，并去图标库 TODO.md 登记。
+    ('typewriter', '打', (3, 3, 18, 18), '打字机模式（v2.3.59 顶栏钮，2026-10-24 Claude Opus 5.5）stopgap：库里没有打字机，已登记图标库 TODO.md'),
 ]
 syms = []
 for sid, text, box, note in SPECS:
     d = text_path(text, box[:4], box[4] if len(box) > 4 else 'cjk')
-    syms.append(f'  <symbol id="{sid}" data-cat="stopgap" data-src="baked:DroidSansFallbackFull(Apache-2.0)/DejaVuSans-Bold(Bitstream-Vera)" data-note="{note}" viewBox="0 0 24 24"><path d="{d}" fill="currentColor" stroke="none"/></symbol>')
+    font = box[4] if len(box) > 4 else 'cjk'
+    syms.append(f'  <symbol id="{sid}" data-cat="stopgap" data-src="baked:{USED[font]}" data-note="{note}" viewBox="0 0 24 24"><path d="{d}" fill="currentColor" stroke="none"/></symbol>')
 
 HEADER = '''<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none">
 <!-- WebXiaoHeiWu 本地 stopgap 补丁 sprite —— 共享库（20260708 SVG Icons）里还没有的图标先用
@@ -71,8 +80,11 @@ HEADER = '''<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;wid
 open('assets/icons-local.svg', 'w', encoding='utf-8').write(HEADER + '\n'.join(syms) + '\n</svg>\n')
 print("baked", len(syms), "symbols")
 
-# 渲一眼（家规：别盲画）
-import cairosvg
+# 渲一眼（家规：别盲画）。没装 cairosvg 的机器跳过预览（sprite 已经写好了），换个装了的 python 渲：~/venvs/20261010-songwriting 有
+try:
+    import cairosvg
+except ImportError:
+    print("preview skipped: no cairosvg"); raise SystemExit(0)
 prev = '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 96 24"><rect width="96" height="24" fill="#fff"/>'
 for i, (sid, text, box, note) in enumerate(SPECS):
     d = text_path(text, box[:4], box[4] if len(box) > 4 else 'cjk')

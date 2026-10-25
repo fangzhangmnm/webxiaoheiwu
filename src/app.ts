@@ -152,6 +152,8 @@ const softKeyboardPref = (): SoftKeyboardPref => { const v = deviceKvGet("softKe
 //   要用得按纸面左下角的键盘钮。hardware 跨启动记着（device-kv `softKeyboardHidden`）；summoned = 非触屏设备（Quest / 桌面）用钮召出来的。
 let kbHiddenBy: "user" | "hardware" | null = deviceKvGet("softKeyboardHidden") === "hw" ? "hardware" : null;
 let kbSummoned = false;
+// 打字机模式（v2.3.59，user 2026-10-24「打字机模式要不要在本机记住。 记住」）：per-device，device-kv `typewriter` = "1"。几何全在 styles.css（body.typewriter），这里只记开关
+let typewriter = deviceKvGet("typewriter") === "1";
 function keyboardWanted(): boolean {
   const pref = softKeyboardPref();
   if (pref === "off") return false;
@@ -427,10 +429,18 @@ function syncBodyHeight(): void {
   const h = `${Math.max(1, Math.round(paper.contentHeight() / lh)) * lh}px`;
   if (editorEl.style.height !== h) editorEl.style.height = h;
   childToc.hidden = !(tocChildren.length > 0 && project.active());
+  syncTypewriterStrip(lh);
+}
+/** 打字机模式的纸条高（styles.css `--tw-strip`）= 4 行 + 光标跟随上下各 8px 的边距。行高（字号档 / 行宽 / 字体装好都会变）在这里跟上；没开就撤掉。 */
+function syncTypewriterStrip(lh = paper.lineHeight()): void {
+  const v = typewriter ? `${4 * lh + 16}px` : "";
+  if (document.body.style.getPropertyValue("--tw-strip") === v) return;
+  if (v) document.body.style.setProperty("--tw-strip", v); else document.body.style.removeProperty("--tw-strip");
 }
 /** 光标跟随的兜底：浏览器插字后会把光标滚进最近的可滚祖先（Chromium / WebKit 都会），但键盘那一块露收 / iOS 视口变了它不管——
- *  光标那一行不在纸的可见区（顶栏之下、键盘之上）就把纸滚过去。量光标行用同一个孪生框（光标在末尾时不用再量）。 */
-function followCaret(): void {
+ *  光标那一行不在纸的可见区（顶栏之下、键盘之上）就把纸滚过去。量光标行用同一个孪生框（光标在末尾时不用再量）。
+ *  `pin` = 不管在不在可见区，都把光标行放到最下面那个位置（下面只剩一行看头）；打字机模式一打开时用。 */
+function followCaret(pin = false): void {
   if (document.activeElement !== editorEl) return;
   const lh = paper.lineHeight();
   const atEnd = (editorEl.selectionEnd ?? 0) >= editorEl.value.length;
@@ -445,7 +455,7 @@ function followCaret(): void {
   //   滚动量对齐设备像素：光标行底边是小数，直接加上去 scrollTop 就带小数，dpr 3 上字和线的相位对不上（ruled-audit drift 0.50 抓到）。
   //   留一行看头（光标行下面 / 上面还能看见一行）：放在**条件**里而不是滚动量里——这样每换一行只滚一行，末行下面仍有一条线（ruled-audit 末行 gap 靠它）。
   const dpr = window.devicePixelRatio || 1; const snap = (v: number) => Math.round(v * dpr) / dpr;
-  if (bottom + lh > viewBottom - 8) sheet.scrollTop = snap(sheet.scrollTop + (bottom + lh - (viewBottom - 8)));
+  if (pin || bottom + lh > viewBottom - 8) sheet.scrollTop = snap(Math.max(0, sheet.scrollTop + (bottom + lh - (viewBottom - 8))));
   else if (top - lh < viewTop + 8) sheet.scrollTop = snap(sheet.scrollTop - ((viewTop + 8) - (top - lh)));
 }
 function renderPageKin(): void {
@@ -1263,6 +1273,28 @@ const cryptoToggle = $<HTMLButtonElement>("cryptoToggle");
 const lockToggle = $<HTMLButtonElement>("lockToggle");
 const docNameButton = $<HTMLButtonElement>("docNameButton");   // 文件名 = 管理句柄不是标题（ADR-0007）：住顶栏，点了改名
 const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`; };
+// 打字机模式（v2.3.59；设计稿 ai-docs/20261024-typewriter-mode-proposal.md）：钮只在能写字的页上露（锁着 / 图片页 / 没稿不露），body.typewriter 跟着钮走
+const typewriterButton = $<HTMLButtonElement>("typewriterButton");
+function applyTypewriter(): void {
+  syncTypewriterStrip();   // 先写纸条高再挂 class：没有一帧落到「上沿 = 整屏」的回落值
+  document.body.classList.toggle("typewriter", typewriter && !typewriterButton.hidden);
+  typewriterButton.setAttribute("aria-pressed", typewriter ? "true" : "false");
+}
+/** 开 = 跳到最后一行（光标放末尾，光标行放到纸条第三行、下面一行空着）；关 = 上沿还原、光标不动。
+ *  user 2026-10-24「对，开打字机模式跳最后一行，还原之后光标不动」；打开别的页不跳（「不用」）——开页照旧落在开头。 */
+function setTypewriter(on: boolean): void {
+  typewriter = on; deviceKvSet("typewriter", on ? "1" : null);
+  applyTypewriter();
+  editorEl.focus({ preventScroll: true });
+  if (on) { const n = editorEl.value.length; editorEl.setSelectionRange(n, n); }
+  followCaret(on);
+}
+typewriterButton.addEventListener("click", () => setTypewriter(!typewriter));
+// 遮挡带底下就是纸：鼠标在上面那块空地上滚轮照样滚纸（点击不穿透——穿过去会把光标点进看不见的旧字里）
+$("typewriterBand").addEventListener("wheel", (e: WheelEvent) => {
+  sheet.scrollTop += e.deltaY * (e.deltaMode === 1 ? paper.lineHeight() : e.deltaMode === 2 ? sheet.clientHeight : 1);
+  e.preventDefault();
+}, { passive: false });
 function renderTopbar(): void {
   if (project.active()) {   // 工程模式：顶栏 = 工程名（节点名住纸面顶部的章节名框）；加密/只读钮属于 txt 稿
     docNameButton.hidden = false; docNameButton.textContent = project.displayName() ?? ""; docNameButton.classList.remove("pending");
@@ -1277,6 +1309,8 @@ function renderTopbar(): void {
     useIcon(lockToggle, project.readOnly() ? "edit-disabled" : "edit-enabled");
     lockToggle.title = project.readOnly() ? t("top.readOnlyOff") : t("top.readOnlyOn"); lockToggle.setAttribute("aria-label", lockToggle.title);
     keyBanner.hidden = true;
+    typewriterButton.hidden = project.locked() || project.currentKind() === "image";
+    applyTypewriter();
     renderMicVisibility();
     return;
   }
@@ -1295,6 +1329,8 @@ function renderTopbar(): void {
   cryptoToggle.setAttribute("aria-label", cryptoToggle.title);
   lockToggle.hidden = true;   // txt 没有修改锁（2026-09-10 user：锁跟着作品进 zip，txt 不支持）
   keyBanner.hidden = !(st.name && st.encrypted && !st.locked && fileUsesOtherPassword(st.name));
+  typewriterButton.hidden = !hasDoc || !!st.locked || !!st.unavailable;
+  applyTypewriter();
   renderMicVisibility();
 }
 const keyBanner = $("keyBanner");
@@ -2044,6 +2080,8 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); editorEl.focus(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
+  // 打字机模式 Alt+T（user 2026-10-24「你可以编一个」；Alt+P 留给小窗）。认物理键位：Mac 的 Option+T 出的是「†」；内置输入法不碰 Alt 组合
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === "KeyT" && !typewriterButton.hidden) { event.preventDefault(); setTypewriter(!typewriter); return; }
   if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }
   if (project.active() && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey) { event.preventDefault(); if (event.key === "ArrowUp" ? project.prevPage() : project.nextPage()) edgeSidebar.render(); }   // 上一页 / 下一页（DFS）
 });

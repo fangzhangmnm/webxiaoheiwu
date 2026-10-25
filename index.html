@@ -149,6 +149,8 @@
   <symbol id="keyboard" data-cat="ui" data-src="own" data-note="键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="7.2" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="10.4" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="13.6" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="16.8" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="7.2" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="10.4" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="13.6" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><circle cx="16.8" cy="12.8" r="1.15" fill="currentColor" stroke="none"/><path d="M8.6 15.6 H15.4"/></symbol>
   <!-- archive-box — 归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive) -->
   <symbol id="archive-box" data-cat="ui" data-src="lucide:archive" data-note="归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v4H3z"/> <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/> <path d="M10 13h4"/></symbol>
+<!-- 本地 stopgap 补丁（assets/icons-local.svg，待真图标） -->
+  <symbol id="typewriter" data-cat="stopgap" data-src="baked:NotoSansCJK-SC-Medium(OFL-1.1)" data-note="打字机模式（v2.3.59 顶栏钮，2026-10-24 Claude Opus 5.5）stopgap：库里没有打字机，已登记图标库 TODO.md" viewBox="0 0 24 24"><path d="M5.93 3.06V6.88H3.17V8.62H5.93V12.41L3 13.14L3.52 14.97L5.93 14.31V18.79C5.93 19.06 5.81 19.16 5.54 19.16C5.29 19.18 4.45 19.18 3.6 19.14C3.83 19.64 4.11 20.4 4.16 20.88C5.54 20.88 6.39 20.84 6.98 20.53C7.56 20.26 7.77 19.78 7.77 18.81V13.78L10.49 12.99L10.25 11.26L7.77 11.92V8.62H10.23V6.88H7.77V3.06ZM10.45 4.61V6.45H15.7V18.52C15.7 18.87 15.57 18.98 15.18 19C14.77 19 13.34 19.02 12.02 18.94C12.31 19.49 12.66 20.4 12.76 20.94C14.58 20.94 15.84 20.92 16.64 20.59C17.41 20.26 17.68 19.68 17.68 18.54V6.45H21V4.61Z" fill="currentColor" stroke="none"/></symbol>
 </svg>
 <!-- ICON-SPRITE:END -->
 
@@ -168,6 +170,10 @@
         <div class="status" aria-live="polite">
           <span id="saveStatus"></span>
         </div>
+        <!-- 打字机模式（v2.3.59，user 2026-10-24「打字机当然需要是一个能立刻按的按钮」）：纸的上沿压到屏幕下方、只露最后几行；本机记住；Alt+T -->
+        <button class="menu-button" id="typewriterButton" type="button" hidden aria-pressed="false" aria-label="打字机模式（Alt+T）" data-i18n-aria="top.typewriter" data-i18n-title="top.typewriter">
+          <svg class="ico" aria-hidden="true"><use href="#typewriter"/></svg>
+        </button>
         <button class="menu-button" id="addPageButton" type="button" hidden aria-label="加一页" data-i18n-aria="top.addPage" data-i18n-title="top.addPage">
           <svg class="ico" aria-hidden="true"><use href="#new"/></svg>
         </button>
@@ -175,6 +181,8 @@
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
       </header>
+      <!-- 打字机模式的遮挡带：顶栏之下、纸条上沿之上，盖住滚上去的旧字。不长在顶栏里：顶栏在 chrome 层，参考窗（chrome − 2）要能放在这块空地上 -->
+      <div class="tw-band" id="typewriterBand" aria-hidden="true"></div>
 
       <div class="ghost-banner key-banner" id="keyBanner" hidden>
         <span data-i18n="ui.key.otherPw">这篇用的不是当前密码（保存仍用它自己的密码）</span>
@@ -580,6 +588,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-fb9ff306cd11.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-d7e3c0465892.mjs"></script>
   </body>
 </html>
