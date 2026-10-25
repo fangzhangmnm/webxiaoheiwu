@@ -502,7 +502,7 @@ export const S = {
   "project.unavailable":    { zh: "本地没有这本书，云端也拿不到", en: "Book not available locally, and the cloud is unreachable" },
   "edge.aria":              { zh: "侧栏", en: "Sidebar" },
   "top.addPage":            { zh: "这一页…（加页 / 挪到）", en: "This page… (add / move)" },
-  "top.typewriter":         { zh: "打字机模式（Alt+T）", en: "Typewriter mode (Alt+T)" },
+  "top.typewriter":         { zh: "只看几行（Alt+T）", en: "Only the last few lines (Alt+T)" },   // 界面名 user 2026-10-25「这个就叫只看几行吧」（原「打字机模式」；代码里仍叫 typewriter）
   "pip.entry":              { zh: "小窗（Alt+P）：纸搬进一个置顶的小窗口", en: "Mini window (Alt+P): move the page into a small always-on-top window" },
   "pip.entryShort":         { zh: "小窗", en: "Mini window" },
   "pip.placeholder":        { zh: "正在小窗里写。关掉这个标签页，小窗也会一起关。", en: "Writing in the mini window. Closing this tab closes the mini window too." },

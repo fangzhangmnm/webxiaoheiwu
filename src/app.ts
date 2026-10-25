@@ -1284,7 +1284,7 @@ const cryptoToggle = $<HTMLButtonElement>("cryptoToggle");
 const lockToggle = $<HTMLButtonElement>("lockToggle");
 const docNameButton = $<HTMLButtonElement>("docNameButton");   // 文件名 = 管理句柄不是标题（ADR-0007）：住顶栏，点了改名
 const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`; };
-// 打字机模式（v2.3.59；设计稿 ai-docs/20261024-typewriter-mode-proposal.md）：钮只在能写字的页上露（锁着 / 图片页 / 没稿不露），body.typewriter 跟着钮走
+// 打字机模式 = 界面上的「只看几行」（v2.3.59；2026-10-25 user「这个就叫只看几行吧」，代码 / 本机记忆的键名照旧叫 typewriter；设计稿 ai-docs/20261024-typewriter-mode-proposal.md）：钮只在能写字的页上露（锁着 / 图片页 / 没稿不露），body.typewriter 跟着钮走
 const typewriterButton = $<HTMLButtonElement>("typewriterButton");
 function applyTypewriter(): void {
   syncTypewriterStrip();   // 先写纸条高再挂 class：没有一帧落到「上沿 = 整屏」的回落值
