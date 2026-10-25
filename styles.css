@@ -162,6 +162,9 @@ html:has(> body.pip-body) { overflow: hidden; height: 100%; }   /* 挡住 body �
 .pip-status { position: fixed; top: 7px; right: 8px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-muted); opacity: 0.45; pointer-events: none; z-index: var(--z-page); }   /* 小、淡、不压字、悬停不变样 */
 .pip-status svg { display: block; width: 14px; height: 14px; }
 .pip-status span:empty { display: none; }
+.pip-status .pip-mic { color: var(--accent-strong); opacity: 1; }   /* 正在听：比另外两枚亮（麦克风开着要看得见） */
+.pip-status:has(.pip-mic:not(:empty)) { opacity: 1; }
+.pip-status:has(.pip-mic:not(:empty)) > :not(.pip-mic) { opacity: 0.45; }
 .pip-placeholder { display: grid; place-content: center; justify-items: center; gap: 10px; min-height: 30vh; color: var(--ink-muted); }   /* 纸搬走后主页面原位：一句话 + 收回 */
 .pip-placeholder p { margin: 0; }
 .surface {

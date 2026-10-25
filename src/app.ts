@@ -1313,23 +1313,30 @@ const PIP_PAD_TOP = 8, PIP_PAD_BOTTOM = 8, PIP_PAD_LEFT = 14, PIP_PAD_RIGHT = 32
 let pipCleanup: Array<() => void> = [];
 function pipEligible(): boolean { return !typewriterButton.hidden; }   // 和打字机钮同一个条件：有稿、没锁、不是图片页
 function closePipIfOpen(): void { if (pip?.active) pip.close(); }
-function listen(t: EventTarget, type: string, fn: EventListener): () => void { t.addEventListener(type, fn); return () => t.removeEventListener(type, fn); }
+function listen(t: EventTarget, type: string, fn: EventListener, capture = false): () => void { t.addEventListener(type, fn, capture); return () => t.removeEventListener(type, fn, capture); }
 /** 小窗开着时关 / 刷新主页面 = 小窗跟着没了：挂浏览器自带的离开确认（user 2026-10-24「开着小窗的时候弹挽留窗口不就得了？」；不是 app 弹框，KudsRocket 同款）。字照样已经落在本机。 */
 function onPipBeforeUnload(e: BeforeUnloadEvent): void { e.preventDefault(); e.returnValue = ""; }
 function enterPip(win: Window): void {
   const doc = win.document;
   // 两枚状态小图标：照抄顶栏加密钮 / 云钮里的图标（user 09-30「加密状态和云状态必须可见！」），开着时跟着变
   const status = doc.createElement("div"); status.className = "pip-status"; status.setAttribute("aria-hidden", "true");
-  const lockIco = doc.createElement("span"), cloudIco = doc.createElement("span");
-  status.append(lockIco, cloudIco); doc.body.append(status);
-  const syncStatus = (): void => { lockIco.innerHTML = cryptoToggle.hidden ? "" : cryptoToggle.innerHTML; cloudIco.innerHTML = saveButton.hidden ? "" : saveButton.innerHTML; };
+  const lockIco = doc.createElement("span"), cloudIco = doc.createElement("span"), micIco = doc.createElement("span");
+  micIco.className = "pip-mic";   // 按住说话正在听：话筒钮在小窗里藏着，麦克风开着必须看得见（v2.3.61）
+  status.append(lockIco, cloudIco, micIco); doc.body.append(status);
+  const syncStatus = (): void => {
+    lockIco.innerHTML = cryptoToggle.hidden ? "" : cryptoToggle.innerHTML; cloudIco.innerHTML = saveButton.hidden ? "" : saveButton.innerHTML;
+    const st = micButton.getAttribute("data-state");
+    micIco.innerHTML = st === "listening" || st === "recording" || st === "transcribing" ? `<svg class="ico" aria-hidden="true"><use href="#microphone"/></svg>` : "";
+    micIco.dataset.state = st ?? "";
+  };
   syncStatus();
   const mo = new MutationObserver(syncStatus);
-  for (const b of [cryptoToggle, saveButton]) mo.observe(b, { attributes: true, childList: true, subtree: true });
+  for (const b of [cryptoToggle, saveButton, micButton]) mo.observe(b, { attributes: true, childList: true, subtree: true });
   const onResize = (): void => { paper.refresh(); syncBodyHeight(); followCaret(); };
   pipCleanup = [
     input.attachWindow(win), imeDock.attachDocument(doc),
     listen(doc, "keydown", onAppKeydown as EventListener), listen(win, "resize", onResize),
+    listen(doc, "keydown", onPttKeydown as EventListener, true), listen(doc, "keyup", onPttKeyup as EventListener),   // 按住说话（Left Ctrl / CapsLock）
     listen(window, "beforeunload", onPipBeforeUnload as EventListener),
     () => mo.disconnect(),
   ];
@@ -1734,12 +1741,13 @@ const isPttKey = (e: KeyboardEvent) => { const k = pttKeyPref(); return k !== "n
 const pttIsToggle = (): boolean => pttKeyPref() === "CapsLock";
 function pttAbort(): void { if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } pttBackend?.abort(); pttBackend = null; pttCommitted = false; }
 function pttStop(): void { if (!pttBackend) return; if (pttTimer) { clearTimeout(pttTimer); pttTimer = null; } if (pttCommitted) pttBackend.stop(); else pttBackend.abort(); pttBackend = null; pttCommitted = false; }
-document.addEventListener("keydown", (event) => {
+// 按住说话的按键（具名：小窗开着时也挂在小窗的 document 上，v2.3.61，user 2026-10-24「按住说话…在小窗里…能用」）
+function onPttKeydown(event: KeyboardEvent): void {
   if (pttBackend && !isPttKey(event)) { if (!pttIsToggle()) pttAbort(); return; }   // 按住式：别的键 = 和弦（Ctrl+C）→ 弃；切换式：手是空的，打字不打断（1s 静音自动停）
   if (pttArmedNoPack && !isPttKey(event)) { pttArmedNoPack = false; return; }   // 没包时的和弦：不提示
   if (!isPttKey(event) || event.repeat || event.shiftKey || event.altKey || event.metaKey) return;
   if (pttBackend) { if (pttIsToggle()) pttStop(); return; }   // 切换式：再按一下 = 停
-  if (document.activeElement !== editorEl || !canEditNow()) return;
+  if (editorEl.ownerDocument.activeElement !== editorEl || !canEditNow()) return;   // 纸在小窗里时焦点在小窗的 document 上
   const backend = activeVoiceBackend();
   if (!backend || backend.state !== "idle") return;
   // 没包：按住式等干净松键再提；切换式按了就是要说 → 立刻提。首次不知道有没有包 → 暖一下缓存，这一下不提示不起录
@@ -1750,12 +1758,14 @@ document.addEventListener("keydown", (event) => {
   void backend.start(pickSpeechLang());
   if (pttIsToggle()) { if (pttBackend.state === "recording") onVoiceState("recording"); }
   else pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; if (pttBackend?.state === "recording") onVoiceState("recording"); }, PTT_HOLD_MS);
-}, { capture: true });
-document.addEventListener("keyup", (event) => {
+}
+function onPttKeyup(event: KeyboardEvent): void {
   if (isPttKey(event) && pttArmedNoPack) { pttArmedNoPack = false; setStatus(t("voice.pack.missingHint")); return; }   // 干净按了一下语音键、没包 → 提一句（和弦已在 keydown 里解除）
   if (!isPttKey(event) || !pttBackend || pttIsToggle()) return;   // 切换式不看 keyup（macOS 只在切灭时发）
   pttStop();
-});
+}
+document.addEventListener("keydown", onPttKeydown, { capture: true });
+document.addEventListener("keyup", onPttKeyup);
 const pttKeySelect = $<HTMLSelectElement>("pttKeySelect");
 function applyPttKey(): void { pttKeySelect.value = pttKeyPref(); input.foldCapsLock = pttIsToggle(); renderMicVisibility(); }   // 禁用 = 话筒钮也收（user 2026-09-30「禁用就是话筒也没有啦」）
 pttKeySelect.addEventListener("change", () => { pttAbort(); pttArmedNoPack = false; const v = pttKeySelect.value; deviceKvSet("pttKey", v === "CapsLock" || v === "none" ? v : null); applyPttKey(); });
