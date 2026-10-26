@@ -297,6 +297,7 @@ const edgeSidebar = createEdgeSidebar({
   onLibrary: () => { void galleryHost.open(); },
   onExport: () => { void exportSheetFlow(); },
   onPip: () => { void togglePip(); },   // 小窗（v2.3.60）：同 Alt+P
+  onAdv: () => { setSidebar(false); setAdv(!advOn); },   // 对话框模式（v3.0.2 从顶栏搬来）：同 Alt+T；收起侧栏、焦点进框
   pipSupported,
   onSettings: () => showSidebarSettings(),
   onSettingsBack: () => hideSidebarSettings(),
@@ -1336,9 +1337,8 @@ const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class=
 // ── 对话框模式（v3.0.0；取代 v2.3.59 打字机模式 / 只看几行；设计记录 ai-docs/20261026-adv-dialog-box.md）──
 //   user 2026-10-25「aha就是galgame/adv」「对话框的话的单位不是行，而是段」「一次写一段。写多长就可以。回车就发」「adv的时候就三行，多了滚」；
 //   「我不太喜欢突然调成nvl，这样反而是judge」→ 段写长了不自动切整页，切换只靠钮 / Alt+T / 台上右上角的「回到整页」。框的行为全在 src/adv/box.ts；这里只管开关、显隐、焦点。
-//   钮只在能写字的页上露（锁着 / 图片页 / 没稿不露）；body.adv 跟着「开着 ∧ 这页能写」走。开 = 跳到最后一段末尾（照打字机那条，user 2026-10-24「开打字机模式跳最后一行」）；
-//   关 = 回到整页、光标留在框里的那个位置（「还原之后光标不动」）；开着时换页 = 照旧落在开头（「打开落在开头」）。
-const advButton = $<HTMLButtonElement>("advButton");
+//   钮只在能写字的页上露（锁着 / 图片页 / 没稿不露）；body.adv 跟着「开着 ∧ 这页能写」走。开 = 落在正文光标所在的那一段（user 2026-10-26「切换框的时候应该根据光标的位置，而不是跳到最后」；
+//   v3.0.0–3.0.1 照打字机跳最后一段，撤）；关 = 回到整页、光标留在框里的那个位置（「还原之后光标不动」）；开着时换页 = 照旧落在开头（「打开落在开头」）。
 const advPrev = $<HTMLButtonElement>("advPrev"), advNext = $<HTMLButtonElement>("advNext");
 let pageWritable = false;   // 这页能不能写字：有稿、没锁、不是图片页（对话框钮 / 小窗共用；renderTopbar 写）
 adv = createAdvBox({
@@ -1346,20 +1346,22 @@ adv = createAdvBox({
   pageKey: () => (project.active() ? `book\u0000${project.displayName() ?? ""}\u0000${project.current() ?? ""}` : `txt\u0000${editor.state.name ?? editor.state.pendingDate ?? ""}`),
   onPosition: (i, n) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; },
 });
-function applyAdv(opts?: { toEnd?: boolean }): void {
-  const on = advOn && pageWritable;
+/** 对话框开不开 = （主窗口开着 ∨ 小窗开着）∧ 这页能写。小窗就是对话框模式（user 2026-10-26「小窗不应该是adv模式吗」），收回小窗 = 回到主窗口自己的开关。
+ *  开关住 ☰ 侧栏顶行（v3.0.2，user「adv模式我建议也收到汉堡里面」）：这页不能写 = 入口藏；开着 = 强调色。 */
+function applyAdv(): void {
+  const on = (advOn || !!pip?.active) && pageWritable;
   document.body.classList.toggle("adv", on);
-  advButton.setAttribute("aria-pressed", advOn ? "true" : "false");
-  adv!.setActive(on, opts);
+  const entry = document.getElementById("edgeAdv");   // 侧栏建好之前 boot 早期也可能被调
+  if (entry) { entry.hidden = !pageWritable; entry.setAttribute("aria-pressed", advOn ? "true" : "false"); }
+  adv!.setActive(on);
 }
 function setAdv(on: boolean): void {
   if (on && !pageWritable) return;
   advOn = on; deviceKvSet("adv", on ? "1" : null);
-  applyAdv({ toEnd: on });
+  applyAdv();   // 落在正文光标所在的那一段
   focusWriting({ preventScroll: true });
   if (!on) followCaret();
 }
-advButton.addEventListener("click", () => setAdv(!advOn));
 $("advExit").addEventListener("click", () => setAdv(false));
 // ‹ ›：按下不抢框的焦点（软键盘 / 光标留在框里）；点了换段
 for (const [b, go] of [[advPrev, () => adv!.prev()], [advNext, () => adv!.next()]] as const) {
@@ -1401,6 +1403,8 @@ function enterPip(win: Window): void {
     () => mo.disconnect(),
   ];
   paper.refresh(); syncBodyHeight();
+  applyAdv();   // 小窗 = 对话框模式（v3.0.2）：框落在正文光标那一段
+  doc.body.classList.toggle("adv", document.body.classList.contains("adv"));   // 别等 mirrorRoot 的下一拍：class 没到之前框在小窗里是 display:none，焦点给不进去
   focusWriting({ preventScroll: true });
   followCaret(true);
   win.requestAnimationFrame(() => { if (pip?.active) { paper.refresh(); syncBodyHeight(); followCaret(true); } });   // 小窗第一帧排好版再钉一次：刚开窗时窗口尺寸 / 样式还没落定，上面那次量不准
@@ -1409,6 +1413,7 @@ function enterPip(win: Window): void {
 }
 function leavePip(): void {
   for (const f of pipCleanup.splice(0)) f();
+  applyAdv();   // 回到主窗口自己的开关（关着 = 回整页，光标留在框里那个位置）
   paper.refresh(); syncBodyHeight();
   if (!idle.isShown()) { focusWriting({ preventScroll: true }); followCaret(); }   // 闲置锁屏收回的：锁屏刚拿走焦点，别还回去（不然隔着遮罩还能打字）
   imeDock.render();
@@ -1430,7 +1435,7 @@ pip = createPip(pageEl, [$("candidateBar")], {
     el.append(p, b);
     return el;
   },
-  size: () => ({ width: Math.ceil(editorEl.getBoundingClientRect().width) + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: (adv?.active ? advLines() : 4) * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM }),   // 对话框开着 = 小窗就是那个框（几行 = 设置的行数）
+  size: () => ({ width: Math.ceil(editorEl.getBoundingClientRect().width) + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: advLines() * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM }),   // 小窗就是对话框（v3.0.2）：几行 = 设置的行数
   fit: (h) => fitToRows(h, paper.lineHeight(), PIP_PAD_TOP + PIP_PAD_BOTTOM),
   onEnter: enterPip,
   onLeave: leavePip,
@@ -1451,7 +1456,7 @@ function renderTopbar(): void {
     lockToggle.title = project.readOnly() ? t("top.readOnlyOff") : t("top.readOnlyOn"); lockToggle.setAttribute("aria-label", lockToggle.title);
     keyBanner.hidden = true;
     pageWritable = !project.locked() && project.currentKind() !== "image";
-    advButton.hidden = !pageWritable; applyAdv();
+    applyAdv();
     if (!pipEligible()) closePipIfOpen();
     renderMicVisibility();
     return;
@@ -1472,7 +1477,7 @@ function renderTopbar(): void {
   lockToggle.hidden = true;   // txt 没有修改锁（2026-09-10 user：锁跟着作品进 zip，txt 不支持）
   keyBanner.hidden = !(st.name && st.encrypted && !st.locked && fileUsesOtherPassword(st.name));
   pageWritable = hasDoc && !st.locked && !st.unavailable;
-  advButton.hidden = !pageWritable; applyAdv();
+  applyAdv();
   if (!pipEligible()) closePipIfOpen();
   renderMicVisibility();
 }
@@ -2247,7 +2252,7 @@ function onAppKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); focusWriting(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
   // 对话框模式 Alt+T（打字机模式那颗键照搬，user 2026-10-24「你可以编一个」；Alt+P 留给小窗）。认物理键位：Mac 的 Option+T 出的是「†」；内置输入法不碰 Alt 组合
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === "KeyT" && pageWritable) { event.preventDefault(); setAdv(!advOn); return; }
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === "KeyT" && pageWritable && !pip?.active) { event.preventDefault(); setAdv(!advOn); return; }   // 小窗里永远是对话框，不切
   // 小窗 Alt+P（和 KudsRocket 统一；user 2026-10-24「快捷键统一」）：开 / 收回
   if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === "KeyP") { event.preventDefault(); void togglePip(); return; }
   if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }

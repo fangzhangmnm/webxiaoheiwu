@@ -1652,6 +1652,7 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .edge-entries { display: flex; gap: 6px; }
 /* 四个入口只留图标（user 2026-09-30「也许就 icon 就够了」：四个带字挤成两行）；文字留给读屏（.edge-entry span 视觉隐藏）+ title 悬停 */
 .edge-entry { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0; padding: 9px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-0); color: var(--ink); font: inherit; cursor: pointer; }
+.edge-entry[aria-pressed="true"] { color: var(--accent-strong); border-color: var(--accent-strong); }   /* 开着的模式入口（对话框，v3.0.2）：强调色 */
 .edge-entry:hover, .edge-entry:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--bg-0)); }
 .edge-entry .ico { width: 18px; height: 18px; flex: none; }
 .edge-entry span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

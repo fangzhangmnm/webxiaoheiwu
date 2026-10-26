@@ -515,10 +515,11 @@ export const S = {
   // 对话框模式（v3.0.0，src/adv/box.ts；取代 v2.3.59 的打字机模式 / 只看几行）。名字 user 还没定（10-25「要不要叫一次写一段我没想好」），先叫对话框
   "top.adv":                { zh: "对话框模式（Alt+T）", en: "Dialogue box (Alt+T)" },
   "adv.aria":               { zh: "对话框模式", en: "Dialogue box mode" },
+  "adv.entryShort":         { zh: "对话框", en: "Dialogue" },   // ☰ 侧栏顶行（v3.0.2 从顶栏搬来）
   "adv.exit":               { zh: "回到整页（Alt+T）", en: "Back to the full page (Alt+T)" },
   "adv.hideBackdrop":       { zh: "收起背景", en: "Hide the backdrop" },
   "adv.showBackdrop":       { zh: "露出背景", en: "Show the backdrop" },
-  "adv.inputAria":          { zh: "对话框（回车 = 发出去，Shift+回车 = 段内换行）", en: "Dialogue box (Enter sends, Shift+Enter breaks the line)" },
+  "adv.inputAria":          { zh: "对话框（回车换行，连按两下回车 = 下一段）", en: "Dialogue box (Enter breaks the line; press Enter twice for the next paragraph)" },
   "adv.navAria":            { zh: "上一段 / 下一段", en: "Previous / next paragraph" },
   "adv.prev":               { zh: "上一段（Ctrl+↑）", en: "Previous paragraph (Ctrl+↑)" },
   "adv.next":               { zh: "下一段（Ctrl+↓）", en: "Next paragraph (Ctrl+↓)" },

@@ -1924,6 +1924,10 @@ export declare const S: {
         readonly zh: "对话框模式";
         readonly en: "Dialogue box mode";
     };
+    readonly "adv.entryShort": {
+        readonly zh: "对话框";
+        readonly en: "Dialogue";
+    };
     readonly "adv.exit": {
         readonly zh: "回到整页（Alt+T）";
         readonly en: "Back to the full page (Alt+T)";
@@ -1937,8 +1941,8 @@ export declare const S: {
         readonly en: "Show the backdrop";
     };
     readonly "adv.inputAria": {
-        readonly zh: "对话框（回车 = 发出去，Shift+回车 = 段内换行）";
-        readonly en: "Dialogue box (Enter sends, Shift+Enter breaks the line)";
+        readonly zh: "对话框（回车换行，连按两下回车 = 下一段）";
+        readonly en: "Dialogue box (Enter breaks the line; press Enter twice for the next paragraph)";
     };
     readonly "adv.navAria": {
         readonly zh: "上一段 / 下一段";

@@ -12,6 +12,8 @@ export interface EdgeSidebarDeps {
     /** 「规整标点」（2026-10-16，user「一键把标点符号或者选中的标点符号全部正则化」）：有选区只改选区，否则整页；app 层做。 */
     /** 「小窗」（v2.3.60，Alt+P 同一个动作）：纸搬进置顶小窗 / 收回。这个浏览器没有小窗 API → 入口不露。 */
     onPip: () => void;
+    /** 对话框模式开 / 关（v3.0.2 从顶栏搬来，同 Alt+T）。可见 / 按下态由宿主直接改 #edgeAdv。 */
+    onAdv: () => void;
     pipSupported: () => boolean;
     onSettings: () => void;
     /** 设置面板里的「返回」：回到侧栏的导航。 */

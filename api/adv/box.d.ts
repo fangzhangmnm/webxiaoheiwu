@@ -12,10 +12,8 @@ export interface AdvBoxDeps {
 }
 export interface AdvBox {
     readonly active: boolean;
-    /** 开 / 关这扇窗。toEnd = 开的时候跳到最后一段末尾（同打字机模式「开了跳最后一行」，user 2026-10-24）；否则在正文光标所在的那一段。 */
-    setActive(on: boolean, opts?: {
-        toEnd?: boolean;
-    }): void;
+    /** 开 / 关这扇窗。开 = 落在正文光标所在的那一段（user 2026-10-26「切换框的时候应该根据光标的位置，而不是跳到最后」）。 */
+    setActive(on: boolean): void;
     /** 宿主重画时调（换页 / 换稿 / 锁变了）：页变了 = 从正文的光标重取；没变但框和正文对不上 = 重取；对得上 = 不动（不清撤销栈）。 */
     sync(): void;
     /** 框里的光标写回正文（语音起录前、离开模式前；平时每次改字 / 抬键 / 点击也写）。 */

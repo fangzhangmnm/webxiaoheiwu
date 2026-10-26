@@ -6,9 +6,11 @@
 // 真相永远在正文框（editor）：落盘 / 推云 / 字数 / 撤销以外的一切都照旧听它的 input。框（input）里的字 = 正文 [start, start + shown.length) 那一截；
 //   框里每改一次，算出改了哪一截（diffEdit），原样写回正文那个位置（text-edit replaceRange：正文框没焦点 → setRangeText + 补发 input）。
 //   写回前先核对正文那一截还是不是框里上一版的字：对不上 = 正文被别处改过而框没跟上 → 不写，重取（宁丢框里这一下，不往错的位置写字）。
-// 回车（实体键盘 / app 软键盘 / 系统键盘都一样，框里出现一个换行）= 发出去：写回正文时换成两个换行，框换到下一段（光标后面的字跟着去下一段）。
-//   Shift+Enter = 段内换行（一个换行，不发）。段首退格 = 和上一段接回去（删掉中间的分隔 = 回车的反操作）。
-//   段首 ← / 段尾 → 跨到上一段末 / 下一段首；Ctrl+↑ / Ctrl+↓ 上一段 / 下一段（光标在段首，框滚到顶：审稿按一下就过去）；Ctrl+Home / Ctrl+End 第一段 / 最后一段。
+// 框就是一个普通的文本框，只是一次只露出一段（user 2026-10-26「不要shift回车，而是两下回车换页，所以这么说其实就是在输入文本？」）：
+//   回车 = 一个换行（段内，拍里一句句对话往来）；框里一出现空行（连按两下回车 / 贴进来好几段 / 删掉两行之间那行）= 分段 → 框换到光标所在的那一段。
+//   段首退格 = 删掉前面一个换行（同普通文本框：分隔是两个换行时，两段接成一段、接缝处留一个段内换行）。没有特殊键。
+//   段首 ← / 段尾 → 跨到上一段末 / 下一段首；第一行 ↑ / 最后一行 ↓ 同理（user 2026-10-26「arrow keys上下应该也可以翻页，因为我发现左右能翻页」）；
+//   Ctrl+↑ / Ctrl+↓ 上一段 / 下一段（光标在段首，框滚到顶：审稿按一下就过去）；Ctrl+Home / Ctrl+End 第一段 / 最后一段。
 // 撤销只在这一段里：换段 = 程序改框的值，浏览器清掉框的撤销栈。故意的——留着的话 Ctrl+Z 会把上一段的字「撤」进这一段的位置。
 // 别处改了正文（语音落字、规整标点、换页、重载）→ 宿主的 input / sync 让框从正文按正文的光标重取。语音从正文的光标起录，所以起录前要 pushCaret。
 import { replaceRange } from "../text-edit.ts";
@@ -29,8 +31,8 @@ export interface AdvBoxDeps {
 
 export interface AdvBox {
   readonly active: boolean;
-  /** 开 / 关这扇窗。toEnd = 开的时候跳到最后一段末尾（同打字机模式「开了跳最后一行」，user 2026-10-24）；否则在正文光标所在的那一段。 */
-  setActive(on: boolean, opts?: { toEnd?: boolean }): void;
+  /** 开 / 关这扇窗。开 = 落在正文光标所在的那一段（user 2026-10-26「切换框的时候应该根据光标的位置，而不是跳到最后」）。 */
+  setActive(on: boolean): void;
   /** 宿主重画时调（换页 / 换稿 / 锁变了）：页变了 = 从正文的光标重取；没变但框和正文对不上 = 重取；对得上 = 不动（不清撤销栈）。 */
   sync(): void;
   /** 框里的光标写回正文（语音起录前、离开模式前；平时每次改字 / 抬键 / 点击也写）。 */
@@ -47,7 +49,6 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
   let start = 0;          // 这一段在正文里的起点
   let shown = "";         // 框里上一版的字（= 正文 [start, start + shown.length)）
   let key = "";
-  let softBreak = false;  // 刚按的是 Shift+Enter：下一个换行留在段里
   let splicing = false;   // 自己在写回正文：正文的 input 别当成「别处改了」
   let pos = { index: 0, count: 1 };
 
@@ -89,27 +90,20 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     if (!edit) return;
     if (!inSync()) { console.warn("[adv] page text moved under the box; reloading the paragraph"); loadAt(ed.selectionStart ?? 0); return; }
     if (!d.canEdit()) { box.value = shown; return; }   // 框跟着正文的 readOnly，一般到不了这里；兜底：不写，框退回去
-    let ins = edit.ins;
-    const send = ins === "\n" && edit.del === 0 && !softBreak;   // 回车 = 发出去
-    softBreak = false;
-    if (send) ins = "\n\n";
     splicing = true;
-    try { replaceRange(ed, start + edit.at, start + edit.at + edit.del, ins); } finally { splicing = false; }
-    const docCaret = start + (box.selectionStart ?? now.length) + (ins.length - edit.ins.length);
-    if (ins.includes("\n\n")) { loadAt(docCaret); return; }   // 发出去了 / 贴进来好几段：框换到光标所在的那一段
+    try { replaceRange(ed, start + edit.at, start + edit.at + edit.del, edit.ins); } finally { splicing = false; }
+    const docCaret = start + (box.selectionStart ?? now.length);
+    if (now.includes("\n\n")) { loadAt(docCaret); return; }   // 框里出现了空行 = 分段了：框换到光标所在的那一段
     shown = now;
     try { ed.setSelectionRange(docCaret, docCaret); } catch { /* ignore */ }
   });
 
-  /** 段首退格：和上一段接回去（删掉两段之间的分隔）。 */
-  function joinBackward(): boolean {
-    if (!d.canEdit()) return false;
-    const ps = paragraphs(ed.value), i = paraIndexAt(ps, start);
-    if (i <= 0) return false;
-    const prev = ps[i - 1]!, cur = ps[i]!;
+  /** 段首退格：删掉前面一个换行（分隔是两个换行时 = 两段接成一段，接缝处留一个段内换行）。 */
+  function backspaceAtStart(): boolean {
+    if (!d.canEdit() || start <= 0) return false;
     splicing = true;
-    try { replaceRange(ed, prev.end, cur.start, ""); } finally { splicing = false; }
-    loadAt(prev.end);
+    try { replaceRange(ed, start - 1, start, ""); } finally { splicing = false; }
+    loadAt(start - 1);
     return true;
   }
   function go(delta: -1 | 1, caret: "start" | "end"): boolean {
@@ -118,16 +112,30 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     load(i, caret);
     return true;
   }
+  // 光标在框里第几行（折行算）：一个看不见的镜像只量这一段（短，不碰正文的孪生框）。框搬进小窗时镜像跟着建在小窗的 document 里。
+  let mirror: HTMLDivElement | null = null;
+  function caretRow(): { row: number; rows: number } {
+    const doc = box.ownerDocument, cs = doc.defaultView!.getComputedStyle(box);
+    if (!mirror || mirror.ownerDocument !== doc || !mirror.isConnected) { mirror = doc.createElement("div"); mirror.setAttribute("aria-hidden", "true"); doc.body.appendChild(mirror); }
+    const m = mirror;
+    Object.assign(m.style, { position: "absolute", left: "-99999px", top: "0", visibility: "hidden", pointerEvents: "none", whiteSpace: "pre-wrap", overflowWrap: "break-word", wordBreak: cs.wordBreak, boxSizing: "content-box", width: `${box.clientWidth}px`, padding: "0", border: "0", font: cs.font, letterSpacing: cs.letterSpacing, lineHeight: cs.lineHeight, tabSize: cs.tabSize });
+    const at = box.selectionStart ?? 0, lh = parseFloat(cs.lineHeight) || 1;
+    m.textContent = box.value.slice(0, at);
+    const mark = doc.createElement("span"); mark.textContent = "\u200b"; m.appendChild(mark);
+    m.appendChild(doc.createTextNode(box.value.slice(at) + "\u200b"));   // 末尾的换行在 div 里不占一行、在框里占：补一个零宽字
+    return { row: Math.floor(mark.offsetTop / lh + 0.01), rows: Math.max(1, Math.round(m.scrollHeight / lh)) };
+  }
   box.addEventListener("keydown", (e) => {
     if (!active || e.defaultPrevented || e.isComposing) return;   // 输入法吃掉的键（组字中的回车 / 方向键）在捕获阶段就 preventDefault 了
     const s = box.selectionStart ?? 0, collapsed = s === (box.selectionEnd ?? s);
     const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
     const ctrlOnly = e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
-    if (e.key === "Enter") { softBreak = e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey; return; }
     let handled = false;
-    if (plain && collapsed && s === 0 && e.key === "Backspace") handled = joinBackward();
+    if (plain && collapsed && s === 0 && e.key === "Backspace") handled = backspaceAtStart();
     else if (plain && collapsed && s === 0 && e.key === "ArrowLeft") handled = go(-1, "end");
     else if (plain && collapsed && s === box.value.length && e.key === "ArrowRight") handled = go(1, "start");
+    else if (plain && collapsed && e.key === "ArrowUp" && caretRow().row === 0) handled = go(-1, "end");
+    else if (plain && collapsed && e.key === "ArrowDown") { const r = caretRow(); if (r.row >= r.rows - 1) handled = go(1, "start"); }
     else if (ctrlOnly && e.key === "ArrowUp") { go(-1, "start"); handled = true; }
     else if (ctrlOnly && e.key === "ArrowDown") { go(1, "start"); handled = true; }
     else if (ctrlOnly && e.key === "Home") { load(0, "start"); handled = true; }
@@ -135,20 +143,19 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     if (handled) e.preventDefault();
   });
   // app 软键盘的退格在段首什么都删不掉，field.ts 会在框上发这个事件（实体键盘走上面的 keydown）
-  box.addEventListener("backspaceatstart", () => { if (active) joinBackward(); });
+  box.addEventListener("backspaceatstart", () => { if (active) backspaceAtStart(); });
   for (const t of ["keyup", "pointerup", "select", "blur"]) box.addEventListener(t, pushCaret);
   // 别处改了正文（语音、规整标点、重载）→ 按正文的光标重取
   ed.addEventListener("input", () => { if (active && !splicing) loadAt(ed.selectionStart ?? 0); });
 
   return {
     get active() { return active; },
-    setActive(on, opts) {
+    setActive(on) {
       if (on === active) { if (on) sync(); return; }
       if (!on) { pushCaret(); active = false; return; }
-      active = true; key = d.pageKey(); softBreak = false;
+      active = true; key = d.pageKey();
       box.readOnly = ed.readOnly;
-      if (opts?.toEnd) load(paragraphs(ed.value).length - 1, "end");
-      else loadAt(ed.selectionStart ?? 0);
+      loadAt(ed.selectionStart ?? 0);
     },
     sync,
     pushCaret,
