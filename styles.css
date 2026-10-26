@@ -2106,6 +2106,15 @@ body.adv .adv-stage {
   pointer-events: none;
 }
 .adv-stage-img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; }
+/* 前文（v3.0.8）：台上、和框同宽同字，淡色；底边在名字牌之上，从下往上排，放不下截掉最上面的 */
+.adv-prev { display: none; }
+body.adv.adv-context .adv-prev {
+  display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; pointer-events: none;
+  position: fixed; z-index: var(--z-adv-stage); top: calc(var(--sheet-top) + 8px); bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px) + 18px);
+  left: calc(max(0px, 50% - var(--box-max) / 2) + var(--page-pad-x)); right: calc(max(0px, 50% - var(--box-max) / 2) + var(--page-pad-x));
+}
+.adv-prev-text { white-space: pre-wrap; overflow-wrap: break-word; font-family: var(--font-editor); font-size: var(--editor-font); line-height: var(--editor-lh); color: var(--ink-muted); opacity: 0.6; }
+.pip-body .adv-prev { display: none !important; }
 .adv-stage-img[hidden] { display: none; }
 body.adv .adv-corner { display: flex; gap: 4px; position: fixed; z-index: var(--z-page); top: calc(var(--sheet-top) + 8px); right: max(8px, 50% - var(--box-max) / 2); }
 .adv-corner .menu-button[hidden] { display: none; }
@@ -2117,7 +2126,10 @@ body.adv .adv-corner:not(:has(> .menu-button:not([hidden]))) { display: none; } 
    宽 = 打开时主窗口正文的宽（app.ts 写 --pip-text-w）+ 左右留白；高 = 行数 × 行高 + 上下留白。钉在左上角；小窗比它小就整体缩小（app.ts pipFit 写 transform），大了不放大 */
 .pip-body.adv .adv-box { top: 0; left: 0; right: auto; bottom: auto; width: calc(var(--pip-text-w, 300px) + 46px); height: calc(var(--adv-rows-h, 0px) + 16px); padding: 8px 32px 8px 14px; border: 0; border-radius: 0; box-shadow: none; transform-origin: 0 0; }
 .pip-body.adv .adv-box.beat-start { box-shadow: inset 0 2px 0 var(--accent); }
-.pip-body .adv-nav, .pip-body .adv-stage, .pip-body .adv-corner, .pip-body .adv-name { display: none !important; }
+/* 小窗里的名字牌（v3.0.8，user 选 A「小窗顶上多留一窄条放名字牌」）：识别开着时框顶上多留 16px（= app.ts PIP_NAME_ROW），名字牌小一号坐在那条里 */
+.pip-body.adv.adv-speaker .adv-box { padding-top: 24px; height: calc(var(--adv-rows-h, 0px) + 32px); }
+.pip-body.adv .adv-name { top: 3px; left: 10px; height: 18px; padding: 0 6px; border-radius: 6px; font-size: 11px; line-height: 16px; }
+.pip-body .adv-nav, .pip-body .adv-stage, .pip-body .adv-corner { display: none !important; }
 .pip-body.adv .candidates { bottom: auto; }   /* 候选条照旧在小窗顶上（盖最旧的一行），不吃「抬到框上面」那条 */
 
 /* 设置里小节内再折一层（v3.0.5：逐段 → 说话人识别 → 识别规则） */

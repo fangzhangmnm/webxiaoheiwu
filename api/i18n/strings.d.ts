@@ -456,6 +456,10 @@ export declare const S: {
         readonly zh: "逐段";
         readonly en: "Paragraph mode";
     };
+    readonly "ui.adv.context": {
+        readonly zh: "框上方淡淡显示前文";
+        readonly en: "Show the preceding text faintly above the box";
+    };
     readonly "ui.adv.speaker": {
         readonly zh: "认出说话人，名字显示在框的左上角（像 galgame 的名字栏）";
         readonly en: "Recognise the speaker and show the name at the box's top-left (like a visual novel's name box)";

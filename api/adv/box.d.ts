@@ -14,6 +14,8 @@ export interface AdvBoxDeps {
     onPosition?(index: number, count: number, beat: boolean): void;
     /** 光标所在的那一行（框里按换行切的一行；段首那一行带上收起来的标记）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
     onLine?(line: string): void;
+    /** 这一段前面的正文（到上一段末尾为止，最多几千字；第一段 = 空）：宿主拿去在框上方淡淡地显示前文（v3.0.8）。换段 / 别处改了正文都会再报。 */
+    onContext?(before: string): void;
     /** 段首那一行开头有几个字是说话人标记（收进名字牌、不进框；v3.0.6，user「小月：  不进文本框啊」）。没有 / 不收 = 0。 */
     tagLength?(firstLine: string): number;
 }

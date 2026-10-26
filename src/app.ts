@@ -1357,7 +1357,9 @@ function speakerRules(): Set<SpeakerRule> {
 }
 let advLine = "";   // 光标那一行（框报来的）
 // 启动时就记住引用：纸搬进 / 搬出小窗的那一瞬间它两边都不在，框这时失焦也会报一行，按 id 现查会扑空（无头假小窗抓到）
-const advNameEl = $("advName"), advBoxEl = $("advBox");
+const advNameEl = $("advName"), advBoxEl = $("advBox"), advPrevEl = $("advPrevText");
+// 框上方淡淡地显示前文（v3.0.8，user 2026-10-26「我在想是要不要上面的空的地方显示前文，就用那种淡的色？可以toggle，默认开」）：跟人走（synced prefs advContext，缺 = 开）
+const advContextOn = (): boolean => prefs.getItem<boolean>("advContext") !== false;
 function renderSpeaker(): void {
   const name = speakerOn() ? detectSpeaker(advLine, speakerRules()) : null;
   advNameEl.textContent = name ?? ""; advNameEl.hidden = !name;
@@ -1367,8 +1369,9 @@ adv = createAdvBox({
   pageKey: () => (project.active() ? `book\u0000${project.displayName() ?? ""}\u0000${project.current() ?? ""}` : `txt\u0000${editor.state.name ?? editor.state.pendingDate ?? ""}`),
   onPosition: (i, n, beat) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; advBoxEl.classList.toggle("beat-start", beat); },
   onLine: (line) => { advLine = line; renderSpeaker(); },
-  // 段首的说话人标记收进名字牌、不进框（v3.0.6，user「小月：  不进文本框啊」）；小窗里不放名字牌，标记就留在框里（不然看不见是谁在说）
-  tagLength: (line) => (speakerOn() && !pip?.active ? speakerTag(line, speakerRules())?.length ?? 0 : 0),
+  onContext: (before) => { if (advPrevEl.textContent !== before) advPrevEl.textContent = before; },
+  // 段首的说话人标记收进名字牌、不进框（v3.0.6，user「小月：  不进文本框啊」）；小窗里也一样（v3.0.8 起小窗顶上有一窄条放名字牌）
+  tagLength: (line) => (speakerOn() ? speakerTag(line, speakerRules())?.length ?? 0 : 0),
 });
 /** 对话框开不开 = （主窗口开着 ∨ 小窗开着）∧ 这页能写。小窗就是对话框模式（user 2026-10-26「小窗不应该是adv模式吗」），收回小窗 = 回到主窗口自己的开关。
  *  开关住 ☰ 侧栏顶行（v3.0.2，user「adv模式我建议也收到汉堡里面」）：这页不能写 = 入口藏；开着 = 强调色。 */
@@ -1394,7 +1397,7 @@ for (const [b, go] of [[advPrev, () => adv!.prev()], [advNext, () => adv!.next()
 // ── 小窗（老板键，v2.3.60；设计稿 ai-docs/20261024-mini-window-proposal.md）：Alt+P / 侧栏顶行「小窗」→ 纸搬进置顶、没地址栏的小窗，四行高（三行字 + 一行空的）。
 //   user 2026-10-24「我要的老板键其实就是小窗口」「小窗就是非常borderless精简的」「一行空的，三行字，我看了之后调」「不放，都不放，盲人。说出去的话泼出去的水」。
 //   只有能写字的页能开（同对话框钮的条件）；要弹面板（setBeforeModal）/ 闲置锁屏 / 进书库 / 变成锁着或图片页 → 先收回。翻页用已有的 Alt+↑ / Alt+↓（快捷键也挂在小窗上）。
-const PIP_PAD_TOP = 8, PIP_PAD_BOTTOM = 8, PIP_PAD_LEFT = 14, PIP_PAD_RIGHT = 32;   // 和 styles.css「小窗」那节同值：上下 = 光标跟随的边距（scroll-padding），右边留给状态小图标
+const PIP_PAD_TOP = 8, PIP_PAD_BOTTOM = 8, PIP_PAD_LEFT = 14, PIP_PAD_RIGHT = 32, PIP_NAME_ROW = 16;   // PIP_NAME_ROW：说话人识别开着时框顶上多留的那一窄条（放名字牌，v3.0.8，user 选 A），和 styles.css 同值   // 和 styles.css「小窗」那节同值：上下 = 光标跟随的边距（scroll-padding），右边留给状态小图标
 let pipCleanup: Array<() => void> = [];
 // 小窗里是一个固定大小的框（v3.0.7，user「你里面可以放一个固定大小的box不就行了」「而不是依赖小窗的宽高来排版」「如果小窗太小的话ui和字体相应一起放缩」「小窗应该是弹出来之后就不要改宽高了」）：
 //   宽 = 打开那一刻主窗口正文的宽（写在框自己身上：小窗的 body 的 style 会被 mirrorRoot 用主页面的抄掉）；小窗比框小 → 整体等比缩小，大了不放大
@@ -1469,7 +1472,7 @@ pip = createPip(pageEl, [$("candidateBar")], {
     return el;
   },
   // 小窗就是逐段（v3.0.2）：几行 = 设置的行数；宽 = 这一刻主窗口正文的宽，记下来给小窗里那个固定大小的框（v3.0.7）
-  size: () => { pipTextW = Math.ceil(editorEl.getBoundingClientRect().width); return { width: pipTextW + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: advLines() * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM }; },
+  size: () => { pipTextW = Math.ceil(editorEl.getBoundingClientRect().width); return { width: pipTextW + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: advLines() * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM + (speakerOn() ? PIP_NAME_ROW : 0) }; },
   // 不收整行（v3.0.7，user 2026-10-26「小窗的时候我在最后一格动左右键窗口长度会变长，好奇怪」）：小窗永远是逐段、框自己会滚，用不着；
   //   v2.3.60 起每次按键松开 / 点一下就 resizeBy 收成整行，窗口单位对不上时（缩放 / 浏览器的最小尺寸）会一按一变。fitToRows 留在 pip.ts（单测钉着）
   onEnter: enterPip,
@@ -1966,6 +1969,7 @@ function renderSpeakerSettings(): void {
   advSpeakerToggle.checked = speakerOn();
   const on = speakerRules();
   for (const cb of document.querySelectorAll<HTMLInputElement>("#advSpeakerRules input[data-rule]")) { cb.checked = on.has(cb.dataset.rule as SpeakerRule); cb.disabled = !advSpeakerToggle.checked; }
+  document.body.classList.toggle("adv-speaker", speakerOn());   // 小窗里的框顶上留一窄条放名字牌（v3.0.8；body 的 class 会抄进小窗）
   adv?.sync();   // 标记收不收变了：框重取
   renderSpeaker();
 }
@@ -1975,6 +1979,12 @@ $("advSpeakerRules").addEventListener("change", () => {
   renderSpeakerSettings();
 });
 prefs.onChange("advSpeaker", () => renderSpeakerSettings());
+// 设置「框上方淡淡显示前文」（v3.0.8）
+const advContextToggle = $<HTMLInputElement>("advContextToggle");
+function renderAdvContext(): void { const on = advContextOn(); advContextToggle.checked = on; document.body.classList.toggle("adv-context", on); }
+advContextToggle.addEventListener("change", () => { prefs.setItem("advContext", advContextToggle.checked); renderAdvContext(); });
+prefs.onChange("advContext", () => renderAdvContext());
+renderAdvContext();
 prefs.onChange("advSpeakerRules", () => renderSpeakerSettings());
 renderSpeakerSettings();
 // 字号档位（device-kv，每台设备各自存）：字号 = 设备基准（styles.css --editor-font-base：22px，手机 16px）× 这个档。和行宽互不相干（v2.3.17，user 2026-10-01「字号应该是绝对的，不是相对于行宽的」）；起因 = user 2026-09-04 iPhone「字好小啊」

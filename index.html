@@ -262,6 +262,8 @@
              右上角 = 收起 / 露出背景（没配背景就不出现）；逐段 / 整页只在 ☰ 侧栏「逐段」和 Alt+T 切，屏上不放切换钮（v3.0.4，user「不应该有切换回整页的按钮，这个是在汉堡里面调的」）。参考窗（chrome − 2）能放在这块空地上。
              住在 .page 里（同对话框）：台的高度跟着对话框的行数和纸上的行高走 -->
         <div class="adv-stage" id="advStage" aria-hidden="true"><img id="advStageImg" class="adv-stage-img" alt="" hidden /></div>
+        <!-- 前文（v3.0.8，user 2026-10-26「我在想是要不要上面的空的地方显示前文，就用那种淡的色？可以toggle，默认开」）：这一段之前的正文，淡色、从框往上排（越靠近框越新），只看不点；小窗里不放 -->
+        <div class="adv-prev" aria-hidden="true"><div class="adv-prev-text" id="advPrevText"></div></div>
         <div class="adv-corner" id="advCorner" role="group" aria-label="逐段" data-i18n-aria="adv.aria">
           <button class="menu-button" id="advBackdropToggle" type="button" hidden aria-pressed="false" aria-label="收起背景" data-i18n-aria="adv.hideBackdrop" data-i18n-title="adv.hideBackdrop"><svg class="ico" aria-hidden="true"><use href="#visibility-hide"/></svg></button>
         </div>
@@ -464,6 +466,10 @@
             </label>
           </div>
           <p class="reading-mode-hint" data-i18n="ui.reading.advSplitHint">一个换行就分段（默认）：回车 = 下一段；整页里的空行在逐段里跳过，连按两下回车 = 加一个空行。空一行才分段：回车 = 段内换行，连按两下回车 = 下一段。跟账号走。</p>
+          <label class="voice-config-toggle">
+            <input type="checkbox" id="advContextToggle" checked />
+            <span data-i18n="ui.adv.context">框上方淡淡显示前文</span>
+          </label>
           <!-- 说话人识别 → 名字牌（v3.0.5，user 2026-10-26「可展开的选项里面是可以勾选不同的说话人识别规则。然后还有一个整体的开关。默认关」）：跟人走（synced prefs advSpeaker / advSpeakerRules） -->
           <label class="voice-config-toggle">
             <input type="checkbox" id="advSpeakerToggle" />
@@ -663,6 +669,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-4543e959e255.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-72815ce24832.mjs"></script>
   </body>
 </html>

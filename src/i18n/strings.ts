@@ -124,6 +124,7 @@ export const S = {
   "ui.reading.advSplitBlank": { zh: "空一行才分段", en: "A blank line" },
   "ui.reading.advSplitHint": { zh: "一个换行就分段（默认）：回车 = 下一段；整页里的空行在逐段里跳过，连按两下回车 = 加一个空行。空一行才分段：回车 = 段内换行，连按两下回车 = 下一段。跟账号走。", en: "Every line break (default): Enter starts the next paragraph; blank lines stay in the page but are skipped here, and pressing Enter twice adds one. A blank line: Enter breaks the line inside the paragraph, pressing Enter twice starts the next. Saved with your account." },
   "ui.sec.adv":           { zh: "逐段", en: "Paragraph mode" },   // v3.0.5：逐段的选项收成一节（框几行高 / 怎么分段 / 说话人识别）
+  "ui.adv.context":       { zh: "框上方淡淡显示前文", en: "Show the preceding text faintly above the box" },   // v3.0.8；缺 = 开
   "ui.adv.speaker":       { zh: "认出说话人，名字显示在框的左上角（像 galgame 的名字栏）", en: "Recognise the speaker and show the name at the box's top-left (like a visual novel's name box)" },
   "ui.adv.speakerRules":  { zh: "识别规则", en: "Rules" },
   "ui.adv.rule.colon":    { zh: "小月：明天再去拿吧。（剧本）", en: "Tsuki：Let's get it tomorrow. (script)" },

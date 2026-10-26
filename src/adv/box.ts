@@ -31,6 +31,8 @@ export interface AdvBoxDeps {
   onPosition?(index: number, count: number, beat: boolean): void;
   /** 光标所在的那一行（框里按换行切的一行；段首那一行带上收起来的标记）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
   onLine?(line: string): void;
+  /** 这一段前面的正文（到上一段末尾为止，最多几千字；第一段 = 空）：宿主拿去在框上方淡淡地显示前文（v3.0.8）。换段 / 别处改了正文都会再报。 */
+  onContext?(before: string): void;
   /** 段首那一行开头有几个字是说话人标记（收进名字牌、不进框；v3.0.6，user「小月：  不进文本框啊」）。没有 / 不收 = 0。 */
   tagLength?(firstLine: string): number;
 }
@@ -48,6 +50,9 @@ export interface AdvBox {
   focus(): void;
   position(): { index: number; count: number };
 }
+
+/** 前文最多报这么多字：框上方那块空地放不下更多，截头不截尾。 */
+const CONTEXT_MAX = 4000;
 
 export function createAdvBox(d: AdvBoxDeps): AdvBox {
   const ed = d.editor, box = d.input;
@@ -82,6 +87,7 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     pushCaret();
     // 新的一拍 = 单回车分段时，和上一段之间隔着空行（user「回车两次相当于换一拍」）；空一行分段时每段都是一拍，不标
     report(i, ps.length, d.split() === "line" && i > 0 && text.slice(ps[i - 1]!.end, p.start).includes("\n\n"));
+    if (d.onContext) { const e = i > 0 ? ps[i - 1]!.end : 0; d.onContext(text.slice(Math.max(0, e - CONTEXT_MAX), e)); }
   }
   /** 从正文的某个位置取它所在的那一段，光标放在对应位置。 */
   function loadAt(docPos: number): void {
