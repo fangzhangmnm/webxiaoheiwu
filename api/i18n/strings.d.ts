@@ -452,6 +452,38 @@ export declare const S: {
         readonly zh: "一个换行就分段（默认）：回车 = 下一段；整页里的空行在逐段里跳过，连按两下回车 = 加一个空行。空一行才分段：回车 = 段内换行，连按两下回车 = 下一段。跟账号走。";
         readonly en: "Every line break (default): Enter starts the next paragraph; blank lines stay in the page but are skipped here, and pressing Enter twice adds one. A blank line: Enter breaks the line inside the paragraph, pressing Enter twice starts the next. Saved with your account.";
     };
+    readonly "ui.sec.adv": {
+        readonly zh: "逐段";
+        readonly en: "Paragraph mode";
+    };
+    readonly "ui.adv.speaker": {
+        readonly zh: "认出说话人，名字显示在框的左上角（像 galgame 的名字栏）";
+        readonly en: "Recognise the speaker and show the name at the box's top-left (like a visual novel's name box)";
+    };
+    readonly "ui.adv.speakerRules": {
+        readonly zh: "识别规则";
+        readonly en: "Rules";
+    };
+    readonly "ui.adv.rule.colon": {
+        readonly zh: "小月：明天再去拿吧。（剧本）";
+        readonly en: "Tsuki：Let's get it tomorrow. (script)";
+    };
+    readonly "ui.adv.rule.bracket": {
+        readonly zh: "【小月】明天再去拿吧。（汉化稿 / 文字游戏）";
+        readonly en: "【Tsuki】… (fan translations / text games)";
+    };
+    readonly "ui.adv.rule.jaQuote": {
+        readonly zh: "小月「明日取りに行こう」（日式 ADV）";
+        readonly en: "Tsuki「…」 (Japanese ADV)";
+    };
+    readonly "ui.adv.rule.enColon": {
+        readonly zh: "TSUKI: Let's go.（英文剧本）";
+        readonly en: "TSUKI: Let's go. (English script)";
+    };
+    readonly "ui.adv.speakerHint": {
+        readonly zh: "只认行首的写法；“你好，”我说，“……” 这种说话人夹在引号中间的不认。正文一个字都不改。跟账号走。";
+        readonly en: "Only the start of a line counts; a speaker between quotes (“Hi,” I said, “…”) isn't read. The text itself is never changed. Saved with your account.";
+    };
     readonly "ui.reading.fontScale": {
         readonly zh: "字号（本机）";
         readonly en: "Text size (this device)";

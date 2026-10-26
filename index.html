@@ -268,6 +268,8 @@
         <!-- 对话框（v3.0.0，src/adv/box.ts）：正文里当前这一段的一扇窗。几行高（设置「对话框行数」，和行宽一样跟书走），多了在框里滚；钉在视口底（键盘之上），和纸同宽。
              住在 .page 里：行高 / 线位 / 字体都从纸上继承，开小窗时跟着纸一起搬过去。‹ › = 上一段 / 下一段（Ctrl+↑ / Ctrl+↓），坐在框上沿外面的正中（左边是键盘钮、右边是话筒，照旧）-->
         <div class="adv-box" id="advBox">
+          <!-- 名字牌（v3.0.5）：说话人识别认出来的名字；galgame 名字栏的位置 = 框左上角、骑在上边线上；只显示；小窗里不放 -->
+          <div class="adv-name" id="advName" hidden></div>
           <textarea id="advInput" class="adv-input" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off" aria-label="逐段：当前这一段" data-i18n-aria="adv.inputAria"></textarea>
         </div>
         <div class="adv-nav" id="advNav" role="group" aria-label="上一段 / 下一段" data-i18n-aria="adv.navAria">
@@ -406,6 +408,29 @@
             </label>
           </div>
           <p class="reading-mode-hint" data-i18n="ui.reading.fontHint">字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音 12 MB、像素 0.5 MB，选了才取。</p>
+          <label class="voice-config-field">
+            <span class="voice-config-label" data-i18n="ui.reading.fontScale">字号（本机）</span>
+            <select id="fontScaleSelect" class="voice-config-select">
+              <option value="0.85" data-i18n="ui.reading.fontScale.s">小</option>
+              <option value="1" data-i18n="ui.reading.fontScale.m">标准</option>
+              <option value="1.15" data-i18n="ui.reading.fontScale.l">大</option>
+              <option value="1.3" data-i18n="ui.reading.fontScale.xl">特大</option>
+              <option value="1.5" data-i18n="ui.reading.fontScale.xxl">超大</option>
+            </select>
+          </label>
+          <label class="voice-config-toggle">
+            <input type="checkbox" id="ruledLinesToggle" checked />
+            <span data-i18n="ui.reading.ruled">写字线</span>
+          </label>
+          <label class="voice-config-toggle">
+            <input type="checkbox" id="wordCountToggle" checked />
+            <span data-i18n="ui.reading.wordCount">字数统计</span>
+          </label>
+        </details>
+
+        <!-- 逐段（v3.0.5 起单独一节：框几行高 / 怎么分段 / 说话人识别） -->
+        <details class="settings-section" id="advSection">
+          <summary class="settings-section-title" data-i18n="ui.sec.adv">逐段</summary>
           <!-- 对话框行数（v3.0.0，user 2026-10-25「行数可以配置。和宽度一样」）：同行宽——书开着 = 这本书 editor-state advLines；没书 / 没定过 = 账号默认（synced prefs advLines，缺 = 3） -->
           <div class="reading-mode-picker" id="advLinesPicker" role="radiogroup" aria-label="逐段的框几行高" data-i18n-aria="ui.reading.advLines">
             <label class="reading-mode-option" data-adv-lines="2">
@@ -438,24 +463,21 @@
             </label>
           </div>
           <p class="reading-mode-hint" data-i18n="ui.reading.advSplitHint">一个换行就分段（默认）：回车 = 下一段；整页里的空行在逐段里跳过，连按两下回车 = 加一个空行。空一行才分段：回车 = 段内换行，连按两下回车 = 下一段。跟账号走。</p>
-          <label class="voice-config-field">
-            <span class="voice-config-label" data-i18n="ui.reading.fontScale">字号（本机）</span>
-            <select id="fontScaleSelect" class="voice-config-select">
-              <option value="0.85" data-i18n="ui.reading.fontScale.s">小</option>
-              <option value="1" data-i18n="ui.reading.fontScale.m">标准</option>
-              <option value="1.15" data-i18n="ui.reading.fontScale.l">大</option>
-              <option value="1.3" data-i18n="ui.reading.fontScale.xl">特大</option>
-              <option value="1.5" data-i18n="ui.reading.fontScale.xxl">超大</option>
-            </select>
-          </label>
+          <!-- 说话人识别 → 名字牌（v3.0.5，user 2026-10-26「可展开的选项里面是可以勾选不同的说话人识别规则。然后还有一个整体的开关。默认关」）：跟人走（synced prefs advSpeaker / advSpeakerRules） -->
           <label class="voice-config-toggle">
-            <input type="checkbox" id="ruledLinesToggle" checked />
-            <span data-i18n="ui.reading.ruled">写字线</span>
+            <input type="checkbox" id="advSpeakerToggle" />
+            <span data-i18n="ui.adv.speaker">认出说话人，名字显示在框的左上角（像 galgame 的名字栏）</span>
           </label>
-          <label class="voice-config-toggle">
-            <input type="checkbox" id="wordCountToggle" checked />
-            <span data-i18n="ui.reading.wordCount">字数统计</span>
-          </label>
+          <details class="settings-subdetails">
+            <summary data-i18n="ui.adv.speakerRules">识别规则</summary>
+            <div id="advSpeakerRules">
+              <label class="voice-config-toggle"><input type="checkbox" data-rule="colon" checked /><span data-i18n="ui.adv.rule.colon">小月：明天再去拿吧。（剧本）</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-rule="bracket" checked /><span data-i18n="ui.adv.rule.bracket">【小月】明天再去拿吧。（汉化稿 / 文字游戏）</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-rule="jaQuote" checked /><span data-i18n="ui.adv.rule.jaQuote">小月「明日取りに行こう」（日式 ADV）</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-rule="enColon" checked /><span data-i18n="ui.adv.rule.enColon">TSUKI: Let's go.（英文剧本）</span></label>
+            </div>
+            <p class="reading-mode-hint" data-i18n="ui.adv.speakerHint">只认行首的写法；“你好，”我说，“……” 这种说话人夹在引号中间的不认。正文一个字都不改。跟账号走。</p>
+          </details>
         </details>
 
         <details class="settings-section" id="imeSection">
@@ -640,6 +662,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-6f4e68086999.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-8ee1e7103aa5.mjs"></script>
   </body>
 </html>

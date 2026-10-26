@@ -62,6 +62,7 @@ import { asTextField, type TextField } from "./input/field.ts";
 import { createPaper } from "./ui/paper.ts";
 import { createAdvBox, type AdvBox } from "./adv/box.ts";
 import type { Split } from "./adv/paragraphs.ts";
+import { detectSpeaker, SPEAKER_RULES, type SpeakerRule } from "./adv/speaker.ts";
 
 // 小窗（v2.3.60，src/pip.ts）。声明在 $ 之前：纸搬进小窗时，纸里的元素在小窗的 document 上，$ 要能找到
 let pip: Pip | null = null;
@@ -1345,10 +1346,26 @@ const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class=
 //   v3.0.0–3.0.1 照打字机跳最后一段，撤）；关 = 回到整页、光标留在框里的那个位置（「还原之后光标不动」）；开着时换页 = 照旧落在开头（「打开落在开头」）。
 const advPrev = $<HTMLButtonElement>("advPrev"), advNext = $<HTMLButtonElement>("advNext");
 let pageWritable = false;   // 这页能不能写字：有稿、没锁、不是图片页（对话框钮 / 小窗共用；renderTopbar 写）
+// 说话人识别 → 名字牌（v3.0.5，user 2026-10-26「帮我想一下要不要自动识别说话人然后弹到（你知道galgame里面人名放哪里），也是文字照样打」
+//   「可展开的选项里面是可以勾选不同的说话人识别规则。然后还有一个整体的开关。默认关」）：跟人走——synced prefs `advSpeaker`（缺 = 关）、`advSpeakerRules`（勾上的规则；缺 = 全勾）。
+//   名字牌贴在框左上角（galgame 名字栏的位置），只看光标那一行；正文一个字都不改。规则本身在 src/adv/speaker.ts。
+const speakerOn = (): boolean => prefs.getItem<boolean>("advSpeaker") === true;
+function speakerRules(): Set<SpeakerRule> {
+  const v = prefs.getItem<string[]>("advSpeakerRules");
+  return new Set(Array.isArray(v) ? SPEAKER_RULES.filter((r) => v.includes(r)) : SPEAKER_RULES);
+}
+let advLine = "";   // 光标那一行（框报来的）
+// 启动时就记住引用：纸搬进 / 搬出小窗的那一瞬间它两边都不在，框这时失焦也会报一行，按 id 现查会扑空（无头假小窗抓到）
+const advNameEl = $("advName");
+function renderSpeaker(): void {
+  const name = speakerOn() ? detectSpeaker(advLine, speakerRules()) : null;
+  advNameEl.textContent = name ?? ""; advNameEl.hidden = !name;
+}
 adv = createAdvBox({
   editor: editorEl, input: advInput, canEdit: () => canEditNow(), split: advSplit,
   pageKey: () => (project.active() ? `book\u0000${project.displayName() ?? ""}\u0000${project.current() ?? ""}` : `txt\u0000${editor.state.name ?? editor.state.pendingDate ?? ""}`),
   onPosition: (i, n) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; },
+  onLine: (line) => { advLine = line; renderSpeaker(); },
 });
 /** 对话框开不开 = （主窗口开着 ∨ 小窗开着）∧ 这页能写。小窗就是对话框模式（user 2026-10-26「小窗不应该是adv模式吗」），收回小窗 = 回到主窗口自己的开关。
  *  开关住 ☰ 侧栏顶行（v3.0.2，user「adv模式我建议也收到汉堡里面」）：这页不能写 = 入口藏；开着 = 强调色。 */
@@ -1928,6 +1945,22 @@ $("advSplitPicker").addEventListener("change", (event) => {
 });
 prefs.onChange("advSplit", () => renderAdvSplit());
 renderAdvSplit();
+// 设置「说话人识别」：总开关 + 每条规则一个勾（v3.0.5）
+const advSpeakerToggle = $<HTMLInputElement>("advSpeakerToggle");
+function renderSpeakerSettings(): void {
+  advSpeakerToggle.checked = speakerOn();
+  const on = speakerRules();
+  for (const cb of document.querySelectorAll<HTMLInputElement>("#advSpeakerRules input[data-rule]")) { cb.checked = on.has(cb.dataset.rule as SpeakerRule); cb.disabled = !advSpeakerToggle.checked; }
+  renderSpeaker();
+}
+advSpeakerToggle.addEventListener("change", () => { prefs.setItem("advSpeaker", advSpeakerToggle.checked); renderSpeakerSettings(); });
+$("advSpeakerRules").addEventListener("change", () => {
+  prefs.setItem("advSpeakerRules", [...document.querySelectorAll<HTMLInputElement>("#advSpeakerRules input[data-rule]")].filter((cb) => cb.checked).map((cb) => cb.dataset.rule!));
+  renderSpeakerSettings();
+});
+prefs.onChange("advSpeaker", () => renderSpeakerSettings());
+prefs.onChange("advSpeakerRules", () => renderSpeakerSettings());
+renderSpeakerSettings();
 // 字号档位（device-kv，每台设备各自存）：字号 = 设备基准（styles.css --editor-font-base：22px，手机 16px）× 这个档。和行宽互不相干（v2.3.17，user 2026-10-01「字号应该是绝对的，不是相对于行宽的」）；起因 = user 2026-09-04 iPhone「字好小啊」
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");

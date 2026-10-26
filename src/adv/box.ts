@@ -29,6 +29,8 @@ export interface AdvBoxDeps {
   split(): Split;
   /** 第几段 / 共几段变了（画 ‹ › 的可点状态）。 */
   onPosition?(index: number, count: number): void;
+  /** 光标所在的那一行（框里按换行切的一行）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
+  onLine?(line: string): void;
 }
 
 export interface AdvBox {
@@ -76,9 +78,17 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     const ps = paragraphs(ed.value, d.split()), i = paraIndexAt(ps, docPos), p = ps[i]!;
     load(i, Math.max(0, docPos - p.start));
   }
+  /** 光标那一行报给宿主（名字牌）。 */
+  function reportLine(): void {
+    if (!active || !d.onLine) return;
+    const v = box.value, at = box.selectionStart ?? v.length;
+    const from = v.lastIndexOf("\n", at - 1) + 1, to = v.indexOf("\n", at);
+    d.onLine(v.slice(from, to < 0 ? v.length : to));
+  }
   /** 选区原样写回（不只光标）：规整标点「有选区只改选区」看的是正文的选区。 */
   function pushCaret(): void {
     if (!active) return;
+    reportLine();
     const s = start + (box.selectionStart ?? shown.length), e = start + (box.selectionEnd ?? box.selectionStart ?? shown.length);
     try { ed.setSelectionRange(s, Math.max(s, e)); } catch { /* ignore */ }
   }
@@ -103,6 +113,7 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     if (hasSplit(now, d.split())) { loadAt(docCaret); return; }   // 框里出现了分隔 = 分段了：框换到光标所在的那一段
     shown = now;
     try { ed.setSelectionRange(docCaret, docCaret); } catch { /* ignore */ }
+    reportLine();
   });
 
   /** 段首退格：删掉前面一个换行（分隔是两个换行时 = 两段接成一段，接缝处留一个段内换行）。 */

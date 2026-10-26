@@ -30,6 +30,7 @@ import "./markdown-tree.test.mjs";   // 2026-10-23 TXT 导出 = markdown 树（�
 import "./embed-text.test.mjs";   // 2026-09-30 PDF 引擎：TTF 解析 / 子集 + PDF 结构（要一款真字体，没有就 SKIP）
 import "./pip.test.mjs";   // 2026-10-24 小窗高度收成整行
 import "./adv-paragraphs.test.mjs";   // 2026-10-25 对话框模式：段落模型（纯函数）
+import "./adv-speaker.test.mjs";   // 2026-10-26 逐段：说话人识别（纯函数）
 import { run } from "./runner.mjs";
 console.log("\n  WebXiaoHeiWu —— app 域测试（store 契约在 internal-store/test/）\n");
 await run();
