@@ -461,8 +461,8 @@ export declare const S: {
         readonly en: "Show the preceding text faintly above the box";
     };
     readonly "ui.adv.speaker": {
-        readonly zh: "认出说话人，名字显示在框的左上角（像 galgame 的名字栏）";
-        readonly en: "Recognise the speaker and show the name at the box's top-left (like a visual novel's name box)";
+        readonly zh: "认出说话人和动作：名字显示在框的左上角（像 galgame 的名字栏），整行动作的字变灰";
+        readonly en: "Recognise speakers and actions: the name shows at the box's top-left (like a visual novel's name box); whole-line actions turn grey";
     };
     readonly "ui.adv.speakerRules": {
         readonly zh: "识别规则";
@@ -483,6 +483,18 @@ export declare const S: {
     readonly "ui.adv.rule.enColon": {
         readonly zh: "TSUKI: Let's go.（英文剧本）";
         readonly en: "TSUKI: Let's go. (English script)";
+    };
+    readonly "ui.adv.rule.paren": {
+        readonly zh: "（小月推开门。）整行括号 = 动作，字变灰";
+        readonly en: "(She opens the door.) — a whole line in brackets is an action, shown grey";
+    };
+    readonly "ui.adv.rule.star": {
+        readonly zh: "*推开门* 星号 = 动作（网聊 / 跑团写法）";
+        readonly en: "*opens the door* — asterisks are an action (chat / role-play style)";
+    };
+    readonly "ui.adv.rule.square": {
+        readonly zh: "[She opens the door.] 方括号 = 动作（英文舞台剧）";
+        readonly en: "[She opens the door.] — square brackets are an action (stage plays)";
     };
     readonly "ui.adv.speakerHint": {
         readonly zh: "只认行首的写法；“你好，”我说，“……” 这种说话人夹在引号中间的不认。正文一个字都不改。跟账号走。";

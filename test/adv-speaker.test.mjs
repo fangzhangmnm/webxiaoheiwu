@@ -1,6 +1,6 @@
 // 逐段的说话人识别（src/adv/speaker.ts）。created 2026-10-26 by Claude Opus 5.5
 import { describe, it, eq } from "./runner.mjs";
-import { detectSpeaker, speakerTag, SPEAKER_RULES } from "../src/adv/speaker.ts";
+import { detectSpeaker, speakerTag, isActionLine, SPEAKER_RULES, ACTION_RULES } from "../src/adv/speaker.ts";
 
 const all = new Set(SPEAKER_RULES);
 const only = (...r) => new Set(r);
@@ -68,4 +68,30 @@ describe("adv/speaker · 标记有几个字（收进名字牌、不进框；v3.0
   });
   it("冒号后面隔着空白再接引号也是小说写法，不认", () => { eq(len("我说：  “你好”"), 0); });
   it("没有标记 = 0；行首的时间 / 网址不是说话人", () => { eq(len("雨停了。"), 0); eq(len("TSUKI:x"), 0); eq(len("12:30 到了"), 0); eq(len("http://example.com"), 0); });
+});
+
+describe("adv/speaker · 动作（整行，v3.0.9，user「b，但不要动作标」「以及我一直以为大家用的是*号」）", () => {
+  const acts = new Set(ACTION_RULES);
+  it("整行括号：全角（）/ 半角 () / 〔〕；首行缩进、行尾空白不算", () => {
+    eq(isActionLine("（小月推开门，雨还在下。）", acts), true);
+    eq(isActionLine("(雨停了)", acts), true);
+    eq(isActionLine("〔转场〕", acts), true);
+    eq(isActionLine("　　（叹气）  ", acts), true);
+  });
+  it("星号：*推开门*；**粗体** 不算", () => {
+    eq(isActionLine("*推开门*", acts), true);
+    eq(isActionLine("*opens the door*", acts), true);
+    eq(isActionLine("**这是粗体**", acts), false);
+  });
+  it("方括号：[She opens the door.]", () => { eq(isActionLine("[She opens the door.]", acts), true); });
+  it("不是整行的不算：台词里夹的（叹气）、半截括号、普通叙述", () => {
+    eq(isActionLine("小月：（叹气）明天再说吧。", acts), false);
+    eq(isActionLine("（叹气）明天再说吧。", acts), false);
+    eq(isActionLine("雨停了。", acts), false);
+    eq(isActionLine("", acts), false);
+  });
+  it("规则没勾 = 不认", () => {
+    eq(isActionLine("*推开门*", new Set(["paren"])), false);
+    eq(isActionLine("（推开门）", new Set(["paren"])), true);
+  });
 });

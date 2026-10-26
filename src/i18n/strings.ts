@@ -125,12 +125,15 @@ export const S = {
   "ui.reading.advSplitHint": { zh: "一个换行就分段（默认）：回车 = 下一段；整页里的空行在逐段里跳过，连按两下回车 = 加一个空行。空一行才分段：回车 = 段内换行，连按两下回车 = 下一段。跟账号走。", en: "Every line break (default): Enter starts the next paragraph; blank lines stay in the page but are skipped here, and pressing Enter twice adds one. A blank line: Enter breaks the line inside the paragraph, pressing Enter twice starts the next. Saved with your account." },
   "ui.sec.adv":           { zh: "逐段", en: "Paragraph mode" },   // v3.0.5：逐段的选项收成一节（框几行高 / 怎么分段 / 说话人识别）
   "ui.adv.context":       { zh: "框上方淡淡显示前文", en: "Show the preceding text faintly above the box" },   // v3.0.8；缺 = 开
-  "ui.adv.speaker":       { zh: "认出说话人，名字显示在框的左上角（像 galgame 的名字栏）", en: "Recognise the speaker and show the name at the box's top-left (like a visual novel's name box)" },
+  "ui.adv.speaker":       { zh: "认出说话人和动作：名字显示在框的左上角（像 galgame 的名字栏），整行动作的字变灰", en: "Recognise speakers and actions: the name shows at the box's top-left (like a visual novel's name box); whole-line actions turn grey" },
   "ui.adv.speakerRules":  { zh: "识别规则", en: "Rules" },
   "ui.adv.rule.colon":    { zh: "小月：明天再去拿吧。（剧本）", en: "Tsuki：Let's get it tomorrow. (script)" },
   "ui.adv.rule.bracket":  { zh: "【小月】明天再去拿吧。（汉化稿 / 文字游戏）", en: "【Tsuki】… (fan translations / text games)" },
   "ui.adv.rule.jaQuote":  { zh: "小月「明日取りに行こう」（日式 ADV）", en: "Tsuki「…」 (Japanese ADV)" },
   "ui.adv.rule.enColon":  { zh: "TSUKI: Let's go.（英文剧本）", en: "TSUKI: Let's go. (English script)" },
+  "ui.adv.rule.paren":    { zh: "（小月推开门。）整行括号 = 动作，字变灰", en: "(She opens the door.) — a whole line in brackets is an action, shown grey" },
+  "ui.adv.rule.star":     { zh: "*推开门* 星号 = 动作（网聊 / 跑团写法）", en: "*opens the door* — asterisks are an action (chat / role-play style)" },
+  "ui.adv.rule.square":   { zh: "[She opens the door.] 方括号 = 动作（英文舞台剧）", en: "[She opens the door.] — square brackets are an action (stage plays)" },
   "ui.adv.speakerHint":   { zh: "只认行首的写法；“你好，”我说，“……” 这种说话人夹在引号中间的不认。正文一个字都不改。跟账号走。", en: "Only the start of a line counts; a speaker between quotes (“Hi,” I said, “…”) isn't read. The text itself is never changed. Saved with your account." },
   "ui.reading.fontScale": { zh: "字号（本机）", en: "Text size (this device)" },
   "ui.reading.fontScale.s": { zh: "小", en: "Small" },

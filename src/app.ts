@@ -62,7 +62,7 @@ import { asTextField, type TextField } from "./input/field.ts";
 import { createPaper } from "./ui/paper.ts";
 import { createAdvBox, type AdvBox } from "./adv/box.ts";
 import type { Split } from "./adv/paragraphs.ts";
-import { detectSpeaker, speakerTag, SPEAKER_RULES, type SpeakerRule } from "./adv/speaker.ts";
+import { detectSpeaker, speakerTag, isActionLine, SPEAKER_RULES, ACTION_RULES, type SpeakerRule, type ActionRule } from "./adv/speaker.ts";
 
 // 小窗（v2.3.60，src/pip.ts）。声明在 $ 之前：纸搬进小窗时，纸里的元素在小窗的 document 上，$ 要能找到
 let pip: Pip | null = null;
@@ -1355,6 +1355,11 @@ function speakerRules(): Set<SpeakerRule> {
   const v = prefs.getItem<string[]>("advSpeakerRules");
   return new Set(Array.isArray(v) ? SPEAKER_RULES.filter((r) => v.includes(r)) : SPEAKER_RULES);
 }
+/** 动作规则（v3.0.9，user「b，但不要动作标」「以及我一直以为大家用的是*号」）：和说话人规则同一张勾选清单（advSpeakerRules，id 不重；缺 = 全勾）。 */
+function actionRules(): Set<ActionRule> {
+  const v = prefs.getItem<string[]>("advSpeakerRules");
+  return new Set(Array.isArray(v) ? ACTION_RULES.filter((r) => v.includes(r)) : ACTION_RULES);
+}
 let advLine = "";   // 光标那一行（框报来的）
 // 启动时就记住引用：纸搬进 / 搬出小窗的那一瞬间它两边都不在，框这时失焦也会报一行，按 id 现查会扑空（无头假小窗抓到）
 const advNameEl = $("advName"), advBoxEl = $("advBox"), advPrevEl = $("advPrevText");
@@ -1363,6 +1368,10 @@ const advContextOn = (): boolean => prefs.getItem<boolean>("advContext") !== fal
 function renderSpeaker(): void {
   const name = speakerOn() ? detectSpeaker(advLine, speakerRules()) : null;
   advNameEl.textContent = name ?? ""; advNameEl.hidden = !name;
+  // 动作：框里这一段整段都是动作 → 字变灰，不写「动作」字样（框是一个文本框，没法只灰其中一行：单回车分段一段 = 一行，正好一句一判）
+  const lines = advInput.value.split("\n").filter((l) => l.trim());
+  const acts = speakerOn() ? actionRules() : null;
+  advInput.classList.toggle("is-action", !!acts && lines.length > 0 && lines.every((l) => isActionLine(l, acts)));
 }
 adv = createAdvBox({
   editor: editorEl, input: advInput, canEdit: () => canEditNow(), split: advSplit,
@@ -1967,8 +1976,8 @@ renderAdvSplit();
 const advSpeakerToggle = $<HTMLInputElement>("advSpeakerToggle");
 function renderSpeakerSettings(): void {
   advSpeakerToggle.checked = speakerOn();
-  const on = speakerRules();
-  for (const cb of document.querySelectorAll<HTMLInputElement>("#advSpeakerRules input[data-rule]")) { cb.checked = on.has(cb.dataset.rule as SpeakerRule); cb.disabled = !advSpeakerToggle.checked; }
+  const on = new Set<string>([...speakerRules(), ...actionRules()]);   // 说话人和动作同一张清单：两种都要算（只算说话人 = 一重画就把动作的勾清掉）
+  for (const cb of document.querySelectorAll<HTMLInputElement>("#advSpeakerRules input[data-rule]")) { cb.checked = on.has(cb.dataset.rule ?? ""); cb.disabled = !advSpeakerToggle.checked; }
   document.body.classList.toggle("adv-speaker", speakerOn());   // 小窗里的框顶上留一窄条放名字牌（v3.0.8；body 的 class 会抄进小窗）
   adv?.sync();   // 标记收不收变了：框重取
   renderSpeaker();

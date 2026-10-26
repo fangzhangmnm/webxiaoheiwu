@@ -2082,6 +2082,7 @@ body.adv .adv-box {
   overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--bg-3) transparent;
 }
 .adv-input::selection { background: rgba(160, 88, 38, 0.22); }
+.adv-input.is-action { color: var(--ink-muted); }   /* 动作（整行括号 / 星号 / 方括号）：字变灰，不写「动作」字样（v3.0.9，user「b，但不要动作标」） */
 body.ruled-lines .adv-input {   /* 写字线同纸（一张会重复的渐变）；local = 跟着框里的字一起滚 */
   background-image: repeating-linear-gradient(to bottom, transparent 0, transparent var(--rule-y), var(--line) var(--rule-y), var(--line) calc(var(--rule-y) + var(--rule-w)), transparent calc(var(--rule-y) + var(--rule-w)), transparent var(--editor-lh));
   background-attachment: local; background-position: 0 0;

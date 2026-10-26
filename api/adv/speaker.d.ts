@@ -9,3 +9,8 @@ export interface SpeakerTag {
 export declare function speakerTag(line: string, enabled: ReadonlySet<SpeakerRule>): SpeakerTag | null;
 /** 这一行的说话人；没有 = null。 */
 export declare const detectSpeaker: (line: string, enabled: ReadonlySet<SpeakerRule>) => string | null;
+export type ActionRule = "paren" | "star" | "square";
+/** 设置里的顺序（和说话人规则同一张勾选清单，id 不重）。 */
+export declare const ACTION_RULES: readonly ActionRule[];
+/** 这一行整行是动作吗（首行缩进、行尾空白不算）。 */
+export declare function isActionLine(line: string, enabled: ReadonlySet<ActionRule>): boolean;

@@ -473,7 +473,7 @@
           <!-- 说话人识别 → 名字牌（v3.0.5，user 2026-10-26「可展开的选项里面是可以勾选不同的说话人识别规则。然后还有一个整体的开关。默认关」）：跟人走（synced prefs advSpeaker / advSpeakerRules） -->
           <label class="voice-config-toggle">
             <input type="checkbox" id="advSpeakerToggle" />
-            <span data-i18n="ui.adv.speaker">认出说话人，名字显示在框的左上角（像 galgame 的名字栏）</span>
+            <span data-i18n="ui.adv.speaker">认出说话人和动作：名字显示在框的左上角（像 galgame 的名字栏），整行动作的字变灰</span>
           </label>
           <details class="settings-subdetails">
             <summary data-i18n="ui.adv.speakerRules">识别规则</summary>
@@ -482,6 +482,9 @@
               <label class="voice-config-toggle"><input type="checkbox" data-rule="bracket" checked /><span data-i18n="ui.adv.rule.bracket">【小月】明天再去拿吧。（汉化稿 / 文字游戏）</span></label>
               <label class="voice-config-toggle"><input type="checkbox" data-rule="jaQuote" checked /><span data-i18n="ui.adv.rule.jaQuote">小月「明日取りに行こう」（日式 ADV）</span></label>
               <label class="voice-config-toggle"><input type="checkbox" data-rule="enColon" checked /><span data-i18n="ui.adv.rule.enColon">TSUKI: Let's go.（英文剧本）</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-rule="paren" checked /><span data-i18n="ui.adv.rule.paren">（小月推开门。）整行括号 = 动作，字变灰</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-rule="star" checked /><span data-i18n="ui.adv.rule.star">*推开门* 星号 = 动作（网聊 / 跑团写法）</span></label>
+              <label class="voice-config-toggle"><input type="checkbox" data-rule="square" checked /><span data-i18n="ui.adv.rule.square">[She opens the door.] 方括号 = 动作（英文舞台剧）</span></label>
             </div>
             <p class="reading-mode-hint" data-i18n="ui.adv.speakerHint">只认行首的写法；“你好，”我说，“……” 这种说话人夹在引号中间的不认。正文一个字都不改。跟账号走。</p>
           </details>
@@ -669,6 +672,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-72815ce24832.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-29ca966283c8.mjs"></script>
   </body>
 </html>

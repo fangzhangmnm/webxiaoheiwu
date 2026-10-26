@@ -43,3 +43,24 @@ export function speakerTag(line: string, enabled: ReadonlySet<SpeakerRule>): Spe
 }
 /** 这一行的说话人；没有 = null。 */
 export const detectSpeaker = (line: string, enabled: ReadonlySet<SpeakerRule>): string | null => speakerTag(line, enabled)?.name ?? null;
+
+// ── 动作（舞台提示，v3.0.9，user 2026-10-26「话说还有动作规则吧」「b，但不要动作标」「以及我一直以为大家用的是*号」）：整行都是动作才算 ──
+//   认出来 = 框里的字变灰（不写「动作」字样）；没认出说话人、也不是动作 = 旁白。
+export type ActionRule = "paren" | "star" | "square";
+/** 设置里的顺序（和说话人规则同一张勾选清单，id 不重）。 */
+export const ACTION_RULES: readonly ActionRule[] = ["paren", "star", "square"];
+const ACTIONS: Record<ActionRule, RegExp> = {
+  /** （小月推开门。）/ (……) / 〔……〕：剧本 / 台本的舞台提示，整行括号 */
+  paren: /^(?:（[^（）]*）|\([^()]*\)|〔[^〔〕]*〕)$/,
+  /** *推开门* ：网聊 / 跑团 / AI 角色扮演的写法；两个星号（markdown 粗体 **……**）不算 */
+  star: /^\*(?!\*)[^*]+\*$/,
+  /** [She opens the door.]：英文舞台剧 */
+  square: /^\[[^\[\]]+\]$/,
+};
+/** 这一行整行是动作吗（首行缩进、行尾空白不算）。 */
+export function isActionLine(line: string, enabled: ReadonlySet<ActionRule>): boolean {
+  const s = line.replace(/^[\s　]+|[\s　]+$/g, "");
+  if (!s) return false;
+  for (const r of ACTION_RULES) if (enabled.has(r) && ACTIONS[r].test(s)) return true;
+  return false;
+}
