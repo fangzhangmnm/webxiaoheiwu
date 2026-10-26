@@ -617,8 +617,8 @@ export const S = {
   "sidebar.export":         { zh: "导出", en: "Export" },
   "sidebar.exportTitle":    { zh: "导出：复制文字 / 长图", en: "Export: copy text / long image" },
   // ── 2026-10-16 一键规整标点（user「一键把标点符号或者选中的标点符号全部正则化」）──
-  "sidebar.punct":          { zh: "规整标点", en: "Tidy punctuation" },
-  "sidebar.punctTitle":     { zh: "规整标点：引号统一成设置里的那种、西文标点换成中文（选中了只改选中的，否则整页）", en: "Tidy punctuation: unify quotes to the configured style, Western marks → Chinese (selection only, else the whole page)" },
+  "ui.ime.tidyNow":         { zh: "规整标点", en: "Tidy punctuation" },   // v3.0.1 从侧栏顶行（sidebar.punct）搬到设置 → 输入法，文字钮
+  "ui.ime.tidyNowHint":     { zh: "引号统一成上面的样式、西文标点换成中文。正文里选中了一截就只改那一截，否则改整页。", en: "Unifies quotes to the style above and turns Western marks into Chinese ones. With a selection in the text, only that part; otherwise the whole page." },
   "punct.done":             { zh: "整页已规整 {n} 处标点", en: "Tidied {n} punctuation mark(s) on this page" },
   "punct.doneSel":          { zh: "选中部分已规整 {n} 处标点", en: "Tidied {n} punctuation mark(s) in the selection" },
   "punct.none":             { zh: "标点已经是中文的了", en: "Punctuation is already Chinese" },

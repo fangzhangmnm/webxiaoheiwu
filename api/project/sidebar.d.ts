@@ -10,7 +10,6 @@ export interface EdgeSidebarDeps {
     onLibrary: () => void;
     onExport: () => void;
     /** 「规整标点」（2026-10-16，user「一键把标点符号或者选中的标点符号全部正则化」）：有选区只改选区，否则整页；app 层做。 */
-    onPunct: () => void;
     /** 「小窗」（v2.3.60，Alt+P 同一个动作）：纸搬进置顶小窗 / 收回。这个浏览器没有小窗 API → 入口不露。 */
     onPip: () => void;
     pipSupported: () => boolean;

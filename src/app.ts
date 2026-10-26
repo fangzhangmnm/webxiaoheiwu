@@ -142,6 +142,9 @@ initDiagLog();   // 2026-09-09 黑匣子：页面生命周期/在线态面包屑
 initSheets({ ok: t("common.ok"), cancel: t("common.cancel") });
 console.log("[xhw] build:", APP_VERSION);
 $("settingsBuild").textContent = APP_VERSION;
+// 版本号四处同一个值：设置「维护」、设置「开发者」还原出厂旁、书库右下角、编辑器右下角（v3.0.1，user 2026-10-26「书库右下角可以显示版本号吗」「编辑器的右下角也是可以放版本号」「开发者的还原出厂设置旁边也应该显示版本号」）；开发版路由再加「· dev」（见 shell 那一节）
+const VERSION_TAGS = ["settingsBuild", "developerBuild", "galleryVersion", "editorVersion"] as const;
+for (const id of VERSION_TAGS) $(id).textContent = APP_VERSION;
 
 const editorEl = $<HTMLTextAreaElement>("editor");
 const advInput = $<HTMLTextAreaElement>("advInput");   // 对话框模式的框（v3.0.0，src/adv/box.ts）：正文里当前这一段的一扇窗
@@ -293,7 +296,6 @@ const edgeSidebar = createEdgeSidebar({
   orphanCount: () => orphanPages().length, onOrphans: () => { void orphansFlow(); },
   onLibrary: () => { void galleryHost.open(); },
   onExport: () => { void exportSheetFlow(); },
-  onPunct: () => tidyPunctuation(),
   onPip: () => { void togglePip(); },   // 小窗（v2.3.60）：同 Alt+P
   pipSupported,
   onSettings: () => showSidebarSettings(),
@@ -636,8 +638,10 @@ function tidyPunctuation(): void {
   replaceRange(el, s, e, after);
   try { if (hadSel) el.setSelectionRange(s, s + after.length); else { const c = Math.min(caret, el.value.length); el.setSelectionRange(c, c); } } catch { /* ignore */ }
   sheet.scrollTop = top;
+  adv?.sync();   // 对话框开着：框跟上正文（正文框藏着拿不到焦点，上面走的是 setRangeText）
   setStatus(t(hadSel ? "punct.doneSel" : "punct.done", { n: changes }));
 }
+$("tidyPunctButton").addEventListener("click", () => tidyPunctuation());   // 设置 → 输入法（v3.0.1 从侧栏顶行搬来，文字钮）
 async function exportSheetFlow(): Promise<void> {
   const inBook = project.active();
   if (inBook ? project.locked() : editor.state.locked) { setStatus(t("export.locked"), { error: true }); return; }
@@ -2369,7 +2373,7 @@ const shell = initPwaShell({
 });
 $("updateReloadButton").addEventListener("click", () => { void shell.reload(); });
 $("updateDismissButton").addEventListener("click", () => updateToast.classList.add("hidden"));
-if (shell.isDevRoute) $("settingsBuild").textContent += " · dev";
+if (shell.isDevRoute) for (const id of VERSION_TAGS) $(id).textContent += " · dev";
 
 // ── boot ──
 async function boot(): Promise<void> {

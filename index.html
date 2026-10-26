@@ -157,6 +157,8 @@
 <!-- ICON-SPRITE:END -->
 
     <main class="surface" aria-label="网页版小黑屋" data-i18n-aria="ui.appTitle">
+      <!-- 版本号（v3.0.1，user 2026-10-26「编辑器的右下角也是可以放版本号」）：屏幕最底下那条留白里（纸 / 话筒 / 对话框都在它上面）；软键盘升起来时藏 -->
+      <div class="version-tag editor-version" id="editorVersion"></div>
       <header class="top-bar">
         <!-- 书库钮：顶栏最左 = 回书库（user 2026-09-10「标题左边放书库图标。标题还是改名」；侧栏里的「书库」照旧 = 外面和菜单里都有）；常驻，不随有没有稿隐藏 -->
         <button class="menu-button" id="libraryButton" type="button" aria-label="书库" data-i18n-aria="sidebar.library" data-i18n-title="sidebar.library">
@@ -209,6 +211,8 @@
           <button class="auth-action danger" id="galleryAsideEmpty" type="button" data-i18n="gal.empty">清空</button>
         </div>
         <div class="gallery-mount" id="galleryMount"></div>
+        <!-- 版本号（v3.0.1，user 2026-10-26「书库右下角可以显示版本号吗」）：淡、小、不挡点；和设置页「版本」同一个值 -->
+        <div class="version-tag gallery-version" id="galleryVersion"></div>
       </div>
       <div id="edgeBackdrop" class="edge-backdrop" aria-hidden="true"></div>
       <aside id="edgeSidebar" class="edge-sidebar" aria-label="侧栏" data-i18n-aria="edge.aria"></aside>
@@ -507,6 +511,11 @@
               <option value="corner" data-i18n="ui.ime.quotes.corner">方引号 「 」『 』</option>
             </select>
           </label>
+          <!-- 规整标点（v2.3.36 起住侧栏顶行、魔法棒图标；v3.0.1 搬到这里、改文字钮——user 2026-10-26「规整标点不要放在常用栏里面，先放在扳手的输入法里面，然后那个魔法棒也太谜语人了。现在先就用文字按钮」）。两种输入法都露着 -->
+          <div class="settings-row">
+            <button class="auth-action" id="tidyPunctButton" type="button" data-i18n="ui.ime.tidyNow">规整标点</button>
+          </div>
+          <p class="voice-config-hint" data-i18n="ui.ime.tidyNowHint">引号统一成上面的样式、西文标点换成中文。正文里选中了一截就只改那一截，否则改整页。</p>
           <!-- 系统输入法才有用的（v2.3.58：用内置输入法时整组藏起来）-->
           <div id="imeSystemOptions" hidden>
             <label class="voice-config-toggle">
@@ -586,6 +595,7 @@
           <div class="settings-row">
             <button class="auth-action" id="diagButton" type="button" data-i18n="ui.diag">诊断日志</button>
             <button class="auth-action danger" id="factoryResetButton" type="button" data-i18n="ui.factoryReset">还原出厂设置（清本机全部数据）…</button>
+            <div class="settings-build" id="developerBuild" title="构建版本" data-i18n-title="ui.buildTitle"></div><!-- v3.0.1，user 2026-10-26「开发者的还原出厂设置旁边也应该显示版本号」 -->
           </div>
           <div class="settings-row" id="diagLogActions" hidden>
             <button class="auth-action" id="diagLogCopy" type="button" data-i18n="diag.copy">复制</button>
@@ -626,6 +636,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-e55bf2b0fc5f.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-c71ea3a7e170.mjs"></script>
   </body>
 </html>

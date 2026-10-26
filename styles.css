@@ -608,6 +608,7 @@ html:has(> body.pip-body) { overflow: hidden; height: 100%; }   /* 挡住 body �
 }
 
 .settings-build:empty { display: none; }
+.settings-row > .settings-build { padding: 0; border: 0; align-self: center; }   /* 开发者节：「还原出厂设置」旁边那个（v3.0.1） */
 
 .icon-button {
   width: 32px;
@@ -1705,6 +1706,11 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 /* ═══ 2.0 图库屏（@internal/gallery card view，独立一屏替代抽屉列表；网格/tile 皮在 vendor/internal-css/gallery.css）═══ */
 .gallery-full { position: fixed; inset: 0; z-index: var(--z-overlay);   /* 包内菜单/弹层用 :root 的 --z-menu/--z-popover/--z-modal/--z-toast/--z-notice（与 WeebPaint 同表） */ display: flex; flex-direction: column; background: var(--bg-0); color: var(--ink); font-family: var(--font-ui); }
 .gallery-full.hidden { display: none; }
+/* 版本号（v3.0.1，user 2026-10-26「书库右下角可以显示版本号吗」「编辑器的右下角也是可以放版本号」）：小、淡、不挡点 */
+.version-tag { font-size: 11px; line-height: 12px; color: var(--ink-muted); opacity: 0.75; pointer-events: none; user-select: none; -webkit-user-select: none; font-variant-numeric: tabular-nums; }
+.gallery-version { position: absolute; right: max(env(safe-area-inset-right, 0px), 10px); bottom: max(env(safe-area-inset-bottom, 0px), 6px); }   /* 书库右下角；列表底部多留 16px 不压最后一排 */
+.editor-version { position: fixed; z-index: var(--z-page); right: calc(var(--sa-right) + 10px); bottom: 1px; }   /* 编辑器：屏幕最底下那条留白（--bottom-floor ≥ 14px）里 */
+body.ime-docked .editor-version { display: none; }   /* 软键盘那一块占着屏幕底：让位 */
 .gallery-chrome { display: flex; align-items: center; gap: 8px; padding: max(env(safe-area-inset-top, 0px), 8px) 14px 8px; border-bottom: 1px solid var(--line); }
 .gallery-chrome-title { font-weight: 600; }
 .gallery-chrome .auth-action .ico, .gallery-asidebar .auth-action .ico { width: 14px; height: 14px; margin-right: 4px; }
@@ -1716,7 +1722,7 @@ body[data-edges="1"] .edge-sidebar { display: flex; }
 .gallery-aside-tab + .gallery-aside-tab { border-left: 1px solid var(--line-strong); }
 .gallery-aside-tab .ico { width: 15px; height: 15px; }
 .gallery-aside-tab.is-on { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); font-weight: 600; }
-.gallery-mount { flex: 1 1 auto; overflow: auto; padding: 0 0 12px; }   /* 横向 padding 归包内 .gallery-grid（16px）；宿主再叠 14px 曾让 375px 宽只剩 315px、排不下两列（user 2026-09-10 iPhone SE2 打回） */
+.gallery-mount { flex: 1 1 auto; overflow: auto; padding: 0 0 28px; }   /* 横向 padding 归包内 .gallery-grid（16px）；宿主再叠 14px 曾让 375px 宽只剩 315px、排不下两列（user 2026-09-10 iPhone SE2 打回） */
 .gallery-mount .sheet-action { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); font: inherit; cursor: pointer; }
 
 /* ═══ 输入法附件（v2.1.16，2026-09-29；src/input/）：app 内软键盘 + 常驻候选（手机式）/ 悬浮候选条（PC 式，实体键盘）═══

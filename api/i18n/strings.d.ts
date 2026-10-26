@@ -2316,13 +2316,13 @@ export declare const S: {
         readonly zh: "导出：复制文字 / 长图";
         readonly en: "Export: copy text / long image";
     };
-    readonly "sidebar.punct": {
+    readonly "ui.ime.tidyNow": {
         readonly zh: "规整标点";
         readonly en: "Tidy punctuation";
     };
-    readonly "sidebar.punctTitle": {
-        readonly zh: "规整标点：引号统一成设置里的那种、西文标点换成中文（选中了只改选中的，否则整页）";
-        readonly en: "Tidy punctuation: unify quotes to the configured style, Western marks → Chinese (selection only, else the whole page)";
+    readonly "ui.ime.tidyNowHint": {
+        readonly zh: "引号统一成上面的样式、西文标点换成中文。正文里选中了一截就只改那一截，否则改整页。";
+        readonly en: "Unifies quotes to the style above and turns Western marks into Chinese ones. With a selection in the text, only that part; otherwise the whole page.";
     };
     readonly "punct.done": {
         readonly zh: "整页已规整 {n} 处标点";
