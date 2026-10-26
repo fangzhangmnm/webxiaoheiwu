@@ -15,4 +15,5 @@ ADR（决策与否决，防 re-litigate）：
 v1 时代 how-doc（2026-05，顶部戳标明哪些仍有效）：sync-design · encryption · msal-onedrive · pwa-service-worker · filename-conventions · editor-ux · quest-ime · voice-input · push-to-talk · working-with-this-user。
 
 提案（进行中）：[20261024-mini-window-proposal.md](20261024-mini-window-proposal.md) 小窗（老板键）设计稿——2026-10-24 user 已拍主干，没写代码。
-提案（进行中）：[20261024-typewriter-mode-proposal.md](20261024-typewriter-mode-proposal.md) 打字机模式设计稿——和小窗是两个独立解法；2026-10-24 user 已拍主干，没写代码。
+设计记录：[20261026-adv-dialog-box.md](20261026-adv-dialog-box.md) 对话框模式（ADV，v3.0.0）——一次写一段、回车就发；取代打字机模式。
+已取代：[20261024-typewriter-mode-proposal.md](20261024-typewriter-mode-proposal.md) 打字机模式设计稿——和小窗是两个独立解法；2026-10-24 user 已拍主干，没写代码。

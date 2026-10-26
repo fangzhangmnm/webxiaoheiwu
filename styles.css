@@ -4,7 +4,7 @@
    user 2026-09-10「麦克风按钮和边栏的 z order 乱了。z order 的问题系统解决一下」：话筒以前 7 > 侧栏 5。 ═══ */
 :root {
   --z-page: 5;
-  --z-typewriter: 7;   /* 打字机模式的遮挡带（v2.3.59）：纸面浮件（page）之上、参考窗（chrome − 2）之下——参考窗要能放在纸条上方那块空地上 */
+  --z-adv-stage: 4;   /* 对话框模式的台（背景图，v3.0.0）：纸面浮件（page：对话框 / 话筒 / ‹ ›）之下；参考窗（chrome − 2）自然在它上面 */
   --z-chrome: 10;
   --z-overlay: 300;
   --z-drawer: 350;
@@ -129,26 +129,8 @@ body {
    WebKit 回退 bug 316902（iOS 26.4 起，26.3.1 正常；iOS 上的 Edge 同一个引擎）flex 列滚动容器的 padding 不进 scrollHeight——
    一屏左右长的页整张滚不动、纸底压在键盘下，长页最后一截够不着；短页靠 min-height 缩，所以「只有部分页面」。Chromium 无头复现不了，结构修。
    占位块再多一截 --sheet-overscroll = 大半页（可见纸高 × 0.6；user 同日「能不能加入大半页的额外滚动余量」）：最后一行能推到屏幕上半截写。图片页没有。 */
-:root { --bar-h: calc(var(--top-floor) + 32px); --sheet-top: var(--bar-h); --sheet-bottom: calc(var(--bottom-floor) + var(--kb-offset, 0px) + var(--dock-h, 0px)); --sheet-h: calc(100dvh - var(--sheet-top) - var(--sheet-bottom)); --sheet-overscroll: calc(var(--sheet-h) * 0.6); }
+:root { --sheet-top: calc(var(--top-floor) + 32px); --sheet-bottom: calc(var(--bottom-floor) + var(--kb-offset, 0px) + var(--dock-h, 0px)); --sheet-h: calc(100dvh - var(--sheet-top) - var(--sheet-bottom)); --sheet-overscroll: calc(var(--sheet-h) * 0.6); }
 body[data-page-kind="image"] { --sheet-overscroll: 0px; }
-/* 打字机模式（v2.3.59，user 2026-10-24「就是相当于页的那个top放到很下面。像是打字机的纸一样」「写字留三行，然后下面一行新的，所以一共四行，其他的胖子占多少地方还是占多少」）：
-   只挪纸的上沿 --sheet-top，别的（顶栏那一排 --bar-h、章节名、页脚、键盘、话筒）原样。--tw-strip = 4 行 + 上下各 8px 的光标跟随边距，app.ts 按行高写；
-   followCaret 本来就在光标行下面留一行看头 → 三行字 + 一行空的。--sheet-h / --sheet-overscroll 要在这里重算（:root 上的是按 :root 的 --sheet-top 算好的值）。
-   没写 --tw-strip 之前回落 100dvh = 上沿不动。body.typewriter 只在能写字的页上挂（app.ts applyTypewriter：锁着 / 图片页 / 没稿都不挂），图片页这里再挡一道。 */
-body.typewriter:not([data-page-kind="image"]) {
-  --sheet-top: max(var(--bar-h), calc(100dvh - var(--sheet-bottom) - var(--tw-strip, 100dvh)));
-  --sheet-h: calc(100dvh - var(--sheet-top) - var(--sheet-bottom)); --sheet-overscroll: calc(var(--sheet-h) * 0.6);
-}
-.tw-band { display: none; }
-body.typewriter:not([data-page-kind="image"]) .tw-band {
-  display: block; position: fixed; left: 0; right: 0; top: var(--bar-h); height: calc(var(--sheet-top) - var(--bar-h));
-  background-color: var(--bg-0);
-  background-image:
-    radial-gradient(80% 60% at 50% 0%, rgba(255, 250, 235, 0.45), transparent 60%),
-    radial-gradient(60% 50% at 100% 100%, rgba(160, 88, 38, 0.06), transparent 65%);
-  background-size: 100% 100dvh; background-repeat: no-repeat; background-position: 0 calc(-1 * var(--bar-h));   /* 接着顶栏的渐变往下画：和 body 逐像素相同，没有接缝 */
-  z-index: var(--z-typewriter);
-}
 /* 小窗（v2.3.60，src/pip.ts；设计稿 ai-docs/20261024-mini-window-proposal.md）：纸（.page）搬进 Document PiP 小窗，body.pip-body 是唯一的滚动容器。
    「非常 borderless 精简」（user 2026-10-24）：纸贴满窗口，没有纸边 / 阴影 / 页边距；页名、页脚、子节目录、话筒、键盘钮全藏（「不放，都不放，盲人」）。
    边距和 app.ts 的 PIP_PAD_* 同值：上下 8px = 光标跟随的边距（scroll-padding），右 32px 留给状态小图标；纸底多一行 = 光标行下面那行空的（三行字 + 一行空的）。 */
@@ -187,7 +169,7 @@ html:has(> body.pip-body) { overflow: hidden; height: 100%; }   /* 挡住 body �
 .top-bar {
   position: fixed;
   top: 0; left: 0; right: 0;
-  height: var(--bar-h);   /* 打字机模式下 --sheet-top 会变高，顶栏这一排不跟（下面那截由 .tw-band 盖） */
+  height: var(--sheet-top);
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
@@ -277,7 +259,7 @@ html:has(> body.pip-body) { overflow: hidden; height: 100%; }   /* 挡住 body �
   background: var(--bg-2);
   outline: none;
 }
-.menu-button[aria-pressed="true"] { color: var(--accent-strong); }   /* 开着的模式钮（打字机）：图标换成强调色，底色不变 */
+.menu-button[aria-pressed="true"] { color: var(--accent-strong); }   /* 开着的模式钮（对话框）：图标换成强调色，底色不变 */
 
 /* 文件名（顶栏）：管理句柄不是标题（ADR-0007）——小字、可点改名、溢出省略 */
 .doc-name {
@@ -1507,7 +1489,7 @@ html:has(> body.pip-body) { overflow: hidden; height: 100%; }   /* 挡住 body �
 
 /* ── 审计修补（2026-09-03）── */
 .crypto-toggle[hidden], .lock-toggle[hidden] { display: none !important; }   /* 作者层 display 压掉了 UA 的 [hidden]（审计 UI-2） */
-.key-banner { position: fixed; top: calc(var(--bar-h) + 4px); left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: var(--z-page); margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
+.key-banner { position: fixed; top: calc(var(--sheet-top) + 4px); left: 50%; transform: translateX(-50%); width: min(100% - 16px, var(--box-max, 720px)); z-index: var(--z-page); margin: 0; box-sizing: border-box; }   /* 不挤走 .page（审计 UI-7） */
 .status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* 长状态别把标题挤没（审计 UI-11） */
 .voice-config-save.is-danger { color: var(--danger, #b0413e); }   /* 暗色遗留的 #ff8a8a 在淡底上看不见（审计 UI-17） */
 .drawer.hidden { visibility: hidden; transition: transform 0.25s ease, visibility 0s linear 0.25s; }   /* 屏外按钮不可 Tab 到（审计 UI-18） */
@@ -1622,7 +1604,7 @@ body[data-project] .parent-link:not([hidden]) { display: inline-flex; }
 
 /* 子节目录：样式在文件末尾「稿纸几何」一节（v2.1.17） */
 /* 锁卡（0.2 护栏，2026-09-04）：锁着 / 不可用的稿不再假装是编辑器 */
-.lock-card { position: fixed; top: var(--bar-h); bottom: var(--sheet-bottom); left: max(0px, 50% - var(--box-max) / 2); right: max(0px, 50% - var(--box-max) / 2); z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
+.lock-card { position: fixed; top: var(--sheet-top); bottom: var(--sheet-bottom); left: max(0px, 50% - var(--box-max) / 2); right: max(0px, 50% - var(--box-max) / 2); z-index: var(--z-page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg-1); border-radius: 12px; }
 .lock-card[hidden] { display: none; }
 .lock-card-ico { width: 28px; height: 28px; color: var(--enc); }
 .lock-card-text { margin: 0; font-family: var(--font-ui); font-size: 14px; color: var(--ink-soft); max-width: 36em; }
@@ -2068,3 +2050,57 @@ body.paper-short .mic-button { width: 40px; height: 40px; bottom: calc(var(--she
 wp-reference-window { --z-window: calc(var(--z-chrome) - 2); }   /* 侧栏 / 设置（chrome − 1）之下、纸面之上（user 2026-09-30「参考窗应该在设置和侧栏的下面」） */
 wp-reference-window:not(:defined) { display: none; }
 body[data-mode="gallery"] wp-reference-window { display: none !important; }
+
+/* ═══ 对话框模式（v3.0.0，src/adv/box.ts；取代 v2.3.59 打字机模式 / 只看几行；设计记录 ai-docs/20261026-adv-dialog-box.md）═══
+   user 2026-10-25「aha就是galgame/adv」「adv的时候就三行，多了滚」「行数可以配置。和宽度一样」「关和切应该就在空出来的地方的右上角」。
+   纸（.page 和它的正文、页名、页脚）整张藏起来但照样排版（visibility，不是 display：paper.ts 的量尺 / 孪生框还要量），屏幕底下一个对话框 = 正文里当前这一段。
+   --adv-h = 对话框的总高（行数 × 行高 + 上下留白 + 边框），app.ts syncAdvHeight 写在 body 上：候选条 / toast 不在纸里，读不到纸上的行高。
+   框和纸同宽、同左右留白、同字体字号行高：每行几个字和整页一模一样（行宽是节奏护栏）。框底 = 键盘那一块之上 8px；框上沿外面一排 = 键盘钮（左）· ‹ ›（中）· 话筒（右）。 */
+.adv-box, .adv-nav, .adv-stage, .adv-corner { display: none; }
+body.adv .surface { overflow: hidden; }   /* 纸藏着：滚轮别把看不见的纸滚走 */
+body.adv .page { border-color: transparent; background: transparent; box-shadow: none; }
+body.adv .parent-link, body.adv .node-title-row, body.adv .page-body, body.adv .page-image, body.adv .page-foot-row { visibility: hidden; }
+body.adv .adv-box {
+  display: flex; position: fixed; z-index: var(--z-page); box-sizing: border-box;
+  left: max(0px, 50% - var(--box-max) / 2); right: max(0px, 50% - var(--box-max) / 2);
+  bottom: calc(var(--sheet-bottom) + 8px); height: var(--adv-h, calc(3 * var(--editor-lh) + 22px));
+  padding: 10px var(--page-pad-x);
+  border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg-1); box-shadow: 0 16px 40px rgba(58, 40, 24, 0.12);
+}
+.adv-input {
+  flex: 1 1 auto; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; outline: none; resize: none; box-sizing: border-box;
+  background: transparent; font-family: var(--font-editor); font-size: var(--editor-font); line-height: var(--editor-lh); letter-spacing: 0;
+  color: var(--ink-soft); caret-color: var(--accent);
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--bg-3) transparent;
+}
+.adv-input::selection { background: rgba(160, 88, 38, 0.22); }
+body.ruled-lines .adv-input {   /* 写字线同纸（一张会重复的渐变）；local = 跟着框里的字一起滚 */
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent var(--rule-y), var(--line) var(--rule-y), var(--line) calc(var(--rule-y) + var(--rule-w)), transparent calc(var(--rule-y) + var(--rule-w)), transparent var(--editor-lh));
+  background-attachment: local; background-position: 0 0;
+}
+body.adv .adv-nav {
+  display: flex; gap: 6px; position: fixed; z-index: var(--z-page); left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 6px);
+}
+body.adv .adv-nav, body.adv .adv-corner { padding: 2px; border-radius: 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--bg-1) 88%, transparent); }   /* 压在背景图上也看得见 */
+/* 话筒 / 退格 / 键盘钮：抬到框上沿外面那一排；toast / 悬浮候选条再往上（不盖正在写的那一行） */
+body.adv .mic-button { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 6px); }
+body.adv .mic-side { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 10px); }
+body.adv .toast { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 62px); }
+body.adv .candidates { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 6px); }
+/* 台：顶栏之下、框之上那块空地。背景图只当提示（user「只是用来cue，相当于reference window干的事情」）：整张露出来（contain）、站在框上（贴底） */
+body.adv .adv-stage {
+  display: block; position: fixed; z-index: var(--z-adv-stage); left: 0; right: 0;
+  top: var(--sheet-top); bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px));
+  pointer-events: none;
+}
+.adv-stage-img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; }
+.adv-stage-img[hidden] { display: none; }
+body.adv .adv-corner { display: flex; gap: 4px; position: fixed; z-index: var(--z-page); top: calc(var(--sheet-top) + 8px); right: max(8px, 50% - var(--box-max) / 2); }
+.adv-corner .menu-button[hidden] { display: none; }
+/* 小窗里的对话框（user 2026-10-25「小窗可以改成adv模式，合理」）：框铺满小窗、没有纸边；‹ › / 台 / 角上的钮都不放（小窗「不放，都不放」）。
+   留白和 app.ts 的 PIP_PAD_* 同值：上下 8px、左 14px、右 32px（状态小图标）；小窗高度 = 行数 × 行高 + 上下留白（pip size / fitToRows）。 */
+.pip-body.adv { overflow: hidden; }
+.pip-body.adv .adv-box { top: 0; bottom: 0; left: 0; right: 0; height: auto; padding: 8px 32px 8px 14px; border: 0; border-radius: 0; box-shadow: none; }
+.pip-body .adv-nav, .pip-body .adv-stage, .pip-body .adv-corner { display: none !important; }
+.pip-body.adv .candidates { bottom: auto; }   /* 候选条照旧在小窗顶上（盖最旧的一行），不吃「抬到框上面」那条 */

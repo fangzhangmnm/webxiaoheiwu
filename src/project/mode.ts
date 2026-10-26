@@ -17,7 +17,7 @@ import { deviceKvSet } from "../device-kv.ts";
 import { replaceRange } from "../text-edit.ts";
 import { reportError } from "../error-badge.ts";
 import { parseDocName, hex4 } from "../doc-model.ts";
-import { isValidNodeName, nameKey, nodeKind, nodeExt, type NodeKind } from "./format.ts";
+import { isValidNodeName, nameKey, nodeKind, nodeExt, IMAGE_MIME, type NodeKind } from "./format.ts";
 import { nodeDisplayName } from "./naming.ts";
 import type { SyncKind } from "../editor.ts";
 import { t } from "../i18n/index.ts";
@@ -259,11 +259,10 @@ export function createProjectMode(d: ProjectModeDeps) {
 
   // ── 打开 / 关闭 ──
   let imageUrl: string | null = null;
-  const MIME: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
   function hideImage(): void { if (imageUrl) { URL.revokeObjectURL(imageUrl); imageUrl = null; } d.imageEl.removeAttribute("src"); d.imageBox.hidden = true; d.imageBox.classList.remove("natural"); delete document.body.dataset.pageKind; }
   function showImage(name: string, bytes: Uint8Array): void {
     if (imageUrl) URL.revokeObjectURL(imageUrl);
-    imageUrl = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: MIME[nodeExt(name)] ?? "application/octet-stream" }));
+    imageUrl = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: IMAGE_MIME[nodeExt(name)] ?? "application/octet-stream" }));
     d.imageEl.src = imageUrl; d.imageBox.hidden = false; d.imageBox.classList.remove("natural");
     d.imageMeta.textContent = d.imageMetaText({ name, w: 0, h: 0, bytes: bytes.length });
     d.imageEl.onload = () => { d.imageMeta.textContent = d.imageMetaText({ name, w: d.imageEl.naturalWidth, h: d.imageEl.naturalHeight, bytes: bytes.length }); };

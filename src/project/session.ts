@@ -8,7 +8,7 @@
 import { type Project, type UnpackResult, type EditorState, emptyProject, packProject, unpackProject, readNodeText } from "./format.ts";
 import type { Component } from "./migrate/index.ts";
 /** 书级偏好（editor-state 里跟着书走、算正经改动的那几个键）；值 undefined = 删掉这个键（回到「跟默认走」）。 */
-export type EditorPrefsPatch = Partial<Pick<EditorState, "lineWidth" | "exportLineWidth" | "exportFont" | "font" | "exportCovers" | "exportEmbedText" | "exportBodyHeadings">>;
+export type EditorPrefsPatch = Partial<Pick<EditorState, "lineWidth" | "exportLineWidth" | "exportFont" | "font" | "exportCovers" | "exportEmbedText" | "exportBodyHeadings" | "advLines" | "advBackdrop">>;
 import { createNode, seedBook, setNodeText, link, unlink, setLinks, links as linksOf, renameNode, deleteNode, search, backlinks, resolveName, discard as discardNode, purge as purgeNode, createBytesNode, replaceNodeBytes, subtreeOrder, visibleOrder, visibleSubtreeOrder, isHidden as isHiddenNode, isHiddenInTree as isHiddenInTreeNode, hiddenAncestor as hiddenAncestorOf, setHidden as setHiddenNode,
   inTree, treeParent, treeSiblings, treeChildren, treePath, dfsOrder, dfsPrev, dfsNext, moveUp, moveDown, outdent, indent, detachToLinks, attachAfter, attachUnder, attachAtEnd, insertSibling, insertChild, exportSubtree, type NowFn } from "./graph.ts";
 

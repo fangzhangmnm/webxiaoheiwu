@@ -12,7 +12,7 @@ const bookOf = (graphExtra, es) => zipPack([{ path: "graph.json", data: graphOf(
 
 describe("project/migrate · 拍子表钉死 + 读拍 + 判决（三级语义）", () => {
   it("FORMAT / MISSING_MAJOR / MIN_MAJOR 钉死：改格式 = 改表 + STEPS + 冻结样本 + CLAUDE.md（不改这里 = 红）", () => {
-    eq(fmt(FORMAT.graph), "2.1.0"); eq(fmt(FORMAT.editorState), "1.1.0");
+    eq(fmt(FORMAT.graph), "2.1.0"); eq(fmt(FORMAT.editorState), "1.2.0");
     eq(MISSING_MAJOR.graph, null); eq(MISSING_MAJOR.editorState, 1);
     eq(MIN_MAJOR.graph, 2); eq(MIN_MAJOR.editorState, 1);
     eq(Object.keys(STEPS).length, 0, "今天零迁移（graph v1 不迁 = 零 legacy 分支）");
@@ -40,7 +40,7 @@ describe("project/migrate · 拍子表钉死 + 读拍 + 判决（三级语义）
   it("migrate 链：注入 STEPS 1→2→3 逐步升、每步必须写 version；缺一步响亮抛；升过 = verdict older", () => {
     const steps = { editorState: { 1: (j) => ({ ...j, version: 2, a: 1 }), 2: (j) => ({ ...j, version: 3, b: 2 }) } };
     // 用 editorState 当实验台：本版 major 是 1，所以先把目标拍成 3 来验链（通过注入表 + 临时拍子不可行 → 直接验链的机械：从 1 升到本版 major=1 零步）
-    const m = migrate("editorState", { version: 1, minor: 1 }, steps); eq(m.verdict, "same", "本版 major=1：没有步要走");
+    const m = migrate("editorState", { version: 1, minor: 2 }, steps); eq(m.verdict, "same", "本版 major=1：没有步要走");
     // 机械本身（走几步、缺步抛、不写 version 抛）用 graph 验：graph MIN=2、本版 2 → 也零步。链的机械只能在 FORMAT 升了之后真跑；这里钉住「缺步 = 抛」的文案形状：
     let e = null; try { migrate("graph", { version: 2 }, { graph: { 2: (j) => j } }); } catch (x) { e = x; } eq(e, null, "本版 major=2，登记了多余的步不跑也不抛");
   });
@@ -64,7 +64,7 @@ describe("project/migrate · 三级语义走完整解包（老读者碰新文件
     eq(fmt(r.project.readStamps.graph), "2.9.0"); eq(fmt(r.project.readStamps.editorState), "1.4.0");
     const out = await zipUnpack(await packProject(r.project));
     const g = JSON.parse(td.decode(out["graph.json"])); eq(`${g.version}.${g.minor}.${g.patch}`, "2.1.0", "写回 = 本版拍"); eq(g.futureTop, 1, "未知键带回");
-    const e = JSON.parse(td.decode(out[".webxiaoheiwu/editor-state.json"])); eq(`${e.version}.${e.minor}.${e.patch}`, "1.1.0"); eq(e.futureEs, 2);
+    const e = JSON.parse(td.decode(out[".webxiaoheiwu/editor-state.json"])); eq(`${e.version}.${e.minor}.${e.patch}`, "1.2.0"); eq(e.futureEs, 2);
   });
   it("patch 大：静默（newerThanApp 空）；minor 小 / 没拍子：当老文件开，newerThanApp 空，拍子记成读到的", async () => {
     let r = await unpackProject(await bookOf({ minor: 1, patch: 7 }, { version: 1, patch: 3, last: "a.txt", back: [] })); eq(r.kind, "ok"); eq(r.project.newerThanApp.length, 0); eq(fmt(r.project.readStamps.graph), "2.1.7");

@@ -19,7 +19,7 @@ import type { WpReferenceWindow } from "@internal/reference-window";
 import { createEdgeSidebar, fmtTime } from "./project/sidebar.ts";
 import { pickLocalProject, triggerDownload, type LocalHome } from "./project/local-home.ts";
 import { nodeDisplayName } from "./project/naming.ts";
-import { packProject, emptyProject, nodeExt, nodeKind, readNodeText } from "./project/format.ts";
+import { packProject, emptyProject, nodeExt, nodeKind, readNodeText, IMAGE_MIME } from "./project/format.ts";
 import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
 import { parseTtf, NotTrueTypeError, type TtfFont } from "./export/ttf.ts";
 import { installSansFont, installFont, installFontsInto, loadFontBytes, FONT_FAMILY, FONT_IDS, type FontId } from "./fonts.ts";
@@ -60,6 +60,7 @@ import { createImeDock } from "./input/dock.ts";
 import type { MicKeyState } from "./input/soft-keyboard.ts";
 import { asTextField, type TextField } from "./input/field.ts";
 import { createPaper } from "./ui/paper.ts";
+import { createAdvBox, type AdvBox } from "./adv/box.ts";
 
 // 小窗（v2.3.60，src/pip.ts）。声明在 $ 之前：纸搬进小窗时，纸里的元素在小窗的 document 上，$ 要能找到
 let pip: Pip | null = null;
@@ -143,6 +144,12 @@ console.log("[xhw] build:", APP_VERSION);
 $("settingsBuild").textContent = APP_VERSION;
 
 const editorEl = $<HTMLTextAreaElement>("editor");
+const advInput = $<HTMLTextAreaElement>("advInput");   // 对话框模式的框（v3.0.0，src/adv/box.ts）：正文里当前这一段的一扇窗
+let adv: AdvBox | null = null;   // 建在顶栏那一节（project / editor 都就位之后）；在那之前一律当没开
+/** 把焦点还给「正在写的那个框」：对话框开着 = 对话框（正文框这时藏着，拿不到焦点），否则正文。所有「回到正文」的地方都走这里。 */
+function focusWriting(opts?: FocusOptions): void { if (adv?.active) { adv.sync(); advInput.focus(opts); } else editorEl.focus(opts); }   // 对话框：先跟上正文的光标（检索跳转 / 点子节挪过它）
+/** 焦点在正在写的那个框上（纸在小窗里时看小窗的 document）。 */
+function writingFocused(): boolean { const a = editorEl.ownerDocument.activeElement; return a === editorEl || (!!adv?.active && a === advInput); }
 const sheet = document.querySelector<HTMLElement>("main.surface")!;   // 一张纸模型（v2.1.26）：唯一的滚动容器；正文框自己不滚
 /** 纸现在在哪滚：平时 = main.surface；小窗开着 = 小窗的 body。 */
 function scroller(): HTMLElement { const w = pip?.active ? pip.window : null; return w ? w.document.body : sheet; }
@@ -159,8 +166,14 @@ const softKeyboardPref = (): SoftKeyboardPref => { const v = deviceKvGet("softKe
 //   要用得按纸面左下角的键盘钮。hardware 跨启动记着（device-kv `softKeyboardHidden`）；summoned = 非触屏设备（Quest / 桌面）用钮召出来的。
 let kbHiddenBy: "user" | "hardware" | null = deviceKvGet("softKeyboardHidden") === "hw" ? "hardware" : null;
 let kbSummoned = false;
-// 打字机模式（v2.3.59，user 2026-10-24「打字机模式要不要在本机记住。 记住」）：per-device，device-kv `typewriter` = "1"。几何全在 styles.css（body.typewriter），这里只记开关
-let typewriter = deviceKvGet("typewriter") === "1";
+// 对话框模式（v3.0.0，取代 v2.3.59 打字机模式；打字机那条「本机记住」user 2026-10-24 定的照搬）：per-device，device-kv `adv` = "1"。
+//   不沿用打字机的 `typewriter` 键：旧设备上它可能还是 "1"，新功能第一次出现不该已经开着（旧键不读不删）。
+let advOn = deviceKvGet("adv") === "1";
+/** 对话框几行高（设置「对话框行数」，user 2026-10-25「行数可以配置。和宽度一样」）：同行宽——书开着 = 这本书 editor-state `advLines`，没书 / 没定过 = 账号默认（synced prefs `advLines`，缺 = 3：galgame 的标准）。 */
+const ADV_LINE_TIERS: readonly number[] = [2, 3, 4, 5];
+function defaultAdvLines(): number { const v = prefs.getItem<number>("advLines"); return typeof v === "number" && ADV_LINE_TIERS.includes(v) ? v : 3; }
+function bookAdvLines(): number | null { const v = project.active() ? project.session()?.project.editorState.advLines : undefined; return typeof v === "number" && ADV_LINE_TIERS.includes(v) ? v : null; }
+function advLines(): number { return bookAdvLines() ?? defaultAdvLines(); }
 function keyboardWanted(): boolean {
   if (pip?.active) return false;   // 小窗不带软键盘（user 2026-10-24「小窗既然是电脑用就不带软键盘了」）
   const pref = softKeyboardPref();
@@ -245,7 +258,7 @@ const ensureFileUnlocked = (name: string) => cryptoEnsureFileUnlocked(name,
 const editor = createEditor({
   editor: editorEl, sheet: paperScroll, setStatus, setState,
   isSignedIn: () => auth.isSignedIn(),
-  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); syncEditorFont(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
+  onDocChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); syncEditorFont(); renderAdvLines(); renderAdvStage(); renderPageKin(); drawer.refresh(); rememberLastActive(); },   // renderPageKin：离开书回 txt 稿时收掉「..」与子节目录
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
   onReplacing: (on) => setReplacing(on),
@@ -256,7 +269,7 @@ const refHost = createReferenceHost({
   el: $<WpReferenceWindow>("referenceWindow"), fileInput: $<HTMLInputElement>("referenceFileInput"), setStatus,
   topFloor: () => Math.round(document.querySelector<HTMLElement>("header.top-bar")?.getBoundingClientRect().bottom ?? 0),
   bottomFloor: () => { const st = document.documentElement.style; return Math.round((parseFloat(st.getPropertyValue("--dock-h")) || 0) + (parseFloat(st.getPropertyValue("--kb-offset")) || 0)); },
-  focusEditor: () => editorEl.focus(),
+  focusEditor: () => focusWriting(),
 });
 // ── 2.0 工程模式（ADR-0008）：同一个 textarea 两种稿；txt 编辑器在工程期 park。门面 = 谁活着问谁。──
 const project = createProjectMode({
@@ -266,7 +279,7 @@ const project = createProjectMode({
   imageBox: $("pageImage"), imageEl: $<HTMLImageElement>("pageImageImg"), imageMeta: $("pageImageMeta"),
   imageMetaText: (o) => t("img.meta", { name: o.name, w: o.w, h: o.h, size: humanSize(o.bytes) }),
   isSignedIn: () => auth.isSignedIn(),
-  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); syncEditorFont(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
+  onChanged: () => { renderTopbar(); renderLockCard(); renderSaveButton(); renderWordCount(); renderCoverButton(); renderHiddenBadge(); syncEditorChars(); syncEditorFont(); renderAdvLines(); renderAdvStage(); renderMicVisibility(); renderPageNav(); renderPageKin(); edgeSidebar.render(); drawer.refresh(); rememberLastActive(); },   // renderLockCard：书开/新建时重画锁卡，否则上一篇锁定加密稿留下的「xxx 是加密稿」卡一直盖着（user 2026-09-10）
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },
   onReplacing: (on) => setReplacing(on),
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
@@ -275,7 +288,7 @@ const project = createProjectMode({
 refHost.bindMode(project);
 onKeyboardFloor = () => refHost.relayout();
 const edgeSidebar = createEdgeSidebar({
-  el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => editorEl.focus(),
+  el: $("edgeSidebar"), mode: project, setStatus, focusEditor: () => focusWriting(),
   onReference: () => refHost.toggle(), onSendToReference: (name) => refHost.sendPage(name),
   orphanCount: () => orphanPages().length, onOrphans: () => { void orphansFlow(); },
   onLibrary: () => { void galleryHost.open(); },
@@ -302,7 +315,7 @@ async function addPageFlow(where: "sibling" | "child"): Promise<boolean> {
   if (v === INPUT_SECONDARY) { void pickImagesFlow(false, where); return false; }   // 位置已选（兄弟 / 子节）→ 再选图片
   if (v == null || !v.trim()) return false;
   const ok = where === "sibling" ? project.newSibling(v) : project.newChild(v);
-  if (ok) { edgeSidebar.render(); editorEl.focus(); }
+  if (ok) { edgeSidebar.render(); focusWriting(); }
   return ok;
 }
 /** 挪到…（user 2026-09-10「点之后弹一个对话框，搜索，下拉，选中，就 reparent 了」）：通用 pick sheet（sheets.ts openPickSheet）搜主干里的页 → 放到它之下 / 之后；
@@ -338,7 +351,7 @@ async function orphansFlow(): Promise<void> {
     });
     if (!r) return;
     const name = r.value, shown = nodeDisplayName(name);
-    if (r.action === "open") { project.jump(name); edgeSidebar.render(); editorEl.focus(); return; }
+    if (r.action === "open") { project.jump(name); edgeSidebar.render(); focusWriting(); return; }
     if (r.action === "move") { await movePageFlow(name); continue; }
     if (r.action === "discard") {
       const n = project.subtreeCount(name); const prefix = t("edge.discardPrefix");
@@ -367,7 +380,7 @@ async function movePageFlow(name: string): Promise<boolean> {
   if (!project.movePage(name, r.action === "end" ? { kind: "end" } : { kind: r.action, anchor: r.value })) return false;
   const shown = nodeDisplayName(name);
   setStatus(r.action === "end" ? t("edge.movedEnd", { name: shown }) : t(r.action === "under" ? "edge.movedUnder" : "edge.movedAfter", { name: shown, to: nodeDisplayName(r.value) }));
-  edgeSidebar.render(); editorEl.focus();
+  edgeSidebar.render(); focusWriting();
   return true;
 }
 /** 导出这一支（ADR-0014 §6）：子树 DFS 拼成一篇 txt → 存进书库（撞名 hex4）或下载一份；无地的书只有下载。名字归 user（默认 = 页名）。 */
@@ -439,17 +452,16 @@ function syncBodyHeight(): void {
   const h = `${Math.max(1, Math.round(paper.contentHeight() / lh)) * lh}px`;
   if (editorEl.style.height !== h) editorEl.style.height = h;
   childToc.hidden = !(tocChildren.length > 0 && project.active());
-  syncTypewriterStrip(lh);
+  syncAdvHeight(lh);
 }
-/** 打字机模式的纸条高（styles.css `--tw-strip`）= 4 行 + 光标跟随上下各 8px 的边距。行高（字号档 / 行宽 / 字体装好都会变）在这里跟上；没开就撤掉。 */
-function syncTypewriterStrip(lh = paper.lineHeight()): void {
-  const v = typewriter ? `${4 * lh + 16}px` : "";
-  if (document.body.style.getPropertyValue("--tw-strip") === v) return;
-  if (v) document.body.style.setProperty("--tw-strip", v); else document.body.style.removeProperty("--tw-strip");
+/** 对话框的总高（styles.css `--adv-h`）= 行数 × 行高 + 上下留白 10 × 2 + 边框 2。写在 body 上：候选条 / toast 不在纸里，读不到纸上的行高。行高（字号档 / 行宽 / 字体装好）在这里跟上。 */
+function syncAdvHeight(lh = paper.lineHeight()): void {
+  const v = `${advLines() * lh + 22}px`;
+  if (document.body.style.getPropertyValue("--adv-h") !== v) document.body.style.setProperty("--adv-h", v);
 }
 /** 光标跟随的兜底：浏览器插字后会把光标滚进最近的可滚祖先（Chromium / WebKit 都会），但键盘那一块露收 / iOS 视口变了它不管——
  *  光标那一行不在纸的可见区（顶栏之下、键盘之上）就把纸滚过去。量光标行用同一个孪生框（光标在末尾时不用再量）。
- *  `pin` = 不管在不在可见区，都把光标行放到最下面那个位置（下面只剩一行看头）；打字机模式一打开时用。 */
+ *  `pin` = 不管在不在可见区，都把光标行放到最下面那个位置（下面只剩一行看头）；小窗一打开时用。对话框模式下焦点在对话框，这里不动纸。 */
 function followCaret(pin = false): void {
   if (editorEl.ownerDocument.activeElement !== editorEl) return;   // 纸在小窗里时焦点在小窗的 document 上
   const sc = scroller();
@@ -489,12 +501,12 @@ function renderPageKin(): void {
     const kindIcon = nodeKind(n) === "image" ? `<svg class="ico" aria-hidden="true"><use href="#image"/></svg>` : "";
     b.innerHTML = (kindIcon || `<svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg>`) + `<span class="child-toc-name"></span>` + (meta && meta.modified ? `<span class="child-toc-sub">${fmtTime(meta.modified)}</span>` : "");
     b.querySelector(".child-toc-name")!.textContent = nodeDisplayName(n);
-    b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); editorEl.focus(); });
+    b.addEventListener("click", () => { project.jump(n); edgeSidebar.render(); focusWriting(); });
     li.appendChild(b); childTocList.appendChild(li);
   }
   syncBodyHeight();
 }
-parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); editorEl.focus(); } });
+parentLink.addEventListener("click", () => { const p = project.neighborhood()?.parent; if (p) { project.jump(p); edgeSidebar.render(); focusWriting(); } });
 // 打字热路径（v2.3.31，user 2026-10-04「键盘反应尽量灵敏，不要被阻塞，不要卡。高实时要求」）：每次 input 都把全文塞进孪生框量两遍（正文高度 + 光标行），
 //   3 万字一次 ≈ 30 ms（CPU ×4 量的，空格上屏 21 → 80 ms、有 70 ms 的长任务）。改成：只加了字 = 行数只会多不会少 → 正文框自己的 scrollHeight 就够；
 //   字变少（删 / 替换）或停手 300 ms 后才量全文校正；光标在末尾时光标行底边 = 正文框高度，不量。
@@ -526,7 +538,7 @@ function onTap(el: EventTarget, want: (e: PointerEvent) => boolean, run: (e: Poi
 }
 // 正文下方的空白纸面：点了照样能写（光标到末尾），别让人以为纸「断」了；划动不算
 pageBody.addEventListener("pointerdown", (e) => { if (e.target === pageBody) e.preventDefault(); });   // 按下别抢焦点、别起选区
-onTap(pageBody, (e) => e.target === pageBody, () => { editorEl.focus(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });
+onTap(pageBody, (e) => e.target === pageBody, () => { focusWriting(); const n = editorEl.value.length; try { editorEl.setSelectionRange(n, n); } catch { /* ignore */ } });
 // ── 导出 = 当前页全页进剪贴板（v2.1.9，user 2026-09-26「加一个当前页全页复制到剪切板的功能，放在三条杠的弹出菜单的书库和设置中间，加一个导出按钮…方便的导出分享功能其实很重要」）：
 //   txt 稿 = 整篇；书的文字页 = 这一页（textarea 里的活字，所见即所得）；图片页 = 图片本身（PNG 直给，其余经 codec 转 PNG——系统剪贴板只认 PNG；ClipboardItem 里塞 Promise 保住 Safari 的用户手势）。
 //   锁着 / 空页 / 浏览器不支持 → toast 说清，不谎报已复制。
@@ -1028,6 +1040,8 @@ function renderCoverButton(): void {
   const b = $<HTMLButtonElement>("pageImageCover"); const cur = project.current();
   const isCover = !!cur && project.coverPage() === cur;
   b.disabled = isCover; b.textContent = t(isCover ? "img.isCover" : "img.setCover");
+  const isBackdrop = !!cur && advBackdropPage() === cur;
+  $("pageImageAdvBackdrop").textContent = t(isBackdrop ? "img.unsetAdvBackdrop" : "img.setAdvBackdrop");
 }
 /** 替换图片：保名保边（字节类型变了扩展名跟着变）；它若正是封面（重算 thumb 比对字节，零字段）→ 封面跟着换。 */
 async function replaceImageFlow(file: File, opts: { hd: boolean }): Promise<void> {
@@ -1046,6 +1060,37 @@ async function replaceImageFlow(file: File, opts: { hd: boolean }): Promise<void
   } catch (e) { if (e instanceof NotAnImageError) setStatus(t("img.notImage", { name: file.name }), { error: true }); else { reportError(e, "warning"); setStatus(t("img.failed", { e: errText(e) }), { error: true }); } }
 }
 $("pageImageCover").addEventListener("click", () => { void setCoverFlow(); });
+// 对话框模式的背景（v3.0.0，user 2026-10-25「背景可以配置一张图片页引用」「做成视图层全书配置，只是用来cue」「反正嫌麻烦可以不配置」）：
+//   全书一张 = 这本书 editor-state `advBackdrop`（图片页名；改名跟着改、页没了跟着没，graph.ts）。在图片页下方设 / 取消；台上右上角收起 / 露出（本机记住，device-kv `advBackdropHidden`）。
+//   不做每页一张、不做「读自己第一个孩子的插图」、不做每段带元数据（user 同日「应该用不着」「不太想滑坡成每段都有元数据的galge编辑器」）。
+function advBackdropPage(): string | null { return project.active() ? project.session()?.project.editorState.advBackdrop ?? null : null; }
+$("pageImageAdvBackdrop").addEventListener("click", () => {
+  const cur = project.current();
+  if (!cur || project.currentKind() !== "image") return;
+  if (!project.canEdit()) { setStatus(t("edge.lockedHint"), { error: true }); return; }
+  const off = advBackdropPage() === cur;
+  project.setBookPrefs({ advBackdrop: off ? undefined : cur });   // 书的属性：标脏、走落盘节律
+  renderCoverButton(); renderAdvStage();
+  setStatus(t(off ? "img.advBackdropOff" : "img.advBackdropOn"));
+});
+let advStage: { bytes: Uint8Array; url: string } | null = null;   // 台上那张图的 blob URL（字节对象没换就不重做）
+function renderAdvStage(): void {
+  const img = $<HTMLImageElement>("advStageImg"), tog = $<HTMLButtonElement>("advBackdropToggle");
+  const name = advBackdropPage(), bytes = name ? project.session()?.bytesOf(name) ?? null : null;
+  tog.hidden = !bytes;
+  if (!bytes) { if (advStage) { URL.revokeObjectURL(advStage.url); advStage = null; } img.removeAttribute("src"); img.hidden = true; return; }
+  if (advStage?.bytes !== bytes) {
+    if (advStage) URL.revokeObjectURL(advStage.url);
+    advStage = { bytes, url: URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: IMAGE_MIME[nodeExt(name!)] ?? "application/octet-stream" })) };
+    img.src = advStage.url;
+  }
+  const hidden = deviceKvGet("advBackdropHidden") === "1";
+  img.hidden = hidden;
+  tog.setAttribute("aria-pressed", hidden ? "true" : "false");
+  useIcon(tog, hidden ? "visibility-show" : "visibility-hide");
+  tog.title = t(hidden ? "adv.showBackdrop" : "adv.hideBackdrop"); tog.setAttribute("aria-label", tog.title);
+}
+$("advBackdropToggle").addEventListener("click", () => { deviceKvSet("advBackdropHidden", deviceKvGet("advBackdropHidden") === "1" ? null : "1"); renderAdvStage(); adv?.focus(); });
 $("pageImageReplace").addEventListener("click", () => { void pickImagesFlow(true); });
 /** 拖放 / 粘贴同一漏斗（user 2026-09-10 Q8 同意）：书模式 txt = 新页、图 = 图片页；txt 模式 txt = 新稿、图 = 提示先变成书；粘贴位图无名 → 日期码。 */
 /** 粘贴 / 拖放的图片要加成新页 → 先问一句（user 2026-09-30「复制图片 as new page 需要弹框确认。不然的话不小心按一下太坑了」）；「从图片…」那条路自己有 sheet，不经这里。 */
@@ -1078,7 +1123,7 @@ async function importDroppedFiles(files: File[]): Promise<void> {
   const paperEl = document.querySelector<HTMLElement>(".page")!;
   paperEl.addEventListener("dragover", (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
   paperEl.addEventListener("drop", (e) => { const files = [...(e.dataTransfer?.files ?? [])]; if (!files.length) return; e.preventDefault(); void importDroppedFiles(files); });
-  editorEl.addEventListener("paste", (e) => { const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/")); if (!files.length) return; e.preventDefault(); void confirmAddImagePages(files).then((ok) => { if (ok) return importImageFiles(files, { hd: false, unnamed: true }); }); });
+  for (const el of [editorEl, advInput]) el.addEventListener("paste", (e) => { const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/")); if (!files.length) return; e.preventDefault(); void confirmAddImagePages(files).then((ok) => { if (ok) return importImageFiles(files, { hd: false, unnamed: true }); }); });   // 对话框里贴图同正文
 }
 /** 把当前 txt 草稿变成书（user 2026-09-10「加一个把 draft lift 成书的机制（保留 draft?）」）：正文 → 新书第一页（页名 = 稿名），书名默认 = 稿名；
  *  原稿**保留**（非破坏；不要了自己送回收站）；原稿是加密的 → 新书立即加密（明文只在本地 IDB 停留一步，同「新建即加密」）。 */
@@ -1187,9 +1232,9 @@ async function releaseForLibrary(): Promise<void> {
 }
 async function returnFromLibrary(): Promise<void> {
   const r = libraryReturn; libraryReturn = { reopen: null };
-  if (r === "replaced") { editorEl.focus(); return; }   // 书库里已经换了文档（点卡片 / 新建稿 / 新建书 / 本机的书）
-  if (r.reopen && await openAny(r.reopen)) { editorEl.focus(); return; }
-  await openNewDraft(); editorEl.focus();
+  if (r === "replaced") { focusWriting(); return; }   // 书库里已经换了文档（点卡片 / 新建稿 / 新建书 / 本机的书）
+  if (r.reopen && await openAny(r.reopen)) { focusWriting(); return; }
+  await openNewDraft(); focusWriting();
 }
 async function newProjectFlow(): Promise<void> {
   // 默认名「作品」（user 2026-09-10「default 还是叫“作品”吧」；撞名由 createProjectDoc 加序号）；首节点「第一章」按语言生成
@@ -1275,7 +1320,7 @@ const drawer = createDrawer({
   onRenameDoc: async (name) => { if (name === editor.state.name) await renameCurrentDoc(); else await renameOtherDoc(name); },   // 2026-09-09 审计 #6
   onActiveTrashed: async () => { if (project.active()) await leaveProject(); else await editor.flushLocal(); editor.clear(); },
   onSettingsShown: () => renderSettings(),
-  focusEditor: () => editorEl.focus(),
+  focusEditor: () => focusWriting(),
   setStatus,
 });
 
@@ -1284,34 +1329,45 @@ const cryptoToggle = $<HTMLButtonElement>("cryptoToggle");
 const lockToggle = $<HTMLButtonElement>("lockToggle");
 const docNameButton = $<HTMLButtonElement>("docNameButton");   // 文件名 = 管理句柄不是标题（ADR-0007）：住顶栏，点了改名
 const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`; };
-// 打字机模式 = 界面上的「只看几行」（v2.3.59；2026-10-25 user「这个就叫只看几行吧」，代码 / 本机记忆的键名照旧叫 typewriter；设计稿 ai-docs/20261024-typewriter-mode-proposal.md）：钮只在能写字的页上露（锁着 / 图片页 / 没稿不露），body.typewriter 跟着钮走
-const typewriterButton = $<HTMLButtonElement>("typewriterButton");
-function applyTypewriter(): void {
-  syncTypewriterStrip();   // 先写纸条高再挂 class：没有一帧落到「上沿 = 整屏」的回落值
-  document.body.classList.toggle("typewriter", typewriter && !typewriterButton.hidden);
-  typewriterButton.setAttribute("aria-pressed", typewriter ? "true" : "false");
+// ── 对话框模式（v3.0.0；取代 v2.3.59 打字机模式 / 只看几行；设计记录 ai-docs/20261026-adv-dialog-box.md）──
+//   user 2026-10-25「aha就是galgame/adv」「对话框的话的单位不是行，而是段」「一次写一段。写多长就可以。回车就发」「adv的时候就三行，多了滚」；
+//   「我不太喜欢突然调成nvl，这样反而是judge」→ 段写长了不自动切整页，切换只靠钮 / Alt+T / 台上右上角的「回到整页」。框的行为全在 src/adv/box.ts；这里只管开关、显隐、焦点。
+//   钮只在能写字的页上露（锁着 / 图片页 / 没稿不露）；body.adv 跟着「开着 ∧ 这页能写」走。开 = 跳到最后一段末尾（照打字机那条，user 2026-10-24「开打字机模式跳最后一行」）；
+//   关 = 回到整页、光标留在框里的那个位置（「还原之后光标不动」）；开着时换页 = 照旧落在开头（「打开落在开头」）。
+const advButton = $<HTMLButtonElement>("advButton");
+const advPrev = $<HTMLButtonElement>("advPrev"), advNext = $<HTMLButtonElement>("advNext");
+let pageWritable = false;   // 这页能不能写字：有稿、没锁、不是图片页（对话框钮 / 小窗共用；renderTopbar 写）
+adv = createAdvBox({
+  editor: editorEl, input: advInput, canEdit: () => canEditNow(),
+  pageKey: () => (project.active() ? `book\u0000${project.displayName() ?? ""}\u0000${project.current() ?? ""}` : `txt\u0000${editor.state.name ?? editor.state.pendingDate ?? ""}`),
+  onPosition: (i, n) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; },
+});
+function applyAdv(opts?: { toEnd?: boolean }): void {
+  const on = advOn && pageWritable;
+  document.body.classList.toggle("adv", on);
+  advButton.setAttribute("aria-pressed", advOn ? "true" : "false");
+  adv!.setActive(on, opts);
 }
-/** 开 = 跳到最后一行（光标放末尾，光标行放到纸条第三行、下面一行空着）；关 = 上沿还原、光标不动。
- *  user 2026-10-24「对，开打字机模式跳最后一行，还原之后光标不动」；打开别的页不跳（「不用」）——开页照旧落在开头。 */
-function setTypewriter(on: boolean): void {
-  typewriter = on; deviceKvSet("typewriter", on ? "1" : null);
-  applyTypewriter();
-  editorEl.focus({ preventScroll: true });
-  if (on) { const n = editorEl.value.length; editorEl.setSelectionRange(n, n); }
-  followCaret(on);
+function setAdv(on: boolean): void {
+  if (on && !pageWritable) return;
+  advOn = on; deviceKvSet("adv", on ? "1" : null);
+  applyAdv({ toEnd: on });
+  focusWriting({ preventScroll: true });
+  if (!on) followCaret();
 }
-typewriterButton.addEventListener("click", () => setTypewriter(!typewriter));
-// 遮挡带底下就是纸：鼠标在上面那块空地上滚轮照样滚纸（点击不穿透——穿过去会把光标点进看不见的旧字里）
-$("typewriterBand").addEventListener("wheel", (e: WheelEvent) => {
-  sheet.scrollTop += e.deltaY * (e.deltaMode === 1 ? paper.lineHeight() : e.deltaMode === 2 ? sheet.clientHeight : 1);
-  e.preventDefault();
-}, { passive: false });
+advButton.addEventListener("click", () => setAdv(!advOn));
+$("advExit").addEventListener("click", () => setAdv(false));
+// ‹ ›：按下不抢框的焦点（软键盘 / 光标留在框里）；点了换段
+for (const [b, go] of [[advPrev, () => adv!.prev()], [advNext, () => adv!.next()]] as const) {
+  b.addEventListener("pointerdown", (e) => e.preventDefault());
+  b.addEventListener("click", () => { go(); adv!.focus(); });
+}
 // ── 小窗（老板键，v2.3.60；设计稿 ai-docs/20261024-mini-window-proposal.md）：Alt+P / 侧栏顶行「小窗」→ 纸搬进置顶、没地址栏的小窗，四行高（三行字 + 一行空的）。
 //   user 2026-10-24「我要的老板键其实就是小窗口」「小窗就是非常borderless精简的」「一行空的，三行字，我看了之后调」「不放，都不放，盲人。说出去的话泼出去的水」。
-//   只有能写字的页能开（同打字机钮的条件）；要弹面板（setBeforeModal）/ 闲置锁屏 / 进书库 / 变成锁着或图片页 → 先收回。翻页用已有的 Alt+↑ / Alt+↓（快捷键也挂在小窗上）。
+//   只有能写字的页能开（同对话框钮的条件）；要弹面板（setBeforeModal）/ 闲置锁屏 / 进书库 / 变成锁着或图片页 → 先收回。翻页用已有的 Alt+↑ / Alt+↓（快捷键也挂在小窗上）。
 const PIP_PAD_TOP = 8, PIP_PAD_BOTTOM = 8, PIP_PAD_LEFT = 14, PIP_PAD_RIGHT = 32;   // 和 styles.css「小窗」那节同值：上下 = 光标跟随的边距（scroll-padding），右边留给状态小图标
 let pipCleanup: Array<() => void> = [];
-function pipEligible(): boolean { return !typewriterButton.hidden; }   // 和打字机钮同一个条件：有稿、没锁、不是图片页
+function pipEligible(): boolean { return pageWritable; }   // 和对话框钮同一个条件：有稿、没锁、不是图片页
 function closePipIfOpen(): void { if (pip?.active) pip.close(); }
 function listen(t: EventTarget, type: string, fn: EventListener, capture = false): () => void { t.addEventListener(type, fn, capture); return () => t.removeEventListener(type, fn, capture); }
 /** 小窗开着时关 / 刷新主页面 = 小窗跟着没了：挂浏览器自带的离开确认（user 2026-10-24「开着小窗的时候弹挽留窗口不就得了？」；不是 app 弹框，KudsRocket 同款）。字照样已经落在本机。 */
@@ -1341,7 +1397,7 @@ function enterPip(win: Window): void {
     () => mo.disconnect(),
   ];
   paper.refresh(); syncBodyHeight();
-  editorEl.focus({ preventScroll: true });
+  focusWriting({ preventScroll: true });
   followCaret(true);
   win.requestAnimationFrame(() => { if (pip?.active) { paper.refresh(); syncBodyHeight(); followCaret(true); } });   // 小窗第一帧排好版再钉一次：刚开窗时窗口尺寸 / 样式还没落定，上面那次量不准
   imeDock.render();
@@ -1350,7 +1406,7 @@ function enterPip(win: Window): void {
 function leavePip(): void {
   for (const f of pipCleanup.splice(0)) f();
   paper.refresh(); syncBodyHeight();
-  if (!idle.isShown()) { editorEl.focus({ preventScroll: true }); followCaret(); }   // 闲置锁屏收回的：锁屏刚拿走焦点，别还回去（不然隔着遮罩还能打字）
+  if (!idle.isShown()) { focusWriting({ preventScroll: true }); followCaret(); }   // 闲置锁屏收回的：锁屏刚拿走焦点，别还回去（不然隔着遮罩还能打字）
   imeDock.render();
 }
 /** Alt+P / 侧栏「小窗」：开着就收回；没开就开（要在用户手势里：pip.open() 在第一个 await 之前就调 requestWindow）。 */
@@ -1370,7 +1426,7 @@ pip = createPip(pageEl, [$("candidateBar")], {
     el.append(p, b);
     return el;
   },
-  size: () => ({ width: Math.ceil(editorEl.getBoundingClientRect().width) + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: 4 * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM }),
+  size: () => ({ width: Math.ceil(editorEl.getBoundingClientRect().width) + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: (adv?.active ? advLines() : 4) * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM }),   // 对话框开着 = 小窗就是那个框（几行 = 设置的行数）
   fit: (h) => fitToRows(h, paper.lineHeight(), PIP_PAD_TOP + PIP_PAD_BOTTOM),
   onEnter: enterPip,
   onLeave: leavePip,
@@ -1390,8 +1446,8 @@ function renderTopbar(): void {
     useIcon(lockToggle, project.readOnly() ? "edit-disabled" : "edit-enabled");
     lockToggle.title = project.readOnly() ? t("top.readOnlyOff") : t("top.readOnlyOn"); lockToggle.setAttribute("aria-label", lockToggle.title);
     keyBanner.hidden = true;
-    typewriterButton.hidden = project.locked() || project.currentKind() === "image";
-    applyTypewriter();
+    pageWritable = !project.locked() && project.currentKind() !== "image";
+    advButton.hidden = !pageWritable; applyAdv();
     if (!pipEligible()) closePipIfOpen();
     renderMicVisibility();
     return;
@@ -1411,8 +1467,8 @@ function renderTopbar(): void {
   cryptoToggle.setAttribute("aria-label", cryptoToggle.title);
   lockToggle.hidden = true;   // txt 没有修改锁（2026-09-10 user：锁跟着作品进 zip，txt 不支持）
   keyBanner.hidden = !(st.name && st.encrypted && !st.locked && fileUsesOtherPassword(st.name));
-  typewriterButton.hidden = !hasDoc || !!st.locked || !!st.unavailable;
-  applyTypewriter();
+  pageWritable = hasDoc && !st.locked && !st.unavailable;
+  advButton.hidden = !pageWritable; applyAdv();
   if (!pipEligible()) closePipIfOpen();
   renderMicVisibility();
 }
@@ -1564,7 +1620,7 @@ const autoTidyPref = (): boolean => prefs.getItem<boolean>("autoTidy") !== false
 let voiceMode = false;   // 语音模式 = 上一次输入来自语音、之后没敲过实体键——只有纯鼠标/手柄口述的人看得到退格钮（user 2026-09-04「纯鼠标语音模式可能需要一个退格键」）
 const input = createInputPipeline({
   ime,
-  canEdit: (el) => (el === editorEl ? canEditNow() : true),
+  canEdit: (el) => (el === editorEl || el === advInput ? canEditNow() : true),   // 对话框写的就是正文：同一把锁
   onActivity: () => { lastTypingAt = Date.now(); idlePoke(); },
   onCommit: () => { scheduleUserDictPush(); },
   onChange: () => renderImeState(),
@@ -1597,7 +1653,7 @@ function renderKbToggle(): void {
 kbToggle.addEventListener("mousedown", (e) => e.preventDefault());
 kbToggle.addEventListener("click", () => {
   kbHiddenBy = null; kbSummoned = true; deviceKvSet("softKeyboardHidden", null);
-  if (!input.target()) editorEl.focus();
+  if (!input.target()) focusWriting();
   renderImeState();
 });
 let lastAsciiMode: boolean | null = null;
@@ -1699,7 +1755,7 @@ function renderMicVisibility(): void {
 /** 语音模式退格：删光标前一个字（整个 emoji 算一个）/ 选区；组字中则删拼音。按住连删。走输入管线（同软键盘的退格键一条路）。 */
 function deleteBeforeCaret(): Promise<void> {
   if (!canEditNow()) return Promise.resolve();
-  if (document.activeElement !== editorEl) editorEl.focus();
+  if (!writingFocused()) focusWriting();
   return input.press("Backspace").then(() => { localSession?.notifyExternalInput(); });
 }
 let bsRepeat: ReturnType<typeof setTimeout> | null = null;
@@ -1722,12 +1778,13 @@ function toggleMic(): void {
     if (ready === undefined) { try { ready = (await asr.status(m.slug)).ready; } catch { ready = false; } }
     if (!ready) { await offerVoicePack(); return; }
     if (ime.isComposing()) { ime.resetComposition(); renderImeState(); }
-    editorEl.focus();
+    focusWriting();
+    adv?.pushCaret();   // 语音从正文的光标起录：对话框开着时先把框里的光标写回正文
     backend.toggle(pickSpeechLang());
   })();
 }
 editorEl.addEventListener("input", () => { localSession?.notifyExternalInput(); });
-editorEl.addEventListener("pointerdown", () => { if (localSession?.state === "recording") localSession.abort(); });
+for (const el of [editorEl, advInput]) el.addEventListener("pointerdown", () => { if (localSession?.state === "recording") localSession.abort(); });   // 录着音点了正在写的框 = 光标要挪，这一句不落
 
 // 语音键（docs/20260524-push-to-talk.md 终形：左 Ctrl keydown 立即起录，250ms 门决定留/丢，其它键 = 和弦 → 弃）。
 //   v2.3.6（user 2026-09-30「语音键能用 caps 吗，左 ctrl 和 ctrl c 撞车了」）：device-kv `pttKey` 可选 **CapsLock**——它是**切换式**（按一下开始、再按一下停），不是按住：
@@ -1747,7 +1804,7 @@ function onPttKeydown(event: KeyboardEvent): void {
   if (pttArmedNoPack && !isPttKey(event)) { pttArmedNoPack = false; return; }   // 没包时的和弦：不提示
   if (!isPttKey(event) || event.repeat || event.shiftKey || event.altKey || event.metaKey) return;
   if (pttBackend) { if (pttIsToggle()) pttStop(); return; }   // 切换式：再按一下 = 停
-  if (editorEl.ownerDocument.activeElement !== editorEl || !canEditNow()) return;   // 纸在小窗里时焦点在小窗的 document 上
+  if (!writingFocused() || !canEditNow()) return;   // 纸在小窗里时焦点在小窗的 document 上；对话框也算
   const backend = activeVoiceBackend();
   if (!backend || backend.state !== "idle") return;
   // 没包：按住式等干净松键再提；切换式按了就是要说 → 立刻提。首次不知道有没有包 → 暖一下缓存，这一下不提示不起录
@@ -1755,6 +1812,7 @@ function onPttKeydown(event: KeyboardEvent): void {
   if (known === undefined) { void asr.status(slug).catch(() => { /* 下次再判 */ }); return; }
   if (known === false) { if (pttIsToggle()) setStatus(t("voice.pack.missingHint")); else pttArmedNoPack = true; return; }
   pttBackend = backend; pttCommitted = pttIsToggle();   // 切换式没有 250ms 门：按了就是要说
+  adv?.pushCaret();   // 语音从正文的光标起录：对话框开着时先把框里的光标写回正文
   void backend.start(pickSpeechLang());
   if (pttIsToggle()) { if (pttBackend.state === "recording") onVoiceState("recording"); }
   else pttTimer = setTimeout(() => { pttTimer = null; pttCommitted = true; if (pttBackend?.state === "recording") onVoiceState("recording"); }, PTT_HOLD_MS);
@@ -1826,6 +1884,23 @@ $("readingModePicker").addEventListener("change", (event) => {
   applyEditorChars(v);
 });
 prefs.onChange("charsPerLine", () => syncEditorChars());
+/** 对话框行数：设置那一排跟着当前文档走；--adv-h 由 syncAdvHeight 写。 */
+function renderAdvLines(): void {
+  const n = advLines();
+  for (const opt of document.querySelectorAll<HTMLElement>("#advLinesPicker .reading-mode-option")) {
+    const sel = opt.dataset.advLines === String(n); opt.classList.toggle("is-selected", sel);
+    const input = opt.querySelector("input"); if (input) input.checked = sel;
+  }
+  syncAdvHeight();
+}
+$("advLinesPicker").addEventListener("change", (event) => {
+  const v = Number((event.target as HTMLInputElement | null)?.value);
+  if (!ADV_LINE_TIERS.includes(v)) return;
+  if (project.active() && project.session()) project.setBookPrefs({ advLines: v });   // 书的属性：标脏、走落盘节律（同行宽）
+  else prefs.setItem("advLines", v);                                                // 默认（txt 稿 / 新书）
+  renderAdvLines();
+});
+prefs.onChange("advLines", () => renderAdvLines());
 // 字号档位（device-kv，每台设备各自存）：字号 = 设备基准（styles.css --editor-font-base：22px，手机 16px）× 这个档。和行宽互不相干（v2.3.17，user 2026-10-01「字号应该是绝对的，不是相对于行宽的」）；起因 = user 2026-09-04 iPhone「字好小啊」
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");
@@ -2165,10 +2240,10 @@ function onAppKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape" && !event.defaultPrevented && drawer.currentView() !== "closed") { drawer.close(); return; }
   if (event.key === "Escape" && !event.defaultPrevented && sidebarSettingsShown() && !galleryHost.isOpen()) { hideSidebarSettings(); return; }   // 设置面板里按 Esc = 回到侧栏导航
   if (event.key === "Escape" && !event.defaultPrevented && galleryHost.isOpen()) { galleryHost.close(); return; }
-  if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); editorEl.focus(); return; }
+  if (event.key === "Escape" && !event.defaultPrevented && sidebarOpen() && NARROW_MQ.matches) { setSidebar(false); focusWriting(); return; }
   if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) { event.preventDefault(); void smartSave(); return; }
-  // 打字机模式 Alt+T（user 2026-10-24「你可以编一个」；Alt+P 留给小窗）。认物理键位：Mac 的 Option+T 出的是「†」；内置输入法不碰 Alt 组合
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === "KeyT" && !typewriterButton.hidden && !pip?.active) { event.preventDefault(); setTypewriter(!typewriter); return; }
+  // 对话框模式 Alt+T（打字机模式那颗键照搬，user 2026-10-24「你可以编一个」；Alt+P 留给小窗）。认物理键位：Mac 的 Option+T 出的是「†」；内置输入法不碰 Alt 组合
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === "KeyT" && pageWritable) { event.preventDefault(); setAdv(!advOn); return; }
   // 小窗 Alt+P（和 KudsRocket 统一；user 2026-10-24「快捷键统一」）：开 / 收回
   if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === "KeyP") { event.preventDefault(); void togglePip(); return; }
   if (project.active() && event.altKey && event.key === "ArrowLeft") { event.preventDefault(); if (project.goBack()) edgeSidebar.render(); }
@@ -2235,17 +2310,17 @@ const idle = initIdleGate({
   overlay: $("idleOverlay"),
   onIdle: () => { closePipIfOpen(); if (auth.isSignedIn()) { void pushNowAny(); void pushUserDict(); rememberLastActive(); } else void flushLocalAny(); },   // 闲置锁屏先收回小窗：加密稿的明文不留在置顶窗里（设计稿 §3）
   onResume: resumeSync,
-  focusEditor: () => editorEl.focus(),
+  focusEditor: () => focusWriting(),
 });
 // ── Quest：放下手柄时系统键盘焦点会跑去别的 app（空格在 VRChat 里跳起来）——拦不住，能做的 = 焦点回来 / 页内任意处敲键时
 //   静默回到编辑器，第一击不丢（user 2026-09-04）。「键盘不在本页」提示条 + 压暗同日撤：光标失踪本身看得见，没有煤气灯疑惑。
 function modalOpen(): boolean { return !!document.querySelector('[role="dialog"]:not(.hidden)') || !!currentPopupMenu() || drawer.currentView() !== "closed" || idle.isShown(); }
 function recoverEditorFocus(): boolean {
   const a = document.activeElement;
-  if (a && a !== document.body && a !== document.documentElement) return a === editorEl;
+  if (a && a !== document.body && a !== document.documentElement) return writingFocused();
   if (modalOpen() || !canEditNow()) return false;
-  editorEl.focus();
-  return document.activeElement === editorEl;
+  focusWriting();
+  return writingFocused();
 }
 window.addEventListener("focus", () => { recoverEditorFocus(); });
 document.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -2352,7 +2427,7 @@ async function boot(): Promise<void> {
   renderTopbar();
   setState(stateAny());
   // 场景恢复（对齐 WeebPaint：从书库出、回来就在书库）：稿照常恢复在底下，书库叠上去；不在书库才把焦点给纸面。
-  if (galleryHost.wasInGallery()) await galleryHost.open(); else editorEl.focus();
+  if (galleryHost.wasInGallery()) await galleryHost.open(); else focusWriting();
 }
 // 2026-09-09（审计 #3，「各种不刷新」头号嫌疑）：以前整函数一次性守卫——凭证过期后再次静默登录时什么都不做：不对齐 collections、
 //   不排空离线队列、不快进当前稿、列表不重拉。现在每次登录都跑同步四件；只有「冷启动切到远端 lastActive」保持一次性（会切当前稿，

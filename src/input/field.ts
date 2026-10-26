@@ -37,11 +37,11 @@ function nextBoundary(value: string, pos: number): number {
   if (Seg) { for (const g of new Seg(undefined, { granularity: "grapheme" }).segment(chunk)) return pos + g.segment.length; }
   return pos + (/^[\uD800-\uDBFF]/.test(chunk) && chunk.length >= 2 ? 2 : 1);
 }
-/** 退格：有选区删选区，否则删光标前一个字。返回删没删。 */
+/** 退格：有选区删选区，否则删光标前一个字。返回删没删。光标已在最前面 = 删不了，在框上发一个 `backspaceatstart`（对话框模式据此和上一段接回去；实体键盘的同一下由框自己的 keydown 认）。 */
 export function deleteBackward(el: TextField): boolean {
   const [s, e] = sel(el);
   if (s !== e) { replaceRange(el, s, e, ""); return true; }
-  if (s <= 0) return false;
+  if (s <= 0) { el.dispatchEvent(new Event("backspaceatstart")); return false; }
   replaceRange(el, prevBoundary(el.value, s), s, "");
   return true;
 }

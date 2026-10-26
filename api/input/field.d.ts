@@ -5,7 +5,7 @@ export declare function asTextField(x: unknown): TextField | null;
 export declare const isMasked: (el: HTMLElement) => boolean;
 export declare const isWritable: (el: TextField) => boolean;
 export declare function insertText(el: TextField, text: string): void;
-/** 退格：有选区删选区，否则删光标前一个字。返回删没删。 */
+/** 退格：有选区删选区，否则删光标前一个字。返回删没删。光标已在最前面 = 删不了，在框上发一个 `backspaceatstart`（对话框模式据此和上一段接回去；实体键盘的同一下由框自己的 keydown 认）。 */
 export declare function deleteBackward(el: TextField): boolean;
 /** 左右挪一个字（有选区 → 收到选区那一头）。 */
 export declare function moveCaret(el: TextField, dir: -1 | 1): void;

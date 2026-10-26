@@ -412,6 +412,30 @@ export declare const S: {
         readonly zh: "字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音 12 MB、像素 0.5 MB，选了才取。";
         readonly en: "The font is saved with the book; exports use the same one by default (the export sheet can pick another). Pinyin is 12 MB and pixel 0.5 MB, fetched only when chosen.";
     };
+    readonly "ui.reading.advLines": {
+        readonly zh: "对话框行数";
+        readonly en: "Dialogue box height";
+    };
+    readonly "ui.reading.advLines2": {
+        readonly zh: "2 行";
+        readonly en: "2 lines";
+    };
+    readonly "ui.reading.advLines3": {
+        readonly zh: "3 行";
+        readonly en: "3 lines";
+    };
+    readonly "ui.reading.advLines4": {
+        readonly zh: "4 行";
+        readonly en: "4 lines";
+    };
+    readonly "ui.reading.advLines5": {
+        readonly zh: "5 行";
+        readonly en: "5 lines";
+    };
+    readonly "ui.reading.advLinesHint": {
+        readonly zh: "对话框模式（顶栏的「框」，Alt+T）的框有几行高；写长了在框里滚。和行宽一样跟书走。";
+        readonly en: "How many lines tall the dialogue box is (the box button in the top bar, Alt+T); longer paragraphs scroll inside it. Saved with the book, like the line width.";
+    };
     readonly "ui.reading.fontScale": {
         readonly zh: "字号（本机）";
         readonly en: "Text size (this device)";
@@ -523,6 +547,22 @@ export declare const S: {
     readonly "img.setCover": {
         readonly zh: "设为封面";
         readonly en: "Set as cover";
+    };
+    readonly "img.setAdvBackdrop": {
+        readonly zh: "设为对话框背景";
+        readonly en: "Use as dialogue backdrop";
+    };
+    readonly "img.unsetAdvBackdrop": {
+        readonly zh: "不再当对话框背景";
+        readonly en: "Stop using as backdrop";
+    };
+    readonly "img.advBackdropOn": {
+        readonly zh: "对话框模式的背景换成这张了";
+        readonly en: "This image is now the dialogue backdrop";
+    };
+    readonly "img.advBackdropOff": {
+        readonly zh: "对话框模式不再有背景";
+        readonly en: "The dialogue box has no backdrop now";
     };
     readonly "img.coverSet": {
         readonly zh: "已设为封面";
@@ -1876,9 +1916,41 @@ export declare const S: {
         readonly zh: "这一页…（加页 / 挪到）";
         readonly en: "This page… (add / move)";
     };
-    readonly "top.typewriter": {
-        readonly zh: "打字机模式（Alt+T）";
-        readonly en: "Typewriter mode (Alt+T)";
+    readonly "top.adv": {
+        readonly zh: "对话框模式（Alt+T）";
+        readonly en: "Dialogue box (Alt+T)";
+    };
+    readonly "adv.aria": {
+        readonly zh: "对话框模式";
+        readonly en: "Dialogue box mode";
+    };
+    readonly "adv.exit": {
+        readonly zh: "回到整页（Alt+T）";
+        readonly en: "Back to the full page (Alt+T)";
+    };
+    readonly "adv.hideBackdrop": {
+        readonly zh: "收起背景";
+        readonly en: "Hide the backdrop";
+    };
+    readonly "adv.showBackdrop": {
+        readonly zh: "露出背景";
+        readonly en: "Show the backdrop";
+    };
+    readonly "adv.inputAria": {
+        readonly zh: "对话框（回车 = 发出去，Shift+回车 = 段内换行）";
+        readonly en: "Dialogue box (Enter sends, Shift+Enter breaks the line)";
+    };
+    readonly "adv.navAria": {
+        readonly zh: "上一段 / 下一段";
+        readonly en: "Previous / next paragraph";
+    };
+    readonly "adv.prev": {
+        readonly zh: "上一段（Ctrl+↑）";
+        readonly en: "Previous paragraph (Ctrl+↑)";
+    };
+    readonly "adv.next": {
+        readonly zh: "下一段（Ctrl+↓）";
+        readonly en: "Next paragraph (Ctrl+↓)";
     };
     readonly "pip.entry": {
         readonly zh: "小窗（Alt+P）：纸搬进一个置顶的小窗口";

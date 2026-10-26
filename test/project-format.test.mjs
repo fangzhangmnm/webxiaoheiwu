@@ -196,6 +196,13 @@ describe("project/format · 2.1 增量：封面 entry / 图片页（ADR-0008/001
     eq((await unpackProject(await packProject(p))).project.editorState.exportBodyHeadings, undefined);
     for (const v of ["escape", "raw"]) { p.editorState.exportBodyHeadings = v; eq((await unpackProject(await packProject(p))).project.editorState.exportBodyHeadings, v); }
     delete p.editorState.exportBodyHeadings;
+    // advLines / advBackdrop（2026-10-25，editor-state 1.2.0，对话框模式）：缺 = 不写；行数往返、乱值丢；背景页得是书里的页，悬空的丢掉
+    const es0 = JSON.parse(td.decode((await zipUnpack(await packProject(p)))[".webxiaoheiwu/editor-state.json"])); eq("advLines" in es0 || "advBackdrop" in es0, false);
+    p.editorState.advLines = 4; p.editorState.advBackdrop = names[0];
+    let rt = (await unpackProject(await packProject(p))).project.editorState; eq(rt.advLines, 4); eq(rt.advBackdrop, names[0]);
+    p.editorState.advLines = 2.5; p.editorState.advBackdrop = "没有这页.png";
+    rt = (await unpackProject(await packProject(p))).project.editorState; eq(rt.advLines, undefined); eq(rt.advBackdrop, undefined, "dangling backdrop dropped");
+    delete p.editorState.advLines; delete p.editorState.advBackdrop;
   });
   it("hidden 往返：true 才写、缺 = 出门；老书没有这个键", async () => {
     const p = emptyProject(); createNode(p, "a.txt", "A", () => 1); createNode(p, "b.txt", "B", () => 1); p.nodes.get("b.txt").hidden = true;
@@ -306,7 +313,7 @@ describe("project/format · 格式版本纪律：未知字段直通 + 已知键�
   it("已知键三张表钉死：加字段 = 改表 + format.ts 纪律段 + CLAUDE.md 记一笔（不改表 = 这里红）", () => {
     eq(KNOWN_GRAPH_FIELDS.join("|"), "format|version|minor|patch|wroteWith|readOnly|cover|tree|pages");
     eq(KNOWN_PAGE_FIELDS.join("|"), "links|created|modified|hidden");
-    eq(KNOWN_EDITOR_STATE_FIELDS.join("|"), "version|minor|patch|last|back|refPanel|lineWidth|exportLineWidth|exportFont|font|exportCovers|exportEmbedText|exportBodyHeadings");
+    eq(KNOWN_EDITOR_STATE_FIELDS.join("|"), "version|minor|patch|last|back|refPanel|lineWidth|exportLineWidth|exportFont|font|exportCovers|exportEmbedText|exportBodyHeadings|advLines|advBackdrop");
   });
   it("更新客户端写的未知键（graph 顶层 / 页级 / editor-state 顶层）解包→打包原样带回；已知键永远由本版写", async () => {
     const graph = { format: "webxiaoheiwu", version: 2, wroteWith: "v9.9.9-future", tree: ["a.txt"], futureTop: { x: 1 }, pages: { "a.txt": { links: [], created: 1, modified: 2, futurePage: "yes" } } };

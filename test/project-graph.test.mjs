@@ -50,11 +50,11 @@ describe("project/graph · 撞名=链接、占位符已废、反链=查询", () 
   it("cover 来源页：renameNode 跟着改（大小写不敏感）；deleteNode 即清；别的页改名 / 删除不动它", () => {
     const p = emptyProject(); const now = tick();
     createNode(p, "a.txt", "", now); p.contents.set("图.jpg", new Uint8Array([1])); p.nodes.set("图.jpg", { links: [], created: 1, modified: 1 }); p.contents.set("图2.jpg", new Uint8Array([2])); p.nodes.set("图2.jpg", { links: [], created: 1, modified: 1 });
-    p.cover = "图.jpg";
-    renameNode(p, "a.txt", "b.txt", now); eq(p.cover, "图.jpg");
-    renameNode(p, "图.JPG", "封面.jpg", now); eq(p.cover, "封面.jpg");
-    deleteNode(p, "图2.jpg"); eq(p.cover, "封面.jpg");
-    deleteNode(p, "封面.jpg"); eq(p.cover, null);
+    p.cover = "图.jpg"; p.editorState.advBackdrop = "图.jpg";   // 对话框模式的背景页（2026-10-25）同一套规矩
+    renameNode(p, "a.txt", "b.txt", now); eq(p.cover, "图.jpg"); eq(p.editorState.advBackdrop, "图.jpg");
+    renameNode(p, "图.JPG", "封面.jpg", now); eq(p.cover, "封面.jpg"); eq(p.editorState.advBackdrop, "封面.jpg");
+    deleteNode(p, "图2.jpg"); eq(p.cover, "封面.jpg"); eq(p.editorState.advBackdrop, "封面.jpg");
+    deleteNode(p, "封面.jpg"); eq(p.cover, null); eq(p.editorState.advBackdrop, undefined);
   });
   it("hidden（2026-09-30 Unity 语义）：自己的旗子 + 祖先传播；出门的页序剪掉整支；散页只看自己；改名跟着走；取消 = 删键", () => {
     const p = emptyProject(); const now = tick();

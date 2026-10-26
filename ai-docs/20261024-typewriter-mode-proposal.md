@@ -1,5 +1,7 @@
 # 打字机模式设计稿（界面名 = 「只看几行」）
 
+> **2026-10-26 superseded**（v3.0.0）：user 2026-10-25「打字机模式sunset，因为我知道它正确的名字应该叫什么了，可以从头设计」→ 真身 = galgame 的 ADV 对话框，单位是段不是行。新设计 = `20261026-adv-dialog-box.md`；这里那套（纸的上沿压下去、`.tw-band`、`--tw-strip`、`--bar-h`）v3.0.0 全撤。下文留作历史。edited by Claude Opus 5.5 2026-10-26
+
 > **2026-10-25 改名**（v2.3.62）：user「打字机不是个好名字」「但是我们没必要谜语人」「这个就叫只看几行吧」。界面上叫「只看几行」，图标 id `last-lines`（画样子：框里只有底下几道线）；代码和本机记忆的键名照旧叫 typewriter（改叫法不迁移旧数据）。下文的「打字机模式」都指它。edited by Claude Opus 5.5 2026-10-25
 
 > created 20261024 · by Claude Opus 5.5 (claude-opus-5-5) · as-of v2.3.59 / 2026-10-24 · status: **v2.3.59 已做**（做法与稿子的差别见 §6；§5 三条 user 当天答了）。edited by Claude Opus 5.5 2026-10-24

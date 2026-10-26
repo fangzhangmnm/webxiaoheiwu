@@ -152,7 +152,7 @@
   <!-- archive-box — 归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive) -->
   <symbol id="archive-box" data-cat="ui" data-src="lucide:archive" data-note="归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v4H3z"/> <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/> <path d="M10 13h4"/></symbol>
 <!-- 本地 stopgap 补丁（assets/icons-local.svg，待真图标） -->
-  <symbol id="last-lines" data-cat="stopgap" data-src="baked:NotoSansCJK-SC-Medium(OFL-1.1)" data-note="只看几行（v2.3.59 顶栏钮，原名打字机模式；2026-10-25 改名，Claude Opus 5.5）stopgap：框里只有底下几道线，已登记图标库 TODO.md" viewBox="0 0 24 24"><path d="M11.05 4.21V5.94H20.46V4.21ZM7.61 3.06C6.65 4.44 4.81 6.17 3.19 7.23C3.52 7.57 4 8.3 4.23 8.71C6.02 7.44 8.03 5.54 9.36 3.79ZM10.22 9.51V11.24H16.35V18.68C16.35 18.96 16.22 19.06 15.85 19.06C15.51 19.08 14.22 19.08 12.97 19.04C13.24 19.56 13.47 20.33 13.55 20.85C15.35 20.85 16.5 20.83 17.23 20.56C17.96 20.27 18.2 19.75 18.2 18.69V11.24H21V9.51ZM8.38 7.21C7.07 9.4 4.96 11.63 3 13.03C3.36 13.39 4 14.2 4.25 14.58C4.88 14.08 5.52 13.49 6.17 12.84V20.94H7.99V10.8C8.78 9.86 9.49 8.84 10.09 7.86Z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="dialog-box" data-cat="stopgap" data-src="baked:NotoSansCJK-SC-Medium(OFL-1.1)" data-note="对话框模式（v3.0.0 顶栏钮；取代打字机模式 / 只看几行的 last-lines；2026-10-25 Claude Opus 5.5）stopgap：画样子 = 屏幕底下一个横长的框，已登记图标库 TODO.md" viewBox="0 0 24 24"><path d="M20.69 4.31H10.06V20H21V18.36H11.77V5.95H20.69ZM12.34 15.27V16.81H20.37V15.27H17.09V12.7H19.86V11.19H17.09V8.88H20.24V7.34H12.51V8.88H15.41V11.19H12.82V12.7H15.41V15.27ZM5.97 3.16V7.05H3.34V8.73H5.86C5.29 11.06 4.16 13.67 3 15.06C3.29 15.52 3.69 16.32 3.86 16.81C4.64 15.77 5.38 14.15 5.97 12.39V20.84H7.63V11.23C8.19 12.05 8.8 12.96 9.1 13.52L10.02 11.95C9.69 11.53 8.22 9.84 7.63 9.23V8.73H9.6V7.05H7.63V3.16Z" fill="currentColor" stroke="none"/></symbol>
 </svg>
 <!-- ICON-SPRITE:END -->
 
@@ -172,9 +172,9 @@
         <div class="status" aria-live="polite">
           <span id="saveStatus"></span>
         </div>
-        <!-- 只看几行（v2.3.59 起，代码里叫 typewriter；界面名 user 2026-10-25「这个就叫只看几行吧」）：纸的上沿压到屏幕下方、只露最后几行；本机记住；Alt+T -->
-        <button class="menu-button" id="typewriterButton" type="button" hidden aria-pressed="false" aria-label="只看几行（Alt+T）" data-i18n-aria="top.typewriter" data-i18n-title="top.typewriter">
-          <svg class="ico" aria-hidden="true"><use href="#last-lines"/></svg>
+        <!-- 对话框模式（v3.0.0，user 2026-10-25「aha就是galgame/adv」；代码里叫 adv；取代 v2.3.59 的打字机模式 / 只看几行）：纸换成底下一个几行高的对话框，一次写一段、回车就发；本机记住；Alt+T -->
+        <button class="menu-button" id="advButton" type="button" hidden aria-pressed="false" aria-label="对话框模式（Alt+T）" data-i18n-aria="top.adv" data-i18n-title="top.adv">
+          <svg class="ico" aria-hidden="true"><use href="#dialog-box"/></svg>
         </button>
         <button class="menu-button" id="addPageButton" type="button" hidden aria-label="加一页" data-i18n-aria="top.addPage" data-i18n-title="top.addPage">
           <svg class="ico" aria-hidden="true"><use href="#new"/></svg>
@@ -183,8 +183,6 @@
           <svg class="ico" aria-hidden="true"><use href="#menu"/></svg>
         </button>
       </header>
-      <!-- 打字机模式的遮挡带：顶栏之下、纸条上沿之上，盖住滚上去的旧字。不长在顶栏里：顶栏在 chrome 层，参考窗（chrome − 2）要能放在这块空地上 -->
-      <div class="tw-band" id="typewriterBand" aria-hidden="true"></div>
 
       <div class="ghost-banner key-banner" id="keyBanner" hidden>
         <span data-i18n="ui.key.otherPw">这篇用的不是当前密码（保存仍用它自己的密码）</span>
@@ -239,6 +237,7 @@
           <div class="page-image-bar">
             <span id="pageImageMeta" class="page-image-meta"></span>
             <button type="button" class="auth-action" id="pageImageCover" data-i18n="img.setCover">设为封面</button>
+            <button type="button" class="auth-action" id="pageImageAdvBackdrop" data-i18n="img.setAdvBackdrop">设为对话框背景</button>
             <button type="button" class="auth-action" id="pageImageReplace" data-i18n="img.replace">替换图片…</button>
           </div>
         </div>
@@ -262,6 +261,23 @@
         <button id="kbToggle" class="mic-button kb-toggle" type="button" hidden aria-label="软键盘" data-i18n-aria="kb.show" data-i18n-title="kb.show">
           <svg class="ico" aria-hidden="true"><use href="#keyboard"/></svg>
         </button>
+        <!-- 对话框模式的「台上」：顶栏之下、对话框之上那块空地。背景图 = 这本书配的一张图片页（只当提示，同参考窗干的事；user 2026-10-25「做成视图层全书配置，只是用来cue」）。
+             右上角 = 收起 / 露出背景、回到整页（user「关和切应该就在空出来的地方的右上角」）。参考窗（chrome − 2）能放在这块空地上。
+             住在 .page 里（同对话框）：台的高度跟着对话框的行数和纸上的行高走 -->
+        <div class="adv-stage" id="advStage" aria-hidden="true"><img id="advStageImg" class="adv-stage-img" alt="" hidden /></div>
+        <div class="adv-corner" id="advCorner" role="group" aria-label="对话框模式" data-i18n-aria="adv.aria">
+          <button class="menu-button" id="advBackdropToggle" type="button" hidden aria-pressed="false" aria-label="收起背景" data-i18n-aria="adv.hideBackdrop" data-i18n-title="adv.hideBackdrop"><svg class="ico" aria-hidden="true"><use href="#visibility-hide"/></svg></button>
+          <button class="menu-button" id="advExit" type="button" aria-label="回到整页（Alt+T）" data-i18n-aria="adv.exit" data-i18n-title="adv.exit"><svg class="ico" aria-hidden="true"><use href="#file"/></svg></button>
+        </div>
+        <!-- 对话框（v3.0.0，src/adv/box.ts）：正文里当前这一段的一扇窗。几行高（设置「对话框行数」，和行宽一样跟书走），多了在框里滚；钉在视口底（键盘之上），和纸同宽。
+             住在 .page 里：行高 / 线位 / 字体都从纸上继承，开小窗时跟着纸一起搬过去。‹ › = 上一段 / 下一段（Ctrl+↑ / Ctrl+↓），坐在框上沿外面的正中（左边是键盘钮、右边是话筒，照旧）-->
+        <div class="adv-box" id="advBox">
+          <textarea id="advInput" class="adv-input" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off" aria-label="对话框" data-i18n-aria="adv.inputAria"></textarea>
+        </div>
+        <div class="adv-nav" id="advNav" role="group" aria-label="上一段 / 下一段" data-i18n-aria="adv.navAria">
+          <button type="button" class="page-nav-btn" id="advPrev" aria-label="上一段（Ctrl+↑）" data-i18n-aria="adv.prev" data-i18n-title="adv.prev"><svg class="ico" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+          <button type="button" class="page-nav-btn" id="advNext" aria-label="下一段（Ctrl+↓）" data-i18n-aria="adv.next" data-i18n-title="adv.next"><svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+        </div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
         <div id="lockCard" class="lock-card" hidden role="group" aria-label="已锁定" data-i18n-aria="lock.aria">
           <svg class="ico lock-card-ico" aria-hidden="true"><use href="#lock"/></svg>
@@ -394,6 +410,26 @@
             </label>
           </div>
           <p class="reading-mode-hint" data-i18n="ui.reading.fontHint">字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音 12 MB、像素 0.5 MB，选了才取。</p>
+          <!-- 对话框行数（v3.0.0，user 2026-10-25「行数可以配置。和宽度一样」）：同行宽——书开着 = 这本书 editor-state advLines；没书 / 没定过 = 账号默认（synced prefs advLines，缺 = 3） -->
+          <div class="reading-mode-picker" id="advLinesPicker" role="radiogroup" aria-label="对话框行数" data-i18n-aria="ui.reading.advLines">
+            <label class="reading-mode-option" data-adv-lines="2">
+              <input type="radio" name="advLines" value="2" />
+              <span data-i18n="ui.reading.advLines2">2 行</span>
+            </label>
+            <label class="reading-mode-option is-selected" data-adv-lines="3">
+              <input type="radio" name="advLines" value="3" checked />
+              <span data-i18n="ui.reading.advLines3">3 行</span>
+            </label>
+            <label class="reading-mode-option" data-adv-lines="4">
+              <input type="radio" name="advLines" value="4" />
+              <span data-i18n="ui.reading.advLines4">4 行</span>
+            </label>
+            <label class="reading-mode-option" data-adv-lines="5">
+              <input type="radio" name="advLines" value="5" />
+              <span data-i18n="ui.reading.advLines5">5 行</span>
+            </label>
+          </div>
+          <p class="reading-mode-hint" id="advLinesHint" data-i18n="ui.reading.advLinesHint">对话框模式（顶栏的「框」，Alt+T）的框有几行高；写长了在框里滚。和行宽一样跟书走。</p>
           <label class="voice-config-field">
             <span class="voice-config-label" data-i18n="ui.reading.fontScale">字号（本机）</span>
             <select id="fontScaleSelect" class="voice-config-select">
@@ -590,6 +626,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-3b59e261b59f.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-e55bf2b0fc5f.mjs"></script>
   </body>
 </html>

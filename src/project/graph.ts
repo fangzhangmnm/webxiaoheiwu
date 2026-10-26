@@ -120,6 +120,7 @@ export function renameNode(p: Project, from: string, to: string, now: NowFn = DE
   if (p.editorState.last && nameKey(p.editorState.last) === k) p.editorState.last = t;
   p.editorState.back = p.editorState.back.map((n) => (nameKey(n) === k ? t : n));
   if (p.editorState.exportCovers) p.editorState.exportCovers = Object.fromEntries(Object.entries(p.editorState.exportCovers).map(([a, b]) => [nameKey(a) === k ? t : a, nameKey(b) === k ? t : b]));   // 导出封面的指派跟着改名
+  if (p.editorState.advBackdrop && nameKey(p.editorState.advBackdrop) === k) p.editorState.advBackdrop = t;   // 对话框背景跟着改名
 }
 /** 废弃（用户面 = 删除；ADR-0014 §8）：改名 `<prefix>x`（撞名 → `<prefix>x-hex4`）；在树里 → 连同子树出树（子树边降级成 links，同 detachToLinks）且**子节各自也改名**（删容器 = 删内容）；
  *  不删字节；指向它们的 links 随改名重写（renameNode 既有行为）。已带前缀的页不再套第二层。返回 { renamed: 旧名→新名 的顺序表（x 在首）, detached: 出树的子树页数 }。散页上的废弃 = 只改名。 */
@@ -158,6 +159,7 @@ export function deleteNode(p: Project, name: string): boolean {
   if (p.editorState.last === n) p.editorState.last = null;
   p.editorState.back = p.editorState.back.filter((x) => x !== n);
   if (p.editorState.exportCovers) p.editorState.exportCovers = Object.fromEntries(Object.entries(p.editorState.exportCovers).filter(([a, b]) => nameKey(a) !== k && nameKey(b) !== k));   // 页没了，指派跟着没
+  if (p.editorState.advBackdrop && nameKey(p.editorState.advBackdrop) === k) delete p.editorState.advBackdrop;   // 对话框背景同上
   return true;
 }
 /** 检索（结果临时）：名字或正文包含 q（大小写不敏感）。返回名字，按 modified 降序。最少字数默认 1（user 2026-09-10「检索不限字数，这样可以搜全量孤儿」）。 */
