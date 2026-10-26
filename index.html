@@ -259,7 +259,7 @@
           <svg class="ico" aria-hidden="true"><use href="#keyboard"/></svg>
         </button>
         <!-- 对话框模式的「台上」：顶栏之下、对话框之上那块空地。背景图 = 这本书配的一张图片页（只当提示，同参考窗干的事；user 2026-10-25「做成视图层全书配置，只是用来cue」）。
-             右上角 = 收起 / 露出背景、回到整页（user「关和切应该就在空出来的地方的右上角」）。参考窗（chrome − 2）能放在这块空地上。
+             右上角 = 收起 / 露出背景（没配背景就不出现）；逐段 / 整页只在 ☰ 侧栏「逐段」和 Alt+T 切，屏上不放切换钮（v3.0.4，user「不应该有切换回整页的按钮，这个是在汉堡里面调的」）。参考窗（chrome − 2）能放在这块空地上。
              住在 .page 里（同对话框）：台的高度跟着对话框的行数和纸上的行高走 -->
         <div class="adv-stage" id="advStage" aria-hidden="true"><img id="advStageImg" class="adv-stage-img" alt="" hidden /></div>
         <div class="adv-corner" id="advCorner" role="group" aria-label="逐段" data-i18n-aria="adv.aria">
@@ -269,8 +269,6 @@
              住在 .page 里：行高 / 线位 / 字体都从纸上继承，开小窗时跟着纸一起搬过去。‹ › = 上一段 / 下一段（Ctrl+↑ / Ctrl+↓），坐在框上沿外面的正中（左边是键盘钮、右边是话筒，照旧）-->
         <div class="adv-box" id="advBox">
           <textarea id="advInput" class="adv-input" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off" aria-label="逐段：当前这一段" data-i18n-aria="adv.inputAria"></textarea>
-          <!-- 回到整页（v3.0.3，user 2026-10-26「nvl切反而应该在adv的对话框右上」）：文字钮骑在框的上边线右侧（galgame 文字框边上那种小钮）；小窗里不放 -->
-          <button type="button" class="adv-exit" id="advExit" title="回到整页（Alt+T）" aria-label="回到整页（Alt+T）" data-i18n-title="adv.exit" data-i18n-aria="adv.exit" data-i18n="adv.exitShort">整页</button>
         </div>
         <div class="adv-nav" id="advNav" role="group" aria-label="上一段 / 下一段" data-i18n-aria="adv.navAria">
           <button type="button" class="page-nav-btn" id="advPrev" aria-label="上一段（Ctrl+↑）" data-i18n-aria="adv.prev" data-i18n-title="adv.prev"><svg class="ico" aria-hidden="true"><use href="#chevron-left"/></svg></button>
@@ -642,6 +640,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-62b093022207.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-6f4e68086999.mjs"></script>
   </body>
 </html>

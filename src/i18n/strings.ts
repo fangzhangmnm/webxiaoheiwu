@@ -520,8 +520,6 @@ export const S = {
   "top.adv":                { zh: "逐段（Alt+T）：一次只露一段", en: "Paragraph by paragraph (Alt+T)" },
   "adv.aria":               { zh: "逐段", en: "Paragraph by paragraph" },
   "adv.entryShort":         { zh: "逐段", en: "Paragraphs" },   // ☰ 侧栏顶行（v3.0.2 从顶栏搬来）
-  "adv.exit":               { zh: "回到整页（Alt+T）", en: "Back to the full page (Alt+T)" },
-  "adv.exitShort":          { zh: "整页", en: "Page" },   // 逐段框右上角的文字钮（v3.0.3，user「nvl切反而应该在adv的对话框右上」）
   "adv.hideBackdrop":       { zh: "收起背景", en: "Hide the backdrop" },
   "adv.showBackdrop":       { zh: "露出背景", en: "Show the backdrop" },
   "adv.inputAria":          { zh: "逐段：当前这一段", en: "Current paragraph" },

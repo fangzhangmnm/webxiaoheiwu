@@ -1944,14 +1944,6 @@ export declare const S: {
         readonly zh: "逐段";
         readonly en: "Paragraphs";
     };
-    readonly "adv.exit": {
-        readonly zh: "回到整页（Alt+T）";
-        readonly en: "Back to the full page (Alt+T)";
-    };
-    readonly "adv.exitShort": {
-        readonly zh: "整页";
-        readonly en: "Page";
-    };
     readonly "adv.hideBackdrop": {
         readonly zh: "收起背景";
         readonly en: "Hide the backdrop";

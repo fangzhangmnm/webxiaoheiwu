@@ -1366,7 +1366,6 @@ function setAdv(on: boolean): void {
   focusWriting({ preventScroll: true });
   if (!on) followCaret();
 }
-$("advExit").addEventListener("click", () => setAdv(false));
 // ‹ ›：按下不抢框的焦点（软键盘 / 光标留在框里）；点了换段
 for (const [b, go] of [[advPrev, () => adv!.prev()], [advNext, () => adv!.next()]] as const) {
   b.addEventListener("pointerdown", (e) => e.preventDefault());
