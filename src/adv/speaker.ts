@@ -13,25 +13,33 @@ export type SpeakerRule = "colon" | "bracket" | "jaQuote" | "enColon";
 export const SPEAKER_RULES: readonly SpeakerRule[] = ["colon", "bracket", "jaQuote", "enColon"];
 
 const CJK_NAME = "[^\\s，。！？、；：:“”‘’「」『』【】（）()\"'…—,.!?;]{1,8}";
+// 每条规则匹配的是整个「标记」（名字 + 它的分隔符号 + 后面的空白）：名字在第 1 组，标记长度 = 整个匹配。标记收进名字牌、不进框（v3.0.6，user「小月：  不进文本框啊」）。
 const RULES: Record<SpeakerRule, RegExp> = {
-  /** 小月：明天再去拿吧。（剧本；全角 / 半角冒号）。冒号后面紧跟引号 = 小说写法「我说：“你好”」（user「你好的引号也会有」），不认 */
-  colon: new RegExp(`^(${CJK_NAME})[：:]\\s*[^\\s“「『"]`),
+  /** 小月：明天再去拿吧。（剧本；全角 / 半角冒号）。冒号后面紧跟引号 = 小说写法「我说：“你好”」（user「你好的引号也会有」），不认。只打了「小月：」也认（打完冒号就收进名字牌） */
+  colon: new RegExp(`^(${CJK_NAME})[：:](?!\\s*[“「『"])\\s*`),
   /** 【小月】明天再去拿吧。/【小月】「……」（汉化稿 / 文字游戏） */
-  bracket: /^【([^【】\s]{1,12})】/,
-  /** 小月「明日取りに行こう」/ 小月『……』（日式 ADV：名字后面直接接引号） */
-  jaQuote: new RegExp(`^(${CJK_NAME})[「『]`),
-  /** TSUKI: Let's go. / Tsuki: Let's go.（英文剧本 / 广播剧） */
-  enColon: /^([A-Z][A-Za-z.'\-]*(?: [A-Z][A-Za-z.'\-]*){0,2}):\s+\S/,
+  bracket: /^【([^【】\s]{1,12})】\s*/,
+  /** 小月「明日取りに行こう」/ 小月『……』（日式 ADV：名字后面直接接引号；引号留在框里） */
+  jaQuote: new RegExp(`^(${CJK_NAME})(?=[「『])`),
+  /** TSUKI: Let's go. / Tsuki: Let's go.（英文剧本 / 广播剧；冒号后面是空白或行尾） */
+  enColon: /^([A-Z][A-Za-z.'\-]*(?: [A-Z][A-Za-z.'\-]*){0,2}):(?!\S)\s*/,
 };
 
-/** 这一行的说话人；没有 / 规则都没勾 = null。 */
-export function detectSpeaker(line: string, enabled: ReadonlySet<SpeakerRule>): string | null {
-  const s = line.replace(/^[\s\u3000]+/, "");   // 首行缩进（全角空格）不算
+export interface SpeakerTag { name: string; /** 行首这几个字是标记（含首行缩进）：收进名字牌、不进框。 */ length: number }
+
+/** 这一行行首的说话人标记；没有 / 规则都没勾 = null。 */
+export function speakerTag(line: string, enabled: ReadonlySet<SpeakerRule>): SpeakerTag | null {
+  const indent = /^[\s\u3000]*/.exec(line)![0].length;   // 首行缩进（含全角空格）不算名字，但算在标记里
+  const s = line.slice(indent);
   if (!s) return null;
   for (const r of SPEAKER_RULES) {
     if (!enabled.has(r)) continue;
     const m = RULES[r].exec(s);
-    if (m && m[1]) return m[1];
+    if (!m || !m[1]) continue;
+    if (r === "colon" && /^[\x00-\x7f]+$/.test(m[1])) continue;   // 纯 ASCII 的「名字」归英文那条（冒号后面得有空白）：挡行首的时间「12:30」、网址「http://」被认成说话人、收进名字牌
+    return { name: m[1], length: indent + m[0].length };
   }
   return null;
 }
+/** 这一行的说话人；没有 = null。 */
+export const detectSpeaker = (line: string, enabled: ReadonlySet<SpeakerRule>): string | null => speakerTag(line, enabled)?.name ?? null;

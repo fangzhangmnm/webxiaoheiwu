@@ -12,8 +12,10 @@ export interface AdvBoxDeps {
     split(): Split;
     /** 第几段 / 共几段变了（画 ‹ › 的可点状态）。 */
     onPosition?(index: number, count: number): void;
-    /** 光标所在的那一行（框里按换行切的一行）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
+    /** 光标所在的那一行（框里按换行切的一行；段首那一行带上收起来的标记）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
     onLine?(line: string): void;
+    /** 段首那一行开头有几个字是说话人标记（收进名字牌、不进框；v3.0.6，user「小月：  不进文本框啊」）。没有 / 不收 = 0。 */
+    tagLength?(firstLine: string): number;
 }
 export interface AdvBox {
     readonly active: boolean;

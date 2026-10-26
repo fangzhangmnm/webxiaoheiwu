@@ -1,6 +1,6 @@
 // 逐段的说话人识别（src/adv/speaker.ts）。created 2026-10-26 by Claude Opus 5.5
 import { describe, it, eq } from "./runner.mjs";
-import { detectSpeaker, SPEAKER_RULES } from "../src/adv/speaker.ts";
+import { detectSpeaker, speakerTag, SPEAKER_RULES } from "../src/adv/speaker.ts";
 
 const all = new Set(SPEAKER_RULES);
 const only = (...r) => new Set(r);
@@ -50,4 +50,22 @@ describe("adv/speaker · 不算的", () => {
     eq(detectSpeaker("【小月】明天", only("bracket")), "小月");
     eq(detectSpeaker("小月：明天", new Set()), null);
   });
+});
+
+describe("adv/speaker · 标记有几个字（收进名字牌、不进框；v3.0.6，user「小月：  不进文本框啊」）", () => {
+  const len = (l) => speakerTag(l, all)?.length ?? 0;
+  it("名字 + 分隔符号 + 后面的空白；首行缩进也算在标记里", () => {
+    eq(len("小月：明天"), 3);
+    eq(len("小月：　 明天"), 5);
+    eq(len("　　小月：明天"), 5);
+    eq(len("【小月】  嗯"), 6);
+    eq(len("TSUKI: Hi"), 7);
+  });
+  it("日式：只有名字是标记，「」留在框里", () => { eq(len("小月「明日」"), 2); });
+  it("只打了「小月：」就认（打完冒号就收进名字牌）；「TSUKI:」行尾也认", () => {
+    eq(len("小月："), 3); eq(detectSpeaker("小月：", all), "小月");
+    eq(len("TSUKI:"), 6);
+  });
+  it("冒号后面隔着空白再接引号也是小说写法，不认", () => { eq(len("我说：  “你好”"), 0); });
+  it("没有标记 = 0；行首的时间 / 网址不是说话人", () => { eq(len("雨停了。"), 0); eq(len("TSUKI:x"), 0); eq(len("12:30 到了"), 0); eq(len("http://example.com"), 0); });
 });

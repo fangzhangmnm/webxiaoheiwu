@@ -14,7 +14,7 @@
 // 撤销只在这一段里：换段 = 程序改框的值，浏览器清掉框的撤销栈。故意的——留着的话 Ctrl+Z 会把上一段的字「撤」进这一段的位置。
 // 别处改了正文（语音落字、规整标点、换页、重载）→ 宿主的 input / sync 让框从正文按正文的光标重取。语音从正文的光标起录，所以起录前要 pushCaret。
 import { replaceRange } from "../text-edit.ts";
-import { paragraphs, paraIndexAt, diffEdit, hasSplit, type Split } from "./paragraphs.ts";
+import { paragraphs, paraIndexAt, diffEdit, hasSplit, type Split, type Para } from "./paragraphs.ts";
 
 export interface AdvBoxDeps {
   /** 正文框：唯一的真相。 */
@@ -29,8 +29,10 @@ export interface AdvBoxDeps {
   split(): Split;
   /** 第几段 / 共几段变了（画 ‹ › 的可点状态）。 */
   onPosition?(index: number, count: number): void;
-  /** 光标所在的那一行（框里按换行切的一行）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
+  /** 光标所在的那一行（框里按换行切的一行；段首那一行带上收起来的标记）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
   onLine?(line: string): void;
+  /** 段首那一行开头有几个字是说话人标记（收进名字牌、不进框；v3.0.6，user「小月：  不进文本框啊」）。没有 / 不收 = 0。 */
+  tagLength?(firstLine: string): number;
 }
 
 export interface AdvBox {
@@ -50,7 +52,8 @@ export interface AdvBox {
 export function createAdvBox(d: AdvBoxDeps): AdvBox {
   const ed = d.editor, box = d.input;
   let active = false;
-  let start = 0;          // 这一段在正文里的起点
+  let start = 0;          // 框里的字在正文里的起点 = 段首 + 收起来的标记（hidden 个字）
+  let hidden = 0;         // 段首收进名字牌、不进框的那几个字（说话人标记）
   let shown = "";         // 框里上一版的字（= 正文 [start, start + shown.length)）
   let key = "";
   let splicing = false;   // 自己在写回正文：正文的 input 别当成「别处改了」
@@ -61,29 +64,36 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     pos = { index, count };
     d.onPosition?.(index, count);
   }
-  /** 从正文取第 index 段进框；caret = 框里的光标（"start" / "end" / 数字 = 段内偏移）。 */
-  function load(index: number, caret: "start" | "end" | number): void {
+  /** 一段开头收起来几个字（段首那一行的说话人标记）。 */
+  function tagOf(text: string, p: Para): number {
+    if (!d.tagLength) return 0;
+    const nl = text.indexOf("\n", p.start), lineEnd = nl < 0 || nl > p.end ? p.end : nl;
+    return Math.max(0, Math.min(d.tagLength(text.slice(p.start, lineEnd)), lineEnd - p.start));
+  }
+  /** 从正文取第 index 段进框；caret = 框里的光标（"start" / "end" / { doc } = 正文里的位置）。 */
+  function load(index: number, caret: "start" | "end" | { doc: number }): void {
     const text = ed.value, ps = paragraphs(text, d.split());
     const i = Math.max(0, Math.min(index, ps.length - 1)), p = ps[i]!;
-    start = p.start; shown = text.slice(p.start, p.end);
+    hidden = tagOf(text, p); start = p.start + hidden; shown = text.slice(start, p.end);
     if (box.value !== shown) box.value = shown;   // 程序改值 = 清框的撤销栈（见文件头）
-    const at = caret === "start" ? 0 : caret === "end" ? shown.length : Math.max(0, Math.min(caret, shown.length));
+    const at = caret === "start" ? 0 : caret === "end" ? shown.length : Math.max(0, Math.min(caret.doc - start, shown.length));
     try { box.setSelectionRange(at, at); } catch { /* ignore */ }
-    box.scrollTop = caret === "start" ? 0 : caret === "end" ? box.scrollHeight : box.scrollTop;
+    if (caret === "start") box.scrollTop = 0; else if (caret === "end") box.scrollTop = box.scrollHeight;
     pushCaret();
     report(i, ps.length);
   }
   /** 从正文的某个位置取它所在的那一段，光标放在对应位置。 */
   function loadAt(docPos: number): void {
-    const ps = paragraphs(ed.value, d.split()), i = paraIndexAt(ps, docPos), p = ps[i]!;
-    load(i, Math.max(0, docPos - p.start));
+    const ps = paragraphs(ed.value, d.split());
+    load(paraIndexAt(ps, docPos), { doc: docPos });
   }
   /** 光标那一行报给宿主（名字牌）。 */
   function reportLine(): void {
     if (!active || !d.onLine) return;
     const v = box.value, at = box.selectionStart ?? v.length;
     const from = v.lastIndexOf("\n", at - 1) + 1, to = v.indexOf("\n", at);
-    d.onLine(v.slice(from, to < 0 ? v.length : to));
+    const tag = from === 0 ? ed.value.slice(start - hidden, start) : "";   // 段首那一行：把收起来的标记接回去再认
+    d.onLine(tag + v.slice(from, to < 0 ? v.length : to));
   }
   /** 选区原样写回（不只光标）：规整标点「有选区只改选区」看的是正文的选区。 */
   function pushCaret(): void {
@@ -94,8 +104,8 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
   }
   /** 按现在的分法，框里这一截正好是一整段吗。 */
   function wholeParagraph(): boolean {
-    const ps = paragraphs(ed.value, d.split()), p = ps[paraIndexAt(ps, start)]!;
-    return p.start === start && p.end === start + shown.length;
+    const text = ed.value, ps = paragraphs(text, d.split()), p = ps[paraIndexAt(ps, start)]!;
+    return p.start + tagOf(text, p) === start && p.end === start + shown.length;
   }
   /** 框和正文还对得上吗（正文那一截还是框里上一版的字）。 */
   const inSync = (): boolean => ed.value.length >= start + shown.length && ed.value.slice(start, start + shown.length) === shown;
@@ -113,6 +123,11 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     if (hasSplit(now, d.split())) { loadAt(docCaret); return; }   // 框里出现了分隔 = 分段了：框换到光标所在的那一段
     shown = now;
     try { ed.setSelectionRange(docCaret, docCaret); } catch { /* ignore */ }
+    // 段首那一行的标记变了（刚打完「小月：」/ 退格吃掉了冒号）→ 重取：标记收进名字牌或放回框里。只看这一行，不扫全文（打字热路径）
+    if (d.tagLength) {
+      const ps0 = start - hidden, nl = ed.value.indexOf("\n", ps0), le = nl < 0 ? ed.value.length : nl;
+      if (tagOf(ed.value, { start: ps0, end: Math.max(le, ps0) }) !== hidden) { loadAt(docCaret); return; }
+    }
     reportLine();
   });
 

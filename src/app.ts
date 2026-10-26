@@ -62,7 +62,7 @@ import { asTextField, type TextField } from "./input/field.ts";
 import { createPaper } from "./ui/paper.ts";
 import { createAdvBox, type AdvBox } from "./adv/box.ts";
 import type { Split } from "./adv/paragraphs.ts";
-import { detectSpeaker, SPEAKER_RULES, type SpeakerRule } from "./adv/speaker.ts";
+import { detectSpeaker, speakerTag, SPEAKER_RULES, type SpeakerRule } from "./adv/speaker.ts";
 
 // 小窗（v2.3.60，src/pip.ts）。声明在 $ 之前：纸搬进小窗时，纸里的元素在小窗的 document 上，$ 要能找到
 let pip: Pip | null = null;
@@ -1366,6 +1366,8 @@ adv = createAdvBox({
   pageKey: () => (project.active() ? `book\u0000${project.displayName() ?? ""}\u0000${project.current() ?? ""}` : `txt\u0000${editor.state.name ?? editor.state.pendingDate ?? ""}`),
   onPosition: (i, n) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; },
   onLine: (line) => { advLine = line; renderSpeaker(); },
+  // 段首的说话人标记收进名字牌、不进框（v3.0.6，user「小月：  不进文本框啊」）；小窗里不放名字牌，标记就留在框里（不然看不见是谁在说）
+  tagLength: (line) => (speakerOn() && !pip?.active ? speakerTag(line, speakerRules())?.length ?? 0 : 0),
 });
 /** 对话框开不开 = （主窗口开着 ∨ 小窗开着）∧ 这页能写。小窗就是对话框模式（user 2026-10-26「小窗不应该是adv模式吗」），收回小窗 = 回到主窗口自己的开关。
  *  开关住 ☰ 侧栏顶行（v3.0.2，user「adv模式我建议也收到汉堡里面」）：这页不能写 = 入口藏；开着 = 强调色。 */
@@ -1951,6 +1953,7 @@ function renderSpeakerSettings(): void {
   advSpeakerToggle.checked = speakerOn();
   const on = speakerRules();
   for (const cb of document.querySelectorAll<HTMLInputElement>("#advSpeakerRules input[data-rule]")) { cb.checked = on.has(cb.dataset.rule as SpeakerRule); cb.disabled = !advSpeakerToggle.checked; }
+  adv?.sync();   // 标记收不收变了：框重取
   renderSpeaker();
 }
 advSpeakerToggle.addEventListener("change", () => { prefs.setItem("advSpeaker", advSpeakerToggle.checked); renderSpeakerSettings(); });
