@@ -2087,14 +2087,14 @@ body.ruled-lines .adv-input {   /* 写字线同纸（一张会重复的渐变）
 }
 body.adv .adv-nav {
   display: flex; gap: 6px; position: fixed; z-index: var(--z-page); left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 6px);
+  bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 18px);
 }
 body.adv .adv-nav, body.adv .adv-corner { padding: 2px; border-radius: 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--bg-1) 88%, transparent); }   /* 压在背景图上也看得见 */
-/* 话筒 / 退格 / 键盘钮：抬到框上沿外面那一排；toast / 悬浮候选条再往上（不盖正在写的那一行） */
-body.adv .mic-button { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 6px); }
-body.adv .mic-side { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 10px); }
-body.adv .toast { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 62px); }
-body.adv .candidates { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 6px); }
+/* 话筒 / 退格 / 键盘钮 / ‹ ›：抬到框上沿外面那一排，再让出骑在上边线上的「整页」钮（探出 12px，v3.0.3）；toast / 悬浮候选条再往上（不盖正在写的那一行） */
+body.adv .mic-button { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 18px); }
+body.adv .mic-side { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 22px); }
+body.adv .toast { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 74px); }
+body.adv .candidates { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 18px); }
 /* 台：顶栏之下、框之上那块空地。背景图只当提示（user「只是用来cue，相当于reference window干的事情」）：整张露出来（contain）、站在框上（贴底） */
 body.adv .adv-stage {
   display: block; position: fixed; z-index: var(--z-adv-stage); left: 0; right: 0;
@@ -2105,9 +2105,13 @@ body.adv .adv-stage {
 .adv-stage-img[hidden] { display: none; }
 body.adv .adv-corner { display: flex; gap: 4px; position: fixed; z-index: var(--z-page); top: calc(var(--sheet-top) + 8px); right: max(8px, 50% - var(--box-max) / 2); }
 .adv-corner .menu-button[hidden] { display: none; }
+body.adv .adv-corner:not(:has(> .menu-button:not([hidden]))) { display: none; }   /* 没配背景 = 这一格整个不出现（v3.0.3 起「回到整页」搬去框上了） */
+/* 回到整页（v3.0.3，user 2026-10-26「nvl切反而应该在adv的对话框右上」）：文字钮骑在框的上边线右侧，galgame 文字框边上那种小钮 */
+.adv-exit { position: absolute; top: -12px; right: 14px; height: 22px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--bg-1); color: var(--ink-soft); font: 12px/20px var(--font-ui); cursor: pointer; }
+.adv-exit:hover, .adv-exit:focus-visible { color: var(--ink); border-color: var(--ink-soft); }
 /* 小窗里的对话框（user 2026-10-25「小窗可以改成adv模式，合理」）：框铺满小窗、没有纸边；‹ › / 台 / 角上的钮都不放（小窗「不放，都不放」）。
    留白和 app.ts 的 PIP_PAD_* 同值：上下 8px、左 14px、右 32px（状态小图标）；小窗高度 = 行数 × 行高 + 上下留白（pip size / fitToRows）。 */
 .pip-body.adv { overflow: hidden; }
 .pip-body.adv .adv-box { top: 0; bottom: 0; left: 0; right: 0; height: auto; padding: 8px 32px 8px 14px; border: 0; border-radius: 0; box-shadow: none; }
-.pip-body .adv-nav, .pip-body .adv-stage, .pip-body .adv-corner { display: none !important; }
+.pip-body .adv-nav, .pip-body .adv-stage, .pip-body .adv-corner, .pip-body .adv-exit { display: none !important; }
 .pip-body.adv .candidates { bottom: auto; }   /* 候选条照旧在小窗顶上（盖最旧的一行），不吃「抬到框上面」那条 */

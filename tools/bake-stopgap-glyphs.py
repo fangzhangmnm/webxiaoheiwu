@@ -56,7 +56,6 @@ def text_path(text, box, font='cjk'):
 SPECS = [
     # 2026-09-29（Claude Fable 5.1）：microphone / backspace 两枚真图标已从图标库收货（PENDING，待过目），stopgap 清零。
     # 新缺口照旧在这里加一行 (id, 字, (x, y, w, h), 说明) 再重烤，并去图标库 TODO.md 登记。
-    ('dialog-box', '框', (3, 3, 18, 18), '对话框模式（v3.0.0 顶栏钮；取代打字机模式 / 只看几行的 last-lines；2026-10-25 Claude Opus 5.5）stopgap：画样子 = 屏幕底下一个横长的框，已登记图标库 TODO.md'),
 ]
 syms = []
 for sid, text, box, note in SPECS:

@@ -1,6 +1,6 @@
 // 对话框模式的段落模型（src/adv/paragraphs.ts）。created 2026-10-25 by Claude Opus 5.5
 import { describe, it, eq } from "./runner.mjs";
-import { paragraphs, paraIndexAt, diffEdit } from "../src/adv/paragraphs.ts";
+import { paragraphs, paraIndexAt, diffEdit, hasSplit } from "../src/adv/paragraphs.ts";
 
 const texts = (t) => paragraphs(t).map((p) => t.slice(p.start, p.end));
 const same = (a, b) => eq(JSON.stringify(a), JSON.stringify(b));   // 结构比较（本仓惯用法）
@@ -24,6 +24,24 @@ describe("adv/paragraphs · 哪一截算一段", () => {
     ps.forEach((p, i) => { rebuilt += t.slice(p.start, p.end); if (i + 1 < ps.length) rebuilt += t.slice(p.end, ps[i + 1].start); });
     eq(rebuilt, t);
     same(texts(t), ["a\nb", "c", "d\n"]);
+  });
+});
+
+describe("adv/paragraphs · 一个换行就分段（line，默认）", () => {
+  const tl = (t) => paragraphs(t, "line").map((p) => t.slice(p.start, p.end));
+  it("一行一段；空行并进分隔、不成段", () => {
+    same(tl("甲\n乙\n丙"), ["甲", "乙", "丙"]);
+    same(tl("甲\n\n乙"), ["甲", "乙"]);
+    same(tl("甲\n\n\n乙\n丙"), ["甲", "乙", "丙"]);
+  });
+  it("末尾换行 = 末尾一个空段；落在空行上 = 后一段", () => {
+    same(tl("写完了\n"), ["写完了", ""]);
+    same(tl("写完了\n\n"), ["写完了", ""]);
+    const t = "ab\n\ncd", ps = paragraphs(t, "line");
+    eq(paraIndexAt(ps, 3), 1);
+  });
+  it("hasSplit：line 看一个换行、blank 看两个", () => {
+    eq(hasSplit("a\nb", "line"), true); eq(hasSplit("a\nb", "blank"), false); eq(hasSplit("a\n\nb", "blank"), true); eq(hasSplit("ab", "line"), false);
   });
 });
 

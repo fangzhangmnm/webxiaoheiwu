@@ -413,8 +413,8 @@ export declare const S: {
         readonly en: "The font is saved with the book; exports use the same one by default (the export sheet can pick another). Pinyin is 12 MB and pixel 0.5 MB, fetched only when chosen.";
     };
     readonly "ui.reading.advLines": {
-        readonly zh: "对话框行数";
-        readonly en: "Dialogue box height";
+        readonly zh: "逐段的框几行高";
+        readonly en: "Paragraph box height";
     };
     readonly "ui.reading.advLines2": {
         readonly zh: "2 行";
@@ -433,8 +433,24 @@ export declare const S: {
         readonly en: "5 lines";
     };
     readonly "ui.reading.advLinesHint": {
-        readonly zh: "对话框模式（顶栏的「框」，Alt+T）的框有几行高；写长了在框里滚。和行宽一样跟书走。";
-        readonly en: "How many lines tall the dialogue box is (the box button in the top bar, Alt+T); longer paragraphs scroll inside it. Saved with the book, like the line width.";
+        readonly zh: "逐段（☰ 侧栏「逐段」，Alt+T）一次只露一段；框有几行高，写长了在框里滚。和行宽一样跟书走。";
+        readonly en: "Paragraph mode (☰ sidebar, Alt+T) shows one paragraph at a time; this is how many lines tall its box is. Longer paragraphs scroll inside. Saved with the book, like the line width.";
+    };
+    readonly "ui.reading.advSplit": {
+        readonly zh: "逐段怎么分段";
+        readonly en: "What makes a paragraph";
+    };
+    readonly "ui.reading.advSplitLine": {
+        readonly zh: "一个换行就分段";
+        readonly en: "Every line break";
+    };
+    readonly "ui.reading.advSplitBlank": {
+        readonly zh: "空一行才分段";
+        readonly en: "A blank line";
+    };
+    readonly "ui.reading.advSplitHint": {
+        readonly zh: "一个换行就分段（默认）：回车 = 下一段；整页里的空行在逐段里跳过，连按两下回车 = 加一个空行。空一行才分段：回车 = 段内换行，连按两下回车 = 下一段。跟账号走。";
+        readonly en: "Every line break (default): Enter starts the next paragraph; blank lines stay in the page but are skipped here, and pressing Enter twice adds one. A blank line: Enter breaks the line inside the paragraph, pressing Enter twice starts the next. Saved with your account.";
     };
     readonly "ui.reading.fontScale": {
         readonly zh: "字号（本机）";
@@ -549,20 +565,20 @@ export declare const S: {
         readonly en: "Set as cover";
     };
     readonly "img.setAdvBackdrop": {
-        readonly zh: "设为对话框背景";
-        readonly en: "Use as dialogue backdrop";
+        readonly zh: "设为逐段背景";
+        readonly en: "Use as paragraph-mode backdrop";
     };
     readonly "img.unsetAdvBackdrop": {
-        readonly zh: "不再当对话框背景";
+        readonly zh: "不再当逐段背景";
         readonly en: "Stop using as backdrop";
     };
     readonly "img.advBackdropOn": {
-        readonly zh: "对话框模式的背景换成这张了";
-        readonly en: "This image is now the dialogue backdrop";
+        readonly zh: "逐段的背景换成这张了";
+        readonly en: "This image is now the paragraph-mode backdrop";
     };
     readonly "img.advBackdropOff": {
-        readonly zh: "对话框模式不再有背景";
-        readonly en: "The dialogue box has no backdrop now";
+        readonly zh: "逐段不再有背景";
+        readonly en: "Paragraph mode has no backdrop now";
     };
     readonly "img.coverSet": {
         readonly zh: "已设为封面";
@@ -1917,20 +1933,24 @@ export declare const S: {
         readonly en: "This page… (add / move)";
     };
     readonly "top.adv": {
-        readonly zh: "对话框模式（Alt+T）";
-        readonly en: "Dialogue box (Alt+T)";
+        readonly zh: "逐段（Alt+T）：一次只露一段";
+        readonly en: "Paragraph by paragraph (Alt+T)";
     };
     readonly "adv.aria": {
-        readonly zh: "对话框模式";
-        readonly en: "Dialogue box mode";
+        readonly zh: "逐段";
+        readonly en: "Paragraph by paragraph";
     };
     readonly "adv.entryShort": {
-        readonly zh: "对话框";
-        readonly en: "Dialogue";
+        readonly zh: "逐段";
+        readonly en: "Paragraphs";
     };
     readonly "adv.exit": {
         readonly zh: "回到整页（Alt+T）";
         readonly en: "Back to the full page (Alt+T)";
+    };
+    readonly "adv.exitShort": {
+        readonly zh: "整页";
+        readonly en: "Page";
     };
     readonly "adv.hideBackdrop": {
         readonly zh: "收起背景";
@@ -1941,8 +1961,8 @@ export declare const S: {
         readonly en: "Show the backdrop";
     };
     readonly "adv.inputAria": {
-        readonly zh: "对话框（回车换行，连按两下回车 = 下一段）";
-        readonly en: "Dialogue box (Enter breaks the line; press Enter twice for the next paragraph)";
+        readonly zh: "逐段：当前这一段";
+        readonly en: "Current paragraph";
     };
     readonly "adv.navAria": {
         readonly zh: "上一段 / 下一段";

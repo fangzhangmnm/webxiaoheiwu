@@ -113,12 +113,16 @@ export const S = {
   "ui.reading.fontPinyin": { zh: "拼音", en: "Pinyin" },
   "ui.reading.fontPixel": { zh: "像素", en: "Pixel" },
   "ui.reading.fontHint": { zh: "字体也跟书走；导出默认用同一款（导出面板里可以另选）。拼音 12 MB、像素 0.5 MB，选了才取。", en: "The font is saved with the book; exports use the same one by default (the export sheet can pick another). Pinyin is 12 MB and pixel 0.5 MB, fetched only when chosen." },
-  "ui.reading.advLines":  { zh: "对话框行数", en: "Dialogue box height" },
+  "ui.reading.advLines":  { zh: "逐段的框几行高", en: "Paragraph box height" },
   "ui.reading.advLines2": { zh: "2 行", en: "2 lines" },
   "ui.reading.advLines3": { zh: "3 行", en: "3 lines" },
   "ui.reading.advLines4": { zh: "4 行", en: "4 lines" },
   "ui.reading.advLines5": { zh: "5 行", en: "5 lines" },
-  "ui.reading.advLinesHint": { zh: "对话框模式（顶栏的「框」，Alt+T）的框有几行高；写长了在框里滚。和行宽一样跟书走。", en: "How many lines tall the dialogue box is (the box button in the top bar, Alt+T); longer paragraphs scroll inside it. Saved with the book, like the line width." },
+  "ui.reading.advLinesHint": { zh: "逐段（☰ 侧栏「逐段」，Alt+T）一次只露一段；框有几行高，写长了在框里滚。和行宽一样跟书走。", en: "Paragraph mode (☰ sidebar, Alt+T) shows one paragraph at a time; this is how many lines tall its box is. Longer paragraphs scroll inside. Saved with the book, like the line width." },
+  "ui.reading.advSplit":  { zh: "逐段怎么分段", en: "What makes a paragraph" },   // v3.0.3，user 2026-10-26「逐段能不能开启单回车算一段模式？」「然后默认单回车」；跟人走（synced prefs advSplit）
+  "ui.reading.advSplitLine": { zh: "一个换行就分段", en: "Every line break" },
+  "ui.reading.advSplitBlank": { zh: "空一行才分段", en: "A blank line" },
+  "ui.reading.advSplitHint": { zh: "一个换行就分段（默认）：回车 = 下一段；整页里的空行在逐段里跳过，连按两下回车 = 加一个空行。空一行才分段：回车 = 段内换行，连按两下回车 = 下一段。跟账号走。", en: "Every line break (default): Enter starts the next paragraph; blank lines stay in the page but are skipped here, and pressing Enter twice adds one. A blank line: Enter breaks the line inside the paragraph, pressing Enter twice starts the next. Saved with your account." },
   "ui.reading.fontScale": { zh: "字号（本机）", en: "Text size (this device)" },
   "ui.reading.fontScale.s": { zh: "小", en: "Small" },
   "ui.reading.fontScale.m": { zh: "标准", en: "Standard" },
@@ -148,10 +152,10 @@ export const S = {
   "img.txtAdded":        { zh: "已加入「{name}」", en: "Added \u201c{name}\u201d" },
   "img.dropDraft":       { zh: "已新建稿「{name}」", en: "New draft \u201c{name}\u201d" },
   "img.setCover":        { zh: "设为封面", en: "Set as cover" },
-  "img.setAdvBackdrop":     { zh: "设为对话框背景", en: "Use as dialogue backdrop" },   // v3.0.0：对话框模式的台上那张图（全书一张，只当提示）
-  "img.unsetAdvBackdrop":   { zh: "不再当对话框背景", en: "Stop using as backdrop" },
-  "img.advBackdropOn":      { zh: "对话框模式的背景换成这张了", en: "This image is now the dialogue backdrop" },
-  "img.advBackdropOff":     { zh: "对话框模式不再有背景", en: "The dialogue box has no backdrop now" },
+  "img.setAdvBackdrop":     { zh: "设为逐段背景", en: "Use as paragraph-mode backdrop" },   // v3.0.0：逐段的台上那张图（全书一张，只当提示）
+  "img.unsetAdvBackdrop":   { zh: "不再当逐段背景", en: "Stop using as backdrop" },
+  "img.advBackdropOn":      { zh: "逐段的背景换成这张了", en: "This image is now the paragraph-mode backdrop" },
+  "img.advBackdropOff":     { zh: "逐段不再有背景", en: "Paragraph mode has no backdrop now" },
   "img.coverSet":        { zh: "已设为封面", en: "Cover set" },
   "img.replace":         { zh: "替换图片…", en: "Replace image…" },
   "img.replaced":        { zh: "已替换", en: "Replaced" },
@@ -512,14 +516,15 @@ export const S = {
   "project.unavailable":    { zh: "本地没有这本书，云端也拿不到", en: "Book not available locally, and the cloud is unreachable" },
   "edge.aria":              { zh: "侧栏", en: "Sidebar" },
   "top.addPage":            { zh: "这一页…（加页 / 挪到）", en: "This page… (add / move)" },
-  // 对话框模式（v3.0.0，src/adv/box.ts；取代 v2.3.59 的打字机模式 / 只看几行）。名字 user 还没定（10-25「要不要叫一次写一段我没想好」），先叫对话框
-  "top.adv":                { zh: "对话框模式（Alt+T）", en: "Dialogue box (Alt+T)" },
-  "adv.aria":               { zh: "对话框模式", en: "Dialogue box mode" },
-  "adv.entryShort":         { zh: "对话框", en: "Dialogue" },   // ☰ 侧栏顶行（v3.0.2 从顶栏搬来）
+  // 逐段（v3.0.0 起，src/adv/box.ts；取代 v2.3.59 的打字机模式 / 只看几行）。名字 v3.0.3 定：user 2026-10-26「名字 逐段 同意」，和「整页」一对
+  "top.adv":                { zh: "逐段（Alt+T）：一次只露一段", en: "Paragraph by paragraph (Alt+T)" },
+  "adv.aria":               { zh: "逐段", en: "Paragraph by paragraph" },
+  "adv.entryShort":         { zh: "逐段", en: "Paragraphs" },   // ☰ 侧栏顶行（v3.0.2 从顶栏搬来）
   "adv.exit":               { zh: "回到整页（Alt+T）", en: "Back to the full page (Alt+T)" },
+  "adv.exitShort":          { zh: "整页", en: "Page" },   // 逐段框右上角的文字钮（v3.0.3，user「nvl切反而应该在adv的对话框右上」）
   "adv.hideBackdrop":       { zh: "收起背景", en: "Hide the backdrop" },
   "adv.showBackdrop":       { zh: "露出背景", en: "Show the backdrop" },
-  "adv.inputAria":          { zh: "对话框（回车换行，连按两下回车 = 下一段）", en: "Dialogue box (Enter breaks the line; press Enter twice for the next paragraph)" },
+  "adv.inputAria":          { zh: "逐段：当前这一段", en: "Current paragraph" },
   "adv.navAria":            { zh: "上一段 / 下一段", en: "Previous / next paragraph" },
   "adv.prev":               { zh: "上一段（Ctrl+↑）", en: "Previous paragraph (Ctrl+↑)" },
   "adv.next":               { zh: "下一段（Ctrl+↓）", en: "Next paragraph (Ctrl+↓)" },

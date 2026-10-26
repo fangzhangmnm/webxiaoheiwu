@@ -7,14 +7,14 @@
 //   框里每改一次，算出改了哪一截（diffEdit），原样写回正文那个位置（text-edit replaceRange：正文框没焦点 → setRangeText + 补发 input）。
 //   写回前先核对正文那一截还是不是框里上一版的字：对不上 = 正文被别处改过而框没跟上 → 不写，重取（宁丢框里这一下，不往错的位置写字）。
 // 框就是一个普通的文本框，只是一次只露出一段（user 2026-10-26「不要shift回车，而是两下回车换页，所以这么说其实就是在输入文本？」）：
-//   回车 = 一个换行（段内，拍里一句句对话往来）；框里一出现空行（连按两下回车 / 贴进来好几段 / 删掉两行之间那行）= 分段 → 框换到光标所在的那一段。
-//   段首退格 = 删掉前面一个换行（同普通文本框：分隔是两个换行时，两段接成一段、接缝处留一个段内换行）。没有特殊键。
-//   段首 ← / 段尾 → 跨到上一段末 / 下一段首；第一行 ↑ / 最后一行 ↓ 同理（user 2026-10-26「arrow keys上下应该也可以翻页，因为我发现左右能翻页」）；
+//   框里一出现分隔（d.split()：默认「一个换行」= 回车就是下一段；「空一行」= 连按两下回车才是下一段）= 分段 → 框换到光标所在的那一段。没有特殊键。
+//   段首退格 = 删掉前面一个换行（同普通文本框：前面是空行就先删空行，再按一下才和上一段接起来）。
+//   段首 ← / 段尾 →（Ctrl+← / Ctrl+→ 同，user「ctrl左右也能接」）跨到上一段末 / 下一段首；第一行 ↑ / 最后一行 ↓ 同理（user 2026-10-26「arrow keys上下应该也可以翻页，因为我发现左右能翻页」）；
 //   Ctrl+↑ / Ctrl+↓ 上一段 / 下一段（光标在段首，框滚到顶：审稿按一下就过去）；Ctrl+Home / Ctrl+End 第一段 / 最后一段。
 // 撤销只在这一段里：换段 = 程序改框的值，浏览器清掉框的撤销栈。故意的——留着的话 Ctrl+Z 会把上一段的字「撤」进这一段的位置。
 // 别处改了正文（语音落字、规整标点、换页、重载）→ 宿主的 input / sync 让框从正文按正文的光标重取。语音从正文的光标起录，所以起录前要 pushCaret。
 import { replaceRange } from "../text-edit.ts";
-import { paragraphs, paraIndexAt, diffEdit } from "./paragraphs.ts";
+import { paragraphs, paraIndexAt, diffEdit, hasSplit, type Split } from "./paragraphs.ts";
 
 export interface AdvBoxDeps {
   /** 正文框：唯一的真相。 */
@@ -25,6 +25,8 @@ export interface AdvBoxDeps {
   canEdit(): boolean;
   /** 当前页 / 稿的身份：变了 = 换页，从正文的光标（开页落在开头）重取。 */
   pageKey(): string;
+  /** 怎么分段（设置「逐段怎么分段」：一个换行 / 空一行）。随时读：改了设置宿主调 sync()。 */
+  split(): Split;
   /** 第几段 / 共几段变了（画 ‹ › 的可点状态）。 */
   onPosition?(index: number, count: number): void;
 }
@@ -59,7 +61,7 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
   }
   /** 从正文取第 index 段进框；caret = 框里的光标（"start" / "end" / 数字 = 段内偏移）。 */
   function load(index: number, caret: "start" | "end" | number): void {
-    const text = ed.value, ps = paragraphs(text);
+    const text = ed.value, ps = paragraphs(text, d.split());
     const i = Math.max(0, Math.min(index, ps.length - 1)), p = ps[i]!;
     start = p.start; shown = text.slice(p.start, p.end);
     if (box.value !== shown) box.value = shown;   // 程序改值 = 清框的撤销栈（见文件头）
@@ -71,7 +73,7 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
   }
   /** 从正文的某个位置取它所在的那一段，光标放在对应位置。 */
   function loadAt(docPos: number): void {
-    const ps = paragraphs(ed.value), i = paraIndexAt(ps, docPos), p = ps[i]!;
+    const ps = paragraphs(ed.value, d.split()), i = paraIndexAt(ps, docPos), p = ps[i]!;
     load(i, Math.max(0, docPos - p.start));
   }
   /** 选区原样写回（不只光标）：规整标点「有选区只改选区」看的是正文的选区。 */
@@ -79,6 +81,11 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     if (!active) return;
     const s = start + (box.selectionStart ?? shown.length), e = start + (box.selectionEnd ?? box.selectionStart ?? shown.length);
     try { ed.setSelectionRange(s, Math.max(s, e)); } catch { /* ignore */ }
+  }
+  /** 按现在的分法，框里这一截正好是一整段吗。 */
+  function wholeParagraph(): boolean {
+    const ps = paragraphs(ed.value, d.split()), p = ps[paraIndexAt(ps, start)]!;
+    return p.start === start && p.end === start + shown.length;
   }
   /** 框和正文还对得上吗（正文那一截还是框里上一版的字）。 */
   const inSync = (): boolean => ed.value.length >= start + shown.length && ed.value.slice(start, start + shown.length) === shown;
@@ -93,7 +100,7 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     splicing = true;
     try { replaceRange(ed, start + edit.at, start + edit.at + edit.del, edit.ins); } finally { splicing = false; }
     const docCaret = start + (box.selectionStart ?? now.length);
-    if (now.includes("\n\n")) { loadAt(docCaret); return; }   // 框里出现了空行 = 分段了：框换到光标所在的那一段
+    if (hasSplit(now, d.split())) { loadAt(docCaret); return; }   // 框里出现了分隔 = 分段了：框换到光标所在的那一段
     shown = now;
     try { ed.setSelectionRange(docCaret, docCaret); } catch { /* ignore */ }
   });
@@ -107,7 +114,7 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     return true;
   }
   function go(delta: -1 | 1, caret: "start" | "end"): boolean {
-    const ps = paragraphs(ed.value), i = paraIndexAt(ps, start) + delta;
+    const ps = paragraphs(ed.value, d.split()), i = paraIndexAt(ps, start) + delta;
     if (i < 0 || i >= ps.length) return false;
     load(i, caret);
     return true;
@@ -134,12 +141,14 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     if (plain && collapsed && s === 0 && e.key === "Backspace") handled = backspaceAtStart();
     else if (plain && collapsed && s === 0 && e.key === "ArrowLeft") handled = go(-1, "end");
     else if (plain && collapsed && s === box.value.length && e.key === "ArrowRight") handled = go(1, "start");
+    else if (ctrlOnly && collapsed && s === 0 && e.key === "ArrowLeft") handled = go(-1, "end");   // Ctrl+← / Ctrl+→：段里照常按词跳，到头了接上一段 / 下一段
+    else if (ctrlOnly && collapsed && s === box.value.length && e.key === "ArrowRight") handled = go(1, "start");
     else if (plain && collapsed && e.key === "ArrowUp" && caretRow().row === 0) handled = go(-1, "end");
     else if (plain && collapsed && e.key === "ArrowDown") { const r = caretRow(); if (r.row >= r.rows - 1) handled = go(1, "start"); }
     else if (ctrlOnly && e.key === "ArrowUp") { go(-1, "start"); handled = true; }
     else if (ctrlOnly && e.key === "ArrowDown") { go(1, "start"); handled = true; }
     else if (ctrlOnly && e.key === "Home") { load(0, "start"); handled = true; }
-    else if (ctrlOnly && e.key === "End") { load(paragraphs(ed.value).length - 1, "end"); handled = true; }
+    else if (ctrlOnly && e.key === "End") { load(paragraphs(ed.value, d.split()).length - 1, "end"); handled = true; }
     if (handled) e.preventDefault();
   });
   // app 软键盘的退格在段首什么都删不掉，field.ts 会在框上发这个事件（实体键盘走上面的 keydown）
@@ -170,7 +179,7 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     const k = d.pageKey();
     if (k !== key) { key = k; loadAt(ed.selectionStart ?? 0); return; }
     const c = ed.selectionStart ?? start;
-    // 对不上 / 正文的光标被别处挪出了这一段（检索跳转、点了子节）→ 跟着正文的光标走
-    if (!inSync() || box.value !== shown || c < start || c > start + shown.length) loadAt(c);
+    // 对不上 / 正文的光标被别处挪出了这一段（检索跳转、点了子节）/ 按现在的分法这一截已经不是正好一整段（设置里改了分法）→ 跟着正文的光标走
+    if (!inSync() || box.value !== shown || c < start || c > start + shown.length || !wholeParagraph()) loadAt(c);
   }
 }

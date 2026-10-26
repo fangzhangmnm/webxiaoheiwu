@@ -61,6 +61,7 @@ import type { MicKeyState } from "./input/soft-keyboard.ts";
 import { asTextField, type TextField } from "./input/field.ts";
 import { createPaper } from "./ui/paper.ts";
 import { createAdvBox, type AdvBox } from "./adv/box.ts";
+import type { Split } from "./adv/paragraphs.ts";
 
 // 小窗（v2.3.60，src/pip.ts）。声明在 $ 之前：纸搬进小窗时，纸里的元素在小窗的 document 上，$ 要能找到
 let pip: Pip | null = null;
@@ -177,6 +178,9 @@ const ADV_LINE_TIERS: readonly number[] = [2, 3, 4, 5];
 function defaultAdvLines(): number { const v = prefs.getItem<number>("advLines"); return typeof v === "number" && ADV_LINE_TIERS.includes(v) ? v : 3; }
 function bookAdvLines(): number | null { const v = project.active() ? project.session()?.project.editorState.advLines : undefined; return typeof v === "number" && ADV_LINE_TIERS.includes(v) ? v : null; }
 function advLines(): number { return bookAdvLines() ?? defaultAdvLines(); }
+/** 逐段怎么分段（设置「逐段怎么分段」，v3.0.3，user 2026-10-26「逐段能不能开启单回车算一段模式？我发现我还是习惯单回车」「然后默认单回车」）：
+ *  打字习惯 = 跟人走（synced prefs `advSplit`）："blank" = 空一行才分段；别的 / 缺 = 一个换行就分段。 */
+function advSplit(): Split { return prefs.getItem<string>("advSplit") === "blank" ? "blank" : "line"; }
 function keyboardWanted(): boolean {
   if (pip?.active) return false;   // 小窗不带软键盘（user 2026-10-24「小窗既然是电脑用就不带软键盘了」）
   const pref = softKeyboardPref();
@@ -1342,7 +1346,7 @@ const useIcon = (btn: HTMLElement, id: string) => { btn.innerHTML = `<svg class=
 const advPrev = $<HTMLButtonElement>("advPrev"), advNext = $<HTMLButtonElement>("advNext");
 let pageWritable = false;   // 这页能不能写字：有稿、没锁、不是图片页（对话框钮 / 小窗共用；renderTopbar 写）
 adv = createAdvBox({
-  editor: editorEl, input: advInput, canEdit: () => canEditNow(),
+  editor: editorEl, input: advInput, canEdit: () => canEditNow(), split: advSplit,
   pageKey: () => (project.active() ? `book\u0000${project.displayName() ?? ""}\u0000${project.current() ?? ""}` : `txt\u0000${editor.state.name ?? editor.state.pendingDate ?? ""}`),
   onPosition: (i, n) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; },
 });
@@ -1910,6 +1914,21 @@ $("advLinesPicker").addEventListener("change", (event) => {
   renderAdvLines();
 });
 prefs.onChange("advLines", () => renderAdvLines());
+function renderAdvSplit(): void {
+  const v = advSplit();
+  for (const opt of document.querySelectorAll<HTMLElement>("#advSplitPicker .reading-mode-option")) {
+    const sel = opt.dataset.advSplit === v; opt.classList.toggle("is-selected", sel);
+    const input = opt.querySelector("input"); if (input) input.checked = sel;
+  }
+  adv?.sync();   // 分法改了：框按正文的光标重取
+}
+$("advSplitPicker").addEventListener("change", (event) => {
+  const v = (event.target as HTMLInputElement | null)?.value;
+  prefs.setItem("advSplit", v === "blank" ? "blank" : "line");
+  renderAdvSplit();
+});
+prefs.onChange("advSplit", () => renderAdvSplit());
+renderAdvSplit();
 // 字号档位（device-kv，每台设备各自存）：字号 = 设备基准（styles.css --editor-font-base：22px，手机 16px）× 这个档。和行宽互不相干（v2.3.17，user 2026-10-01「字号应该是绝对的，不是相对于行宽的」）；起因 = user 2026-09-04 iPhone「字好小啊」
 const FONT_SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
 const fontScaleSelect = $<HTMLSelectElement>("fontScaleSelect");

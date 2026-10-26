@@ -10,5 +10,5 @@
      需求登记：全局清单 ../20260708 SVG Icons/TODO.md（美工 agent 的取活处）。
      重新烤制：仓库根跑 python3 tools/bake-stopgap-glyphs.py（SPECS 即声明）。
 -->
-  <symbol id="dialog-box" data-cat="stopgap" data-src="baked:NotoSansCJK-SC-Medium(OFL-1.1)" data-note="对话框模式（v3.0.0 顶栏钮；取代打字机模式 / 只看几行的 last-lines；2026-10-25 Claude Opus 5.5）stopgap：画样子 = 屏幕底下一个横长的框，已登记图标库 TODO.md" viewBox="0 0 24 24"><path d="M20.69 4.31H10.06V20H21V18.36H11.77V5.95H20.69ZM12.34 15.27V16.81H20.37V15.27H17.09V12.7H19.86V11.19H17.09V8.88H20.24V7.34H12.51V8.88H15.41V11.19H12.82V12.7H15.41V15.27ZM5.97 3.16V7.05H3.34V8.73H5.86C5.29 11.06 4.16 13.67 3 15.06C3.29 15.52 3.69 16.32 3.86 16.81C4.64 15.77 5.38 14.15 5.97 12.39V20.84H7.63V11.23C8.19 12.05 8.8 12.96 9.1 13.52L10.02 11.95C9.69 11.53 8.22 9.84 7.63 9.23V8.73H9.6V7.05H7.63V3.16Z" fill="currentColor" stroke="none"/></symbol>
+
 </svg>

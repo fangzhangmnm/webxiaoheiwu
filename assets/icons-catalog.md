@@ -9,18 +9,12 @@
 
 ```html
 <!-- 内联 icons.svg -->
-<svg width="24" height="24"><use href="#magic-wand"/></svg>
+<svg width="24" height="24"><use href="#move-to-file"/></svg>
 ```
 
-> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`one-to-one`、`mini-window`、`microphone`、`backspace`、`key-shift`、`key-enter`
+> 👁 **待过目**（AI 自画、未经人类审阅，`data-review="pending"`）：`book`、`bookshelf`、`forward`、`chevron-left`、`chevron-right`、`one-to-one`、`mini-window`、`microphone`、`backspace`、`key-shift`、`key-enter`、`dialog-box`
 > 见库 `index.html` 的「待过目」栏；过目后进库/打回归库 session。
 
-
-## drawing-tool
-
-| name | 说明 |
-|------|------|
-| `magic-wand` | 魔术棒:实心凹边四角星(控制点 0.12r —— 0.42r 会拉成菱形)在杖头 + 左上左下各一小星 + 斜杖 -45° |
 
 ## edit
 
@@ -117,3 +111,4 @@
 | `key-enter` 👁待过目 | 回车键 ⏎:右上竖线下行、圆角左拐、左端箭头(与 back 同款箭头臂)【WebXiaoHeiWu app 内软键盘右下「换行 / 确定」键帽；2026-09-29 fable 自画未过目】 |
 | `keyboard` | 键盘:圆点加大收紧+空格上移不压框(与 shortcut 不同语义) |
 | `archive-box` | 归档箱:顶盖条 + 箱体 + 中间把手横线(与 collection 同形, 均出自 lucide:archive) |
+| `dialog-box` 👁待过目 | 逐段:对话气泡(圆角框 + 左下尾巴) + 两行字 + 右下实心 ▼(galgame「点一下看下一句」) = 一次只露一段、写完一段接下一段；与 mini-window(小一圈的窗口 + 标题栏)分工【WebXiaoHeiWu ☰ 侧栏顶行「逐段」入口（Alt+T，v3.0.3 起；替掉 stopgap「框」）；2026-10-26 Claude Opus 5.5 自画未过目（渲过亮 / 暗底 16 / 24 / 60 px）】 |
