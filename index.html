@@ -265,16 +265,17 @@
         <div class="adv-corner" id="advCorner" role="group" aria-label="逐段" data-i18n-aria="adv.aria">
           <button class="menu-button" id="advBackdropToggle" type="button" hidden aria-pressed="false" aria-label="收起背景" data-i18n-aria="adv.hideBackdrop" data-i18n-title="adv.hideBackdrop"><svg class="ico" aria-hidden="true"><use href="#visibility-hide"/></svg></button>
         </div>
-        <!-- 对话框（v3.0.0，src/adv/box.ts）：正文里当前这一段的一扇窗。几行高（设置「对话框行数」，和行宽一样跟书走），多了在框里滚；钉在视口底（键盘之上），和纸同宽。
-             住在 .page 里：行高 / 线位 / 字体都从纸上继承，开小窗时跟着纸一起搬过去。‹ › = 上一段 / 下一段（Ctrl+↑ / Ctrl+↓），坐在框上沿外面的正中（左边是键盘钮、右边是话筒，照旧）-->
+        <!-- 对话框（v3.0.0，src/adv/box.ts）：正文里当前这一段的一扇窗。几行高（设置「逐段」节，和行宽一样跟书走），多了在框里滚；钉在视口底（键盘之上），和纸同宽。
+             住在 .page 里：行高 / 线位 / 字体都从纸上继承，开小窗时跟着纸一起搬过去。‹ › = 上一段 / 下一段（Ctrl+↑ / Ctrl+↓），骑在框的下边线右侧 -->
         <div class="adv-box" id="advBox">
           <!-- 名字牌（v3.0.5）：说话人识别认出来的名字；galgame 名字栏的位置 = 框左上角、骑在上边线上；只显示；小窗里不放 -->
           <div class="adv-name" id="advName" hidden></div>
           <textarea id="advInput" class="adv-input" spellcheck="false" autocorrect="off" autocomplete="off" autocapitalize="off" aria-label="逐段：当前这一段" data-i18n-aria="adv.inputAria"></textarea>
-        </div>
-        <div class="adv-nav" id="advNav" role="group" aria-label="上一段 / 下一段" data-i18n-aria="adv.navAria">
-          <button type="button" class="page-nav-btn" id="advPrev" aria-label="上一段（Ctrl+↑）" data-i18n-aria="adv.prev" data-i18n-title="adv.prev"><svg class="ico" aria-hidden="true"><use href="#chevron-left"/></svg></button>
-          <button type="button" class="page-nav-btn" id="advNext" aria-label="下一段（Ctrl+↓）" data-i18n-aria="adv.next" data-i18n-title="adv.next"><svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+          <!-- ‹ ›（v3.0.7，user 2026-10-26「我希望是左右键放在galgame放左右键的地方，应该就是右下角？」）：骑在框的下边线右侧（名字牌在左上，一上一下）；小窗里不放 -->
+          <div class="adv-nav" id="advNav" role="group" aria-label="上一段 / 下一段" data-i18n-aria="adv.navAria">
+            <button type="button" class="page-nav-btn" id="advPrev" aria-label="上一段（Ctrl+↑）" data-i18n-aria="adv.prev" data-i18n-title="adv.prev"><svg class="ico" aria-hidden="true"><use href="#chevron-left"/></svg></button>
+            <button type="button" class="page-nav-btn" id="advNext" aria-label="下一段（Ctrl+↓）" data-i18n-aria="adv.next" data-i18n-title="adv.next"><svg class="ico" aria-hidden="true"><use href="#chevron-right"/></svg></button>
+          </div>
         </div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
         <div id="lockCard" class="lock-card" hidden role="group" aria-label="已锁定" data-i18n-aria="lock.aria">
@@ -662,6 +663,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-da6a38ab60ea.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-4543e959e255.mjs"></script>
   </body>
 </html>

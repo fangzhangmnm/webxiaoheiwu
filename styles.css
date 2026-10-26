@@ -2067,10 +2067,11 @@ body[data-mode="gallery"] wp-reference-window { display: none !important; }
 body.adv .surface { overflow: hidden; }   /* 纸藏着：滚轮别把看不见的纸滚走 */
 body.adv .page { border-color: transparent; background: transparent; box-shadow: none; }
 body.adv .parent-link, body.adv .node-title-row, body.adv .page-body, body.adv .page-image, body.adv .page-foot-row { visibility: hidden; }
+body.adv .adv-box.beat-start { border-top-color: var(--accent); box-shadow: inset 0 1px 0 var(--accent), 0 16px 40px rgba(58, 40, 24, 0.12); }   /* 新的一拍（前面隔着空行）：上边线变成一条强调色的线，不写字（v3.0.7，user「新拍的话有一个一条线之类的标记？不用说文字」） */
 body.adv .adv-box {
   display: flex; position: fixed; z-index: var(--z-page); box-sizing: border-box;
   left: max(0px, 50% - var(--box-max) / 2); right: max(0px, 50% - var(--box-max) / 2);
-  bottom: calc(var(--sheet-bottom) + 8px); height: var(--adv-h, calc(3 * var(--editor-lh) + 22px));
+  bottom: calc(var(--sheet-bottom) + 20px); height: calc(var(--adv-rows-h, calc(3 * var(--editor-lh))) + 22px);   /* 底下留 20px：‹ › 骑在下边线上（v3.0.7） */
   padding: 10px var(--page-pad-x);
   border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg-1); box-shadow: 0 16px 40px rgba(58, 40, 24, 0.12);
 }
@@ -2085,24 +2086,23 @@ body.ruled-lines .adv-input {   /* 写字线同纸（一张会重复的渐变）
   background-image: repeating-linear-gradient(to bottom, transparent 0, transparent var(--rule-y), var(--line) var(--rule-y), var(--line) calc(var(--rule-y) + var(--rule-w)), transparent calc(var(--rule-y) + var(--rule-w)), transparent var(--editor-lh));
   background-attachment: local; background-position: 0 0;
 }
-body.adv .adv-nav {
-  display: flex; gap: 6px; position: fixed; z-index: var(--z-page); left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 18px);
-}
+/* ‹ ›（v3.0.7，user「我希望是左右键放在galgame放左右键的地方，应该就是右下角？」）：骑在框的下边线右侧（名字牌在左上） */
+body.adv .adv-nav { display: flex; gap: 2px; position: absolute; right: 14px; bottom: -15px; }
+body.adv .adv-nav .page-nav-btn { width: 26px; height: 24px; }
 body.adv .adv-nav, body.adv .adv-corner { padding: 2px; border-radius: 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--bg-1) 88%, transparent); }   /* 压在背景图上也看得见 */
 /* 话筒 / 退格 / 键盘钮 / ‹ ›：抬到框上沿外面那一排，固定让出骑在上边线上的名字牌（探出 13px；名字牌随光标那一行时有时无，这一排不跟着跳，v3.0.5）；
    toast / 悬浮候选条再往上（不盖正在写的那一行） */
-body.adv .mic-button { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 18px); }
-body.adv .mic-side { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 22px); }
-body.adv .toast { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 74px); }
-body.adv .candidates { bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px) + 18px); }
+body.adv .mic-button { bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px) + 18px); }
+body.adv .mic-side { bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px) + 22px); }
+body.adv .toast { bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px) + 74px); }
+body.adv .candidates { bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px) + 18px); }
 /* 名字牌（v3.0.5）：galgame 名字栏——框左上角、骑在上边线上；只显示 */
 .adv-name { position: absolute; top: -13px; left: calc(var(--page-pad-x) - 8px); max-width: 60%; height: 24px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg-1); color: var(--ink); font: 600 13px/22px var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .adv-name[hidden] { display: none; }
 /* 台：顶栏之下、框之上那块空地。背景图只当提示（user「只是用来cue，相当于reference window干的事情」）：整张露出来（contain）、站在框上（贴底） */
 body.adv .adv-stage {
   display: block; position: fixed; z-index: var(--z-adv-stage); left: 0; right: 0;
-  top: var(--sheet-top); bottom: calc(var(--sheet-bottom) + 8px + var(--adv-h, 0px));
+  top: var(--sheet-top); bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px));
   pointer-events: none;
 }
 .adv-stage-img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; }
@@ -2113,7 +2113,10 @@ body.adv .adv-corner:not(:has(> .menu-button:not([hidden]))) { display: none; } 
 /* 小窗里的对话框（user 2026-10-25「小窗可以改成adv模式，合理」）：框铺满小窗、没有纸边；‹ › / 台 / 角上的钮都不放（小窗「不放，都不放」）。
    留白和 app.ts 的 PIP_PAD_* 同值：上下 8px、左 14px、右 32px（状态小图标）；小窗高度 = 行数 × 行高 + 上下留白（pip size / fitToRows）。 */
 .pip-body.adv { overflow: hidden; }
-.pip-body.adv .adv-box { top: 0; bottom: 0; left: 0; right: 0; height: auto; padding: 8px 32px 8px 14px; border: 0; border-radius: 0; box-shadow: none; }
+/* 小窗里是一个固定大小的框（v3.0.7，user「你里面可以放一个固定大小的box不就行了」「而不是依赖小窗的宽高来排版」「如果小窗太小的话ui和字体相应一起放缩」）：
+   宽 = 打开时主窗口正文的宽（app.ts 写 --pip-text-w）+ 左右留白；高 = 行数 × 行高 + 上下留白。钉在左上角；小窗比它小就整体缩小（app.ts pipFit 写 transform），大了不放大 */
+.pip-body.adv .adv-box { top: 0; left: 0; right: auto; bottom: auto; width: calc(var(--pip-text-w, 300px) + 46px); height: calc(var(--adv-rows-h, 0px) + 16px); padding: 8px 32px 8px 14px; border: 0; border-radius: 0; box-shadow: none; transform-origin: 0 0; }
+.pip-body.adv .adv-box.beat-start { box-shadow: inset 0 2px 0 var(--accent); }
 .pip-body .adv-nav, .pip-body .adv-stage, .pip-body .adv-corner, .pip-body .adv-name { display: none !important; }
 .pip-body.adv .candidates { bottom: auto; }   /* 候选条照旧在小窗顶上（盖最旧的一行），不吃「抬到框上面」那条 */
 

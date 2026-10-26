@@ -19,8 +19,8 @@ export interface PipHost {
   placeholder(): HTMLElement;
   /** 第一次开多大（CSS 像素，小窗里面那块）。 */
   size(): { width: number; height: number };
-  /** 小窗现在这么高，离「整行」还差多少（正 = 要加高，负 = 要减）；已经对上 = 0。 */
-  fit(innerHeight: number): number;
+  /** 小窗现在这么高，离「整行」还差多少（正 = 要加高，负 = 要减）；已经对上 = 0。不给 = 不收整行，窗口大小全交给人和浏览器。 */
+  fit?(innerHeight: number): number;
 }
 
 export interface Pip {
@@ -126,17 +126,16 @@ export function createPip(sheet: HTMLElement, extras: HTMLElement[], host: PipHo
     win = w;
     w.addEventListener("pagehide", restore);   // 用户点了小窗的 ×、或浏览器把它收了 → 搬回来
     // 收成整行：浏览器照记住的大小开、或人拖出半行时，记着；等小窗里下一次按键松开 / 点（那时有用户手势）再 resizeBy（小窗的 outerHeight 读出来是 0，只能按增量改；KudsRocket 同款）
+    const hostFit = host.fit?.bind(host);
     let fitPending = false;
-    const measure = (): void => { fitPending = host.fit(w.innerHeight) !== 0; };
+    const measure = (): void => { fitPending = !!hostFit && hostFit(w.innerHeight) !== 0; };
     const fit = (): void => {
-      if (!fitPending) return;
+      if (!fitPending || !hostFit) return;
       fitPending = false;
-      const dh = host.fit(w.innerHeight);
+      const dh = hostFit(w.innerHeight);
       if (dh) { try { w.resizeBy(0, dh); } catch (e) { console.warn("[pip] fit", e); } }
     };
-    w.addEventListener("resize", measure);
-    w.addEventListener("pointerup", fit, true);
-    w.addEventListener("keyup", fit, true);
+    if (hostFit) { w.addEventListener("resize", measure); w.addEventListener("pointerup", fit, true); w.addEventListener("keyup", fit, true); }
     host.onEnter(w);
     measure();
     return true;

@@ -23,7 +23,7 @@ import { packProject, emptyProject, nodeExt, nodeKind, readNodeText, IMAGE_MIME 
 import { decodeToRgba, encodePng, encodeJpeg, probeSize, createTextMeasurer, paintScene } from "./image/codec.ts";   // 导出图片页到剪贴板：非 PNG 经唯一 canvas 点转 PNG（剪贴板只认 PNG）；长图：量字宽 + 落像素
 import { parseTtf, NotTrueTypeError, type TtfFont } from "./export/ttf.ts";
 import { installSansFont, installFont, installFontsInto, loadFontBytes, FONT_FAMILY, FONT_IDS, type FontId } from "./fonts.ts";
-import { createPip, pipSupported, fitToRows, type Pip } from "./pip.ts";
+import { createPip, pipSupported, type Pip } from "./pip.ts";
 import { embedTextPng, embedTextJpeg } from "./image/embed-text.ts";
 import { writePdf, jpegInfo, type PdfImage, type PdfStats } from "./export/pdf.ts";
 import { planPdfBook, estimatePdfPages, type PdfSection, type CoverLook } from "./export/pdf-book.ts";
@@ -464,7 +464,8 @@ function syncBodyHeight(): void {
 }
 /** 对话框的总高（styles.css `--adv-h`）= 行数 × 行高 + 上下留白 10 × 2 + 边框 2。写在 body 上：候选条 / toast 不在纸里，读不到纸上的行高。行高（字号档 / 行宽 / 字体装好）在这里跟上。 */
 function syncAdvHeight(lh = paper.lineHeight()): void {
-  const v = `${advLines() * lh + 22}px`;
+  const rows = `${advLines() * lh}px`, v = `${advLines() * lh + 22}px`;   // --adv-rows-h = 只有字（主窗口 / 小窗各加各的留白，v3.0.7）
+  if (document.body.style.getPropertyValue("--adv-rows-h") !== rows) document.body.style.setProperty("--adv-rows-h", rows);
   if (document.body.style.getPropertyValue("--adv-h") !== v) document.body.style.setProperty("--adv-h", v);
 }
 /** 光标跟随的兜底：浏览器插字后会把光标滚进最近的可滚祖先（Chromium / WebKit 都会），但键盘那一块露收 / iOS 视口变了它不管——
@@ -1356,7 +1357,7 @@ function speakerRules(): Set<SpeakerRule> {
 }
 let advLine = "";   // 光标那一行（框报来的）
 // 启动时就记住引用：纸搬进 / 搬出小窗的那一瞬间它两边都不在，框这时失焦也会报一行，按 id 现查会扑空（无头假小窗抓到）
-const advNameEl = $("advName");
+const advNameEl = $("advName"), advBoxEl = $("advBox");
 function renderSpeaker(): void {
   const name = speakerOn() ? detectSpeaker(advLine, speakerRules()) : null;
   advNameEl.textContent = name ?? ""; advNameEl.hidden = !name;
@@ -1364,7 +1365,7 @@ function renderSpeaker(): void {
 adv = createAdvBox({
   editor: editorEl, input: advInput, canEdit: () => canEditNow(), split: advSplit,
   pageKey: () => (project.active() ? `book\u0000${project.displayName() ?? ""}\u0000${project.current() ?? ""}` : `txt\u0000${editor.state.name ?? editor.state.pendingDate ?? ""}`),
-  onPosition: (i, n) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; },
+  onPosition: (i, n, beat) => { advPrev.disabled = i <= 0; advNext.disabled = i >= n - 1; advBoxEl.classList.toggle("beat-start", beat); },
   onLine: (line) => { advLine = line; renderSpeaker(); },
   // 段首的说话人标记收进名字牌、不进框（v3.0.6，user「小月：  不进文本框啊」）；小窗里不放名字牌，标记就留在框里（不然看不见是谁在说）
   tagLength: (line) => (speakerOn() && !pip?.active ? speakerTag(line, speakerRules())?.length ?? 0 : 0),
@@ -1395,6 +1396,14 @@ for (const [b, go] of [[advPrev, () => adv!.prev()], [advNext, () => adv!.next()
 //   只有能写字的页能开（同对话框钮的条件）；要弹面板（setBeforeModal）/ 闲置锁屏 / 进书库 / 变成锁着或图片页 → 先收回。翻页用已有的 Alt+↑ / Alt+↓（快捷键也挂在小窗上）。
 const PIP_PAD_TOP = 8, PIP_PAD_BOTTOM = 8, PIP_PAD_LEFT = 14, PIP_PAD_RIGHT = 32;   // 和 styles.css「小窗」那节同值：上下 = 光标跟随的边距（scroll-padding），右边留给状态小图标
 let pipCleanup: Array<() => void> = [];
+// 小窗里是一个固定大小的框（v3.0.7，user「你里面可以放一个固定大小的box不就行了」「而不是依赖小窗的宽高来排版」「如果小窗太小的话ui和字体相应一起放缩」「小窗应该是弹出来之后就不要改宽高了」）：
+//   宽 = 打开那一刻主窗口正文的宽（写在框自己身上：小窗的 body 的 style 会被 mirrorRoot 用主页面的抄掉）；小窗比框小 → 整体等比缩小，大了不放大
+let pipTextW = 0;
+function pipFit(win: Window): void {
+  const w = advBoxEl.offsetWidth, h = advBoxEl.offsetHeight;   // 排版尺寸（transform 不影响）
+  const s = w > 0 && h > 0 ? Math.min(1, win.innerWidth / w, win.innerHeight / h) : 1;
+  advBoxEl.style.transform = s < 0.999 ? `scale(${s})` : "";
+}
 function pipEligible(): boolean { return pageWritable; }   // 和对话框钮同一个条件：有稿、没锁、不是图片页
 function closePipIfOpen(): void { if (pip?.active) pip.close(); }
 function listen(t: EventTarget, type: string, fn: EventListener, capture = false): () => void { t.addEventListener(type, fn, capture); return () => t.removeEventListener(type, fn, capture); }
@@ -1416,7 +1425,8 @@ function enterPip(win: Window): void {
   syncStatus();
   const mo = new MutationObserver(syncStatus);
   for (const b of [cryptoToggle, saveButton, micButton]) mo.observe(b, { attributes: true, childList: true, subtree: true });
-  const onResize = (): void => { paper.refresh(); syncBodyHeight(); followCaret(); };
+  const onResize = (): void => { paper.refresh(); syncBodyHeight(); followCaret(); pipFit(win); };
+  advBoxEl.style.setProperty("--pip-text-w", `${pipTextW}px`);
   pipCleanup = [
     input.attachWindow(win), imeDock.attachDocument(doc),
     listen(doc, "keydown", onAppKeydown as EventListener), listen(win, "resize", onResize),
@@ -1429,12 +1439,13 @@ function enterPip(win: Window): void {
   doc.body.classList.toggle("adv", document.body.classList.contains("adv"));   // 别等 mirrorRoot 的下一拍：class 没到之前框在小窗里是 display:none，焦点给不进去
   focusWriting({ preventScroll: true });
   followCaret(true);
-  win.requestAnimationFrame(() => { if (pip?.active) { paper.refresh(); syncBodyHeight(); followCaret(true); } });   // 小窗第一帧排好版再钉一次：刚开窗时窗口尺寸 / 样式还没落定，上面那次量不准
+  win.requestAnimationFrame(() => { if (pip?.active) { paper.refresh(); syncBodyHeight(); followCaret(true); pipFit(win); } });   // 小窗第一帧排好版再钉一次：刚开窗时窗口尺寸 / 样式还没落定，上面那次量不准
   imeDock.render();
   void installFontsInto(doc).then(() => { if (pip?.active) onResize(); });   // 内置字体到了再量一遍（没到之前落系统字体，行高差一点）
 }
 function leavePip(): void {
   for (const f of pipCleanup.splice(0)) f();
+  advBoxEl.style.removeProperty("--pip-text-w"); advBoxEl.style.transform = "";
   applyAdv();   // 回到主窗口自己的开关（关着 = 回整页，光标留在框里那个位置）
   paper.refresh(); syncBodyHeight();
   if (!idle.isShown()) { focusWriting({ preventScroll: true }); followCaret(); }   // 闲置锁屏收回的：锁屏刚拿走焦点，别还回去（不然隔着遮罩还能打字）
@@ -1457,8 +1468,10 @@ pip = createPip(pageEl, [$("candidateBar")], {
     el.append(p, b);
     return el;
   },
-  size: () => ({ width: Math.ceil(editorEl.getBoundingClientRect().width) + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: advLines() * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM }),   // 小窗就是对话框（v3.0.2）：几行 = 设置的行数
-  fit: (h) => fitToRows(h, paper.lineHeight(), PIP_PAD_TOP + PIP_PAD_BOTTOM),
+  // 小窗就是逐段（v3.0.2）：几行 = 设置的行数；宽 = 这一刻主窗口正文的宽，记下来给小窗里那个固定大小的框（v3.0.7）
+  size: () => { pipTextW = Math.ceil(editorEl.getBoundingClientRect().width); return { width: pipTextW + PIP_PAD_LEFT + PIP_PAD_RIGHT, height: advLines() * paper.lineHeight() + PIP_PAD_TOP + PIP_PAD_BOTTOM }; },
+  // 不收整行（v3.0.7，user 2026-10-26「小窗的时候我在最后一格动左右键窗口长度会变长，好奇怪」）：小窗永远是逐段、框自己会滚，用不着；
+  //   v2.3.60 起每次按键松开 / 点一下就 resizeBy 收成整行，窗口单位对不上时（缩放 / 浏览器的最小尺寸）会一按一变。fitToRows 留在 pip.ts（单测钉着）
   onEnter: enterPip,
   onLeave: leavePip,
 });

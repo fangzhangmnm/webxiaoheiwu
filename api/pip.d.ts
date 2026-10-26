@@ -10,8 +10,8 @@ export interface PipHost {
         width: number;
         height: number;
     };
-    /** 小窗现在这么高，离「整行」还差多少（正 = 要加高，负 = 要减）；已经对上 = 0。 */
-    fit(innerHeight: number): number;
+    /** 小窗现在这么高，离「整行」还差多少（正 = 要加高，负 = 要减）；已经对上 = 0。不给 = 不收整行，窗口大小全交给人和浏览器。 */
+    fit?(innerHeight: number): number;
 }
 export interface Pip {
     readonly supported: boolean;

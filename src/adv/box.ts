@@ -27,8 +27,8 @@ export interface AdvBoxDeps {
   pageKey(): string;
   /** 怎么分段（设置「逐段怎么分段」：一个换行 / 空一行）。随时读：改了设置宿主调 sync()。 */
   split(): Split;
-  /** 第几段 / 共几段变了（画 ‹ › 的可点状态）。 */
-  onPosition?(index: number, count: number): void;
+  /** 第几段 / 共几段变了（画 ‹ › 的可点状态）；beat = 这一段是新的一拍（单回车分段时前面隔着空行；v3.0.7）。 */
+  onPosition?(index: number, count: number, beat: boolean): void;
   /** 光标所在的那一行（框里按换行切的一行；段首那一行带上收起来的标记）可能变了：宿主拿去认说话人、画名字牌（v3.0.5）。 */
   onLine?(line: string): void;
   /** 段首那一行开头有几个字是说话人标记（收进名字牌、不进框；v3.0.6，user「小月：  不进文本框啊」）。没有 / 不收 = 0。 */
@@ -57,12 +57,12 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
   let shown = "";         // 框里上一版的字（= 正文 [start, start + shown.length)）
   let key = "";
   let splicing = false;   // 自己在写回正文：正文的 input 别当成「别处改了」
-  let pos = { index: 0, count: 1 };
+  let pos = { index: 0, count: 1, beat: false };
 
-  function report(index: number, count: number): void {
-    if (index === pos.index && count === pos.count) return;
-    pos = { index, count };
-    d.onPosition?.(index, count);
+  function report(index: number, count: number, beat: boolean): void {
+    if (index === pos.index && count === pos.count && beat === pos.beat) return;
+    pos = { index, count, beat };
+    d.onPosition?.(index, count, beat);
   }
   /** 一段开头收起来几个字（段首那一行的说话人标记）。 */
   function tagOf(text: string, p: Para): number {
@@ -80,7 +80,8 @@ export function createAdvBox(d: AdvBoxDeps): AdvBox {
     try { box.setSelectionRange(at, at); } catch { /* ignore */ }
     if (caret === "start") box.scrollTop = 0; else if (caret === "end") box.scrollTop = box.scrollHeight;
     pushCaret();
-    report(i, ps.length);
+    // 新的一拍 = 单回车分段时，和上一段之间隔着空行（user「回车两次相当于换一拍」）；空一行分段时每段都是一拍，不标
+    report(i, ps.length, d.split() === "line" && i > 0 && text.slice(ps[i - 1]!.end, p.start).includes("\n\n"));
   }
   /** 从正文的某个位置取它所在的那一段，光标放在对应位置。 */
   function loadAt(docPos: number): void {
