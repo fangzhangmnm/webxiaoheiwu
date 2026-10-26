@@ -2354,37 +2354,24 @@ document.addEventListener("keydown", onAppKeydown);
 //   从没传过、只在本机——以前登录后静默 pushAll（v2.3.35），现在 offerPushLocalOnly：有 N 篇没传 → 问一次「传上去吗」，点了才 pushAll；
 //   「先不传」= 这次打开不再问也不再补传（下次打开再问）；点过「传上去」= 这次打开里之后的回线 / 解锁都自动补传（consent 已给）。
 //   开着的那篇照旧经 pushNowAny 自动推（那是正常 save 路径，不在这个问句里）；库的离线补推队列（推过但没落地）照旧自动排空。
-let pushDirtyAllInFlight: Promise<void> | null = null;
-function pushDirtyAll(opts: { verbose?: boolean } = {}): Promise<void> {
-  if (pushDirtyAllInFlight) return pushDirtyAllInFlight;
-  pushDirtyAllInFlight = (async () => {
-    if (!auth.isSignedIn() || navigator.onLine === false) return;
-    try {
-      const r = await requireStore().files.dirty.pushAll();
-      if (r.pushed || r.failed.length) diagNote("sync", `dirty.pushAll: pushed=${r.pushed} failed=${r.failed.length}${r.failed.length ? " [" + r.failed.join(", ") + "]" : ""}`);
-      if (r.pushed) { setStatus(t("st.pushedAll", { n: r.pushed })); drawer.refresh(); galleryHost.refresh(); }
-      if (opts.verbose && r.failed.length) setStatus(t("st.pushAllFailed", { n: r.failed.length }), { error: true });
-    } catch (e) { reportError(e, "log"); }
-  })().finally(() => { pushDirtyAllInFlight = null; });
-  return pushDirtyAllInFlight;
-}
-let askedPushLocalOnly = false;      // 这次打开问过了（「先不传」）
-let consentedPushAll = false;        // 这次打开点过「传上去」→ 之后自动补传
+// 2026-10-26 改（家族周账 F-98 / F-88；user 10-26「列表面」「收，救火」；CatsUp 同形）：10-21 的「问一次 → pushAll」是 / 否框撤了——
+//   它说「还没传上去」对「传过、后来改了没传」只说对了一半，批量传完失败只剩一条状态行、没有动作。现在：有没同步好的 → 问一句「去处理吗」→ 开书库进「要处理的」视图
+//   （gallery 0.8.8：顶部横幅 + 每张卡一粒可见的「处理…」，点了当场弹库的三选一面）。不再自己批量推：每一份都由人在面里选用哪边。
+//   store 2.2.1 起「刷新前改过 + 登录前恢复」那种谱系丢了的脏稿推前会先问云端、没人动就直接推成，所以这里数到的多半是真要人选的。
+let askedPushLocalOnly = false;      // 这次打开问过了（「先不」）
 async function offerPushLocalOnly(opts: { verbose?: boolean } = {}): Promise<void> {
   if (!auth.isSignedIn() || navigator.onLine === false) return;
-  if (consentedPushAll) { await pushDirtyAll(opts); return; }
   if (askedPushLocalOnly) return;
   const n = await dirtyDocCount().catch((e) => { reportError(e, "log"); return 0; });
   if (n <= 0) return;
-  if (isSheetOpen() || isBusyActive()) { diagNote("sync", `local-only drafts: ${n}, sheet / busy open → ask later`); return; }   // 别盖住冲突面；下次回线 / 解锁再问
+  if (isSheetOpen() || isBusyActive()) { diagNote("sync", `unsynced drafts: ${n}, sheet / busy open → ask later`); return; }   // 别盖住冲突面；下次回线 / 解锁再问
   askedPushLocalOnly = true;
-  diagNote("sync", `local-only drafts after sign-in / online: ${n} → ask`);
-  let yes = false;
-  try { yes = await openConfirmSheet(t("pushAll.askTitle"), t("pushAll.askMsg", { n: String(n) }), { okLabel: t("pushAll.ok"), cancelLabel: t("pushAll.later") }); }
+  diagNote("sync", `unsynced drafts after sign-in / online: ${n} → offer gallery attention view${opts.verbose ? " (verbose)" : ""}`);
+  let go = false;
+  try { go = await openConfirmSheet(t("pushAll.askTitle"), t("pushAll.askMsg", { n: String(n) }), { okLabel: t("pushAll.ok"), cancelLabel: t("pushAll.later") }); }
   catch (e) { askedPushLocalOnly = false; reportError(e, "log"); return; }   // 和别的 sheet 撞了 → 这次没问成，下次再问
-  if (!yes) { diagNote("sync", "local-only drafts: user said not now"); return; }
-  consentedPushAll = true;
-  await pushDirtyAll({ verbose: true });
+  if (!go) { diagNote("sync", "unsynced drafts: user said not now"); return; }
+  await galleryHost.openAttention();
 }
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
 //   顺序（v2.3.35，2026-10-16；10-08 handoff 第 3 节）：**先快进、再推**。这台干净而别的设备改过 → 静默接云端新版；脏 → 库的快进是空操作、推送撞 412 才弹面。
