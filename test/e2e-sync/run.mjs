@@ -598,8 +598,8 @@ scenario("闸门 ⑤ 云端慢：先离线用 立刻放行", async (w) => {
   console.log(`  点到放行 ${Date.now() - t0} ms`);
   v = await D.gateView();
   check("放行 + 条", !v.up && v.bar != null && !v.online, JSON.stringify(v));
-  await D.page.waitForFunction(() => window.__xhw.editor.canEdit() || window.__xhw.project.active(), null, { timeout: 5000 });
-  check("本机那份摆出来了", (await D.text()).includes("本机这一份。"), await D.text());
+  await D.page.waitForFunction(() => document.getElementById("editor").value.includes("本机这一份。"), null, { timeout: 5000 });
+  check("本机那份摆出来了", true);
   await D.wait(300);   // 选之前已经在路上的不算（挂着）；看选了之后还有没有新发起的
   const before = await D.eval(() => window.__e2eCalls.length);
   await D.type("能写。"); await D.wait(300);
@@ -634,6 +634,18 @@ scenario("闸门 ⑤b 云端慢：不点，8 s 自动进闸；云端回了自己
   v = await D.gateView();
   check("云端回了：不用人点，自己放行", !v.up && v.online && v.bar === null, JSON.stringify(v));
   check("页面零报错", D.errors.length === 0, D.errors.join(" ; "));
+  await D.close();
+});
+
+scenario("闸门 ⑤c 没有稿可问时云端挂了：照样发现（不会因为没东西可比就放行）", async (w) => {
+  const D = await w.device("A");
+  await D.page.goto(server.url); await D.setGate({ hangCloud: true }, false);
+  await D.bootRaw(server.url);
+  await waitPhase(D, "blocked", 14000);
+  const v = await D.gateView();
+  check("新设备、没有稿：8 s 后进闸", v.up && v.message === "网盘没有回应", JSON.stringify(v));
+  await D.clickGate("离线继续"); await D.wait(200);
+  check("离线继续能进", (await D.gateView()).phase === "open");
   await D.close();
 });
 

@@ -1,7 +1,7 @@
 // 组合根：把 store 接缝 / 编辑器 / 抽屉 / IME / 语音 / 闲置锁屏 / PWA 壳接成一个 app。created 2026-09-03 by Claude Fable 5.1
 // 这里只有接线与事件编排，没有业务规则（规则住各模块头注释）。
 import { APP_VERSION } from "./version.ts";
-import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS, IDLE_OVERLAY_MS } from "./config.ts";
+import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS, IDLE_OVERLAY_MS, COLLECTIONS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
 import { setBeforeModal, initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openScopedChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice, isSheetOpen, isBusyActive } from "./sheets.ts";
@@ -2411,7 +2411,13 @@ const gate = createCloudGate({
     if (document.readyState !== "complete") await new Promise((r) => window.addEventListener("load", r, { once: true }));   // 库自己的探测也等 load：load 之前开续签的隐藏 iframe 会吊住 load（库 auth.js 注释）
     return auth.retrySilentSignIn();
   },
-  check: async () => { await bootDocReady; return refreshIfCleanAny(); },
+  check: async () => {
+    await bootDocReady;
+    const s = await refreshIfCleanAny();
+    if (s && s !== "dirty-skip" && s !== "offline") return s;
+    // 这一下库没真去问云端（没开稿 / 稿锁着 / 刚改了字）：另问一次，不然云端挂了也会放行（库的探针，「不知道」绝不当没有）
+    return (await requireStore().collectionPeek(COLLECTIONS.appState)) === "unknown" ? "cloud-error" : "asked";
+  },
   catchUp: resumeSync,
   signIn: () => onSignIn({ later: true }),
   note: (line) => diagNote("gate", line),
