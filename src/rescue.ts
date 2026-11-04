@@ -4,32 +4,23 @@
 //   没来得及落盘的字——推云是 30 s 心跳，常常就发生在打字途中；上传要一两秒，这一两秒里打的字不在库备份的那一版里。
 //   这些字由本模块**另存成书库里一份新稿**，绝不写回原名：原名此刻已经是云端那一版，把旧世界写回去 = 下次推送 If-Match 云端 etag 成功
 //   = 静默盖掉另一台设备的修改（数据安全词典序第一级：云端不丢 >> 当前操作不丢）。
-//   加密稿的留底照样封好再留（明文绝不上云）；封不上 → 进本机回收站并响亮报错（字节还在，不泄露）。
-import { createDoc, createProjectDoc, encryptDoc, trashDoc } from "./docs.ts";
+//   加密稿的留底先封再存（2026-11-03 Fable 裁定：IndexedDB 里一刻明文都不留）；封不上 = 不写、响亮报错（调用方 rescue.failed）。
+import { createDoc, createProjectDoc } from "./docs.ts";
 import { parseDocName, formatDate } from "./doc-model.ts";
 import { note as diagNote } from "./diag-log.ts";
 import { t } from "./i18n/index.ts";
 
 const titleFor = (sourceName: string): string => t("rescue.title", { name: parseDocName(sourceName).stem });
 
-async function sealOrTrash(name: string): Promise<void> {
-  try { await encryptDoc(name); }
-  catch (e) {
-    try { await trashDoc(name); } catch { /* 回收站也进不去：下面照样抛，调用方报错 */ }
-    throw new Error(`rescue copy could not be sealed; moved to the local recycle bin: ${e instanceof Error ? e.message : String(e)}`);
-  }
-}
 /** txt 稿：把编辑器里这一整篇另存成新稿。返回新稿身份。 */
 export async function rescueText(sourceName: string, text: string, opts: { encrypted: boolean }): Promise<string> {
-  const name = await createDoc(titleFor(sourceName), text, formatDate(Date.now()), parseDocName(sourceName).dir);
-  if (opts.encrypted) await sealOrTrash(name);
+  const name = await createDoc(titleFor(sourceName), text, formatDate(Date.now()), parseDocName(sourceName).dir, { encrypted: opts.encrypted });
   diagNote("sync", `rescue copy of "${sourceName}" → "${name}" (${text.length} chars)`);
   return name;
 }
 /** 书：把屏幕上那一整本（含还没落盘的改动）另存成一本新书。返回新书身份。 */
 export async function rescueBook(sourceName: string, blob: Blob, opts: { encrypted: boolean }): Promise<string> {
-  const name = await createProjectDoc(titleFor(sourceName), blob, formatDate(Date.now()), parseDocName(sourceName).dir);
-  if (opts.encrypted) await sealOrTrash(name);
+  const name = await createProjectDoc(titleFor(sourceName), blob, formatDate(Date.now()), parseDocName(sourceName).dir, { encrypted: opts.encrypted });
   diagNote("sync", `rescue copy of "${sourceName}" → "${name}" (${blob.size} bytes)`);
   return name;
 }

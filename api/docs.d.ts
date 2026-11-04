@@ -35,7 +35,9 @@ export declare function saveProjectBlob(name: string, blob: Blob, opts: {
     push: boolean;
 }): Promise<SaveResult>;
 /** 新建工程文件：撞名自动追加 " 1"…；返回最终身份（全路径）。 */
-export declare function createProjectDoc(title: string, blob: Blob, date?: string, dir?: string): Promise<string>;
+export declare function createProjectDoc(title: string, blob: Blob, date?: string, dir?: string, opts?: {
+    encrypted?: boolean;
+}): Promise<string>;
 export declare function invalidateEncryptedFlag(name: string): void;
 export declare function watchDocs(folder: string, cb: (frame: DocListFrame) => void, opts?: {
     onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
@@ -64,9 +66,13 @@ export declare function saveDoc(name: string, text: string, opts: {
     push: boolean;
 }): Promise<SaveResult>;
 /** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份（全路径）。 */
-export declare function createDoc(title: string, text: string, date?: string, dir?: string): Promise<string>;
+export declare function createDoc(title: string, text: string, date?: string, dir?: string, opts?: {
+    encrypted?: boolean;
+}): Promise<string>;
 /** 「导出这一支」（ADR-0014 §6，2026-09-10 树 session）：子树 DFS 拼好的正文 → 书库里一篇新 txt（撞名 hex4，同 createDoc）。返回身份。下载那条路走 local-home.triggerDownload，不经 store。 */
-export declare function exportBranchToLibrary(title: string, text: string, dir?: string): Promise<string>;
+export declare function exportBranchToLibrary(title: string, text: string, dir?: string, opts?: {
+    encrypted?: boolean;
+}): Promise<string>;
 /** cancelled = 人在「旧的怎么办」面里选了取消（store 2.2.2 起）：一个字节没动，身份还是 name。oldKeptByUser = 人选了「留着旧的」（oldKept 同时为真）。 */
 export interface RenameResult {
     name: string;

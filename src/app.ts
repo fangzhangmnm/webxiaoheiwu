@@ -50,7 +50,7 @@ import { isLocalVoiceSupported, LocalSession } from "./voice/local.ts";
 import { asr } from "./asr/engine.ts";
 import { MODELS, modelKeyFrom, type ModelKey } from "./asr/packs.ts";
 import { MODEL_SOURCE_DEFAULT } from "./config.ts";
-import { passwordKeeper } from "./encryption.ts";
+import { passwordKeeper, appEncryption } from "./encryption.ts";
 import { wireRememberPassword, restoreRemembered, rememberCurrent, forgetRemembered, rememberedUntil, onRememberChange, setRememberChoice, rememberChoice, takeRememberChoice } from "./remember-password.ts";
 import { deviceKvGet, deviceKvSet } from "./device-kv.ts";
 import { parseDocName } from "./doc-model.ts";
@@ -406,7 +406,9 @@ async function exportBranchFlow(name: string): Promise<void> {
   try {
     const text = project.exportBranchText(name);
     if (download) { triggerDownload(new Blob([text], { type: "text/plain;charset=utf-8" }), `${title}.txt`); setStatus(t("edge.exportDone", { name: title })); return; }
-    const created = await exportBranchToLibrary(title, text, parseDocName(project.name() ?? "").dir);
+    const sealIt = project.encrypted();   // 加密书导出到书库 = 新稿也封（下载是人明确要的文件，不算）
+    if (sealIt && !(await ensureUnlocked())) { setStatus(t("project.encryptSkipped"), { error: true }); return; }
+    const created = await exportBranchToLibrary(title, text, parseDocName(project.name() ?? "").dir, { encrypted: sealIt });
     setStatus(t("edge.exportDone", { name: parseDocName(created).stem }));
   } catch (e) { reportError(e); setStatus(t("edge.exportFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
@@ -1151,12 +1153,12 @@ async function liftDraftToBook(): Promise<boolean> {
   const raw = await openInputSheet(t("lift.title"), { message: t("lift.hint"), defaultValue: stem, placeholder: t("project.defaultName"), okLabel: t("common.ok") });
   if (raw == null) return false;
   const wasEncrypted = editor.state.encrypted;
+  if (wasEncrypted && !(await ensureUnlocked())) { setStatus(t("project.encryptSkipped"), { error: true }); return false; }   // 新书要封：口令拿不到就不建（先问）
   try {
     const p = emptyProject(); seedBook(p, pageName, text);   // 第一页入树（user 2026-09-10 真机「加兄弟怎么没了」：以前这里没 tree → 升上来的书第一页是散页）
-    const name = await createProjectDoc(raw.trim() || stem, await packProject(p), formatDate(Date.now()), editor.currentDir());
+    const name = await createProjectDoc(raw.trim() || stem, await packProject(p), formatDate(Date.now()), editor.currentDir(), { encrypted: wasEncrypted });   // 原稿加密 → 新书也封（先封再存；名字不动：2026-09-26 user「加密不改名同意」）
     const ok = await openAny(name);
     if (!ok) return false;
-    if (wasEncrypted) await project.toggleEncryption(() => Promise.resolve(false), withBusy);   // 原稿加密 → 新书也封（名字不动：2026-09-26 user「加密不改名同意」）
     edgeSidebar.render();
     setStatus(t(wasEncrypted ? "lift.doneEncrypted" : "lift.done", { name: project.displayName() ?? name }));
     return true;
@@ -1256,21 +1258,18 @@ async function newProjectFlow(): Promise<void> {
   const r = await openInputSheetEx(t("project.newTitle"), { message: t("project.newHint"), defaultValue: t("project.defaultName"), placeholder: t("project.defaultName"), okLabel: t("common.ok"), checkbox: { label: t("project.newEncrypt") } });   // 「加密」勾 = 建完即封（user 2026-09-26「加密勾勾同意」；明文只在本地 IDB 停留一步，同 txt 升书）
   if (r == null) return;
   const raw = r.value, wantEncrypt = r.checked;
+  if (wantEncrypt && !(await ensureUnlocked())) { setStatus(t("project.encryptSkipped"), { error: true }); return; }   // 勾了加密：口令拿不到就不建（先问；2026-11-03 起不再先建一本明文的）
   const date = formatDate(Date.now());
   const firstNode = `${t("project.firstPage")}.txt`;   // 唯一的默认页名 =「目录」及各语言对应词（user 2026-09-30「书创建的第一页叫目录吧，不叫作品」；此前 2026-09-10 =「作品」）
   try {
     const empty = await packProject(emptyProject());
-    const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder());
+    const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder(), { encrypted: wantEncrypt });
     if (!editor.isParked()) await editor.park();
-    await project.createInStore(name, firstNode);
+    await project.createInStore(name, firstNode, { encrypted: wantEncrypt });
     document.body.dataset.project = "1";
     libraryReturn = "replaced";
     if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
     setStatus(t("project.created", { name: parseDocName(name).stem }));
-    if (wantEncrypt) {   // 勾了加密：走顶栏锁钮同一条路（先要密码；取消密码框 = 这本书先明文，说清楚，锁钮随时可封）
-      await project.toggleEncryption(() => Promise.resolve(false), withBusy);
-      if (!project.encrypted()) setStatus(t("project.encryptSkipped"), { error: true });
-    }
   } catch (e) { reportError(e); setStatus(t("project.createFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
 async function openLocalProjectFlow(): Promise<void> {
@@ -1494,6 +1493,7 @@ pip = createPip(pageEl, [$("candidateBar")], {
 });
 setBeforeModal(closePipIfOpen);
 function renderTopbar(): void {
+  syncImeMemoryOnly();
   if (project.active()) {   // 工程模式：顶栏 = 工程名（节点名住纸面顶部的章节名框）；加密/只读钮属于 txt 稿
     docNameButton.hidden = false; docNameButton.textContent = project.displayName() ?? ""; docNameButton.classList.remove("pending");
     docNameButton.title = t("top.docName"); docNameButton.setAttribute("aria-label", t("top.docName"));
@@ -1744,10 +1744,17 @@ async function toggleIme(): Promise<void> { await setImeEnabled(!ime.enabled); }
 
 // RIME 用户词库 ↔ collection（事件驱动节流；idle/unload 无条件 flush）
 let lastDictPushAt = 0, dictPushInFlight = false;
+const KV_DICT_CLEARED = "rimeClearedAt";   // 这台设备跟上过的「清空用户词库」时刻
+const dictClearedAt = (): number => Number(deviceKvGet(KV_DICT_CLEARED) ?? 0) || 0;
 async function pushUserDict(): Promise<void> {
-  if (dictPushInFlight || !ime.initialized) return;
+  if (dictPushInFlight || !ime.initialized || ime.memoryOnly) return;   // 开着加密稿：内存层里有不许出门的词（2026-11-03，家族规则书 §1 第 5 条）
+  if ((rimeDict.getItem<UserDictDump>("dump")?.clearedAt ?? 0) > dictClearedAt()) { await pullUserDict(); return; }   // 别的设备清过、这台还没跟上：先跟上，别把旧词又传上去
   dictPushInFlight = true;
-  try { const dump = await ime.dumpUserDir(); if (dump?.files?.length) { const savedAt = Date.now(); dictRestoredSavedAt = savedAt; rimeDict.setItem("dump", { ...dump, savedAt, device: deviceLabel() }); lastDictPushAt = savedAt; } }   // 先记 savedAt：自己推的 onChange 不再回灌重置引擎
+  try {
+    const dump = await ime.dumpUserDir();
+    if (ime.memoryOnly) return;   // 导的时候开了加密稿
+    if (dump?.files?.length) { const savedAt = Date.now(); const clearedAt = dictClearedAt(); dictRestoredSavedAt = savedAt; rimeDict.setItem("dump", { ...dump, savedAt, device: deviceLabel(), ...(clearedAt ? { clearedAt } : {}) }); lastDictPushAt = savedAt; }   // 先记 savedAt：自己推的不当别人推的
+  }
   finally { dictPushInFlight = false; }
 }
 function maybePushUserDict(): Promise<void> { return Date.now() - lastDictPushAt < USER_DICT_PUSH_INTERVAL_MS ? Promise.resolve() : pushUserDict(); }
@@ -1761,11 +1768,34 @@ function scheduleUserDictPush(): void {
 let dictRestoredSavedAt = 0;
 async function pullUserDict(): Promise<void> {
   const dump = rimeDict.getItem<UserDictDump>("dump");
-  if (!dump?.files?.length || !ime.initialized) return;
+  if (!dump || !ime.initialized || ime.memoryOnly) return;   // 开着加密稿不往内存层混（关稿时会一起丢）；关稿后 syncImeMemoryOnly 再拉一次
+  if ((dump.clearedAt ?? 0) > dictClearedAt()) { await ime.clearUserDict(); deviceKvSet(KV_DICT_CLEARED, String(dump.clearedAt)); diagNote("ime", "user dict cleared (asked by another device)"); }
+  if (!dump.files?.length) return;
   if ((dump.savedAt ?? 0) <= dictRestoredSavedAt) return;
   dictRestoredSavedAt = dump.savedAt ?? Date.now();
   await ime.restoreUserDir(dump);
 }
+// 加密稿里学到的词只进内存（家族规则书 §1 第 5 条：加密稿的一切副产品只存密文；Fable 11-03 裁定）：本次会话能联想，关稿即忘，不落 /rime、不进同步文件。明文稿照旧。
+function syncImeMemoryOnly(): void {
+  const on = project.active() ? project.encrypted() : (!editor.isParked() && editor.state.encrypted);
+  if (on === ime.memoryOnly) return;
+  diagNote("ime", `learned words: ${on ? "memory only (encrypted doc open)" : "saved again (encrypted doc closed)"}`);
+  void ime.setMemoryOnly(on).then(() => { if (!on) void pullUserDict(); }).catch((e) => reportError(e));
+}
+/** 设置 →「清空用户词库…」（2026-11-03）：以前在加密稿里学到的词可能已经在词库里（从哪篇学的分不出来），给人一个清的入口；默认不自动清。别的设备看到 clearedAt 也会清。 */
+async function clearUserDictFlow(): Promise<void> {
+  if (!ime.initialized) { setStatus(t("ime.clearDictNotReady")); return; }
+  if (!(await openConfirmSheet(t("ime.clearDictTitle"), t("ime.clearDictMsg"), { okLabel: t("ime.clearDictOk"), cancelLabel: t("common.cancel") }))) return;
+  try {
+    await ime.clearUserDict();
+    const now = Date.now();
+    deviceKvSet(KV_DICT_CLEARED, String(now)); dictRestoredSavedAt = now; lastDictPushAt = now;
+    rimeDict.setItem("dump", { files: [], savedAt: now, clearedAt: now, device: deviceLabel() });
+    diagNote("ime", "user dict cleared (asked here)");
+    setStatus(t("ime.clearDictDone"));
+  } catch (e) { reportError(e); setStatus(t("ime.clearDictFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
+}
+$("clearUserDictButton").addEventListener("click", () => { void clearUserDictFlow(); });
 rimeDict.onChange("dump", () => { void pullUserDict(); });
 
 // ── 语音（全本机：硬规则 #8 声音不出设备；Web Speech / Groq / OpenAI 2026-09-03 sunset）──
@@ -2610,4 +2640,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { gate, cloudOnline, version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };
+(window as unknown as { __xhw?: unknown }).__xhw = { gate, cloudOnline, newProject: newProjectFlow, liftDraft: liftDraftToBook, looksEncrypted: (b: Blob | Uint8Array) => appEncryption.looksEncryptedContainer(b), version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };

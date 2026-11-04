@@ -125,8 +125,8 @@ export declare const S: {
         readonly en: "Offline · saved locally, uploads when back online";
     };
     readonly "save.title.encryptPending": {
-        readonly zh: "加密还没成功 · 本地已存、未上云";
-        readonly en: "Encryption pending · saved locally, not uploaded";
+        readonly zh: "加密还没成功 · 这些字还没存";
+        readonly en: "Encryption pending · not saved yet";
     };
     readonly "save.synced": {
         readonly zh: "已同步";
@@ -861,8 +861,8 @@ export declare const S: {
         readonly en: "This new draft will be saved in plaintext";
     };
     readonly "st.encryptPendingHint": {
-        readonly zh: "加密还没成功（本地已存、不会推云）——联网后会自动重试";
-        readonly en: "Encryption has not succeeded yet (saved locally, not pushed) — retries automatically when online";
+        readonly zh: "加密还没成功，这些字还没存——下一次改动时会再试";
+        readonly en: "Encryption has not succeeded yet, so this is not saved — it will retry on your next change";
     };
     readonly "st.encryptedKeepName": {
         readonly zh: "已加密 {time}；文件名「{name}」不变（OneDrive 上可见，想藏点顶栏改名）";
@@ -1055,6 +1055,38 @@ export declare const S: {
     readonly "cf.renameOldKeep": {
         readonly zh: "留着旧的";
         readonly en: "Keep the old one";
+    };
+    readonly "ui.ime.clearDict": {
+        readonly zh: "清空用户词库…";
+        readonly en: "Clear learned words…";
+    };
+    readonly "ui.ime.clearDictHint": {
+        readonly zh: "输入法学过的词（这台设备上的，和同步到网盘的那一份）。加密稿里学到的词不会存进去";
+        readonly en: "Words the input method has learned (on this device and the copy synced to OneDrive). Words learned in encrypted drafts are not saved to it";
+    };
+    readonly "ime.clearDictTitle": {
+        readonly zh: "清空用户词库？";
+        readonly en: "Clear learned words?";
+    };
+    readonly "ime.clearDictMsg": {
+        readonly zh: "这台设备上学过的词和网盘里同步的那一份都会清掉，别的设备下次同步时也会清。以后重新学。\n\n旧版本在加密稿里打过的词可能已经学进去了，分不出是从哪篇学的，所以只能整个清。OneDrive 自己留的历史版本不归这里管。";
+        readonly en: "Words learned on this device and the copy synced to OneDrive will be cleared, and other devices will clear theirs on their next sync. It will learn again from scratch.\n\nWords typed in encrypted drafts on older versions may already be in there, and they can't be told apart, so it can only be cleared as a whole. Version history kept by OneDrive itself isn't touched.";
+    };
+    readonly "ime.clearDictOk": {
+        readonly zh: "清空";
+        readonly en: "Clear";
+    };
+    readonly "ime.clearDictDone": {
+        readonly zh: "用户词库清空了";
+        readonly en: "Learned words cleared";
+    };
+    readonly "ime.clearDictFailed": {
+        readonly zh: "没清成：{e}";
+        readonly en: "Could not clear: {e}";
+    };
+    readonly "ime.clearDictNotReady": {
+        readonly zh: "输入法还没加载好，等一下再清";
+        readonly en: "The input method is still loading";
     };
     readonly "cf.checkingCloud": {
         readonly zh: "正在检查云端…";
@@ -1949,8 +1981,8 @@ export declare const S: {
         readonly en: "Encrypt this book (sealed on creation; asks for the password first)";
     };
     readonly "project.encryptSkipped": {
-        readonly zh: "没设密码，这本书先是明文——顶栏锁钮随时可加密";
-        readonly en: "No password set — the book stays plain for now; the lock button in the top bar can encrypt it any time";
+        readonly zh: "没有密码，这本没有建";
+        readonly en: "No password, so this was not created";
     };
     readonly "project.defaultName": {
         readonly zh: "作品";

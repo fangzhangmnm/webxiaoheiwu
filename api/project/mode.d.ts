@@ -177,7 +177,9 @@ export declare function createProjectMode(d: ProjectModeDeps): {
         promptUnlock?: boolean;
     }) => Promise<boolean>;
     openLocal: (lh: LocalHome) => Promise<boolean>;
-    createInStore: (projectName: string, firstNode: string) => Promise<void>;
+    createInStore: (projectName: string, firstNode: string, opts?: {
+        encrypted?: boolean;
+    }) => Promise<void>;
     adoptName: (newName: string) => void;
     close: () => Promise<void>;
     flushLocal: () => Promise<void>;

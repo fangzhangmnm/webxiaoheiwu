@@ -12,7 +12,7 @@ const NATURAL_CODE_STARTER_MAP: Record<string, string[]> = {
   na: ["那", "哪", "纳"], ai: ["爱", "矮", "哎"], ma: ["吗", "妈", "马"], le: ["了", "乐", "勒"], ren: ["人", "仁", "忍"],
   wen: ["文", "问", "闻"], xie: ["写", "谢", "鞋"], xiaoshuo: ["小说"],
 };
-const RIME_WORKER_URL = "./vendor/my-rime/worker.js";
+const RIME_WORKER_URL = "./vendor/my-rime/worker-guard.js";   // 2026-11-03：上游 worker.js 外面包一层，多一个「只进内存」开关（见 setMemoryOnly）
 export const IME_SCHEMAS = ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin_mspy", "double_pinyin", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "wubi86"] as const;
 export type ImeSchema = (typeof IME_SCHEMAS)[number];   // 全拼（默认）/ 语句流 / 微软·自然码·小鹤·ABC·拼音加加 双拼（user「双拼顺手支持其他方案」）/ 五笔86（「加一个五笔玩玩」，依赖 pinyin_simp → stroke）
 export const DEFAULT_SCHEMA: ImeSchema = "luna_pinyin";
@@ -38,6 +38,8 @@ interface Backend {
   changePage(prev: boolean): Promise<ImeResult>;
   dumpUserDir?(): Promise<UserDictDump>;
   restoreUserDir?(dump: UserDictDump): Promise<void>;
+  setMemoryOnly?(on: boolean): Promise<void>;
+  clearUserDict?(): Promise<void>;
   setSimplified?(v: boolean): Promise<void>;
   /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
   setPageSize?(n: number): Promise<void>;
@@ -45,7 +47,8 @@ interface Backend {
   setFuzzy?(pairs: FuzzyPair[]): Promise<void>;
   readonly fuzzyError?: string | null;
 }
-export interface UserDictDump { files: { path: string; data: string }[]; savedAt?: number; device?: string }
+/** clearedAt = 有人点过「清空用户词库」的时刻（别的设备看到比自己记的新 = 先清再说，不然它会把旧词又传上去）。 */
+export interface UserDictDump { files: { path: string; data: string }[]; savedAt?: number; device?: string; clearedAt?: number }
 
 const isAsciiLetter = (e: KeyboardEvent) => !(e.ctrlKey || e.altKey || e.metaKey) && /^[a-z]$/i.test(e.key);
 const isRoutedPunct = (e: KeyboardEvent) => !(e.ctrlKey || e.altKey || e.metaKey) && PUNCTUATION_KEYS.has(e.key);
@@ -102,6 +105,56 @@ class RimeWorkerBackend implements Backend {
     // 部署完成会刷新会话、开关可能被打回方案默认（Quest 首次部署是异步的）：worker 发 control/deployStatus → 作废「已重申」并在后台立刻重申（v2.3.31）
     this.worker.addEventListener("message", (e: MessageEvent) => { const m = e.data as { type?: string; name?: string; args?: unknown[] } | null; if (m?.type === "control" && m.name === "deployStatus") { this.optionsFresh = false; if (m.args?.[0] === "success") this.refreshOptionsSoon(); } });
     await this.setSchema(schema);
+    if (this.wantMemoryOnly) await this.setMemoryOnly(true);
+  }
+  // ── 学到的词只进内存（开着加密稿；家族规则书 §1 第 5 条，Fable 11-03 裁定：本次会话能联想，关稿即忘）──
+  //   librime 把最后一个词挂在没提交的事务里，下一次上屏或关库时才写（实测）。所以进出都先重开一次引擎把它提交掉，再动文件：
+  //   进 = 重开（前面明文稿挂着的词落下来）→ 垫片把写回 IndexedDB 关掉（worker-guard.js，打开那一下落盘一次）→ 记下此刻的用户词库。
+  //   出 = 重开（加密稿挂着的词提交进内存层，关掉老的数据库，它的文件句柄不会再往回写）→ 删掉这段时间多出来的文件、写回记下的那份 → 再重开（新数据库读回来的就是记下的那份）→ 才恢复写回。
+  //   多出来的文件必须删：LevelDB 重开时会重放比 MANIFEST 新的日志，不删 = 学到的词又回来了。全程排在输入法队列里，和按键不抢。
+  wantMemoryOnly = false;
+  private ephemeral = false;
+  private beforeEphemeral: UserDictDump = { files: [] };
+  private async enterEphemeral(): Promise<void> { await this.reopenEngine(); await this.call("setMemoryOnly", true); this.beforeEphemeral = await this.dumpUserDir(); this.ephemeral = true; }
+  private async leaveEphemeral(): Promise<void> {
+    await this.reopenEngine();
+    await this.replaceUserFiles(this.beforeEphemeral);
+    await this.reopenEngine();
+    await this.call("setMemoryOnly", false);
+    this.ephemeral = false; this.beforeEphemeral = { files: [] };
+  }
+  private async replaceUserFiles(dump: UserDictDump): Promise<void> {
+    const now = await this.dumpUserDir();
+    const keep = new Set(dump.files.map((f) => f.path));
+    const emptied = new Set<string>();
+    for (const f of now.files) if (!keep.has(f.path)) {
+      try { await this.call("fsOperate", "unlink", `/rime/${f.path}`); } catch (e) { console.warn("[ime] unlink failed", f.path, e); }
+      const i = f.path.lastIndexOf("/"); if (i > 0) emptied.add(f.path.slice(0, i));
+    }
+    // 空了的目录也删掉（实测）：内存盘 rename 覆盖同名文件时留下陈旧节点（LevelDB 的 CURRENT 就是这么换的），unlink 新节点后旧的又浮上来，
+    //   读到旧 CURRENT = 「CURRENT points to a non-existent file」、这个方案的词库打不开。陈旧节点挂在旧目录名下，新建的目录碰不到。还有文件留着的目录 rmdir 会失败，正好不动（CURRENT 在 keep 里 = 只覆盖）。
+    for (const dir of emptied) { try { await this.call("fsOperate", "rmdir", `/rime/${dir}`); } catch { /* 还有文件留着 */ } }
+    await this.writeUserFiles(dump);
+  }
+  private async reopenEngine(): Promise<void> { await this.call("setIME", this.schema); await this.applyOptions(); }
+  setMemoryOnly(on: boolean): Promise<void> {
+    return this.enqueue(async () => {
+      if (on === this.ephemeral) return;
+      if (on) await this.enterEphemeral();
+      else { await this.leaveEphemeral(); this.resetState(); }
+    }, { compose: false });
+  }
+  /** 「清空用户词库」：这台设备学过的词全丢（模糊音的补丁和编译产物不算词库，留着）。setIME 会连带把空目录写回 IndexedDB。 */
+  clearUserDict(): Promise<void> {
+    return this.enqueue(async () => {
+      const was = this.ephemeral;
+      if (was) await this.leaveEphemeral();
+      await this.reopenEngine();   // 挂着的词提交掉、老数据库关掉（同上）
+      await this.replaceUserFiles({ files: [] });
+      await this.reopenEngine();   // setIME 连带把空目录写回 IndexedDB
+      if (was) await this.enterEphemeral();
+      this.resetState();
+    }, { compose: false });
   }
   simplified = true;
   /** 会话开关：简/繁（user 2026-09-04「quest 输入法拼命出繁体」）、中文标点、关 emoji 候选（luna 方案默认开，写小说是噪音）。
@@ -282,6 +335,11 @@ class RimeWorkerBackend implements Backend {
   }
   async restoreUserDir(dump: UserDictDump): Promise<void> {
     if (!dump?.files?.length) return;
+    await this.writeUserFiles(dump);
+    try { await this.call("setIME", this.schema); await this.applyOptions(); }
+    catch (e) { console.warn("[ime] restoreUserDir re-init failed", e); }
+  }
+  private async writeUserFiles(dump: UserDictDump): Promise<void> {
     const root = "/rime";
     for (const entry of dump.files) {
       if (isFuzzyArtifactPath(entry.path)) continue;   // 同 dump：别的设备的编译产物不写回来
@@ -291,8 +349,6 @@ class RimeWorkerBackend implements Backend {
       try { await this.call("fsOperate", "writeFile", `${root}/${entry.path}`, unb64(entry.data)); }
       catch (e) { console.warn("[ime] restoreUserDir write failed", entry.path, e); }
     }
-    try { await this.call("setIME", this.schema); await this.applyOptions(); }
-    catch (e) { console.warn("[ime] restoreUserDir re-init failed", e); }
   }
 }
 
@@ -351,7 +407,7 @@ export class NaturalCodeIME {
     if (this.initialized) return;
     if (!this.initPromise) {   // 加载中连点不起第二个 worker（审计 UI-21）
       const rime = new RimeWorkerBackend();
-      rime.simplified = this.simplified; rime.pageSize = this.pageSize; rime.fuzzy = this.fuzzy;
+      rime.simplified = this.simplified; rime.pageSize = this.pageSize; rime.fuzzy = this.fuzzy; rime.wantMemoryOnly = this.memoryOnly;
       this.backend = rime;
       this.initPromise = (async () => {
         try { await rime.initialize(schema); this.initializeError = null; }
@@ -361,6 +417,10 @@ export class NaturalCodeIME {
     }
     await this.initPromise;
   }
+  /** 现在学到的词是不是只留内存（开着加密稿）。同步读：app 推 / 拉词库前看它。 */
+  memoryOnly = false;
+  setMemoryOnly(on: boolean): Promise<void> { this.memoryOnly = on; return this.backend.setMemoryOnly?.(on) ?? Promise.resolve(); }
+  clearUserDict(): Promise<void> { return this.backend.clearUserDict?.() ?? Promise.resolve(); }
   /** 预热（空闲时调一次；见 RimeWorkerBackend.warmUp）。未初始化 / 降级后端 → 无事。 */
   warmUp(): Promise<void> {
     const b = this.backend as { warmUp?: () => Promise<void> };

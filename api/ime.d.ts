@@ -42,6 +42,8 @@ interface Backend {
     changePage(prev: boolean): Promise<ImeResult>;
     dumpUserDir?(): Promise<UserDictDump>;
     restoreUserDir?(dump: UserDictDump): Promise<void>;
+    setMemoryOnly?(on: boolean): Promise<void>;
+    clearUserDict?(): Promise<void>;
     setSimplified?(v: boolean): Promise<void>;
     /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
     setPageSize?(n: number): Promise<void>;
@@ -49,6 +51,7 @@ interface Backend {
     setFuzzy?(pairs: FuzzyPair[]): Promise<void>;
     readonly fuzzyError?: string | null;
 }
+/** clearedAt = 有人点过「清空用户词库」的时刻（别的设备看到比自己记的新 = 先清再说，不然它会把旧词又传上去）。 */
 export interface UserDictDump {
     files: {
         path: string;
@@ -56,6 +59,7 @@ export interface UserDictDump {
     }[];
     savedAt?: number;
     device?: string;
+    clearedAt?: number;
 }
 export declare class NaturalCodeIME {
     enabled: boolean;
@@ -86,6 +90,10 @@ export declare class NaturalCodeIME {
      *  文档先开；RIME 后端一创建就接管，初始化是它队列里的第一项，加载期间用户打的字排在后面等它——不丢字、也不会被降级后端抢答。
      *  加载失败才换成 starter-map（此时排着的字也交给 starter-map 重打一遍不现实：清掉组字并报错，这是罕见路径）。 */
     initialize(schema?: ImeSchema): Promise<void>;
+    /** 现在学到的词是不是只留内存（开着加密稿）。同步读：app 推 / 拉词库前看它。 */
+    memoryOnly: boolean;
+    setMemoryOnly(on: boolean): Promise<void>;
+    clearUserDict(): Promise<void>;
     /** 预热（空闲时调一次；见 RimeWorkerBackend.warmUp）。未初始化 / 降级后端 → 无事。 */
     warmUp(): Promise<void>;
     /** 换方案（全拼 ↔ 微软双拼）；未初始化时只记下，初始化时生效。 */

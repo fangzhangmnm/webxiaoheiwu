@@ -105,7 +105,7 @@ export function createEditor(d: EditorDeps) {
   // ── 落盘 / 推云 ──
   let persistInFlight: Promise<void> | null = null;   // 串行：两个 persist 同飞 = 双建稿（审计 L3）
   let renameInFlight = false;                          // 改名中不写旧名（写了旧名就复活成 local-only 脏稿，审计 L7）
-  let encryptPending = false;                          // 预定加密但物化时封失败：不推云、下次 persist 重试（审计 M8）
+  let encryptPending = false;                          // 预定加密但封失败：什么都没写（字还在编辑器里）、下次 persist 重试（审计 M8；2026-11-03 起先封再存）
   let pushFailures = 0;                                // 推云连续失败 → 指数退避（审计 L2）
   async function persist(push: boolean): Promise<void> {
     if (persistInFlight) await persistInFlight;
@@ -119,25 +119,19 @@ export function createEditor(d: EditorDeps) {
       if (!st.name) {
         if (!st.pendingDate) return;
         if (!text && !st.pendingTitle) return;   // 空稿不物化
-        const name = await createDoc(st.pendingTitle ?? "", text, st.pendingDate, st.pendingDir);   // 没给名 → 日期码（加密稿默认即藏标题）
+        // 新建时就定好的加密（user 2026-09-03「加密是一开始就定好的」）：先封再存（2026-11-03 Fable 裁定）——IndexedDB 里一刻明文都不留。
+        //   封不上（没口令 / 出错）= 这次不写：字还在编辑器里，状态常驻提示，下次落盘再试。
+        let name: string;
+        try { name = await createDoc(st.pendingTitle ?? "", text, st.pendingDate, st.pendingDir, { encrypted: st.encrypted }); encryptPending = false; }   // 没给名 → 日期码（加密稿默认即藏标题）
+        catch (e) { if (!st.encrypted) throw e; encryptPending = true; reportError(e, "warning"); return; }
         if (gen !== loadGen) return;   // 建稿期间用户切走了：文件留在本地（下次列表可见），不把身份塞给现在的编辑器
-        // 新建时就定好的加密（user 2026-09-03「加密是一开始就定好的」）：物化即封——先封再把 name 暴露给 UI/抽屉，明文只在本地 IDB 停留这一步，永不推云（createDoc 是 tryPush:false）。
-        if (st.encrypted) {
-          try { await encryptDoc(name); encryptPending = false; }
-          catch (e) { encryptPending = true; reportError(e, "warning"); }   // 保持「预定加密」：不推云，状态栏常驻提示，下次 persist 重试
-          if (gen !== loadGen) return;
-        }
         st.name = name; st.pendingDate = null; st.pendingTitle = null;
         savedText = text;
         setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
         d.onDocChanged();
       }
       const name = st.name!;
-      if (encryptPending) {
-        try { await encryptDoc(name); encryptPending = false; } catch (e) { reportError(e, "log"); }
-        if (gen !== loadGen) return;
-      }
-      const effPush = push && !encryptPending;
+      const effPush = push;
       const r = await saveDoc(name, text, { push: effPush });
       if (effPush) diagNote("sync", `push "${name}": ${r.pushed ? "pushed" : `not pushed (${r.reason ?? "?"})`}${r.resolution ? ` resolution=${r.resolution}` : ""}`);   // 黑匣子：每一次推和它的结果（book 模式 mode.ts 同款）
       if (gen !== loadGen) return;   // 切走了：字节已落在捕获的 name 上，状态归新稿管

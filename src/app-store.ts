@@ -30,6 +30,13 @@ let _activeFileName: string | null = null;
 /** 当前打开的稿（全名）：cloud-gone 去抖 trash 绝不碰它。 */
 export function setActiveFileName(name: string | null): void { _activeFileName = name; }
 
+/** 加密书的封面尾片（ADR-0012）：明文是书（zip 魔数）就抽封面；txt 稿 / 没封面 → null。库封容器时用，docs.ts「先封再存」也用同一个。 */
+export async function makeDocPeek(plain: Blob): Promise<Uint8Array | null> {
+  const head = new Uint8Array(await plain.slice(0, 4).arrayBuffer());
+  if (!(head.length === 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04)) return null;
+  try { return await zipReadEntry(plain, THUMBNAIL_ENTRY); } catch { return null; }
+}
+
 const store: Store = createStore({
   provider: od.provider,
   ui: storeUI,
@@ -38,7 +45,7 @@ const store: Store = createStore({
   encryption: appEncryption,
   reconcilePolicy: "app-driven",
   // peek（2.1，ADR-0012）：加密书的封面另封成密文尾片——明文是书（zip 魔数）就抽 Thumbnails/thumbnail.png；txt 稿 / 没封面 → null（空 peek 也加密，verifyPassword 靠它便宜验密码）。
-  crypt: { getPassword, makePeek: async (plain) => { const head = new Uint8Array(await plain.slice(0, 4).arrayBuffer()); if (!(head.length === 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04)) return null; try { return await zipReadEntry(plain, THUMBNAIL_ENTRY); } catch { return null; } } },
+  crypt: { getPassword, makePeek: makeDocPeek },
   // 2.0 两档：txt 走编码链验真；工程 zip 只看魔数 PK\x03\x04（内容在 project/format.ts 解包时再验）。挡的是 captive-portal HTML / 截断字节。
   validateAdopt: async (plain) => { const b = new Uint8Array(await plain.arrayBuffer()); return (b.length >= 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04) || looksLikeTextDoc(b); },
   // 文档种类表（store 0.16，提案 = 库仓 ai-docs/20260929-proposal-doc-types.md）：身份怎么切、云端名是不是加密容器、取回撞名戳插在哪、

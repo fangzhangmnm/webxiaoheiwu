@@ -16,6 +16,7 @@ const STATIC_PRECACHE = [
   "./styles.css",
   "./vendor/internal-css/gallery.css",
   "./vendor/msal/msal-browser.min.js",
+  "./vendor/my-rime/worker-guard.js",
   "./vendor/my-rime/worker.js",
   "./vendor/my-rime/dist/rime.js",
   "./vendor/my-rime/dist/rime.wasm",

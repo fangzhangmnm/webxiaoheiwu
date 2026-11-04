@@ -4,8 +4,9 @@
 // 类型只从 @internal/store 拿（import type）；值级 store 面一律经 app-store 的 requireStore()。
 
 import type { SyncState, FolderSnapshot, SaveResult, FreshResult, TrashOutcome, TrashItem, RawFile, WatchFolderErrorPhase } from "@internal/store";
-import { requireStore, isCached, isDirty, setActiveFileName } from "./app-store.ts";
-import { isUnlocked } from "./crypto-state.ts";
+import { requireStore, isCached, isDirty, setActiveFileName, makeDocPeek } from "./app-store.ts";
+import { isUnlocked, getPassword } from "./crypto-state.ts";
+import { appEncryption } from "./encryption.ts";
 import { isDocName, docKind, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, type TextEncodingName } from "./doc-model.ts";
 
 export interface DocListItem {
@@ -25,6 +26,17 @@ export interface DocListItem {
 export interface DocListFrame { folder: string; items: DocListItem[]; folders: string[]; complete: boolean; stale: boolean }
 
 const file = (name: string, mode: "new" | "existing" = "existing"): RawFile => requireStore().file(name, { mode });
+/** 新建时就加密：先封再存（家族规则书 §1 第 5 条；Fable 11-03 裁定）——写进 IndexedDB 的第一个字节就是容器（库的 save 对已是容器的输入原样存，和它自己 encrypt() 封出来的同形）。
+ *  没口令 / 封失败 = 抛，调用方不写任何东西：绝不留明文。口令要先问的事归调用方（ensureUnlocked）。 */
+async function sealForNewDoc(name: string, plain: Uint8Array | Blob): Promise<Uint8Array> {
+  const password = getPassword(name);
+  if (!password) throw new Error(`cannot seal "${name}": no password in memory`);
+  const blob = plain instanceof Blob ? plain : new Blob([plain]);
+  const peek = await makeDocPeek(blob).catch(() => null);
+  const base = name.slice(name.lastIndexOf("/") + 1), dot = base.lastIndexOf(".");   // 同库 cryptExtFor：容器 meta 里的真扩展名 = 身份最后一个点之后
+  const container = await appEncryption.packContainer({ dataBytes: new Uint8Array(await blob.arrayBuffer()), fileName: name, ext: dot > 0 && dot < base.length - 1 ? base.slice(dot + 1) : undefined, peek, password });
+  return new Uint8Array(await container.arrayBuffer());
+}
 // 2.0 工程（ADR-0008）：zip 容器走 store.zip()（ZipFile：多 getPeek；是不是 zip 容器由 docKinds 表说，种类不对当场抛）。字节对 store 不透明。
 const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().zip(name, { mode });
 /** 按身份分派句柄（2.0 两档：txt = RawFile、工程 = ZipFile）。身份动词（改名/移动/回收站/判加密）一律走这里，别裸用 file()。 */
@@ -40,13 +52,14 @@ export function pullProjectIfClean(name: string, opts?: PullIfCleanOpts): Promis
 export function isDocEncrypted(name: string): Promise<boolean> { return (docKind(name) === "project" ? zipFile(name) : file(name)).isEncrypted(); }
 export async function saveProjectBlob(name: string, blob: Blob, opts: { push: boolean }): Promise<SaveResult> { return await zipFile(name).save(blob, { tryPush: opts.push }); }
 /** 新建工程文件：撞名自动追加 " 1"…；返回最终身份（全路径）。 */
-export async function createProjectDoc(title: string, blob: Blob, date = formatDate(Date.now()), dir = ""): Promise<string> {
+export async function createProjectDoc(title: string, blob: Blob, date = formatDate(Date.now()), dir = "", opts: { encrypted?: boolean } = {}): Promise<string> {
   const base = makeDocName(date, title, dir, undefined, "project");
   const files = requireStore().files;
   for (let n = 0; n < 200; n++) {
     const cand = collisionCandidate(base, n);
     if (await files.occupied(cand)) continue;
-    await zipFile(cand, "new").save(blob, { tryPush: false });
+    await zipFile(cand, "new").save(opts.encrypted ? await sealForNewDoc(cand, blob) : blob, { tryPush: false });
+    if (opts.encrypted) invalidateEncryptedFlag(cand);
     return cand;
   }
   throw new Error("too many name collisions creating a project");
@@ -121,7 +134,9 @@ export async function readDoc(name: string): Promise<ReadDocResult> {
     return isUnlocked() ? { kind: "other-password" } : { kind: "locked" };
   }
   const { text, encoding } = decodeTextBytes(new Uint8Array(await blob.arrayBuffer()));
-  return { kind: "ok", text, encoding, encrypted };
+  // 纯云端的加密稿、这台第一次开（解锁着）：上面那次 isEncrypted 看的是还没有的本地字节 = 假，open 才拉下来解开。不再看一次，这一篇就被当成明文稿：
+  //   锁图标错、冲突留底按明文存、输入法照常学词（2026-11-03 工单 D2 的探针抓到）。
+  return { kind: "ok", text, encoding, encrypted: encrypted || (await f.isEncrypted().catch(() => false)) };
 }
 
 // ── 写（本地一定落；push 是 best-effort，读 pushed/resolution）──
@@ -130,20 +145,22 @@ export async function saveDoc(name: string, text: string, opts: { push: boolean 
 }
 
 /** 新建（惰性物化：编辑器在首次有内容时才调）。撞名自动追加 " 1"…；返回最终身份（全路径）。 */
-export async function createDoc(title: string, text: string, date = formatDate(Date.now()), dir = ""): Promise<string> {
+export async function createDoc(title: string, text: string, date = formatDate(Date.now()), dir = "", opts: { encrypted?: boolean } = {}): Promise<string> {
   const base = makeDocName(date, title, dir);
   const files = requireStore().files;
   for (let n = 0; n < 200; n++) {
     const cand = collisionCandidate(base, n);
     if (await files.occupied(cand)) continue;
-    await file(cand, "new").save(encodeText(text), { tryPush: false });
+    const plain = encodeText(text);
+    await file(cand, "new").save(opts.encrypted ? await sealForNewDoc(cand, plain) : plain, { tryPush: false });
+    if (opts.encrypted) invalidateEncryptedFlag(cand);
     return cand;
   }
   throw new Error("too many name collisions creating a document");
 }
 
 /** 「导出这一支」（ADR-0014 §6，2026-09-10 树 session）：子树 DFS 拼好的正文 → 书库里一篇新 txt（撞名 hex4，同 createDoc）。返回身份。下载那条路走 local-home.triggerDownload，不经 store。 */
-export function exportBranchToLibrary(title: string, text: string, dir = ""): Promise<string> { return createDoc(title, text, formatDate(Date.now()), dir); }
+export function exportBranchToLibrary(title: string, text: string, dir = "", opts: { encrypted?: boolean } = {}): Promise<string> { return createDoc(title, text, formatDate(Date.now()), dir, opts); }
 
 /** cancelled = 人在「旧的怎么办」面里选了取消（store 2.2.2 起）：一个字节没动，身份还是 name。oldKeptByUser = 人选了「留着旧的」（oldKept 同时为真）。 */
 export interface RenameResult { name: string; oldKept?: boolean; oldKeptByUser?: boolean; cloudDeferred?: boolean; cancelled?: boolean }

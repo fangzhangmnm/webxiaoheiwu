@@ -332,6 +332,8 @@ export function createProjectMode(d: ProjectModeDeps) {
     const s = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     d.setStatus(t("st.loading"));
     const r = await s.open(projectName);
+    // 纯云端的加密书、这台第一次开：上面那次看的是还没有的本地字节 = 假，open 才拉下来（同 docs.ts readDoc；2026-11-03 工单 D2）
+    if (!encrypted) { try { encrypted = await isDocEncrypted(projectName); } catch { /* 下面按打开结果走 */ } }
     if (g !== gen) return true;
     diagNote("book", `open "${projectName}": ${r.kind}${r.kind === "ok" ? ` pages=${s.project.contents.size}` : ""} encrypted=${encrypted}`);
     home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; forward = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
@@ -422,12 +424,12 @@ export function createProjectMode(d: ProjectModeDeps) {
     return ok;
   }
   /** 新建（store）：调用方已 createProjectDoc 得到身份；这里开一个空工程带首节点。 */
-  async function createInStore(projectName: string, firstNode: string): Promise<void> {
+  async function createInStore(projectName: string, firstNode: string, opts: { encrypted?: boolean } = {}): Promise<void> {
     d.onBeforeLoad?.(); await flushLocal();
     gen++; resetWorld();
     const s = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
-    home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = false; locked = false;
+    home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = !!opts.encrypted; locked = false;   // 调用方已先封再存（库按已存字节继续封）
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     applyReferences();
     await s.flush(false);

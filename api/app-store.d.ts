@@ -4,6 +4,8 @@ import type { Store, Collection, OneDriveAuth } from "@internal/store";
 export declare const auth: OneDriveAuth;
 /** 当前打开的稿（全名）：cloud-gone 去抖 trash 绝不碰它。 */
 export declare function setActiveFileName(name: string | null): void;
+/** 加密书的封面尾片（ADR-0012）：明文是书（zip 魔数）就抽封面；txt 稿 / 没封面 → null。库封容器时用，docs.ts「先封再存」也用同一个。 */
+export declare function makeDocPeek(plain: Blob): Promise<Uint8Array | null>;
 export declare function requireStore(): Store;
 export declare const prefs: Collection;
 export declare const appState: Collection;
