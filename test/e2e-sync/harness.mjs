@@ -86,7 +86,20 @@ export async function createWorld() {
     page.on("console", (m) => { if (m.type() === "error") errors.push(`[${tag}] console.error: ${m.text()}`); });
     const dev = {
       tag, page, ctx, errors,
-      async boot(url) { await page.goto(url, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw && (window.__xhw.editor.canEdit() || window.__xhw.project.active()), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady); await page.waitForTimeout(500); },
+      async boot(url) { await page.goto(url, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw && (window.__xhw.editor.canEdit() || window.__xhw.project.active()), null, { timeout: 20000 }); await page.evaluate(() => window.__xhw.fontReady); await page.waitForFunction(() => window.__xhw.gate.phase() !== "checking", null, { timeout: 20000 }); await page.waitForTimeout(500); },
+      /** 只等 app 起来（闸门罩着也算）：闸门场景自己看罩。 */
+      async bootRaw(url) { await page.goto(url, { waitUntil: "load" }); await page.waitForFunction(() => !!window.__xhw, null, { timeout: 20000 }); },
+      /** 下次开页的认证 / 网络样子（写进 localStorage，bridge 读）。 */
+      setGate: (cfg, signedOut = false) => page.evaluate(([c, o]) => { localStorage.setItem("e2eGate", JSON.stringify(c)); if (o) localStorage.setItem("e2eStartSignedOut", "1"); else localStorage.removeItem("e2eStartSignedOut"); }, [cfg, signedOut]),
+      /** 这次打开里改：window.__e2eGate 的字段。 */
+      patchGate: (cfg) => page.evaluate((c) => { Object.assign(window.__e2eGate, c); }, cfg),
+      /** 模拟断网 / 回线（navigator.onLine + 事件）。 */
+      net: (on) => page.evaluate((v) => { window.__e2eGate.net = v; window.dispatchEvent(new Event(v ? "online" : "offline")); }, on),
+      /** 模拟藏到后台 / 回前台。 */
+      hide: () => page.evaluate(() => { Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" }); document.dispatchEvent(new Event("visibilitychange")); }),
+      show: () => page.evaluate(() => { Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" }); document.dispatchEvent(new Event("visibilitychange")); }),
+      gateView: () => page.evaluate(() => { const g = document.getElementById("gateSheet"); return { up: !g.classList.contains("hidden"), title: document.getElementById("gateTitle").textContent, message: document.getElementById("gateMessage").textContent, buttons: [...document.querySelectorAll("#gateActions button")].map((b) => b.textContent), phase: window.__xhw.gate.phase(), bar: document.getElementById("offlineBar").classList.contains("hidden") ? null : document.querySelector("#offlineBar .offline-bar-text").textContent, online: window.__xhw.cloudOnline(), authCalls: window.__e2eAuthCalls ?? 0 }; }),
+      clickGate: (label) => page.evaluate((src) => { const b = [...document.querySelectorAll("#gateActions button")].find((x) => x.textContent === src); if (!b) throw new Error("gate button not found: " + src); b.click(); }, label),
       wait: (ms) => page.waitForTimeout(ms),
       eval: (fn, arg) => page.evaluate(fn, arg),
       text: () => page.evaluate(() => document.getElementById("editor").value),

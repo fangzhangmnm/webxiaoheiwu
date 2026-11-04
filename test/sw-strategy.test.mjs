@@ -26,7 +26,8 @@ class MockResponse {
 }
 
 // scopePath = SW 脚本自己的 pathname（决定 SCOPE_IS_DEV）。返回驱动句柄。
-function loadSW(scopePath) {
+function loadSW(scopePath, cacheNames = []) {
+  const deleted = [];
   const handlers = {};
   const store = new Map();
   const cache = {
@@ -42,7 +43,7 @@ function loadSW(scopePath) {
       clients: { matchAll: async () => [], claim: async () => {} },
       registration: { scope: ORIGIN + "/" },
     },
-    caches: { open: async () => cache, keys: async () => [], delete: async () => true, match: cache.match },
+    caches: { open: async () => cache, keys: async () => cacheNames, delete: async (k) => { deleted.push(k); return true; }, match: cache.match },
     fetch: (req) => fetchImpl(req),
     Response: MockResponse,
     Headers,   // #60-A withNoStore 用；真 SW 全局有
@@ -53,7 +54,7 @@ function loadSW(scopePath) {
   vm.createContext(ctxObj);
   vm.runInContext(readFileSync(SW_PATH, "utf8"), ctxObj);
   return {
-    handlers, store,
+    handlers, store, deleted,
     seed: (url, resp) => store.set(url, resp),
     setFetch: (fn) => { fetchImpl = fn; },
   };
@@ -66,6 +67,30 @@ async function drive(handlers, { url, mode = "navigate" }) {
   handlers.fetch(event);
   return p ? await p : null;
 }
+
+describe("service-worker · 正式版 / 开发版的壳缓存互不相删（同一个网址，2026-11-03）", () => {
+  const activate = async (sw) => { let p; sw.handlers.activate({ waitUntil: (x) => { p = x; } }); await p; };
+  const ALL = ["xiaoheiwu-aaa111", "xiaoheiwu-dev-bbb222", "xiaoheiwu-boot", "pwa-models", "justreadbooks-ccc333"];
+  it("开发版 activate：只删开发版自己的，正式版的壳和别人的都留着", async () => {
+    const sw = loadSW("/dev/service-worker.js", ALL);
+    await activate(sw);
+    assert(!sw.deleted.includes("xiaoheiwu-aaa111"), "不许删正式版的壳");
+    assert(!sw.deleted.includes("pwa-models") && !sw.deleted.includes("justreadbooks-ccc333"), "不许删别人的");
+    assert(sw.deleted.includes("xiaoheiwu-dev-bbb222"), "自己的旧壳要删");
+  });
+  it("正式版 activate：只删正式版自己的，开发版的壳和别人的都留着", async () => {
+    const sw = loadSW("/service-worker.js", ALL);
+    await activate(sw);
+    assert(!sw.deleted.includes("xiaoheiwu-dev-bbb222"), "不许删开发版的壳");
+    assert(!sw.deleted.includes("pwa-models") && !sw.deleted.includes("justreadbooks-ccc333"), "不许删别人的");
+    assert(sw.deleted.includes("xiaoheiwu-aaa111"), "自己的旧壳要删");
+  });
+  it("重启后找回缓存名：只认自己这一边（不会错把另一边的壳当自己的）", () => {
+    const src = readFileSync(SW_PATH, "utf8");
+    assert(/\(await caches\.keys\(\)\)\.filter\(isOwnCache\)/.test(src));
+    assert(/CACHE_NAME = `\$\{OWN_PREFIX\}\$\{bundleHash\}`/.test(src), "新壳的名字带范围");
+  });
+});
 
 describe("service-worker · 策略路由 (prod cache-first / dev network-first)", () => {
   it("prod：在线命中缓存 → 服缓存（cache-first）", async () => {

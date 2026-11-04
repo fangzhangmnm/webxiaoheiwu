@@ -184,7 +184,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     pushNow: (opts?: {
         force?: boolean;
     }) => Promise<void>;
-    refreshIfClean: () => Promise<void>;
+    refreshIfClean: () => Promise<string | undefined>;
     noteExternalEdit: () => void;
     pendingLocalSave: () => boolean;
     lastPersistMs: () => number;

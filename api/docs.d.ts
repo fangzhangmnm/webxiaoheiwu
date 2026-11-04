@@ -67,10 +67,13 @@ export declare function saveDoc(name: string, text: string, opts: {
 export declare function createDoc(title: string, text: string, date?: string, dir?: string): Promise<string>;
 /** 「导出这一支」（ADR-0014 §6，2026-09-10 树 session）：子树 DFS 拼好的正文 → 书库里一篇新 txt（撞名 hex4，同 createDoc）。返回身份。下载那条路走 local-home.triggerDownload，不经 store。 */
 export declare function exportBranchToLibrary(title: string, text: string, dir?: string): Promise<string>;
+/** cancelled = 人在「旧的怎么办」面里选了取消（store 2.2.2 起）：一个字节没动，身份还是 name。oldKeptByUser = 人选了「留着旧的」（oldKept 同时为真）。 */
 export interface RenameResult {
     name: string;
     oldKept?: boolean;
+    oldKeptByUser?: boolean;
     cloudDeferred?: boolean;
+    cancelled?: boolean;
 }
 /** 改文件名 = 改身份（tryMove；ADR-0007：文件名是管理句柄不是标题）。撞名追加后缀。
  *  ⚠ 改名后新名不带日期前缀 → 名字降序排序下这篇会跳位——**user 2026-09-09 拍板「是 feature 不是 bug」**，别「修」（ai-docs/20260909-sync-hardening-round-vs-weebpaint.md §4）。返回 {name(未变 → 原名), oldKept(库把旧名原地留着), cloudDeferred(云端腿待推)}；失败 → null（调用方报错）。 */

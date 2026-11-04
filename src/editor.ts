@@ -16,6 +16,7 @@ import { deviceKvGet, deviceKvGetJson, deviceKvSet } from "./device-kv.ts";
 import { reportError } from "./error-badge.ts";
 import { rescueText } from "./rescue.ts";
 import { note as diagNote } from "./diag-log.ts";
+import { cloudOnline } from "./cloud-gate.ts";
 import { t } from "./i18n/index.ts";
 
 export interface StatusOpts { error?: boolean; unsynced?: boolean }
@@ -178,7 +179,7 @@ export function createEditor(d: EditorDeps) {
     const target = Math.min(now + PUSH_DEBOUNCE_MS, firstDirtyAt + PUSH_HEARTBEAT_MS) + extraDelayMs;
     pushTimer = setTimeout(() => { void pushNow(); }, Math.max(0, target - now));
   }
-  const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+  const isOffline = () => !cloudOnline();   // 2026-11-03：选了「离线继续」也算离线
   async function pushNow(): Promise<void> {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     firstDirtyAt = 0;
@@ -357,10 +358,11 @@ export function createEditor(d: EditorDeps) {
   }
 
   // ── 新鲜度（focus/online/idle 复查）：只干净快进；dirty 留给推送的冲突面 ──
-  async function refreshIfClean(): Promise<void> {
+  /** 回库的终态串（闸门要分「问成了」和 cloud-error）；没去问 = undefined。 */
+  async function refreshIfClean(): Promise<string | undefined> {
     const name = st.name;
-    if (!name || refreshInFlight || !d.isSignedIn() || st.locked) return;
-    if (localTimer || renameInFlight || pushPending || persistInFlight || worldReplaced) return;
+    if (!name || refreshInFlight || !d.isSignedIn() || st.locked) return undefined;
+    if (localTimer || renameInFlight || pushPending || persistInFlight || worldReplaced) return undefined;
     refreshInFlight = true;
     const gen = loadGen;
     let froze = false;
@@ -371,14 +373,15 @@ export function createEditor(d: EditorDeps) {
         localDirty: () => !!localTimer || !!persistInFlight || pushPending || d.editor.value !== savedText,
         onReplaceStart: () => { froze = true; replacing = true; applyGuards(); d.onReplacing?.(true); },
       });
-      if (gen !== loadGen) return;
+      if (gen !== loadGen) return undefined;
       if (r.status === "fast-forwarded") {
         await reload(name);
         d.setStatus(t("st.loadedCloudLatest", { time: fmtTime(Date.now()) }));
       } else if (r.status === "cloud-absent") {
         d.setStatus(t("st.cloudGone"), { error: true });
       }
-    } catch (e) { reportError(e, "log"); }
+      return r.status;
+    } catch (e) { reportError(e, "log"); return "cloud-error"; }
     finally { refreshInFlight = false; if (froze) { replacing = false; applyGuards(); d.onReplacing?.(false); } }   // 重载（open）已把 replacing 归零；没换成（ff-failed）时这里解冻
   }
 

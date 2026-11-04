@@ -833,16 +833,16 @@ export declare const S: {
         readonly en: "Caught up: {n} file(s) uploaded";
     };
     readonly "pushAll.askTitle": {
-        readonly zh: "有稿还没传上去";
-        readonly en: "Drafts not uploaded yet";
+        readonly zh: "有稿没同步好";
+        readonly en: "Drafts not in sync";
     };
     readonly "pushAll.askMsg": {
-        readonly zh: "有 {n} 篇稿还没传上去，现在传吗？云端已有同名的不会覆盖，会留着等你处理。";
-        readonly en: "{n} draft(s) have not been uploaded yet. Upload now? Existing cloud files with the same name are never overwritten; those stay for you to resolve.";
+        readonly zh: "有 {n} 篇稿没同步好（只在这台设备上，或改了还没传上去）。到书库里逐篇「处理…」，每一篇都会问你用云端的还是这台的。";
+        readonly en: "{n} draft(s) are not in sync (only on this device, or edited and not uploaded). Resolve them one by one in the library; each one asks you which side to keep.";
     };
     readonly "pushAll.ok": {
-        readonly zh: "传上去";
-        readonly en: "Upload";
+        readonly zh: "去处理";
+        readonly en: "Resolve them";
     };
     readonly "pushAll.later": {
         readonly zh: "先不传";
@@ -871,6 +871,14 @@ export declare const S: {
     readonly "st.renameOldKept": {
         readonly zh: "已按新文件名另存；旧名那份云端还在（列表里会有两份）";
         readonly en: "Saved under the new file name; the old copy is still in the cloud (you will see both)";
+    };
+    readonly "st.renameOldKeptByUser": {
+        readonly zh: "已按新文件名另存；照你的意思，旧名那份云端留着（列表里会有两份）";
+        readonly en: "Saved under the new file name; as you chose, the old copy stays in the cloud (you will see both in the list)";
+    };
+    readonly "st.renameCancelled": {
+        readonly zh: "这次没动，文件名还是原来的";
+        readonly en: "Nothing changed; the file name stays as it was";
     };
     readonly "st.renameCloudDeferred": {
         readonly zh: "文件名已改（云端待推）";
@@ -1028,9 +1036,77 @@ export declare const S: {
         readonly zh: "本地覆盖云端";
         readonly en: "Local wins";
     };
+    readonly "cf.renameOldTitle": {
+        readonly zh: "「{name}」云端那份和这台的对不上";
+        readonly en: "The cloud copy of “{name}” doesn't match this device";
+    };
+    readonly "cf.renameOldDiverged": {
+        readonly zh: "云端的「{old}」被别的设备改过、这台的改动还没传上去。新名字「{next}」会传上去；云端那份旧的要搬进回收站（能恢复），还是留着（两份都在）？取消 = 不改名，什么都不动。";
+        readonly en: "“{old}” in the cloud was changed on another device, and this device's changes aren't uploaded yet. The new name “{next}” will be uploaded; move the old cloud copy to the trash (recoverable), or keep it (both stay)? Cancel = no rename, nothing changes.";
+    };
+    readonly "cf.renameOldUnknown": {
+        readonly zh: "这台不知道自己这份是从云端哪一版改出来的。新名字「{next}」会传上去；云端那份旧的「{old}」要搬进回收站（能恢复），还是留着（两份都在）？取消 = 不改名，什么都不动。";
+        readonly en: "This device doesn't know which cloud version its copy came from. The new name “{next}” will be uploaded; move the old cloud copy “{old}” to the trash (recoverable), or keep it (both stay)? Cancel = no rename, nothing changes.";
+    };
+    readonly "cf.renameOldTrash": {
+        readonly zh: "搬走旧的（进回收站）";
+        readonly en: "Move the old one to trash";
+    };
+    readonly "cf.renameOldKeep": {
+        readonly zh: "留着旧的";
+        readonly en: "Keep the old one";
+    };
     readonly "cf.checkingCloud": {
         readonly zh: "正在检查云端…";
         readonly en: "Checking the cloud…";
+    };
+    readonly "gate.checking": {
+        readonly zh: "正在核对网盘上的版本…";
+        readonly en: "Checking the version on OneDrive…";
+    };
+    readonly "gate.skipOffline": {
+        readonly zh: "先离线用";
+        readonly en: "Use offline for now";
+    };
+    readonly "gate.title": {
+        readonly zh: "网盘没连上";
+        readonly en: "OneDrive isn't connected";
+    };
+    readonly "gate.reasonExpired": {
+        readonly zh: "登录过期了";
+        readonly en: "Your sign-in has expired";
+    };
+    readonly "gate.reasonOffline": {
+        readonly zh: "现在没有网络";
+        readonly en: "There's no network right now";
+    };
+    readonly "gate.reasonNoResponse": {
+        readonly zh: "网盘没有回应";
+        readonly en: "OneDrive isn't responding";
+    };
+    readonly "gate.signIn": {
+        readonly zh: "重新登录";
+        readonly en: "Sign in again";
+    };
+    readonly "gate.offline": {
+        readonly zh: "离线继续";
+        readonly en: "Continue offline";
+    };
+    readonly "gate.bar": {
+        readonly zh: "离线 · 还有 {n} 份没传上去";
+        readonly en: "Offline · {n} not uploaded yet";
+    };
+    readonly "gate.barZero": {
+        readonly zh: "离线";
+        readonly en: "Offline";
+    };
+    readonly "gate.barSyncing": {
+        readonly zh: "已连上网盘，正在补传…";
+        readonly en: "Connected to OneDrive, catching up…";
+    };
+    readonly "gate.reconnect": {
+        readonly zh: "重新连接";
+        readonly en: "Reconnect";
     };
     readonly "cf.skipToOffline": {
         readonly zh: "跳过，先离线打开";

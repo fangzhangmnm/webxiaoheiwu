@@ -24,6 +24,8 @@ export declare function initGalleryHost(d: GalleryHostDeps): {
     open: () => Promise<void>;
     close: () => void;
     isOpen: () => boolean;
+    openAttention: () => Promise<void>;
+    setAttentionOnly: (on: boolean) => void | undefined;
     /** boot 用：上次是在书库里离开的（刷新 / 关标签 / SW 更新重载）。 */
     wasInGallery: () => boolean;
     refresh: () => void | undefined;

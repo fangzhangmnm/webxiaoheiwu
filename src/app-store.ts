@@ -20,6 +20,7 @@ import { getPassword } from "./crypto-state.ts";
 import { looksLikeTextDoc } from "./doc-model.ts";
 import { zipReadEntry } from "./zip.ts";
 import { THUMBNAIL_ENTRY } from "./project/format.ts";
+import { cloudOnline } from "./cloud-gate.ts";
 
 const od = createOneDriveProvider({ clientId: CLIENT_ID, scopes: SCOPES, authority: AUTHORITY, msalUrl: MSAL_URL });
 /** OneDrive auth 面（signIn/signOut/isSignedIn/onAuthChanged）。 */
@@ -46,6 +47,7 @@ const store: Store = createStore({
   autoCacheOpenedFile: true,
   offlineUploadReplay: "auto",
   signedIn: () => od.auth.isSignedIn(),
+  isOnline: cloudOnline,   // 2026-11-03 闸门：选了「离线继续」= 库一条网都不打（家族设计稿 cloud-gate §3）
   activeIdentifier: () => _activeFileName,
 });
 
@@ -62,6 +64,7 @@ export async function initCollections(): Promise<void> {
 }
 /** 事件驱动对齐（focus/online/idle 复查）——读 status，别只 await。 */
 export async function reconcileCollections(): Promise<void> {
+  if (!cloudOnline()) return;   // 2026-11-03 闸门：库的 collection 不看 isOnline（store 2.2.3 create-store.js collection() 没把它递给 createCollection），选了离线这里自己不去问；已报家族工单 D 报告
   await Promise.allSettled([prefs.reconcileWithRemote(), appState.reconcileWithRemote(), rimeDict.reconcileWithRemote()]);
 }
 export async function flushCollections(): Promise<void> {

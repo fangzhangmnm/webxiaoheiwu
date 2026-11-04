@@ -141,6 +141,8 @@ interface GateOpts<T> {
     showSpinner?: boolean;
     actions: GateAction<T>[];
 }
+export declare function gateGeneration(): number;
+export declare function gateIsUp(): boolean;
 export declare function lockSyncGate<T = string>({ title, message, note, showSpinner, actions }: GateOpts<T>): Promise<T>;
 export declare function unlockSyncGate(): void;
 export declare function settleSyncGate(value: unknown): void;

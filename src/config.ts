@@ -30,6 +30,8 @@ export const PUSH_DEBOUNCE_MS = 15_000;
 export const PUSH_HEARTBEAT_MS = 30_000;
 /** 闲置锁屏（Quest「核电池开一年」——醒来必查云端再放行输入）。 */
 export const IDLE_OVERLAY_MS = 2 * 60 * 1000;
+/** 闸门问云端的硬超时（家族设计稿 cloud-gate §4：≥ 8 s 没回 = 当没网进闸；数字可调，艺术类 app 不要更短）。 */
+export const CLOUD_CHECK_TIMEOUT_MS = 8000;
 /** RIME 用户词库推云节流（每次 commit 检查，超间隔才推；idle/unload 无条件 flush）。 */
 export const USER_DICT_PUSH_INTERVAL_MS = 2 * 60 * 1000;
 /** Left Ctrl 按住多久算「要录」（短按 = 丢弃）。 */

@@ -362,7 +362,11 @@ interface GateAction<T> { label: string; value: T; primary?: boolean }
 interface GateOpts<T> { title: string; message: string; note?: string; showSpinner?: boolean; actions: GateAction<T>[] }
 let _gatePending: ((v: unknown) => void) | null = null;
 let _gateFocusBack: HTMLElement | null = null;
+let _gateGen = 0;   // 锁屏位每被占一次 +1：闸门 / 逃生罩靠它认「上面还是不是我那张」（2026-11-03，库的冲突面可能已经盖上来了，不许顺手关掉别人的面）
+export function gateGeneration(): number { return _gateGen; }
+export function gateIsUp(): boolean { return !$("gateSheet").classList.contains("hidden"); }
 export function lockSyncGate<T = string>({ title, message, note, showSpinner, actions }: GateOpts<T>): Promise<T> {
+  _gateGen++;
   _beforeModal?.();   // 小窗开着 → 先收回（冲突面必须被人看见）
   // 冲突面是不可 dismiss 的锁屏：焦点还留在正文里的话，键盘会隔着遮罩继续往里打字（推云是 30 s 心跳，弹出来时常常正在打字）——先把焦点拿走，关了再还（2026-09-29）。
   const a = document.activeElement;

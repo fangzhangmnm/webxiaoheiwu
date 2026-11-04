@@ -1214,6 +1214,36 @@ html:has(> body.pip-body) { overflow: hidden; height: 100%; }   /* 挡住 body �
 
 .update-toast.hidden { display: none; }
 
+/* 闸门的常驻条（家族设计稿 cloud-gate §5）：「离线 · 还有 N 份没传上去」，点开 = 要处理的列表。纸底居中：左下是键盘钮、右下是话筒和「有新版本」；提示（toast）让到它上面。 */
+.offline-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--sheet-bottom) + 14px);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  padding: 5px 12px 5px 9px;
+  background: rgba(74, 53, 32, 0.94);
+  color: #f1e6cf;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 6px 16px rgba(58, 40, 24, 0.26);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  z-index: var(--z-toast);
+}
+.offline-bar.hidden { display: none; }
+body:has(.offline-bar:not(.hidden)) .toast { bottom: calc(var(--sheet-bottom) + 50px); }
+body.adv .offline-bar { bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px) + 18px); }
+body.adv:has(.offline-bar:not(.hidden)) .toast { bottom: calc(var(--sheet-bottom) + 20px + var(--adv-h, 0px) + 54px); }
+.offline-bar[data-state="syncing"] { cursor: default; }
+.offline-bar .ico { width: 14px; height: 14px; flex: none; }
+
 .update-toast .update-text {
   letter-spacing: 0.04em;
 }

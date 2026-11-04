@@ -3,7 +3,8 @@
 //   冲突必 surface（ADR-0009）：绝不静默 cancel——真 gate sheet，按 occasion 分两套按钮。
 //   v1 的 sibling-copy（「不要 diff」）在库模型里 = keepMine/takeCloud 二选一 + 败方自动进 .backup（不丢字节，也不做 diff）。
 import type { StoreUI, StoreTextKey, StoreTextParams } from "@internal/store";
-import { withBusy, lockSyncGate, settleSyncGate } from "./sheets.ts";
+import { withBusy, lockSyncGate, settleSyncGate, gateGeneration } from "./sheets.ts";
+import { noteAuthFailure, type CloudGate } from "./cloud-gate.ts";
 import { t, type Key } from "./i18n/index.ts";
 import { reportError } from "./error-badge.ts";
 import { note as diagNote } from "./diag-log.ts";
@@ -36,6 +37,10 @@ const QUIET_KEYS = new Set<StoreTextKey>(["sync.pushing", "file.renaming"]);
 // 2026-09-09（审计 #6/#7，对账 WeebPaint quietBusy）：安静路径以前**零 UI**——改名/推云在跑用户完全看不到。这里只写一条状态栏（app 注入 sink），不遮罩。
 let _quietStatus: ((text: string) => void) | null = null;
 export function setStoreQuietStatus(fn: (text: string) => void): void { _quietStatus = fn; }
+let _gate: CloudGate | null = null;
+/** app 组装层把闸门递进来（store-ui 在 createStore 时就要，闸门要等 app 起来才有）。 */
+export function attachGate(g: CloudGate): void { _gate = g; }
+
 export const storeUI: StoreUI = {
   busy: (label, fn, key) => (key && QUIET_KEYS.has(key) ? (_quietStatus?.(label), Promise.resolve().then(fn)) : withBusy(label, fn)),
 
@@ -74,6 +79,7 @@ export const storeUI: StoreUI = {
   reportError: (err: unknown, level): void => {
     // 未登录时库的后台云动作（collections 对齐 / 云帧）会撞 auth 的 "Not signed in"——那是正常态不是故障，绝不上横幅（2026-09-03 截图：橙条常驻）。
     if ((err as { message?: string } | null)?.message === "Not signed in") { reportError(err, "log"); return; }
+    noteAuthFailure(String((err as { message?: string } | null)?.message ?? ""));   // 2026-11-03 闸门：续签失败的原因码只有这行日志里有（行格式 test/cloud-gate.test.mjs 对着库钉住）
     if ((err as { name?: string } | null)?.name === "CloudNetworkError") {
       reportError(err, "log");
       reportError(new Error(t("err.cloudNetwork")), level ?? "error");
@@ -92,10 +98,13 @@ export const storeUI: StoreUI = {
 
   // 「跳过到离线」逃生闸：probe 与云端 fetchMeta race；用户点跳过 → probe resolve → 读本地。
   offlineEscape: (): { probe: Promise<unknown>; settle: () => void } => {
+    const viaGate = _gate?.storeEscape();   // 闸门在场：跟闸门的「先离线用」赛跑，不另开一张面（家族设计稿 cloud-gate §4）
+    if (viaGate) return viaGate;
     let onSkip!: () => void;
     const probe = new Promise<unknown>((res) => { onSkip = () => res(undefined); });
     void lockSyncGate<"skip" | null>({ title: t("cf.checkingCloud"), message: "", showSpinner: true, actions: [{ label: t("cf.skipToOffline"), value: "skip" }] })
       .then((v) => { if (v === "skip") onSkip(); });
-    return { probe, settle: () => settleSyncGate(null) };
+    const mine = gateGeneration();
+    return { probe, settle: () => { if (gateGeneration() === mine) settleSyncGate(null); } };
   },
 };

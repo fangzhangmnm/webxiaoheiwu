@@ -49,7 +49,7 @@ export declare function createEditor(d: EditorDeps): {
     reload: (name: string) => Promise<void>;
     flushLocal: () => Promise<void>;
     pushNow: () => Promise<void>;
-    refreshIfClean: () => Promise<void>;
+    refreshIfClean: () => Promise<string | undefined>;
     toggleEncryption: (confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
     rekeyToCurrent: (busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>) => Promise<void>;
     noteExternalEdit: () => void;

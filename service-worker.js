@@ -34,6 +34,10 @@ const STATIC_PRECACHE = [
 
 let CACHE_NAME = "xiaoheiwu-boot";
 const SCOPE_IS_DEV = self.location.pathname.includes("/dev/");
+// 正式版和开发版在同一个网址下（2026-10-13 起 write.weebpaint.com/ 与 /dev/），Cache Storage 按网址共用：壳缓存名按范围分开，
+//   否则一边 activate 就把另一边的离线壳删了、重启后还可能认错成另一边的缓存（2026-11-03 家族工单 D 命名空间核查查出，Claude Opus 5.5）。两种都以 xiaoheiwu- 开头，清缓存 / 还原出厂照旧一起清。
+const OWN_PREFIX = SCOPE_IS_DEV ? "xiaoheiwu-dev-" : "xiaoheiwu-";
+const isOwnCache = (k) => k !== "xiaoheiwu-boot" && k.startsWith(OWN_PREFIX) && (SCOPE_IS_DEV || !k.startsWith("xiaoheiwu-dev-"));
 const SCOPE_PATH = self.location.pathname.replace(/[^/]*$/, "");   // SW 脚本所在目录 = 本 app 的路径前缀（scope 外的同源请求——如 /pwa-models/——一律不接管，审计 L5）
 
 // SW 空闲被杀重启后顶层重跑，CACHE_NAME 会回落 "xiaoheiwu-boot" → 预缓存全成孤儿（审计 L4，家族级坑）。
@@ -42,7 +46,7 @@ let cacheNameResolved = null;
 async function currentCacheName() {
   if (CACHE_NAME !== "xiaoheiwu-boot") return CACHE_NAME;
   if (!cacheNameResolved) cacheNameResolved = (async () => {
-    const keys = (await caches.keys()).filter((k) => k.startsWith("xiaoheiwu-") && k !== "xiaoheiwu-boot");
+    const keys = (await caches.keys()).filter(isOwnCache);
     if (keys.length) CACHE_NAME = keys[keys.length - 1];
     return CACHE_NAME;
   })().finally(() => { cacheNameResolved = null; });
@@ -65,7 +69,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const { bundleUrl, workerUrl } = await getCurrentBundleUrl();
     const bundleHash = bundleUrl.match(/xiaoheiwu-([a-z0-9-]+)\.mjs/i)?.[1] || "boot";
-    CACHE_NAME = `xiaoheiwu-${bundleHash}`;
+    CACHE_NAME = `${OWN_PREFIX}${bundleHash}`;
     const cache = await caches.open(CACHE_NAME);
     const urls = [...STATIC_PRECACHE, bundleUrl, ...(workerUrl ? [workerUrl] : [])];   // .map 不预缓存（审计 L27）
     await Promise.all(urls.map((u) =>
@@ -80,7 +84,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k.startsWith("xiaoheiwu-") && k !== CACHE_NAME).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => (isOwnCache(k) || k === "xiaoheiwu-boot") && k !== CACHE_NAME).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });

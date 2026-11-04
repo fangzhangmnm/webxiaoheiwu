@@ -1,10 +1,13 @@
 // 组合根：把 store 接缝 / 编辑器 / 抽屉 / IME / 语音 / 闲置锁屏 / PWA 壳接成一个 app。created 2026-09-03 by Claude Fable 5.1
 // 这里只有接线与事件编排，没有业务规则（规则住各模块头注释）。
 import { APP_VERSION } from "./version.ts";
-import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS } from "./config.ts";
+import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS, IDLE_OVERLAY_MS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
 import { setBeforeModal, initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openScopedChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice, isSheetOpen, isBusyActive } from "./sheets.ts";
+import { cloudOnline, createCloudGate, isUserOffline, onUserOfflineChange, rawOnline } from "./cloud-gate.ts";
+import { createGateUi } from "./cloud-gate-ui.ts";
+import { attachGate } from "./store-ui.ts";
 import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
@@ -117,7 +120,7 @@ async function smartSave(): Promise<void> {
   }
   if (before === "local" && !auth.isSignedIn() && !(project.active() && project.home()?.kind === "local")) {
     await pushNowAny();   // 未登录 = 只落本机
-    if (_cloudSignInPromptDeclined || navigator.onLine === false) { setStatus(t("save.local")); renderSaveButton(); return; }   // 离线时登录无意义 → 不弹
+    if (_cloudSignInPromptDeclined || !cloudOnline()) { setStatus(t("save.local")); renderSaveButton(); return; }   // 离线时登录无意义 → 不弹
     const went = await onSignIn({ later: true });
     if (went === false) { _cloudSignInPromptDeclined = true; setStatus(t("save.local")); }
     renderSaveButton(); return;
@@ -235,7 +238,7 @@ const ensureUnlocked = async (): Promise<boolean> => {
   // 首次设密码前：已登录就先把 synced-app-state 拉齐——否则新设备会用 LWW 盖掉云端已有的 verifier，老设备从此「密码错」（审计 L6）
   if (!hasVerifier() && auth.isSignedIn()) {
     try { await reconcileCollections(); } catch (e) { reportError(e, "log"); setStatus(t("pw.setupNeedsNetwork"), { error: true }); return false; }
-    if (typeof navigator !== "undefined" && navigator.onLine === false) { setStatus(t("pw.setupNeedsNetwork"), { error: true }); return false; }
+    if (!cloudOnline()) { setStatus(t("pw.setupNeedsNetwork"), { error: true }); return false; }
   }
   setRememberChoice(false);   // 每次弹面板都从「不勾」开始
   const ok = await cryptoEnsureUnlocked(labelsForUnlock());
@@ -1197,7 +1200,8 @@ const canEditNow = () => (project.active() ? project.canEdit() : editor.canEdit(
 const noteExternalEditAny = () => (project.active() ? project.noteExternalEdit() : editor.noteExternalEdit());
 const flushLocalAny = () => { input.flushText(); return project.active() ? project.flushLocal() : editor.flushLocal(); };   // 软键盘 app 道里排着的改字先落（v2.3.32 两条道）
 const pushNowAny = () => (project.active() ? project.pushNow() : editor.pushNow());
-const refreshIfCleanAny = () => (project.active() ? project.refreshIfClean() : editor.refreshIfClean());   // 2026-09-26：书也快进（以前书这一面是空操作 → 别的设备改了书这台永远看不到）
+let refreshShared: Promise<string | undefined> | null = null;   // 2026-11-03 闸门：同一时刻只问一次云端，后来的人拿同一个答案（编辑器自己的 refreshInFlight 对后来者回「没去问」，闸门会把它当放行）
+const refreshIfCleanAny = (): Promise<string | undefined> => (refreshShared ??= (project.active() ? project.refreshIfClean() : editor.refreshIfClean()).finally(() => { refreshShared = null; }));   // 2026-09-26：书也快进（以前书这一面是空操作 → 别的设备改了书这台永远看不到）
 const stateAny = () => (project.active() ? project.stateText() : editor.statusForDoc());   // 顶栏粘性稿态也是「谁活着问谁」（以前 boot 末尾拿 parked 的 txt 编辑器状态 → 工程一开就显「本地没有缓存」）
 const isDirtyAny = () => (project.active() ? (project.session()?.dirty ?? false) : editor.isDirty());
 async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
@@ -1654,7 +1658,7 @@ lockCardUnlock.addEventListener("click", reopenWithPrompt);
 lockCardRetry.addEventListener("click", reopenWithPrompt);
 $("lockCardNew").addEventListener("click", () => { void openNewDraft(); });   // 锁着的是书时书要先关（v2.3.30 以前书留着、只换了底下 park 着的编辑器）
 function rememberLastActive(): void {
-  if (!booted || !activeName() || !auth.isSignedIn()) return;   // 冷启动 open(last) 不写云端指针——别盖掉别的设备最后写的那篇
+  if (!booted || !activeName() || !auth.isSignedIn() || !cloudOnline()) return;   // 冷启动 open(last) 不写云端指针——别盖掉别的设备最后写的那篇；选了离线也不写（库的 collection 不看 isOnline，写了就上网，2026-11-03）
   appState.setItem("lastActive", { name: activeName()!, savedAt: Date.now(), device: deviceLabel() });
 }
 function deviceLabel(): string {
@@ -2046,7 +2050,7 @@ const cloudButton = $<HTMLButtonElement>("cloudButton"), galleryCloudBtn = $<HTM
 const cloudWho = (): string => { const stt = auth.getAuthState(); return stt.signedIn ? ((stt.account as { username?: string; name?: string } | null)?.username || (stt.account as { name?: string } | null)?.name || t("auth.signedIn")) : ""; };
 function renderCloudButton(): void {
   const stt = auth.getAuthState();
-  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const offline = !cloudOnline();
   const state = stt.signedIn ? (offline ? "offline" : "signedin") : "out";
   const who = cloudWho();
   const title = state === "signedin" ? t("cloud.titleIn", { who }) : state === "offline" ? t("cloud.titleOffline", { who }) : t("cloud.titleOut");
@@ -2059,7 +2063,7 @@ function renderCloudButton(): void {
 }
 /** 刷新云端（云菜单项 + 书库顶栏刷新钮走同一条路）：离线→在线后第一次按、没登录但有缓存账号 → 先静默补登一次（WeebPaint 同款）；然后重订阅列表 + 书库重列 + 推 / 拉活稿。 */
 async function refreshCloudNow(): Promise<void> {
-  if (!auth.isSignedIn() && navigator.onLine !== false) { await auth.retrySilentSignIn().catch((e) => reportError(e, "log")); renderCloudButton(); }
+  if (!auth.isSignedIn() && cloudOnline()) { await auth.retrySilentSignIn().catch((e) => reportError(e, "log")); renderCloudButton(); }
   drawer.subscribe(); galleryHost.refresh(); void resumeSync();
 }
 function openCloudMenu(anchor: HTMLElement): void {
@@ -2069,8 +2073,9 @@ function openCloudMenu(anchor: HTMLElement): void {
     anchor, align: "right",
     items: () => stt.signedIn
       ? [
-          { id: "who", label: navigator.onLine === false ? t("cloud.accountOffline", { who }) : t("cloud.account", { who }), icon: "cloud-synced", disabled: true },
-          { id: "refresh", label: t("cloud.refresh"), icon: "refresh", hidden: navigator.onLine === false },
+          { id: "who", label: !cloudOnline() ? t("cloud.accountOffline", { who }) : t("cloud.account", { who }), icon: "cloud-synced", disabled: true },
+          { id: "refresh", label: t("cloud.refresh"), icon: "refresh", hidden: !cloudOnline() },
+          { id: "reconnect", label: t("gate.reconnect"), icon: "refresh", hidden: !(isUserOffline() && rawOnline()) },   // 选了「离线继续」、其实有网：别的路都等醒来，这里给一个手动的
           { id: "lock", label: t("auth.lockCrypto"), icon: "lock", hidden: !isUnlocked() },
           { id: "signout", label: t("cloud.disconnect"), icon: "cloud-unavailable", danger: true, separatorBefore: true },
         ]
@@ -2080,6 +2085,7 @@ function openCloudMenu(anchor: HTMLElement): void {
         ],
     onPick: (id) => {
       if (id === "refresh") void refreshCloudNow();
+      else if (id === "reconnect") void gate.reconnect();
       else if (id === "lock") void lockCryptoNow();
       else if (id === "signout") void onSignOut();
       else if (id === "signin") void onSignIn();
@@ -2364,7 +2370,7 @@ document.addEventListener("keydown", onAppKeydown);
 //   store 2.2.1 起「刷新前改过 + 登录前恢复」那种谱系丢了的脏稿推前会先问云端、没人动就直接推成，所以这里数到的多半是真要人选的。
 let askedPushLocalOnly = false;      // 这次打开问过了（「先不」）
 async function offerPushLocalOnly(opts: { verbose?: boolean } = {}): Promise<void> {
-  if (!auth.isSignedIn() || navigator.onLine === false) return;
+  if (!auth.isSignedIn() || !cloudOnline()) return;
   if (askedPushLocalOnly) return;
   const n = await dirtyDocCount().catch((e) => { reportError(e, "log"); return 0; });
   if (n <= 0) return;
@@ -2392,15 +2398,36 @@ async function resumeSync(): Promise<void> {
   setState(stateAny());
 }
 onLockChange((unlocked) => { if (unlocked) void offerPushLocalOnly({ verbose: true }); });   // v2.3.52：也走「问一次」闸门（点过传上去才自动补）   // 2026-09-26：解锁 = 加密文件的推送第一次有钥匙；登录 / 回前台那两下如果当时锁着都推不动（库 locked 算失败留 dirty）
+// ── 闸门：网盘掉登录 / 没网（家族设计稿 ai-docs/20261103-cloud-gate-design.md；状态机 src/cloud-gate.ts，界面 src/cloud-gate-ui.ts）──
+let homeKnown = false;   // 这台设备的 MSAL 里有账号 = 有家。从 initAuth / onAuthChanged 来，不新增存储（账号本来就在 MSAL 缓存里）
+let hiddenAt = 0;        // 这次藏到后台的时刻（0 = 没藏）：判「醒来 + 离开多久」
+let _bootDocReady: () => void = () => {};
+const bootDocReady = new Promise<void>((r) => { _bootDocReady = r; });   // 开机：稿摆好了才问云端（不然 refreshIfClean 没东西可问，直接放行）
+const gate = createCloudGate({
+  ui: createGateUi({ dirtyCount: dirtyDocCount, openList: () => { void galleryHost.openAttention(); }, afterRelease: () => { if (!gate.locked()) recoverEditorFocus(); } }),
+  hasHome: () => homeKnown,
+  signedIn: () => auth.isSignedIn(),
+  renew: async () => {
+    if (document.readyState !== "complete") await new Promise((r) => window.addEventListener("load", r, { once: true }));   // 库自己的探测也等 load：load 之前开续签的隐藏 iframe 会吊住 load（库 auth.js 注释）
+    return auth.retrySilentSignIn();
+  },
+  check: async () => { await bootDocReady; return refreshIfCleanAny(); },
+  catchUp: resumeSync,
+  signIn: () => onSignIn({ later: true }),
+  note: (line) => diagNote("gate", line),
+});
+attachGate(gate);
+onUserOfflineChange(() => { renderCloudButton(); renderSaveButton(); });
+
 const idle = initIdleGate({
   overlay: $("idleOverlay"),
   onIdle: () => { closePipIfOpen(); if (auth.isSignedIn()) { void pushNowAny(); void pushUserDict(); rememberLastActive(); } else void flushLocalAny(); },   // 闲置锁屏先收回小窗：加密稿的明文不留在置顶窗里（设计稿 §3）
-  onResume: resumeSync,
+  onResume: async () => { hiddenAt = 0; await gate.wake(true); if (!gate.locked() && cloudOnline()) await resumeSync(); },   // 闲置锁屏醒来 = 离开得久：先罩住核一遍（核不上 = 闸，不走后面那轮）
   focusEditor: () => focusWriting(),
 });
 // ── Quest：放下手柄时系统键盘焦点会跑去别的 app（空格在 VRChat 里跳起来）——拦不住，能做的 = 焦点回来 / 页内任意处敲键时
 //   静默回到编辑器，第一击不丢（user 2026-09-04）。「键盘不在本页」提示条 + 压暗同日撤：光标失踪本身看得见，没有煤气灯疑惑。
-function modalOpen(): boolean { return !!document.querySelector('[role="dialog"]:not(.hidden)') || !!currentPopupMenu() || drawer.currentView() !== "closed" || idle.isShown(); }
+function modalOpen(): boolean { return gate.locked() || !!document.querySelector('[role="dialog"]:not(.hidden)') || !!currentPopupMenu() || drawer.currentView() !== "closed" || idle.isShown(); }
 function recoverEditorFocus(): boolean {
   const a = document.activeElement;
   if (a && a !== document.body && a !== document.documentElement) return writingFocused();
@@ -2417,18 +2444,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   void input.routeHardwareKey(editorEl, event);   // 这一击不丢：直接走编辑器的输入法路径（放行键的默认动作会落进刚聚焦的编辑器）
 });
 document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") hiddenAt ||= Date.now();
   if (document.visibilityState === "hidden") { void flushLocalAny().then(() => { if (auth.isSignedIn()) return pushNowAny(); }); void pushUserDict(); void flushCollections(); }
 });
 // #60-C 同款（2026-09-09，对账 WeebPaint v0.14.4）：只在 persisted=false（页面真在销毁）时写。persisted=true = 要进 bfcache：WebKit 上 pagehide 里起的
 //   IDB 写永远 commit 不了，只会把锁冻在旧页里、让 redirect 回来的新页全挂（WeebPaint ai-docs/20260909-bfcache-idb-lock-daily-reauth-analysis.md）；
 //   store 0.12.1 起也会把这种写直接弃掉。要落盘的必须在导航之前写完（onSignIn 已 await flush）。
 window.addEventListener("pagehide", (e: PageTransitionEvent) => { if (!e.persisted) { void flushLocalAny(); void flushCollections(); } });
+window.addEventListener("pageshow", (e: PageTransitionEvent) => { if (e.persisted) { hiddenAt = 0; void gate.wake(true); } });   // 从往返缓存恢复 = 醒来（家族设计稿 cloud-gate §2）
 window.addEventListener("online", () => {
   renderCloudButton(); renderSaveButton();
+  if (gate.netBack()) return;   // 选了离线 / 闸着：闸门接手（续签 → 补 → 条收掉）
   if (auth.isSignedIn()) { setStatus(t("st.online")); drawer.subscribe(); void resumeSync(); }
   else void auth.retrySilentSignIn().then((ok) => diagNote("auth", `retrySilentSignIn on online → ${String(ok)}`)).catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回线也试一次静默补登（store 0.12.1 有 60s 闩，不会风暴）
 });
-window.addEventListener("offline", () => { renderCloudButton(); renderSaveButton(); });
+window.addEventListener("offline", () => { renderCloudButton(); renderSaveButton(); gate.netLost(); });
 setInterval(() => { if (document.visibilityState === "visible" && !idle.isShown()) { void refreshIfCleanAny(); if (drawer.currentView() === "active") drawer.subscribe(); } }, FOREGROUND_POLL_MS);
 
 // ── standalone 标记：贴边件地板（styles.css --top-floor / --bottom-floor）按它切换；display-mode 媒体查询 + iOS 的 navigator.standalone 双保险 ──
@@ -2448,7 +2478,14 @@ const shell = initPwaShell({
   onUpdateAvailable: () => { void authBootSettled().then((how) => { diagNote("sw", `update available → toast (auth boot ${how})`); updateToast.classList.remove("hidden"); }); },
   onForeground: () => {
     if (idle.isShown()) return;
-    if (!auth.isSignedIn() && navigator.onLine !== false) void auth.retrySilentSignIn().catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回前台也试一次静默补登（store 闩住不风暴）
+    const away = hiddenAt ? Date.now() - hiddenAt : -1;
+    hiddenAt = 0;
+    if (away >= 0 && homeKnown) {   // 醒来 + 有家 = 闸门那条路（§2）。离开不久不罩：写作 app 切个标签回来不吃字（和闲置锁屏同一个 2 分钟）；核不上才弹闸
+      void gate.wake(away >= IDLE_OVERLAY_MS);
+      drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh());
+      return;
+    }
+    if (!auth.isSignedIn() && cloudOnline()) void auth.retrySilentSignIn().catch((e) => reportError(e, "log"));   // 2026-09-09 审计 #3：登出态回前台也试一次静默补登（store 闩住不风暴）
     void refreshIfCleanAny(); drawer.subscribe(); void reconcileCollections().then(() => drawer.refresh());
   },
   onBeforeReload: async () => { const how = await authBootSettled(); diagNote("sw", `reload requested (auth boot ${how})`); await flushLocalAny(); await flushCollections(); },
@@ -2491,10 +2528,19 @@ async function boot(): Promise<void> {
   auth.onAuthChanged((st) => {
     diagNote("auth", `changed signedIn=${String(st.signedIn)} reason=${String(st.reason ?? "?")}`);
     renderAuthRow(); renderTopbar(); drawer.subscribe();
+    if (st.signedIn) homeKnown = true; else if (st.reason === "signOut") homeKnown = false;
+    gate.authChanged(st.signedIn, st.reason as string | undefined);
+    renderCloudButton();
     if (st.signedIn) void afterSignIn();
     else if (st.reason === "expired") setStatus(t("auth.expired"), { error: true });   // 2026-09-09 审计 #3：过期 ≠ 主动退出，明说
   });   // 登录态变了 → 列表重订（否则停在登录前的本地帧）
-  void auth.initAuth().then((st) => { renderAuthRow(); if (st.signedIn) void afterSignIn(); }).catch((e) => reportError(e, "warning")).finally(() => _authBootResolve());
+  void auth.initAuth().then((st) => {
+    renderAuthRow();
+    homeKnown = st.signedIn || !!(st as { probing?: boolean }).probing;
+    diagNote("auth", `init: signedIn=${String(st.signedIn)} probing=${String(!!(st as { probing?: boolean }).probing)} home=${String(homeKnown)}`);
+    void gate.boot();   // 没有家 = 什么都不发生（家族设计稿 cloud-gate §2）；不等它，下面照常开稿（本机那份摆在罩底下）
+    if (st.signedIn) void afterSignIn();
+  }).catch((e) => reportError(e, "warning")).finally(() => _authBootResolve());
 
   // 续写：本机上次打开的稿 → 打不开（改名/进回收站/本地无缓存且云端不可达）→ **新稿**（user 2026-09-10「上次的书打不开、找不到的时候，应该是进 new document 而不是顺序打开下一本」）；
   //   本机没有上次记录（新设备）→ 最新一篇 → 否则新稿。
@@ -2508,12 +2554,13 @@ async function boot(): Promise<void> {
     if (first) await openAny(first); else await openNewDraft();
   }
   booted = true;
+  _bootDocReady();
   if (new URLSearchParams(location.search).has("reset")) { setStatus(t("settings.forceUpdated", { v: APP_VERSION })); try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ } }   // 强制更新回执
   renderLockCard(); renderMicVisibility();
   renderTopbar();
   setState(stateAny());
   // 场景恢复（对齐 WeebPaint：从书库出、回来就在书库）：稿照常恢复在底下，书库叠上去；不在书库才把焦点给纸面。
-  if (galleryHost.wasInGallery()) await galleryHost.open(); else focusWriting();
+  if (galleryHost.wasInGallery()) await galleryHost.open(); else if (!gate.locked()) focusWriting();   // 闸门罩着 = 焦点放行时再还（cloud-gate-ui afterRelease）
 }
 // 2026-09-09（审计 #3，「各种不刷新」头号嫌疑）：以前整函数一次性守卫——凭证过期后再次静默登录时什么都不做：不对齐 collections、
 //   不排空离线队列、不快进当前稿、列表不重拉。现在每次登录都跑同步四件；只有「冷启动切到远端 lastActive」保持一次性（会切当前稿，
@@ -2557,4 +2604,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };
+(window as unknown as { __xhw?: unknown }).__xhw = { gate, cloudOnline, version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };

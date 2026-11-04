@@ -282,6 +282,19 @@ export const S = {
   "cf.renameOldTrash":   { zh: "搬走旧的（进回收站）", en: "Move the old one to trash" },
   "cf.renameOldKeep":    { zh: "留着旧的", en: "Keep the old one" },
   "cf.checkingCloud":    { zh: "正在检查云端…", en: "Checking the cloud…" },
+  // 闸门（家族设计稿 cloud-gate §5；2026-11-03）：不许「失败 / 错误」当标题、不许指挥句。
+  "gate.checking":       { zh: "正在核对网盘上的版本…", en: "Checking the version on OneDrive…" },
+  "gate.skipOffline":    { zh: "先离线用", en: "Use offline for now" },
+  "gate.title":          { zh: "网盘没连上", en: "OneDrive isn't connected" },
+  "gate.reasonExpired":  { zh: "登录过期了", en: "Your sign-in has expired" },
+  "gate.reasonOffline":  { zh: "现在没有网络", en: "There's no network right now" },
+  "gate.reasonNoResponse": { zh: "网盘没有回应", en: "OneDrive isn't responding" },
+  "gate.signIn":         { zh: "重新登录", en: "Sign in again" },
+  "gate.offline":        { zh: "离线继续", en: "Continue offline" },
+  "gate.bar":            { zh: "离线 · 还有 {n} 份没传上去", en: "Offline · {n} not uploaded yet" },
+  "gate.barZero":        { zh: "离线", en: "Offline" },
+  "gate.barSyncing":     { zh: "已连上网盘，正在补传…", en: "Connected to OneDrive, catching up…" },
+  "gate.reconnect":      { zh: "重新连接", en: "Reconnect" },
   "cf.skipToOffline":    { zh: "跳过，先离线打开", en: "Skip, open offline" },
 
   // ── 离线补推（ADR-0018）──

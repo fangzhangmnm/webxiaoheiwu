@@ -5,6 +5,7 @@ import * as Vue from "../vendor/vue/vue.esm-browser.prod.js";   // 整个模块�
 import { createGallery, type CreateGalleryDeps, type GalleryDocHost, type GalleryEncryption, type VueRuntime, type GItem, type TileInfo, type VerbStore, type DataFaceStore, type Gallery, type GalleryView, type AsideKind, type AsideScope } from "@internal/gallery";
 import { humanSize } from "@internal/gallery";
 import { requireStore, auth } from "./app-store.ts";
+import { cloudOnline } from "./cloud-gate.ts";
 import { appEncryption } from "./encryption.ts";
 import { THUMBNAIL_ENTRY } from "./project/format.ts";
 import { docKind, parseDocName } from "./doc-model.ts";
@@ -83,7 +84,7 @@ export function initGalleryHost(d: GalleryHostDeps) {
     store: storeFace,
     doc,
     host: {
-      signedIn: () => auth.isSignedIn(), online: () => (typeof navigator === "undefined" || navigator.onLine !== false), activeIdentifier: () => d.activeName(),
+      signedIn: () => auth.isSignedIn(), online: cloudOnline, activeIdentifier: () => d.activeName(),
       confirm: (title, msg) => openConfirmSheet(title, msg),
       input: (title, def, opts) => openInputSheet(title, { defaultValue: def, placeholder: opts?.placeholder, okLabel: t("common.ok") }),
       chooseFolder: (title, msg, options) => openChoiceSheet<string>(title, msg, options.map((o) => ({ label: o.label, value: o.value }))),

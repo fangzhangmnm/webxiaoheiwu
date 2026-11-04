@@ -11,6 +11,7 @@ import { createProjectSession, type ProjectSession, type OpenResult, type Refere
 import { readProjectBlob, saveProjectBlob, pullProjectIfClean, setActiveDoc, isDocEncrypted, encryptDoc, decryptDoc } from "../docs.ts";
 import { rescueBook } from "../rescue.ts";
 import { note as diagNote } from "../diag-log.ts";
+import { cloudOnline } from "../cloud-gate.ts";
 import { bindTextField } from "../ui/text-field.ts";   // v2.1.13：章节名框的合成态 / 受控回写窄接口（user 2026-09-26「能否抽一个窄接口」）   // 2026-09-26 黑匣子：书的推 / 拉结果（user 真机「卡在上传 / 下载」时 log 里是盲区）
 import { LocalWriteDeniedError, type LocalHome } from "./local-home.ts";
 import { deviceKvSet } from "../device-kv.ts";
@@ -93,7 +94,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   const renameInBack = (from: string, to: string) => { let hit = false; back = back.map((n) => (n === from ? (hit = true, to) : n)); if (hit) syncBack(); forward = forward.map((n) => (n === from ? to : n)); };
   const active = () => !!session && !!home;
   const canEdit = () => active() && !locked && !worldReplaced && !replacing && session!.canMutate();   // 改动能不能做 = session 说了算（锁在工件层）；locked = 加密未解锁
-  const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+  const isOffline = () => !cloudOnline();   // 2026-11-03：选了「离线继续」也算离线
   const displayName = (): string | null => (home ? (home.kind === "store" ? parseDocName(home.name).stem : home.home.fileName.replace(/\.webxiaoheiwu\.zip$/i, "")) : null);
   const name = (): string | null => (home?.kind === "store" ? home.name : null);
   function syncKind(): SyncKind {
@@ -356,9 +357,10 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 事件驱动「干净快进」（focus / online / 前台轮询 / 登录后；镜像 txt 编辑器 refreshIfClean）：本地干净 ∧ 云端有新版 → 库拉新版覆盖本地 → 整体重开留在原页；
    *  有本地未推字节 / 正在落盘 / 锁着 / 离线 → 不动（脏永不被静默覆盖是库的红线，这里只是不白跑）。2026-09-26 之前书模式这一面是空操作（只有 txt 稿有）——
    *  别的设备改了书，这台打开着就永远看不到，书库角标一直「云端更新」（user 真机「旧书卡在下载」）。 */
-  async function refreshIfClean(): Promise<void> {
-    if (!active() || home!.kind !== "store" || locked || !d.isSignedIn() || isOffline()) return;
-    if (refreshInFlight || persistInFlight || localTimer || pushPending || session!.dirty || session!.readOnly || worldReplaced) return;
+  /** 回库的终态串（闸门要分「问成了」和 cloud-error）；没去问 = undefined。 */
+  async function refreshIfClean(): Promise<string | undefined> {
+    if (!active() || home!.kind !== "store" || locked || !d.isSignedIn() || isOffline()) return undefined;
+    if (refreshInFlight || persistInFlight || localTimer || pushPending || session!.dirty || session!.readOnly || worldReplaced) return undefined;
     const n = name()!; const g = gen; refreshInFlight = true;
     let froze = false;
     try {
@@ -369,11 +371,12 @@ export function createProjectMode(d: ProjectModeDeps) {
         localDirty: () => !!localTimer || !!persistInFlight || pushPending || (session?.dirty ?? false) || editorDiffers(),
         onReplaceStart: () => { froze = true; replacing = true; applyReadOnly(); d.onReplacing?.(true); },
       });
-      if (g !== gen) return;
+      if (g !== gen) return undefined;
       if (r.status && !["in-sync", "dirty-skip", "offline"].includes(r.status)) diagNote("book", `refresh "${n}": ${r.status}${r.reason ? ` (${r.reason})` : ""}`);   // 60 s 轮询的常态不刷黑匣子；只记真动了 / 拉失败 / 云端没了
       if (r.status === "fast-forwarded") { await reopenFromStore("fast-forwarded"); d.setStatus(t("st.loadedCloudLatest", { time: new Date().toLocaleTimeString("zh-CN", { hour12: false }) })); }
       else if (r.status === "cloud-absent") d.setStatus(t("st.cloudGone"), { error: true });
-    } catch (e) { reportError(e, "log"); }
+      return r.status;
+    } catch (e) { reportError(e, "log"); return "cloud-error"; }
     finally { refreshInFlight = false; if (froze) { replacing = false; applyReadOnly(); d.onReplacing?.(false); } }   // 重开（openStore）已把 replacing 归零；没换成时这里解冻
   }
   /** 工程文件在 store 里改了名（顶栏改名）：只换身份，不重开、不重载正文、回退栈不丢。 */
