@@ -511,26 +511,123 @@ scenario("闸门 ③ 续签失败：闸 + 两个钮；离线继续能写、零�
   await D.close();
 });
 
-scenario("闸门 ③e 回线：问「去处理」的面开着时，「正在同步」条已经收了（不等人答）", async (w) => {
-  const { D } = await seedThenReopen(w, "A", { probing: true, renew: "interaction" }, true);
+/** 闸门离线里写：seed 那篇（传过 = (b)）加一句；再开两篇新稿（从没传过 = (a)），第二篇留开着。返回三篇的名字。 */
+async function offlineWriteThree(D) {
+  await D.type("离线写的第一篇。"); await D.wait(800);
+  const seed = await D.eval(() => window.__xhw.editor.state.name);
+  await D.eval(() => window.__xhw.newDraft()); await D.wait(400);
+  await D.type("离线写的第二篇。"); await D.wait(800);
+  const second = await D.eval(() => window.__xhw.editor.state.name);
+  await D.eval(() => window.__xhw.newDraft()); await D.wait(400);
+  await D.type("离线写的第三篇。"); await D.wait(800);
+  const third = await D.eval(() => window.__xhw.editor.state.name);
+  return { seed, second, third };
+}
+const sheetFace = (D) => D.eval(() => ({ title: document.getElementById("sheetTitle")?.textContent ?? "", message: document.getElementById("sheetMessage")?.textContent ?? "", ok: document.getElementById("sheetConfirm")?.textContent ?? "", cancel: document.getElementById("sheetCancel")?.textContent ?? "" }));
+
+scenario("闸门 ③e 回线：问「只在这台设备」的面开着时，「正在同步」条已经收了（不等人答）；稍后 = 什么都不推", async (w) => {
+  const { D, name } = await seedThenReopen(w, "A", { probing: true, renew: "interaction" }, true);
   await waitPhase(D, "blocked");
   await D.page.waitForFunction(() => document.getElementById("editor").value.includes("本机这一份。"), null, { timeout: 5000 });
   await D.clickGate("离线继续"); await D.wait(200);
-  await D.type("离线写的第一篇。"); await D.wait(800);
-  await D.eval(() => window.__xhw.newDraft()); await D.wait(400);
-  await D.type("离线写的第二篇。"); await D.wait(800);
-  await waitBar(D, /还有 2 份没传上去/);
+  const { second, third } = await offlineWriteThree(D);
+  await waitBar(D, /还有 3 份没传上去/);
   await D.patchGate({ renew: "ok" });
   await D.hide(); await D.wait(150); await D.show();   // 走「回前台 → 悄悄续签 → 跟上」这条路（online 事件那条路自己先问，分辨不出 resumeSync 等不等人）
-  await D.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 8000 });
+  await D.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 10000 });
   await D.wait(300);
-  const msg = await D.eval(() => document.getElementById("sheet").textContent);
-  check("开着的那篇推了、另一篇问一句（前提）", /没同步好/.test(msg), msg.slice(0, 60));
+  const st = await sheetFace(D);
+  console.log(`  问：${st.title} / ${st.message.slice(0, 50)}…`);
+  check("开着的那篇照常推了（前提）", ((await w.cloudText(third)) ?? "").includes("离线写的第三篇。"));
+  check("只数从没传过的：1 份（开着的那篇推了、传过的那篇不算）", st.title === "有 1 份只在这台设备，现在传上去？", st.title);
+  check("面上说真话：传过的那篇会一起续传", /另外 1 份传过/.test(st.message), st.message);
+  check("两个钮：现在传 / 稍后", st.ok === "现在传" && st.cancel === "稍后", `${st.ok}|${st.cancel}`);
   const v = await D.gateView();
   check("面开着：条已经收了，不写「正在同步」", v.bar === null, JSON.stringify(v));
   check("面开着：在线", v.online === true, JSON.stringify(v));
-  await D.page.click("#sheetCancel"); await D.wait(300);
-  check("先不：稿还在、没被批量推", (await D.eval(() => window.__xhw.store().files.dirty.count())) >= 1);
+  await D.page.click("#sheetCancel"); await D.wait(800);
+  check("稍后：从没传过的没上云", (await w.cloudText(second)) === null);
+  check("稍后：传过的那篇也跟着等（库的 pushAll 不分种类，面上说过）", !((await w.cloudText(name)) ?? "").includes("离线写的第一篇。"));
+  check("稍后：两篇都还在（没丢）", (await D.eval(() => window.__xhw.store().files.dirty.count())) === 2);
+  check("稍后：状态行指去书库", /要处理的/.test(await D.eval(() => document.getElementById("toast").textContent)));
+  // 一页只问一次：再回来一次不再问、也不推
+  await D.hide(); await D.wait(150); await D.show(); await D.wait(1500);
+  check("这一页不再问", await D.eval(() => document.getElementById("sheet").classList.contains("hidden")));
+  check("也不推", (await w.cloudText(second)) === null);
+  check("页面零报错", D.errors.length === 0, D.errors.join(" ; "));
+  await D.close();
+});
+
+scenario("回来 · 有从没传过的：点「现在传」= 都传上去（传过的跟着续传），清零", async (w) => {
+  const { D, name } = await seedThenReopen(w, "A", { probing: true, renew: "interaction" }, true);
+  await waitPhase(D, "blocked");
+  await D.page.waitForFunction(() => document.getElementById("editor").value.includes("本机这一份。"), null, { timeout: 5000 });
+  await D.clickGate("离线继续"); await D.wait(200);
+  const { second } = await offlineWriteThree(D);
+  await D.patchGate({ renew: "ok" });
+  await D.eval(() => window.dispatchEvent(new Event("online")));
+  await D.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 10000 });
+  check("问了", (await sheetFace(D)).title === "有 1 份只在这台设备，现在传上去？", JSON.stringify(await sheetFace(D)));
+  await D.page.click("#sheetConfirm");
+  check("从没传过的上云了", await waitCloudHas(w, second, "离线写的第二篇。"));
+  check("传过的那篇续上了", await waitCloudHas(w, name, "离线写的第一篇。"));
+  await D.wait(500);
+  check("清零", (await D.eval(() => window.__xhw.store().files.dirty.count())) === 0);
+  check("状态行如实说", /都传上去了/.test(await D.eval(() => document.getElementById("toast").textContent)), await D.eval(() => document.getElementById("toast").textContent));
+  check("页面零报错", D.errors.length === 0, D.errors.join(" ; "));
+  await D.close();
+});
+
+/** 等云端那份出现某段字（库的 dirty.count 不是「云端已经有了」的证据：推的途中就可能先归零，探针量过）。 */
+async function waitCloudHas(w, name, text, timeout = 8000) { const t0 = Date.now(); while (Date.now() - t0 < timeout) { if (((await w.cloudText(name)) ?? "").includes(text)) return true; await new Promise((r) => setTimeout(r, 100)); } return false; }
+
+scenario("回来 · 只有传过的：直接续传，不问（写作 app 心跳保存 = 同意传）", async (w) => {
+  const { D, name } = await seedThenReopen(w, "A", { probing: true, renew: "interaction" }, true);
+  await waitPhase(D, "blocked");
+  await D.page.waitForFunction(() => document.getElementById("editor").value.includes("本机这一份。"), null, { timeout: 5000 });
+  await D.clickGate("离线继续"); await D.wait(200);
+  await D.type("离线续的一句。"); await D.wait(800);
+  await D.eval(() => window.__xhw.newDraft()); await D.wait(400);   // 开着的换成空新稿：传过的那篇只能靠「回来」那一下补
+  await waitBar(D, /还有 1 份没传上去/);
+  await D.eval(() => { window.__sheetsSeen = 0; new MutationObserver(() => { if (!document.getElementById("sheet").classList.contains("hidden")) window.__sheetsSeen++; }).observe(document.getElementById("sheet"), { attributes: true, attributeFilter: ["class"] }); });
+  await D.patchGate({ renew: "ok" });
+  await D.eval(() => window.dispatchEvent(new Event("online")));
+  check("续上了", await waitCloudHas(w, name, "离线续的一句。"), String(await w.cloudText(name)));
+  await D.wait(500);
+  check("清零", (await D.eval(() => window.__xhw.store().files.dirty.count())) === 0);
+  const sheets = await D.eval(() => window.__sheetsSeen);
+  check("没问", sheets === 0, String(sheets));
+  check("页面零报错", D.errors.length === 0, D.errors.join(" ; "));
+  await D.close();
+});
+
+scenario("闸门 离线态静默再试：online 事件不来也会回来；藏着不试；续签成了但云端不答 = 还是离线、不弹", async (w) => {
+  const { D } = await seedThenReopen(w, "A", { probing: true, renew: "interaction" }, true);
+  await waitPhase(D, "blocked");
+  await D.eval(() => { window.__xhw.gateTune.offlineRetryMs = 300; });   // 探针把 60 s 拨成 300 ms（开定时器那一刻读）
+  await D.clickGate("离线继续"); await D.wait(100);
+  const a0 = (await D.gateView()).authCalls;
+  await D.wait(1300);
+  let v = await D.gateView();
+  check("没发 online 事件：到点自己悄悄续签了好几次", v.authCalls - a0 >= 3, String(v.authCalls - a0));
+  check("续签没成：条还在、不弹闸", !v.up && v.bar != null && !v.online, JSON.stringify(v));
+  await D.hide(); await D.wait(100);
+  const a1 = (await D.gateView()).authCalls;
+  await D.wait(1300);
+  check("藏到后台：一次都不试", (await D.gateView()).authCalls === a1, String((await D.gateView()).authCalls - a1));
+  await D.patchGate({ renew: "ok", hangCloud: true });   // 续签能成（令牌可能是缓存的），但云端不答
+  await D.show(); await D.wait(400);
+  await D.wait(9000);   // 过 8 s 的硬超时
+  v = await D.gateView();
+  check("续签成了、云端不答：还是离线、条还在、不弹", !v.online && v.bar != null && !v.up, JSON.stringify(v));
+  check("黑匣子写了「云端没答」", /reconnect: cloud did not answer/.test(await diagText(D)));
+  await D.patchGate({ hangCloud: false });
+  await D.page.waitForFunction(() => document.getElementById("offlineBar").classList.contains("hidden"), null, { timeout: 8000 });
+  v = await D.gateView();
+  check("云端答了：自己回来、条收掉（全程没发 online 事件）", v.online && v.bar === null && !v.up, JSON.stringify(v));
+  const probes = () => D.eval(() => (window.__e2eCalls ?? []).filter((l) => l.includes(".reachable-probe")).length);
+  const p0 = await probes(); await D.wait(1200);
+  check("回来了就停表：之后不再问云端（.reachable-probe 不再涨）", (await probes()) === p0, `${p0} → ${await probes()}`);
   check("页面零报错", D.errors.length === 0, D.errors.join(" ; "));
   await D.close();
 });
@@ -940,6 +1037,58 @@ scenario("词库：清空用户词库（入口 + 说明；默认不自动清；�
   check("B 没把旧词传回来", !decodedHas((await cloudDict(w)).files, ch));
   check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
   await A.close(); await B.close();
+});
+
+/** 开机用不用内置输入法跟着 localStorage 的 e2eSystemIme 走（同一台设备能先用内置输入法、再重开成系统输入法）。 */
+const withImeSwitch = async (D) => { await D.ctx.addInitScript((k) => { if (localStorage.getItem("e2eSystemIme") === "1") localStorage.setItem(k, "0"); else localStorage.removeItem(k); }, NOT_NATIVE); };
+
+scenario("词库：用系统输入法时清空入口照样看得见；先清网盘那一份，这台的等内置输入法加载时跟上、不传回去（v3.0.16）", async (w) => {
+  const A = await w.device("A");
+  await withImeSwitch(A);
+  await A.boot(server.url); await waitIme(A); await A.wait(400);
+  await typePinyin(A, ["hei", "mi"]);
+  const ch = (await A.text()).trim().slice(0, 1);
+  await pushDict(A);
+  check("前提：词进了同步文件", decodedHas((await cloudDict(w)).files, ch), ch);
+  await A.eval(() => localStorage.setItem("e2eSystemIme", "1"));
+  await A.boot(server.url); await A.wait(800);
+  check("重开成系统输入法：内置输入法没加载", !(await A.eval(() => window.__xhw.ime.initialized)));
+  await A.eval(() => window.__xhw.setSidebar(true)); await A.wait(200);
+  await A.eval(() => document.getElementById("edgeSettings").click()); await A.wait(300);
+  await A.eval(() => { document.getElementById("imeSection").open = true; }); await A.wait(150);
+  const vis = await A.eval((src) => { const shown = new Function("id", src); return { builtinHidden: document.getElementById("imeBuiltinOptions").hidden, btn: shown("clearUserDictButton"), enc: shown("clearEncDictButton"), schema: shown("imeSchemaSelect"), label: document.getElementById("clearUserDictButton").textContent }; }, `const el = document.getElementById(id); const r = el.getBoundingClientRect(); return el.offsetParent !== null && r.width > 0 && r.height > 0;`);
+  check("设置 → 输入法：内置输入法那一组藏着（方案选单看不见），清空的两个钮看得见", vis.builtinHidden && !vis.schema && vis.btn && vis.enc, JSON.stringify(vis));
+  await A.eval(() => document.getElementById("edgeSettingsBack").click()); await A.eval(() => window.__xhw.setSidebar(false)); await A.wait(200);
+  check("钮上写清是哪本：明文", /明文/.test(vis.label), vis.label);
+  await A.eval(() => document.getElementById("clearUserDictButton").click());
+  await A.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 5000 });
+  const st = await sheetFace(A);
+  check("二次确认 = app 自己的面，说清是明文那本、加密词库不动、这台的等下次加载", /明文/.test(st.title) && /加密词库不动/.test(st.message) && /系统输入法/.test(st.message), `${st.title} / ${st.message}`);
+  await A.page.click("#sheetConfirm"); await A.wait(2500);
+  const c = await cloudDict(w);
+  check("网盘那一份清了、带清空的时刻", !decodedHas(c.files, ch) && !!c.dump?.clearedAt, JSON.stringify(c.dump ?? null).slice(0, 120));
+  check("这台的 /rime 还没动（没加载的引擎不碰）", decodedHas(await rimeOnDisk(A), ch));
+  await A.eval(() => window.__xhw.setImeEnabled(true)); await waitIme(A); await A.wait(2000);
+  check("打开内置输入法：这台跟上清了（内存里）", !decodedHas(await memoryDump(A), ch));
+  check("打开内置输入法：这台跟上清了（/rime）", !decodedHas(await rimeOnDisk(A), ch));
+  await pushDict(A); await A.wait(2000);
+  check("没把旧词传回去", !decodedHas((await cloudDict(w)).files, ch));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("词库：开着加密稿时中途打开内置输入法 = 一起来就只进内存（回归：开关早在加载前就排进输入法队列）", async (w) => {
+  const A = await w.device("A");
+  await withImeSwitch(A);
+  await A.page.goto(server.url); await A.eval(() => localStorage.setItem("e2eSystemIme", "1"));
+  await A.boot(server.url);
+  await A.eval(() => window.__xhw.setPassword("e2e-pw")); await A.wait(200);
+  await A.eval(() => window.__xhw.newDraft({ encrypted: true })); await A.wait(800);
+  check("前提：内置输入法没加载、开着加密稿", !(await A.eval(() => window.__xhw.ime.initialized)) && (await A.eval(() => window.__xhw.editor.state.encrypted)));
+  await A.eval(() => window.__xhw.setImeEnabled(true)); await waitIme(A);
+  check("一起来就是只进内存", await A.eval(() => window.__xhw.ime.memoryOnly));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
 });
 
 // ── 先封再存（家族工单 D2；Fable 11-03 裁定：加密稿从建到存，IndexedDB 里出现过的每个字节串都是容器）──

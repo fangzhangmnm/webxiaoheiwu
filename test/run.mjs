@@ -12,7 +12,8 @@ import "./remember-password.test.mjs";   // 2026-10-17 在这台设备上记住�
 import "./password-form.test.mjs";   // 2026-10-21 口令面板 = 真表单（密码管理器能记能填）
 import "./ime-memory-only.test.mjs";   // 2026-11-03 加密稿学到的词只进内存 + 先封再存
 import "./cloud-gate.test.mjs";   // 2026-11-03 网盘闸门：状态机 + 结构守卫（家族设计稿 cloud-gate §7 §8）
-import "./push-consent.test.mjs";   // 2026-10-21 只在本机的稿：登录 / 回线后问一次再补传
+import "./push-consent.test.mjs";   // 2026-10-21 只在本机的稿：登录 / 回线后问一次再补传；2026-11-04 D4 改成三种分
+import "./cloud-return.test.mjs";   // 2026-11-04 D4 回来时没传的分三种（纯函数）
 import "./asr.test.mjs";
 import "./storage-whitelist.test.mjs";
 import "./csp-guard.test.mjs";   // 2026-10-17 CSP 不许悄悄放松

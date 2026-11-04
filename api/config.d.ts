@@ -24,6 +24,8 @@ export declare const PUSH_HEARTBEAT_MS = 30000;
 export declare const IDLE_OVERLAY_MS: number;
 /** 闸门问云端的硬超时（家族设计稿 cloud-gate §4：≥ 8 s 没回 = 当没网进闸；数字可调，艺术类 app 不要更短）。 */
 export declare const CLOUD_CHECK_TIMEOUT_MS = 8000;
+/** 选了「离线继续」之后静默再试的间隔（家族设计稿 cloud-gate §3 硬要求，11-04：慢网误判离线时 online 事件永不来）。页面藏着不试；回前台另试一次。 */
+export declare const OFFLINE_RETRY_MS = 60000;
 /** RIME 用户词库推云节流（每次 commit 检查，超间隔才推；idle/unload 无条件 flush）。 */
 export declare const USER_DICT_PUSH_INTERVAL_MS: number;
 /** Left Ctrl 按住多久算「要录」（短按 = 丢弃）。 */

@@ -88,6 +88,23 @@ describe("接线", () => {
   it("状态变化都过 syncImeMemoryOnly（renderTopbar 第一句）", () => {
     assert(/function renderTopbar\(\): void \{\n  syncImeMemoryOnly\(\);/.test(app));
   });
+  it("设置里中途打开内置输入法：一起来就跟上同步词库（和开机同一条；2026-11-04 D4——系统输入法时清过的这台靠它跟上）", () => {
+    const body = /async function setImeEnabled\(on: boolean\)[\s\S]*?\n\}/.exec(app)?.[0] ?? "";
+    const i = body.indexOf("await ime.initialize("), k = body.indexOf("pullUserDict()");
+    assert(i > 0 && k > i, "initialize → pullUserDict");
+  });
+  it("清空明文用户词库：两种输入法都露着；内置输入法没加载 = 先清网盘那一份、这台的 rimeClearedAt 不动（下次加载跟上）", () => {
+    const html = readFileSync("index.html", "utf8");
+    const builtin = /<div id="imeBuiltinOptions">([\s\S]*?)\n {10}<\/div>/.exec(html)?.[1] ?? "";
+    assert(builtin.length > 0, "找得到内置输入法那一组");
+    assert(!/clearUserDictButton|clearEncDictButton/.test(builtin), "清空的两个钮不在「只有内置输入法才露」那一组里");
+    assert(/<div id="imeDictOptions">[\s\S]*clearUserDictButton[\s\S]*clearEncDictButton/.test(html), "在两种输入法都露着的那一组");
+    const flow = /async function clearUserDictFlow\(\)[\s\S]*?\n\}/.exec(app)?.[0] ?? "";
+    const notLoaded = /if \(!loaded\) \{([\s\S]*?)\n  \}/.exec(flow)?.[1] ?? "";
+    assert(/rimeDict\.setItem\("dump", \{ files: \[\], savedAt: now, clearedAt: now/.test(notLoaded), "没加载：同步文件清空 + clearedAt");
+    assert(!/KV_DICT_CLEARED|ime\.clearUserDict/.test(notLoaded), "没加载：这台的 rimeClearedAt 不动（下次加载靠它跟上），也不碰没起来的引擎");
+    assert(flow.indexOf("openConfirmSheet") < flow.indexOf("if (!loaded)"), "先问（app 自己的 sheet）再动");
+  });
 });
 
 describe("先封再存 · 结构守卫（Fable 11-03 裁定：IndexedDB 里一刻明文都不留）", () => {

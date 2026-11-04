@@ -7,6 +7,7 @@ import type { SyncState, FolderSnapshot, SaveResult, FreshResult, TrashOutcome, 
 import { requireStore, isCached, isDirty, setActiveFileName, makeDocPeek } from "./app-store.ts";
 import { isUnlocked, getPassword } from "./crypto-state.ts";
 import { appEncryption } from "./encryption.ts";
+import { neverUploadedIds } from "./cloud-return.ts";
 import { isDocName, docKind, parseDocName, makeDocName, collisionCandidate, compareDocNamesDesc, decodeTextBytes, encodeText, formatDate, splitDocPath, joinDocPath, type TextEncodingName } from "./doc-model.ts";
 
 export interface DocListItem {
@@ -120,6 +121,25 @@ export function newFolder(path: string): Promise<void> { return requireStore().f
 export function deleteFolder(path: string): Promise<void> { return requireStore().files.deleteFolder(path); }
 /** 有未推字节的稿数（全库标量，不列名字）——出厂重置等门用。 */
 export function dirtyDocCount(): Promise<number> { return requireStore().files.dirty.count(); }
+/** 全库「从没传过、有字节要传」的身份（列举里 syncState = float；规则书 §1 第 15 条 (a)，cloud-return.ts）。唯一列举面 = watchFolder：逐夹订一帧就退，
+ *  float 只看本机的谱系账（从没同步过 ∧ 脏），不用等云端那一帧。added 2026-11-04 by Claude Opus 5.5（工单 D4） */
+export async function neverUploadedDocs(): Promise<string[]> {
+  const files = requireStore().files;
+  const firstFrame = (folder: string): Promise<FolderSnapshot | null> => new Promise((resolve) => {
+    let done = false;
+    let unsub: (() => void) | null = null;
+    const finish = (s: FolderSnapshot | null) => { if (done) return; done = true; resolve(s); setTimeout(() => unsub?.(), 0); };
+    unsub = files.watchFolder(folder, (s) => finish(s), { onError: () => finish(null) });
+  });
+  const out: string[] = [], queue = [""], seen = new Set(queue);
+  while (queue.length && seen.size <= 1000) {
+    const snap = await firstFrame(queue.shift()!);
+    if (!snap) continue;
+    out.push(...neverUploadedIds(snap.items));
+    for (const f of snap.folders) if (!seen.has(f)) { seen.add(f); queue.push(f); }
+  }
+  return out;
+}
 
 // ── 读 ──
 export type ReadDocResult =

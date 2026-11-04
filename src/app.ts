@@ -1,18 +1,19 @@
 // 组合根：把 store 接缝 / 编辑器 / 抽屉 / IME / 语音 / 闲置锁屏 / PWA 壳接成一个 app。created 2026-09-03 by Claude Fable 5.1
 // 这里只有接线与事件编排，没有业务规则（规则住各模块头注释）。
 import { APP_VERSION } from "./version.ts";
-import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS, IDLE_OVERLAY_MS, COLLECTIONS } from "./config.ts";
+import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS, IDLE_OVERLAY_MS, OFFLINE_RETRY_MS, COLLECTIONS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
 import { setBeforeModal, initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openScopedChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice, isSheetOpen, isBusyActive } from "./sheets.ts";
 import { cloudOnline, createCloudGate, isUserOffline, onUserOfflineChange, rawOnline } from "./cloud-gate.ts";
+import { planReturn, afterPushAll } from "./cloud-return.ts";
 import { createGateUi } from "./cloud-gate-ui.ts";
 import { attachGate } from "./store-ui.ts";
 import { createEncDict } from "./enc-dict.ts";
-import { auth, prefs, appState, rimeDict, rimeEncDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
+import { auth, prefs, appState, rimeDict, rimeEncDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence, cloudReachable } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
-import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary, sealedBlobOf, createDoc } from "./docs.ts";
+import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, neverUploadedDocs, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary, sealedBlobOf, createDoc } from "./docs.ts";
 import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate, splitDatedName, isCodeTitle } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
 import { sniffImageSize, importPageName } from "./image/policy.ts";
@@ -1804,7 +1805,11 @@ function renderImeState(): void {
 }
 async function setImeEnabled(on: boolean): Promise<void> {
   if (on) {
-    if (!ime.initialized) { setStatus(t("ime.loading")); ime.simplified = imeSimplifiedPref(); ime.fuzzy = imeFuzzyPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); else reportFuzzyError(); }
+    if (!ime.initialized) {
+      setStatus(t("ime.loading")); ime.simplified = imeSimplifiedPref(); ime.fuzzy = imeFuzzyPref(); await ime.initialize(imeSchemaPref()); if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true }); else reportFuzzyError();
+      // 跟上同步的词库（2026-11-04 D4 补，和开机那条路一样）：别的设备 / 这台在系统输入法时「清空用户词库」过 = 先清本机，不等第一次推词库才发现
+      void pullUserDict().catch((e) => reportError(e, "log"));
+    }
     ime.enabled = true;
   } else { ime.enabled = false; ime.resetComposition(); }
   deviceKvSet("imeEnabled", ime.enabled ? "1" : "0");   // 默认开：键缺省 = 开；"0" = 逃生开关「用系统输入法」
@@ -1857,10 +1862,22 @@ function syncImeMemoryOnly(): void {
   }
   if (on && ime.initialized) encDict.ensureLoaded();
 }
-/** 设置 →「清空用户词库…」（2026-11-03）：以前在加密稿里学到的词可能已经在词库里（从哪篇学的分不出来），给人一个清的入口；默认不自动清。别的设备看到 clearedAt 也会清。 */
+/** 设置 →「清空用户词库（明文）…」（2026-11-03；v3.0.16 两种输入法都露着，user 11-04「加」）：以前在加密稿里学到的词可能已经在词库里（从哪篇学的分不出来），给人一个清的入口；默认不自动清。
+ *  别的设备看到 clearedAt 也会清。加密词库不动（它有自己的「清空加密词库…」）。
+ *  内置输入法没加载（这台用系统输入法）：先清网盘那一份（写 clearedAt），这台的 rimeClearedAt 故意不动 → 下次内置输入法加载后 pullUserDict 看到更新的 clearedAt 先清本机；
+ *  pushUserDict 也先跟上再推（不会把旧词传回去）。为了清一下就去载几 MB 的 RIME 不值得（家规「重资源等人有意图」：人的意图是清，不是用内置输入法）。 */
 async function clearUserDictFlow(): Promise<void> {
-  if (!ime.initialized) { setStatus(t("ime.clearDictNotReady")); return; }
-  if (!(await openConfirmSheet(t("ime.clearDictTitle"), t("ime.clearDictMsg"), { okLabel: t("ime.clearDictOk"), cancelLabel: t("common.cancel") }))) return;
+  const loaded = ime.initialized;
+  if (!loaded && ime.enabled) { setStatus(t("ime.clearDictNotReady")); return; }   // 内置输入法正在加载
+  const msg = t("ime.clearDictMsg") + (loaded ? "" : "\n\n" + t("ime.clearDictDeferred"));
+  if (!(await openConfirmSheet(t("ime.clearDictTitle"), msg, { okLabel: t("ime.clearDictOk"), cancelLabel: t("common.cancel") }))) return;
+  if (!loaded) {
+    const now = Date.now();
+    rimeDict.setItem("dump", { files: [], savedAt: now, clearedAt: now, device: deviceLabel() });
+    diagNote("ime", "user dict cleared (asked here; built-in IME not loaded → this device follows on next load)");
+    setStatus(t("ime.clearDictDoneDeferred"));
+    return;
+  }
   try {
     const inLayer = encDict.loaded();
     if (inLayer) await encDict.sealNow(true);   // 明文词库清空会把内存层一起换掉：先封，清完再灌
@@ -2476,32 +2493,53 @@ function onAppKeydown(event: KeyboardEvent): void {
 }
 document.addEventListener("keydown", onAppKeydown);
 
-// ── 补传全部未推文件（store 的脏账为准；2026-09-26 user 真机「新书一直卡在上传」）──
-//   为什么需要它：书 / 稿在登出态落盘走 tryPush:false，**不进**库的离线上传队列（那队列只收「推过但没落地」的）；编辑器内存里的「待推」标记重开后归零；
-//   加密文件的推送还必须内存里有密码（库 pushLocalBytes 先解壳，锁着 = locked 算失败）。所以三个时刻都得问库一遍：登录后 / 回前台回线 / **解锁后**。
-//   pushAll 不开文档、per-name 串行与用户操作互斥；failed 是错误报告不是列举面（进黑匣子；verbose 时 toast 一句）。
-//   **问一次再推**（v2.3.52，2026-10-21；user 答统筹稿问题 3 = 全家「登录 / 回线后问一次」，JRB 0.2.20 同款）：登出 / 离线时落盘的稿走 tryPush:false，
-//   从没传过、只在本机——以前登录后静默 pushAll（v2.3.35），现在 offerPushLocalOnly：有 N 篇没传 → 问一次「传上去吗」，点了才 pushAll；
-//   「先不传」= 这次打开不再问也不再补传（下次打开再问）；点过「传上去」= 这次打开里之后的回线 / 解锁都自动补传（consent 已给）。
-//   开着的那篇照旧经 pushNowAny 自动推（那是正常 save 路径，不在这个问句里）；库的离线补推队列（推过但没落地）照旧自动排空。
-// 2026-10-26 改（家族周账 F-98 / F-88；user 10-26「列表面」「收，救火」；CatsUp 同形）：10-21 的「问一次 → pushAll」是 / 否框撤了——
-//   它说「还没传上去」对「传过、后来改了没传」只说对了一半，批量传完失败只剩一条状态行、没有动作。现在：有没同步好的 → 问一句「去处理吗」→ 开书库进「要处理的」视图
-//   （gallery 0.8.8：顶部横幅 + 每张卡一粒可见的「处理…」，点了当场弹库的三选一面）。不再自己批量推：每一份都由人在面里选用哪边。
-//   store 2.2.1 起「刷新前改过 + 登录前恢复」那种谱系丢了的脏稿推前会先问云端、没人动就直接推成，所以这里数到的多半是真要人选的。
-let askedPushLocalOnly = false;      // 这次打开问过了（「先不」）
-async function offerPushLocalOnly(opts: { verbose?: boolean } = {}): Promise<void> {
-  if (!auth.isSignedIn() || !cloudOnline()) return;
-  if (askedPushLocalOnly) return;
-  const n = await dirtyDocCount().catch((e) => { reportError(e, "log"); return 0; });
-  if (n <= 0) return;
-  if (isSheetOpen() || isBusyActive()) { diagNote("sync", `unsynced drafts: ${n}, sheet / busy open → ask later`); return; }   // 别盖住冲突面；下次回线 / 解锁再问
-  askedPushLocalOnly = true;
-  diagNote("sync", `unsynced drafts after sign-in / online: ${n} → offer gallery attention view${opts.verbose ? " (verbose)" : ""}`);
-  let go = false;
-  try { go = await openConfirmSheet(t("pushAll.askTitle"), t("pushAll.askMsg", { n: String(n) }), { okLabel: t("pushAll.ok"), cancelLabel: t("pushAll.later") }); }
-  catch (e) { askedPushLocalOnly = false; reportError(e, "log"); return; }   // 和别的 sheet 撞了 → 这次没问成，下次再问
-  if (!go) { diagNote("sync", "unsynced drafts: user said not now"); return; }
-  await galleryHost.openAttention();
+// ── 回来（登录后 / 回线 / 解锁）时没传的稿：分三种（家族规则书 §1 第 15 条，11-03 夜改写；工单 D4；分法和理由见 src/cloud-return.ts）──
+//   历史：v2.3.35 登录后静默 pushAll → v2.3.52（10-21）「问一次 → pushAll」→ v3.0.11（10-26）只问「去处理」、零 pushAll。现在：
+//   (b) 传过的脏稿（写作 app：心跳保存 = 同意传）→ 直接续传，不问；(a) 从没传过的（float）→ 问一次「有 N 份只在这台设备，现在传上去？」，点了才传；
+//   库的 pushAll 不分种类：有 (a) 时 (b) 跟着 (a) 的答案走，面上两样都说真话；「稍后」= 都不推、进书库「要处理的」。一页只问一次。
+//   开着的那篇照旧在前面经 pushNowAny 推（正常 save 路径）；库的离线补推队列（登录着存的、推过没落地的新稿）在前面 drainOfflineQueue 排空。
+//   pushAll 全 app 只有下面一处（push-consent 守卫核）：If-Match 守着，撞上别的设备改过的 / 云端同名的留在本机、不弹面、不覆盖——带名单给「去处理」，绝不替人选边。
+let askedNeverUploaded = false;   // 这一页问过「只在这台设备」那一句（答什么都算）
+let offeredAttention = false;     // 这一页给过「没传成的去处理」那张面
+let returnRun: Promise<void> | null = null;
+function offerPushLocalOnly(): Promise<void> { return (returnRun ??= settleReturn().finally(() => { returnRun = null; })); }
+async function settleReturn(): Promise<void> {
+  if (!auth.isSignedIn() || !cloudOnline() || gate.locked()) return;   // 闸门罩着：放行后 catchUp（= resumeSync）会再来
+  // 开着的那篇归心跳：先推它，再数（CatsUp 同形）。登录后那条路的 pushNowAny 可能跑在「离线继续」还没放开的时候（推不出去），不先推这里就会把它数进「只在这台设备」，
+  //   面说「稍后」它却被心跳推上去 = 面说了假话（e2e「回来 · 现在传」抓到）。只推 pending（编辑器 / 书各自的「不脏不推」门）。
+  await pushNowAny().catch((e) => reportError(e, "log"));
+  const dirty = await dirtyDocCount().catch((e) => { reportError(e, "log"); return 0; });
+  if (dirty <= 0) return;
+  let never: string[];
+  try { never = await neverUploadedDocs(); } catch (e) { reportError(e, "log"); return; }
+  const plan = planReturn(dirty, never.length, askedNeverUploaded);
+  diagNote("sync", `back with unsynced: ${JSON.stringify(plan)}`);
+  if (plan.kind === "none" || plan.kind === "hold") return;
+  if (plan.kind === "ask") {
+    if (isSheetOpen() || isBusyActive()) { diagNote("sync", "never-uploaded: sheet / busy open → ask later"); return; }   // 别盖住冲突面；下次回线 / 解锁再问
+    askedNeverUploaded = true;
+    const msg = (plan.others > 0 ? t("pushAll.askAlso", { m: String(plan.others) }) + "\n\n" : "") + t("pushAll.askNote");
+    let go = false;
+    try { go = await openConfirmSheet(t("pushAll.askOnly", { n: String(plan.neverUploaded) }), msg, { okLabel: t("pushAll.now"), cancelLabel: t("pushAll.later") }); }
+    catch (e) { askedNeverUploaded = false; reportError(e, "log"); return; }   // 和别的 sheet 撞了 → 这次没问成，下次再问
+    diagNote("sync", `never-uploaded ask → ${go ? "now" : "later"}`);
+    if (!go) { setStatus(t("pushAll.inList", { n: String(dirty) })); return; }   // 稍后 = 什么都不推，书库「要处理的」里看得见
+    if (!auth.isSignedIn() || !cloudOnline()) return;   // 问的时候断了 / 登出了：下次回来再说
+  }
+  const r = await requireStore().files.dirty.pushAll().catch((e) => { reportError(e, "warning"); return null; });
+  const left = await dirtyDocCount().catch(() => dirty);
+  diagNote("sync", `push all (${plan.kind}): pushed=${r?.pushed ?? "-"} failed=${r ? r.failures.map((f) => f.reason).join(",") || "0" : "-"} left=${left}`);
+  galleryHost.refresh(); setState(stateAny());
+  const after = afterPushAll(r, left);
+  if (after.kind === "done") { if (plan.kind === "ask") setStatus(t("pushAll.allDone", { n: String(after.pushed) })); return; }
+  if (after.kind === "retryLater") { setStatus(t("pushAll.retryLater", { n: String(after.left) })); return; }
+  const names = after.names.slice(0, 3).map((x) => parseDocName(x).stem).join("、");
+  if (offeredAttention || isSheetOpen() || isBusyActive()) { setStatus(t("pushAll.inList", { n: String(after.left) })); return; }
+  offeredAttention = true;
+  const go = await openConfirmSheet(t("pushAll.partialTitle", { n: String(after.left) }),
+    t("pushAll.partialMsg", { pushed: String(after.pushed), names: names ? t("pushAll.partialNames", { names: after.names.length > 3 ? names + " …" : names }) : "" }),
+    { okLabel: t("pushAll.ok"), cancelLabel: t("pushAll.later") }).catch((e) => { reportError(e, "log"); return false; });
+  if (go) await galleryHost.openAttention();
 }
 // ── 闲置锁屏 / 前台复查 / 隐藏推送 ──
 //   顺序（v2.3.35，2026-10-16；10-08 handoff 第 3 节）：**先快进、再推**。这台干净而别的设备改过 → 静默接云端新版；脏 → 库的快进是空操作、推送撞 412 才弹面。
@@ -2518,12 +2556,13 @@ async function resumeSync(): Promise<void> {
   void offerPushLocalOnly();   // 2026-09-26：开着的推完再问库还有谁没推（顺序保证开着的那篇不会被推两遍）。2026-11-03 不等人答（工单 D3 核 F-182）：这条路是闸门的「正在同步」，等人 = 条一直亮着、词库偏好也对不齐
 }
 onLockChange((unlocked) => { if (unlocked) syncImeMemoryOnly(); else void encDict.onLocked(); });   // 锁定 = 灌进内存层的词立刻丢（2026-11-03，D3）
-onLockChange((unlocked) => { if (unlocked) void offerPushLocalOnly({ verbose: true }); });   // v2.3.52：也走「问一次」闸门（点过传上去才自动补）   // 2026-09-26：解锁 = 加密文件的推送第一次有钥匙；登录 / 回前台那两下如果当时锁着都推不动（库 locked 算失败留 dirty）
+onLockChange((unlocked) => { if (unlocked) void offerPushLocalOnly(); });   // v2.3.52：也走「回来」那条路（D4 起：传过的续传、从没传过的问一次）   // 2026-09-26：解锁 = 加密文件的推送第一次有钥匙；登录 / 回前台那两下如果当时锁着都推不动（库 locked 算失败留 dirty）
 // ── 闸门：网盘掉登录 / 没网（家族设计稿 ai-docs/20261103-cloud-gate-design.md；状态机 src/cloud-gate.ts，界面 src/cloud-gate-ui.ts）──
 let homeKnown = false;   // 这台设备的 MSAL 里有账号 = 有家。从 initAuth / onAuthChanged 来，不新增存储（账号本来就在 MSAL 缓存里）
 let hiddenAt = 0;        // 这次藏到后台的时刻（0 = 没藏）：判「醒来 + 离开多久」
 let _bootDocReady: () => void = () => {};
 const bootDocReady = new Promise<void>((r) => { _bootDocReady = r; });   // 开机：稿摆好了才问云端（不然 refreshIfClean 没东西可问，直接放行）
+const gateTune = { offlineRetryMs: OFFLINE_RETRY_MS };   // 探针调（__xhw.gateTune）；不是偏好
 const gate = createCloudGate({
   ui: createGateUi({ dirtyCount: dirtyDocCount, openList: () => { void galleryHost.openAttention(); }, afterRelease: () => { if (!gate.locked()) recoverEditorFocus(); } }),
   hasHome: () => homeKnown,
@@ -2541,6 +2580,9 @@ const gate = createCloudGate({
   },
   catchUp: resumeSync,
   signIn: () => onSignIn({ later: true }),
+  reachable: cloudReachable,   // 「离线继续」之后：续签成了还要真问云端一次（不经库）才放开离线（设计稿 §3，11-04）
+  pageVisible: () => document.visibilityState !== "hidden",
+  offlineRetryMs: () => gateTune.offlineRetryMs,
   note: (line) => diagNote("gate", line),
 });
 attachGate(gate);
@@ -2732,4 +2774,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { encDict, rimeEncDict, encContainer: ENC_CONTAINER, exportSheet: exportSheetFlow, importDropped: importDroppedFiles, gate, cloudOnline, newProject: newProjectFlow, liftDraft: liftDraftToBook, looksEncrypted: (b: Blob | Uint8Array) => appEncryption.looksEncryptedContainer(b), version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };
+(window as unknown as { __xhw?: unknown }).__xhw = { gateTune, encDict, rimeEncDict, encContainer: ENC_CONTAINER, exportSheet: exportSheetFlow, importDropped: importDroppedFiles, gate, cloudOnline, newProject: newProjectFlow, liftDraft: liftDraftToBook, looksEncrypted: (b: Blob | Uint8Array) => appEncryption.looksEncryptedContainer(b), version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };

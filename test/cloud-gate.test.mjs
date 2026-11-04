@@ -11,7 +11,7 @@ Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, get:
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 function makeGate(over = {}) {
-  const calls = { checking: 0, blocked: [], release: 0, bars: [], renew: 0, check: 0, catchUp: 0, signIn: 0 };
+  const calls = { checking: 0, blocked: [], release: 0, bars: [], renew: 0, check: 0, catchUp: 0, signIn: 0, reach: 0, timers: [] };
   let onEscape = null, on = null, foreign = false;
   const ui = {
     checking: (e) => { calls.checking++; onEscape = e; },
@@ -29,8 +29,14 @@ function makeGate(over = {}) {
     check: over.check ?? (async () => { calls.check++; return "in-sync"; }),
     catchUp: async () => { calls.catchUp++; },
     signIn: over.signIn ?? (async () => { calls.signIn++; return null; }),
+    reachable: over.reachable ?? (async () => { calls.reach++; }),
+    pageVisible: () => over.visible?.() ?? true,
+    every: (ms, fn) => { const t = { ms, fn, stopped: false }; calls.timers.push(t); return () => { t.stopped = true; }; },   // 假时钟：测试手动拨
+    offlineRetryMs: () => 60_000,
   });
-  return { gate, calls, escape: () => onEscape(), press: () => on, setForeign: (v) => { foreign = v; }, setSigned: (v) => { signed = v; } };
+  /** 拨一下假时钟：所有还在走的定时器各响一次。 */
+  const fire = async () => { for (const t of calls.timers) if (!t.stopped) t.fn(); await tick(); await tick(); };
+  return { gate, calls, fire, escape: () => onEscape(), press: () => on, setForeign: (v) => { foreign = v; }, setSigned: (v) => { signed = v; } };
 }
 /** 每个用例结束把全局「离线」放回去（它是模块级的，同 app 一个）。 */
 async function resetOffline() { net = true; const { gate } = makeGate({ signed: true }); gate.authChanged(false, "signOut"); await tick(); }
@@ -226,12 +232,23 @@ describe("闸门 · 网回来（§2 最后一行）", () => {
     assert(isUserOffline()); eq(t.calls.blocked.length, n); eq(t.calls.bars.at(-1), "offline");
     await resetOffline();
   });
-  it("续签成了、云端问不成：收回离线、条还在", async () => {
-    const t = makeGate({ signed: true, check: async () => "cloud-error" });
+  it("续签成了（令牌可能是缓存的）、云端问不成：不清离线、条还在、不弹（设计稿 §3 11-04）", async () => {
+    let seen = [];
+    const t = makeGate({ signed: true, check: async () => "cloud-error", reachable: async () => { seen.push(isUserOffline()); throw new Error("net down"); } });
     await t.gate.boot();
     t.press().offline();
+    const n = t.calls.blocked.length;
     t.gate.netBack(); await tick(); await tick();
-    assert(isUserOffline(), "还是离线"); eq(t.calls.catchUp, 0); eq(t.calls.bars.at(-1), "offline");
+    assert(isUserOffline(), "还是离线"); eq(t.calls.catchUp, 0); eq(t.calls.bars.at(-1), "offline"); eq(t.calls.blocked.length, n, "不弹闸");
+    eq(seen.join(), "true", "问云端的时候离线还开着（不经库、不先放开再收回）");
+    await resetOffline();
+  });
+  it("online 事件那条路也先问云端：云端挂起 = 硬超时后还是离线", async () => {
+    const t = makeGate({ signed: true, check: async () => "cloud-error", reachable: () => new Promise(() => {}) });
+    await t.gate.boot();
+    t.press().offline();
+    t.gate.netBack(); await tick(60);
+    assert(isUserOffline(), "还是离线"); eq(t.calls.catchUp, 0);
     await resetOffline();
   });
   it("主动登出：闸、条、离线都收掉", async () => {
@@ -248,6 +265,76 @@ describe("闸门 · 网回来（§2 最后一行）", () => {
   });
 });
 
+describe("闸门 · 离线态静默再试（设计稿 §3 硬要求，11-04；假时钟）", () => {
+  it("选了离线才开定时器，60 s 一次；没选离线不开", async () => {
+    const t = makeGate({ signed: true });
+    await t.gate.boot();
+    eq(t.calls.timers.length, 0, "在线放行 = 没有定时器");
+    const u = makeGate({ renew: async () => false });
+    await u.gate.boot();
+    u.press().offline();
+    eq(u.calls.timers.length, 1); eq(u.calls.timers[0].ms, 60_000);
+    u.press().offline();
+    eq(u.calls.timers.length, 1, "不重复开");
+    await resetOffline();
+  });
+  it("一直报有网、online 事件永不来：到点悄悄试，续签 + 问云端都通 → 清离线、补一轮、收条、停表", async () => {
+    let ok = false;
+    const t = makeGate({ renew: async () => { t.calls.renew++; if (ok) t.setSigned(true); return ok; } });
+    await t.gate.boot();
+    t.press().offline();
+    const n = t.calls.blocked.length;
+    await t.fire();
+    assert(isUserOffline(), "第一下续签没成 → 还是离线"); eq(t.calls.blocked.length, n, "不弹闸"); eq(t.calls.reach, 0, "续签没成就不问云端");
+    ok = true;
+    await t.fire();
+    assert(!isUserOffline(), "第二下成了"); eq(t.calls.reach, 1, "续签成了还问了云端"); eq(t.calls.catchUp, 1); eq(t.calls.bars.slice(-2).join(), "syncing,hidden");
+    assert(t.calls.timers[0].stopped, "回来了 = 停表");
+    await resetOffline();
+  });
+  it("续签成了、云端不答：不清离线、不弹、表接着走；下一拍通了再回来", async () => {
+    let up = false;
+    const t = makeGate({ signed: true, check: async () => "cloud-error", reachable: async () => { t.calls.reach++; if (!up) throw new Error("no answer"); } });
+    await t.gate.boot();
+    t.press().offline();
+    await t.fire();
+    assert(isUserOffline()); eq(t.calls.catchUp, 0); eq(t.calls.reach, 1); assert(!t.calls.timers[0].stopped, "表还在走"); eq(t.calls.blocked.length, 1, "只有开机那一次闸");
+    up = true;
+    await t.fire();
+    assert(!isUserOffline()); eq(t.calls.catchUp, 1);
+    await resetOffline();
+  });
+  it("页面藏着：到点不试（回前台那一下 wake 会试）", async () => {
+    let visible = false;
+    const t = makeGate({ signed: true, check: async () => "cloud-error", visible: () => visible });
+    await t.gate.boot();
+    t.press().offline();
+    await t.fire();
+    eq(t.calls.reach, 0, "藏着不问"); assert(isUserOffline());
+    visible = true;
+    await t.gate.wake(false); await tick();
+    eq(t.calls.reach, 1, "回前台试一次"); assert(!isUserOffline());
+    await resetOffline();
+  });
+  it("浏览器说没网：到点不试、不续签", async () => {
+    const t = makeGate({ renew: async () => { t.calls.renew++; return false; } });
+    await t.gate.boot();
+    t.press().offline();
+    const r0 = t.calls.renew;
+    net = false;
+    await t.fire();
+    eq(t.calls.renew, r0); eq(t.calls.reach, 0);
+    await resetOffline();
+  });
+  it("主动登出：停表", async () => {
+    const t = makeGate({ renew: async () => false });
+    await t.gate.boot();
+    t.press().offline();
+    t.gate.authChanged(false, "signOut");
+    assert(t.calls.timers[0].stopped);
+  });
+});
+
 describe("闸门 · 结构守卫（§8）", () => {
   const read = (p) => readFileSync(p, "utf8");
   const gateSrc = read("src/cloud-gate.ts"), uiSrc = read("src/cloud-gate-ui.ts"), app = read("src/app.ts"), appStore = read("src/app-store.ts"), storeUi = read("src/store-ui.ts");
@@ -255,7 +342,12 @@ describe("闸门 · 结构守卫（§8）", () => {
 
   it("§8① 每一趟等云端都和硬超时 + 逃生钮赛跑；boot() 自己不 await 云端", () => {
     assert(/Promise\.race\(\[work, timedOut, esc\.then/.test(gateSrc), "run() 的 race");
-    assert(/Promise\.race\(\[renewOnce\("reconnect"\), timedOut\]\)/.test(gateSrc) && /Promise\.race\(\[d\.check\(\), timedOut\]\)/.test(gateSrc), "reconnect 的 race");
+    assert(/Promise\.race\(\[renewOnce\("reconnect"\), timedOut\]\)/.test(gateSrc), "reconnect 的续签 race");
+    assert(/Promise\.race\(\[d\.reachable\(\)[\s\S]*?timedOut\]\)/.test(gateSrc), "reconnect 问云端也 race 硬超时");
+    const rc = /async function reconnect\(\)[\s\S]*?\n {2}\}/.exec(gateSrc)?.[0] ?? "";
+    assert(rc.indexOf("cloudAnswers()") > 0 && rc.indexOf("cloudAnswers()") < rc.indexOf("setUserOffline(false)"), "先问云端、通了才放开离线（设计稿 §3 11-04）");
+    assert(!/setUserOffline\(true\)/.test(rc), "reconnect 不再先放开再收回");
+    assert(/reachable: cloudReachable,/.test(app) && /export async function cloudReachable\(\)[^\n]*od\.provider\.getItemByPath/.test(appStore), "接线：问云端走 provider 一次读、不经 store");
     const m = /^async function boot\(\): Promise<void> \{\n([\s\S]*?)^\}/m.exec(app);
     assert(m, "找得到 boot()");
     const topLevel = m[1].split("\n").filter((l) => /^ {2}\S/.test(l));   // 只看函数体最外层（输入法那段 then 里的不挡启动）

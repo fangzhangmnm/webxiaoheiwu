@@ -832,21 +832,53 @@ export declare const S: {
         readonly zh: "已补传 {n} 个文件";
         readonly en: "Caught up: {n} file(s) uploaded";
     };
-    readonly "pushAll.askTitle": {
-        readonly zh: "有稿没同步好";
-        readonly en: "Drafts not in sync";
+    readonly "pushAll.askOnly": {
+        readonly zh: "有 {n} 份只在这台设备，现在传上去？";
+        readonly en: "{n} item(s) are only on this device. Upload them now?";
     };
-    readonly "pushAll.askMsg": {
-        readonly zh: "有 {n} 篇稿没同步好（只在这台设备上，或改了还没传上去）。到书库里逐篇「处理…」，每一篇都会问你用云端的还是这台的。";
-        readonly en: "{n} draft(s) are not in sync (only on this device, or edited and not uploaded). Resolve them one by one in the library; each one asks you which side to keep.";
+    readonly "pushAll.askAlso": {
+        readonly zh: "另外 {m} 份传过、后来改了还没传的，会一起续传。";
+        readonly en: "{m} other item(s) that were uploaded before and changed since will be uploaded along with them.";
+    };
+    readonly "pushAll.askNote": {
+        readonly zh: "传上去之后别的设备也看得到。网盘上要是已经有同名的，不会被盖掉，会留在书库「要处理的」里让你选。";
+        readonly en: "Once uploaded, your other devices can see them. If OneDrive already has an item with the same name, it is not overwritten; it stays under \"Needs attention\" in the library for you to decide.";
+    };
+    readonly "pushAll.now": {
+        readonly zh: "现在传";
+        readonly en: "Upload now";
+    };
+    readonly "pushAll.later": {
+        readonly zh: "稍后";
+        readonly en: "Later";
+    };
+    readonly "pushAll.inList": {
+        readonly zh: "{n} 份没传的在书库「要处理的」里";
+        readonly en: "{n} item(s) not uploaded are under \"Needs attention\" in the library";
+    };
+    readonly "pushAll.allDone": {
+        readonly zh: "{n} 份都传上去了";
+        readonly en: "All {n} uploaded";
+    };
+    readonly "pushAll.retryLater": {
+        readonly zh: "还有 {n} 份没传上去，网通了会再传";
+        readonly en: "{n} item(s) not uploaded yet; they will be retried when the network is back";
+    };
+    readonly "pushAll.partialTitle": {
+        readonly zh: "还有 {n} 份没传成";
+        readonly en: "{n} item(s) were not uploaded";
+    };
+    readonly "pushAll.partialMsg": {
+        readonly zh: "传上去 {pushed} 份。没传成的{names}：别的设备改过的、网盘上有同名的，要你在书库里逐篇「处理…」选用哪边；网络问题的之后会再试。";
+        readonly en: "{pushed} uploaded. The rest{names}: ones changed on another device or with a same-name item on OneDrive need you to pick a side with \"Resolve…\" in the library; network problems will be retried.";
+    };
+    readonly "pushAll.partialNames": {
+        readonly zh: "（{names}）";
+        readonly en: " ({names})";
     };
     readonly "pushAll.ok": {
         readonly zh: "去处理";
         readonly en: "Resolve them";
-    };
-    readonly "pushAll.later": {
-        readonly zh: "先不传";
-        readonly en: "Not now";
     };
     readonly "st.pushAllFailed": {
         readonly zh: "{n} 个文件没传上去（加密未解锁 / 冲突 / 网络），详见诊断日志";
@@ -1057,24 +1089,32 @@ export declare const S: {
         readonly en: "Keep the old one";
     };
     readonly "ui.ime.clearDict": {
-        readonly zh: "清空用户词库…";
-        readonly en: "Clear learned words…";
+        readonly zh: "清空用户词库（明文）…";
+        readonly en: "Clear learned words (plain)…";
     };
     readonly "ui.ime.clearDictHint": {
-        readonly zh: "输入法学过的词（这台设备上的，和同步到网盘的那一份）。加密稿里学到的词不会存进去";
-        readonly en: "Words the input method has learned (on this device and the copy synced to OneDrive). Words learned in encrypted drafts are not saved to it";
+        readonly zh: "明文稿里学到的词：这台设备上的，和同步到网盘的那一份（没加密）。加密稿学到的在加密词库里，这里不动";
+        readonly en: "Words learned in plain drafts: on this device and the copy synced to OneDrive (not encrypted). Words learned in encrypted drafts live in the encrypted word list and are not touched here";
     };
     readonly "ime.clearDictTitle": {
-        readonly zh: "清空用户词库？";
-        readonly en: "Clear learned words?";
+        readonly zh: "清空明文用户词库？";
+        readonly en: "Clear plain learned words?";
     };
     readonly "ime.clearDictMsg": {
-        readonly zh: "这台设备上学过的词和网盘里同步的那一份都会清掉，别的设备下次同步时也会清。以后重新学。\n\n旧版本在加密稿里打过的词可能已经学进去了，分不出是从哪篇学的，所以只能整个清。OneDrive 自己留的历史版本不归这里管。";
-        readonly en: "Words learned on this device and the copy synced to OneDrive will be cleared, and other devices will clear theirs on their next sync. It will learn again from scratch.\n\nWords typed in encrypted drafts on older versions may already be in there, and they can't be told apart, so it can only be cleared as a whole. Version history kept by OneDrive itself isn't touched.";
+        readonly zh: "这台设备上学过的词和网盘里同步的那一份都会清掉，别的设备下次同步时也会清。以后重新学。\n\n旧版本在加密稿里打过的词可能已经学进去了，分不出是从哪篇学的，所以只能整个清。OneDrive 自己留的历史版本不归这里管。加密词库不动。";
+        readonly en: "Words learned on this device and the copy synced to OneDrive will be cleared, and other devices will clear theirs on their next sync. It will learn again from scratch.\n\nWords typed in encrypted drafts on older versions may already be in there, and they can't be told apart, so it can only be cleared as a whole. Version history kept by OneDrive itself isn't touched. The encrypted word list is not touched.";
     };
     readonly "ime.clearDictOk": {
         readonly zh: "清空";
         readonly en: "Clear";
+    };
+    readonly "ime.clearDictDeferred": {
+        readonly zh: "现在用的是系统输入法，内置输入法没加载：先清网盘里的那一份；这台设备上的那份，等下次打开内置输入法时跟着清。";
+        readonly en: "You are using the system input method and the built-in one is not loaded: the OneDrive copy is cleared now; the copy on this device is cleared the next time the built-in input method loads.";
+    };
+    readonly "ime.clearDictDoneDeferred": {
+        readonly zh: "网盘里的明文词库清空了；这台设备上的那份等打开内置输入法时跟着清";
+        readonly en: "The plain word list on OneDrive is cleared; this device's copy follows when the built-in input method loads";
     };
     readonly "ime.clearDictDone": {
         readonly zh: "用户词库清空了";
@@ -1093,16 +1133,16 @@ export declare const S: {
         readonly en: "Clear words learned in encrypted drafts…";
     };
     readonly "ui.ime.clearEncDictHint": {
-        readonly zh: "加密稿里学到的词（封好了同步，只在加密稿开着、解了锁时用）。要口令";
-        readonly en: "Words learned in encrypted drafts (synced sealed, used only while an encrypted draft is open and unlocked). Needs your password";
+        readonly zh: "加密稿里学到的词（封好了同步，只在加密稿开着、解了锁时用）。要口令；明文用户词库不动";
+        readonly en: "Words learned in encrypted drafts (synced sealed, used only while an encrypted draft is open and unlocked). Needs your password; the plain learned words are not touched";
     };
     readonly "ime.clearEncDictTitle": {
         readonly zh: "清空加密词库？";
         readonly en: "Clear words learned in encrypted drafts?";
     };
     readonly "ime.clearEncDictMsg": {
-        readonly zh: "加密稿里学到的词都会清掉，别的设备下次打开加密稿时也会清。以后重新学。";
-        readonly en: "Everything learned in encrypted drafts will be cleared. Other devices follow the next time they open an encrypted draft. It will learn again from scratch.";
+        readonly zh: "加密稿里学到的词都会清掉，别的设备下次打开加密稿时也会清。以后重新学。明文用户词库不动。";
+        readonly en: "Everything learned in encrypted drafts will be cleared. Other devices follow the next time they open an encrypted draft. It will learn again from scratch. The plain learned words are not touched.";
     };
     readonly "ime.clearEncDictDone": {
         readonly zh: "加密词库清空了";

@@ -5,7 +5,7 @@
     <!-- CSP（2026-10-17，user「csp…一起上」）：脚本只准本站文件 + wasm（不放行内联脚本 / eval）；iframe 只准微软登录（MSAL 后台续登录）；
          connect-src 放 https: 是因为模型镜像地址人能改、OneDrive 的下载 / 上传主机不固定。改这条 = 跑 test/csp-guard + boot smoke（拦截即红）。 -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https: blob: data:; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'self' https://login.microsoftonline.com https://login.live.com; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'" />
-    <meta name="asr-worker" content="./dist/asr-worker-43a24536ac67.js" />
+    <meta name="asr-worker" content="./dist/asr-worker-240540d573f8.js" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#d8c8a8" />
     <meta name="color-scheme" content="light" />
@@ -510,14 +510,6 @@
                 <option value="wubi86" data-i18n="ime.schema.wubi">五笔 86</option>
               </select>
             </label>
-            <div class="voice-config-field">
-              <button class="auth-action" id="clearUserDictButton" type="button" data-i18n="ui.ime.clearDict">清空用户词库…</button>
-              <p class="reading-mode-hint" data-i18n="ui.ime.clearDictHint">输入法学过的词（这台设备上的，和同步到网盘的那一份）。加密稿里学到的词不会存进去</p>
-            </div>
-            <div class="voice-config-field">
-              <button class="auth-action" id="clearEncDictButton" type="button" data-i18n="ui.ime.clearEncDict">清空加密词库…</button>
-              <p class="reading-mode-hint" data-i18n="ui.ime.clearEncDictHint">加密稿里学到的词（封好了同步，只在加密稿开着、解了锁时用）。要口令</p>
-            </div>
             <div class="voice-config-field" id="imeFuzzyField">
               <span class="voice-config-label" data-i18n="ui.ime.fuzzy">模糊音</span>
               <div class="ime-fuzzy-grid">
@@ -568,6 +560,17 @@
               <input type="checkbox" id="autoTidyToggle" checked />
               <span data-i18n="ui.ime.autoTidy">打字时自动规整标点（现在只管引号：跟上面的引号样式走）</span>
             </label>
+          </div>
+          <!-- 两本词库的清空（v3.0.16，2026-11-04；user 11-04「加」）：两种输入法都露着——用系统输入法时，同步到网盘的那一份明文词库照样在，也得清得掉 -->
+          <div id="imeDictOptions">
+            <div class="voice-config-field">
+              <button class="auth-action" id="clearUserDictButton" type="button" data-i18n="ui.ime.clearDict">清空用户词库（明文）…</button>
+              <p class="reading-mode-hint" data-i18n="ui.ime.clearDictHint">明文稿里学到的词：这台设备上的，和同步到网盘的那一份（没加密）。加密稿学到的在加密词库里，这里不动</p>
+            </div>
+            <div class="voice-config-field">
+              <button class="auth-action" id="clearEncDictButton" type="button" data-i18n="ui.ime.clearEncDict">清空加密词库…</button>
+              <p class="reading-mode-hint" data-i18n="ui.ime.clearEncDictHint">加密稿里学到的词（封好了同步，只在加密稿开着、解了锁时用）。要口令；明文用户词库不动</p>
+            </div>
           </div>
           <label class="voice-config-toggle">
             <input type="checkbox" id="systemImeToggle" />
@@ -682,6 +685,6 @@
     <wp-reference-window id="referenceWindow" no-cloud></wp-reference-window>
     <input type="file" id="referenceFileInput" accept="image/*,text/plain,.txt,.md" multiple hidden />
 
-    <script type="module" src="./dist/xiaoheiwu-84eed3072600.mjs"></script>
+    <script type="module" src="./dist/xiaoheiwu-89b0ab1905c7.mjs"></script>
   </body>
 </html>

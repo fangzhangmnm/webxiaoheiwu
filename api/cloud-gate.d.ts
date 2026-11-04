@@ -41,6 +41,14 @@ export interface CloudGateDeps {
     catchUp(): Promise<void>;
     /** 交互登录。true = 已起跳（页面要走了）。 */
     signIn(): Promise<boolean | null>;
+    /** 问云端一次、真走一趟网（不经库：选了离线时库不出网），不抛 = 通。续签可能直接用缓存的令牌，说明不了网通不通（设计稿 §3 硬要求，11-04）。 */
+    reachable(): Promise<void>;
+    /** 页面在前台？后台不定时再试（回前台那一下 wake 会试）。缺 = 当在前台。 */
+    pageVisible?(): boolean;
+    /** 定时器接缝（单测用假时钟）：每 ms 调一次 fn，返回停止函数。缺 = setInterval。 */
+    every?(ms: number, fn: () => void): () => void;
+    /** 离线态静默再试的间隔；缺 = OFFLINE_RETRY_MS。开定时器那一刻读（探针改得动）。 */
+    offlineRetryMs?(): number;
     note(line: string): void;
     now?(): number;
     timeoutMs?: number;

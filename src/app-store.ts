@@ -25,6 +25,9 @@ import { cloudOnline } from "./cloud-gate.ts";
 const od = createOneDriveProvider({ clientId: CLIENT_ID, scopes: SCOPES, authority: AUTHORITY, msalUrl: MSAL_URL });
 /** OneDrive auth 面（signIn/signOut/isSignedIn/onAuthChanged）。 */
 export const auth: OneDriveAuth = od.auth;
+/** 问云端一次、真走一趟网（闸门「离线继续」期间静默再试用；家族设计稿 cloud-gate §3，WeebPaint / KudsRocket 同形）：名字不存在 = 云端答了 null，也算通；不通 = 抛。
+ *  **不经 store**：选了离线时 store 不出网（isOnline = cloudOnline），这一问正是要在放开离线之前先确认网通。只读、零记账。added 2026-11-04 by Claude Opus 5.5 */
+export async function cloudReachable(): Promise<void> { await od.provider.getItemByPath(".reachable-probe"); }
 
 let _activeFileName: string | null = null;
 /** 当前打开的稿（全名）：cloud-gone 去抖 trash 绝不碰它。 */

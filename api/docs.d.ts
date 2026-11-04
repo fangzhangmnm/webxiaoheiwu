@@ -51,6 +51,9 @@ export declare function newFolder(path: string): Promise<void>;
 export declare function deleteFolder(path: string): Promise<void>;
 /** 有未推字节的稿数（全库标量，不列名字）——出厂重置等门用。 */
 export declare function dirtyDocCount(): Promise<number>;
+/** 全库「从没传过、有字节要传」的身份（列举里 syncState = float；规则书 §1 第 15 条 (a)，cloud-return.ts）。唯一列举面 = watchFolder：逐夹订一帧就退，
+ *  float 只看本机的谱系账（从没同步过 ∧ 脏），不用等云端那一帧。added 2026-11-04 by Claude Opus 5.5（工单 D4） */
+export declare function neverUploadedDocs(): Promise<string[]>;
 export type ReadDocResult = {
     kind: "ok";
     text: string;

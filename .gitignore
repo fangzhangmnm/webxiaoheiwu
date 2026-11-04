@@ -8,3 +8,5 @@ tools/esbuild/
 # 临时
 tmp/
 *.log
+# 词库样本里的空日志是夹具本身（2026-11-04：被 *.log 吞了，干净克隆里 rime-userdb 两条测试红）
+!test/fixtures/rime-userdb/*.log
