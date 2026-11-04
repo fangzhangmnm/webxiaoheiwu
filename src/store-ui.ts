@@ -60,6 +60,17 @@ export const storeUI: StoreUI = {
     return choice ?? "cancel";
   },
 
+  // store 2.2.2（user 2026-10-26「同意，反正不删就行了」）：改名 / 移动撞上「不知道云端旧的该不该搬」→ 动字节前先问。搬走 = 进回收站（可恢复），不是删。照 CatsUp src/store-ui.ts。
+  resolveRenameOld: async ({ oldName, newName, reason }): Promise<"trash" | "keep" | "cancel"> => {
+    const old = stripExt(oldName), next = stripExt(newName);
+    const choice = await lockSyncGate<"trash" | "keep" | "cancel">({
+      title: t("cf.renameOldTitle", { name: old }), message: t(reason === "diverged" ? "cf.renameOldDiverged" : "cf.renameOldUnknown", { old, next }),
+      actions: [{ label: t("cf.renameOldTrash"), value: "trash", primary: true }, { label: t("cf.renameOldKeep"), value: "keep" }, { label: t("common.cancel"), value: "cancel" }],
+    });
+    diagNote("sync", `rename-old sheet "${old}" → "${next}" reason=${reason} → ${choice ?? "cancel"}`);
+    return choice ?? "cancel";
+  },
+
   reportError: (err: unknown, level): void => {
     // 未登录时库的后台云动作（collections 对齐 / 云帧）会撞 auth 的 "Not signed in"——那是正常态不是故障，绝不上横幅（2026-09-03 截图：橙条常驻）。
     if ((err as { message?: string } | null)?.message === "Not signed in") { reportError(err, "log"); return; }

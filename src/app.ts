@@ -1324,7 +1324,8 @@ const drawer = createDrawer({
     try {
       const r = await moveDoc(name, toDir);
       if (!r) { setStatus(t("st.moveFailed"), { error: true }); return; }
-      setStatus(r.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: toDir || t("list.root") }), { error: !!r.oldKept });
+      if (r.cancelled) { setStatus(t("st.renameCancelled")); return; }
+      setStatus(r.oldKeptByUser ? t("st.renameOldKeptByUser") : r.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: toDir || t("list.root") }), { error: !!r.oldKept && !r.oldKeptByUser });
     } catch (e) { reportError(e); setStatus(t("st.moveFailed"), { error: true }); }
   },
   onOpenDoc: async (name) => { await openAny(name, { promptUnlock: true }); },
@@ -1590,7 +1591,8 @@ async function renameProjectFile(): Promise<void> {
       await project.flushLocal();
       const rr = await renameDoc(name, v);
       if (!rr) { setStatus(t("st.renameFailed"), { error: true }); continue; }
-      if (rr.oldKept) setStatus(t("st.renameOldKept"), { error: true }); else if (rr.cloudDeferred) setStatus(t("st.renameCloudDeferred"), { unsynced: true }); else setStatus(t("st.renamed", { name: parseDocName(rr.name).stem }));
+      if (rr.cancelled) { setStatus(t("st.renameCancelled")); return; }   // 「旧的怎么办」面里选了取消：这次没动，不算失败、不再追问
+      if (rr.oldKeptByUser) setStatus(t("st.renameOldKeptByUser")); else if (rr.oldKept) setStatus(t("st.renameOldKept"), { error: true }); else if (rr.cloudDeferred) setStatus(t("st.renameCloudDeferred"), { unsynced: true }); else setStatus(t("st.renamed", { name: parseDocName(rr.name).stem }));
       project.adoptName(rr.name);   // 只换身份：不整包重开（重开走 store open()，慢或失败就等于「改名后得刷新」）
       rememberLastActive();
       return;
@@ -1608,7 +1610,9 @@ async function renameOtherDoc(name: string): Promise<void> {
     try {
       const rr = await renameDoc(name, v);
       if (!rr) { setStatus(t("st.renameFailed"), { error: true }); continue; }
-      if (rr.oldKept) setStatus(t("st.renameOldKept"), { error: true });
+      if (rr.cancelled) { setStatus(t("st.renameCancelled")); return; }
+      if (rr.oldKeptByUser) setStatus(t("st.renameOldKeptByUser"));
+      else if (rr.oldKept) setStatus(t("st.renameOldKept"), { error: true });
       else if (rr.cloudDeferred) setStatus(t("st.renameCloudDeferred"), { unsynced: true });
       else setStatus(t("st.renamed", { name: parseDocName(rr.name).stem }));
       drawer.subscribe();

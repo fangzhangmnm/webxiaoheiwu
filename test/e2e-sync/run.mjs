@@ -384,6 +384,32 @@ scenario("txt · 单设备：页面被回收后重开（切后台回来 / 挂机
   await A.close();
 });
 
+// store 2.2.2 / gallery 0.8.10：改名撞上「云端那份被别的设备改过、这台也改了没推」→ 动字节前问「旧的怎么办」（2026-11-03 家族工单 D，Claude Opus 5.5）。三个答案各一遍：
+for (const [answer, re, expect] of [
+  ["取消", /取消/, { renamed: false, oldInCloud: true, newInCloud: false, status: /这次没动/ }],
+  ["留着旧的", /留着旧的/, { renamed: true, oldInCloud: true, newInCloud: true, status: /照你的意思/ }],
+  ["搬走旧的", /搬走旧的/, { renamed: true, oldInCloud: false, newInCloud: true, status: null }],
+]) scenario(`txt · 改名撞上分叉 → 问「旧的怎么办」→ ${answer}`, async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  await B.type("B也改了。"); await B.wait(500);
+  const cloudBefore = await w.cloudText(name);
+  const renaming = B.eval(() => window.__xhw.editor.renameTo("新名字"));
+  const labels = await B.resolveGate(re);
+  check("面上三个答案都在（搬走 / 留着 / 取消）", /搬走旧的/.test(labels.join()) && /留着旧的/.test(labels.join()) && /取消/.test(labels.join()), labels.join(" | "));
+  await renaming; await B.wait(800);
+  const nowName = await B.eval(() => window.__xhw.editor.state.name), newPath = nowName !== name ? nowName : null;
+  check(expect.renamed ? "身份换成新名字" : "身份没动", expect.renamed ? /新名字/.test(nowName ?? "") : nowName === name, String(nowName));
+  check(expect.oldInCloud ? "云端旧名那份还在、字节没动（A 的版本）" : "云端旧名那份不在原地了（搬走 = 进回收站）", expect.oldInCloud ? (await w.cloudText(name)) === cloudBefore : (await w.cloudText(name)) === null, String(await w.cloudText(name)));
+  if (expect.newInCloud) check("新名字传上去了、是 B 的字", ((await w.cloudText(newPath)) ?? "").includes("B也改了。"), String(await w.cloudText(newPath)));
+  else check("云端没有多出新名字", !(await w.cloudList("")).some((i) => /新名字/.test(i.name)), JSON.stringify((await w.cloudList("")).map((i) => i.name)));
+  check("B 的字一个没丢", (await B.text()).includes("B也改了。"), await B.text());
+  if (expect.status) { const st = await B.eval(() => document.getElementById("toast")?.textContent ?? ""); check(`状态行如实说（${expect.status.source}）`, expect.status.test(st), st); }
+  check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
 for (const s of scenarios) {
   if (only && !s.name.includes(only)) continue;
   console.log(`\n── ${s.name}`);

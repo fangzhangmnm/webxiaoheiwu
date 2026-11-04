@@ -242,7 +242,9 @@ export function createEditor(d: EditorDeps) {
       const rr = await renameDoc(from, title);
       if (gen !== loadGen) return false;
       if (!rr) { d.setStatus(t("st.renameFailed"), { error: true }); return false; }
-      if (rr.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });        // 库把旧名原地留着（谱系不明降级 save-as）——抽屉会出现两份，告诉用户（审计 L18）
+      if (rr.cancelled) { d.setStatus(t("st.renameCancelled")); d.onDocChanged(); return false; }   // 「旧的怎么办」面里选了取消：身份没动，顶栏跟着回原名
+      if (rr.oldKeptByUser) d.setStatus(t("st.renameOldKeptByUser"));
+      else if (rr.oldKept) d.setStatus(t("st.renameOldKept"), { error: true });        // 库把旧名原地留着（谱系不明降级 save-as）——抽屉会出现两份，告诉用户（审计 L18）
       else if (rr.cloudDeferred) d.setStatus(t("st.renameCloudDeferred"), { unsynced: true });
       adoptName(from, rr.name);
       d.onDocChanged();
@@ -428,8 +430,9 @@ export function createEditor(d: EditorDeps) {
       const rr = await moveDoc(from, dir);
       if (gen !== loadGen) return null;
       if (!rr) { d.setStatus(t("st.moveFailed"), { error: true }); return null; }
+      if (rr.cancelled) { d.setStatus(t("st.renameCancelled")); return null; }
       adoptName(from, rr.name);
-      d.setStatus(rr.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: dir || t("list.root") }), { error: !!rr.oldKept });
+      d.setStatus(rr.oldKeptByUser ? t("st.renameOldKeptByUser") : rr.oldKept ? t("st.renameOldKept") : t("st.moved", { dir: dir || t("list.root") }), { error: !!rr.oldKept && !rr.oldKeptByUser });
       d.onDocChanged();
       if (d.isSignedIn()) schedulePush();
       return rr.name;
