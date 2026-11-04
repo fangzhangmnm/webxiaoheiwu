@@ -21,6 +21,8 @@ export interface DocListFrame {
     complete: boolean;
     stale: boolean;
 }
+/** 加密稿现在的容器字节（和库里、云上那份同一种，图库「全库备份」也是这么取的）：出门不解密、不重封（规则书 §1 第 5 条出门规则，F-181）。不是加密件 = null。调用方先落盘。 */
+export declare function sealedBlobOf(name: string): Promise<Blob | null>;
 export declare function readProjectBlob(name: string): Promise<Blob | null>;
 /** 干净快进的可选项：localDirty = 还停在编辑器里没落盘的改动（库只认得已落盘的脏）；onReplaceStart = 库决定替换的那一刻（同步），调用方冻结输入。 */
 export interface PullIfCleanOpts {

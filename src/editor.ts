@@ -487,6 +487,8 @@ export function createEditor(d: EditorDeps) {
     toggleEncryption, rekeyToCurrent, noteExternalEdit, moveTo, currentDir, renameTo, displayName,
     canEdit, statusForDoc, syncKind,
     isDirty: () => !parked && (!!localTimer || pushPending || d.editor.value !== savedText),
+    /** 编辑器里有没存进本地的字（isDirty 还算着没推上云的；这个只管落盘没有）。 */
+    hasUnsavedText: () => !parked && d.editor.value !== savedText,
     isUnlockedDoc: () => st.encrypted && isUnlocked(),
     lastOpenName: () => deviceKvGet(KV_LAST_OPEN),   // 裸字符串（写的就是裸的）。2026-09-10 前这里走 JSON.parse → 永远 null → 每次刷新都开「最新一篇」而不是上次那篇（user「刷新之后说文件找不到」的根：排序变了就跳到没缓存的稿）
     /** 工程模式接管前：flush 后静默；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。 */

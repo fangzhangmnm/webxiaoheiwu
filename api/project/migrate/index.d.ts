@@ -1,4 +1,6 @@
-export type Component = "graph" | "editorState";
+export type Component = "graph" | "editorState" | "encDict";
+/** 住在书里的那几份（encDict 不在书里）。 */
+export type BookComponent = Exclude<Component, "encDict">;
 export interface Stamp {
     major: number;
     minor: number;

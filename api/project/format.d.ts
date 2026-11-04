@@ -1,5 +1,5 @@
 import { type RawEntry } from "../zip.ts";
-import { type Component, type Stamp } from "./migrate/index.ts";
+import { type BookComponent, type Component, type Stamp } from "./migrate/index.ts";
 export declare const PROJECT_FORMAT = "webxiaoheiwu";
 export declare const PROJECT_FORMAT_VERSION: number;
 export declare const GRAPH_ENTRY = "graph.json";
@@ -79,7 +79,7 @@ export interface Project {
     graphExtra: Record<string, unknown>;
     editorStateExtra: Record<string, unknown>;
     /** 读到的各子结构的拍子（./migrate/ 判过：老的已升到本版 major；minor / patch 可能比本版新）。 */
-    readStamps: Record<Component, Stamp>;
+    readStamps: Record<BookComponent, Stamp>;
     /** minor 比本版新的子结构（能开能存、未知键带回；宿主告诉用户一次）。patch 比本版新不列（静默）。 */
     newerThanApp: Component[];
     /** 修改锁（user 2026-09-10「zip 锁跟着作品」）：成品不想被误改。切换 = 正经改动（标脏、推云）。 */

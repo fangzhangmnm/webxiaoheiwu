@@ -2,6 +2,8 @@
 import "./doc-model.test.mjs";
 import "./zh-punct.test.mjs";
 import "./ime-fuzzy.test.mjs";   // 2026-10-19 模糊音：十对开关 → RIME 方案补丁
+import "./rime-userdb.test.mjs";   // 2026-11-03 D3：RIME 词库字节读写
+import "./enc-dict.test.mjs";      // 2026-11-03 D3：加密词库的规矩
 import "./redline-guard.test.mjs";
 import "./i18n-and-assets.test.mjs";
 import "./sw-strategy.test.mjs";

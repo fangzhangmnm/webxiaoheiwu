@@ -1,4 +1,5 @@
 import { type FuzzyPair } from "./ime-fuzzy.ts";
+import { type DictEntries, type LayerSnapshot } from "./rime-userdb.ts";
 export declare const IME_SCHEMAS: readonly ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin_mspy", "double_pinyin", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "wubi86"];
 export type ImeSchema = (typeof IME_SCHEMAS)[number];
 export declare const DEFAULT_SCHEMA: ImeSchema;
@@ -9,6 +10,14 @@ export type ImeResult = {
     type: "commit";
     text: string;
     consumedBuffer: string;
+};
+export type MemoryLayerResult = {
+    status: "ok";
+    base: LayerSnapshot;
+} | {
+    status: "composing";
+} | {
+    status: "off";
 };
 export interface ImeState {
     enabled: boolean;
@@ -42,7 +51,11 @@ interface Backend {
     changePage(prev: boolean): Promise<ImeResult>;
     dumpUserDir?(): Promise<UserDictDump>;
     restoreUserDir?(dump: UserDictDump): Promise<void>;
-    setMemoryOnly?(on: boolean): Promise<void>;
+    setMemoryOnly?(on: boolean, capture?: boolean): Promise<LayerSnapshot | null>;
+    /** 加密词库（enc-dict.ts）：灌进内存层 / 读内存层 / 丢掉内存层再灌。 */
+    loadMemoryLayer?(entries: DictEntries): Promise<MemoryLayerResult>;
+    readMemoryLayer?(flush: boolean): Promise<LayerSnapshot | null>;
+    resetMemoryLayer?(entries: DictEntries): Promise<MemoryLayerResult>;
     clearUserDict?(): Promise<void>;
     setSimplified?(v: boolean): Promise<void>;
     /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
@@ -61,6 +74,8 @@ export interface UserDictDump {
     device?: string;
     clearedAt?: number;
 }
+export declare const b64: (bytes: Uint8Array) => string;
+export declare const unb64: (s: string) => Uint8Array<ArrayBuffer>;
 export declare class NaturalCodeIME {
     enabled: boolean;
     asciiMode: boolean;
@@ -92,7 +107,12 @@ export declare class NaturalCodeIME {
     initialize(schema?: ImeSchema): Promise<void>;
     /** 现在学到的词是不是只留内存（开着加密稿）。同步读：app 推 / 拉词库前看它。 */
     memoryOnly: boolean;
-    setMemoryOnly(on: boolean): Promise<void>;
+    setMemoryOnly(on: boolean, capture?: boolean): Promise<LayerSnapshot | null>;
+    /** 上屏了一个词（加密词库的空闲计时用）。 */
+    onCommit: (() => void) | null;
+    loadMemoryLayer(entries: DictEntries): Promise<MemoryLayerResult>;
+    readMemoryLayer(flush: boolean): Promise<LayerSnapshot | null>;
+    resetMemoryLayer(entries: DictEntries): Promise<MemoryLayerResult>;
     clearUserDict(): Promise<void>;
     /** 预热（空闲时调一次；见 RimeWorkerBackend.warmUp）。未初始化 / 降级后端 → 无事。 */
     warmUp(): Promise<void>;

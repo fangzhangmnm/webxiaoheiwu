@@ -13,10 +13,13 @@
 //   · 同 major 内只加不改；删字段 = 保留读、停止写；真要删 = major +1 + 一条 STEP + 冻结样本。
 // 物理形状：沿用整数键 `version` 当 major（已发出去的老读者只认它，它们的 too-new 逻辑继续有效），再加两个可选整数键 `minor` / `patch`（缺 = 0）。
 //   不改成字符串——老读者 `typeof version !== "number"` 会当损坏。
+// encDict 不在书里（加密词库一把键的明文，src/enc-dict.ts），只借这套拍子的规矩；样本手写在 test/fixtures/format/enc-dict-<拍>.json（test/enc-dict.test.mjs 读）。added by Claude Opus 5.5 2026-11-03
 // 改格式 = ① FORMAT 里对应子结构 +1 ② major 变了就在 STEPS 登记一条 ③ `node tools/freeze-format-sample.mjs` 冻结样本进 test/fixtures/format/
 //   ④ format.ts 的 KNOWN_*_FIELDS 表 ⑤ CLAUDE.md 记一笔。少一样守卫红（test/project-migrate.test.mjs / project-fixtures.test.mjs）。
 
-export type Component = "graph" | "editorState";
+export type Component = "graph" | "editorState" | "encDict";
+/** 住在书里的那几份（encDict 不在书里）。 */
+export type BookComponent = Exclude<Component, "encDict">;
 export interface Stamp { major: number; minor: number; patch: number }
 
 /** 本版写出的拍子（SSoT）。
@@ -27,11 +30,12 @@ export interface Stamp { major: number; minor: number; patch: number }
 export const FORMAT: Readonly<Record<Component, Readonly<Stamp>>> = {
   graph: { major: 2, minor: 1, patch: 0 },
   editorState: { major: 1, minor: 2, patch: 0 },
+  encDict: { major: 1, minor: 0, patch: 0 },   // 加密词库一把键的明文（src/enc-dict.ts；不在书里，共用这套拍子的规矩）。1.0 = 2026-11-03 工单 D3 的形状：entries / savedAt / device / clearedAt
 };
 /** 缺 `version` 时当几：graph 没有 version = 损坏（一直如此，null = 调用方自己拒）；editor-state 从没写过 version = 1。 */
-export const MISSING_MAJOR: Readonly<Record<Component, number | null>> = { graph: null, editorState: 1 };
+export const MISSING_MAJOR: Readonly<Record<Component, number | null>> = { graph: null, editorState: 1, encDict: null };
 /** 本版能读的最老 major。graph v1 = 链表格式，不迁（user 2026-09-10「legacy 不用分支代码」）→ 比它老 = 不是本版的书。 */
-export const MIN_MAJOR: Readonly<Record<Component, number>> = { graph: 2, editorState: 1 };
+export const MIN_MAJOR: Readonly<Record<Component, number>> = { graph: 2, editorState: 1, encDict: 1 };
 
 export type Step = (json: Record<string, unknown>) => Record<string, unknown>;
 /** STEPS[子结构][major] = 把 major 升到 major+1 的纯函数（必须把 version 写成 major+1）。今天空表：graph v1 不迁，editor-state 只有 1。 */

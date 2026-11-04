@@ -61,6 +61,8 @@ export declare function createEditor(d: EditorDeps): {
     statusForDoc: () => string;
     syncKind: () => SyncKind;
     isDirty: () => boolean;
+    /** 编辑器里有没存进本地的字（isDirty 还算着没推上云的；这个只管落盘没有）。 */
+    hasUnsavedText: () => boolean;
     isUnlockedDoc: () => boolean;
     lastOpenName: () => string | null;
     /** 工程模式接管前：flush 后静默；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。 */

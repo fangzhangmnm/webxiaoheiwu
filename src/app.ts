@@ -8,10 +8,11 @@ import { setBeforeModal, initSheets, openConfirmSheet, openConfirmSheetEx, openI
 import { cloudOnline, createCloudGate, isUserOffline, onUserOfflineChange, rawOnline } from "./cloud-gate.ts";
 import { createGateUi } from "./cloud-gate-ui.ts";
 import { attachGate } from "./store-ui.ts";
-import { auth, prefs, appState, rimeDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
+import { createEncDict } from "./enc-dict.ts";
+import { auth, prefs, appState, rimeDict, rimeEncDict, initCollections, reconcileCollections, flushCollections, requireStore, requestStoragePersistence } from "./app-store.ts";
 import { wireCryptoState, onLockChange, ensureUnlocked as cryptoEnsureUnlocked, ensureFileUnlocked as cryptoEnsureFileUnlocked, isUnlocked, lock as cryptoLock, hasVerifier, currentPassword, setCurrentPassword, resetVerifier, rememberFilePassword, forgetFilePassword, fileUsesOtherPassword, type VerifierRecord } from "./crypto-state.ts";
 import { createEditor } from "./editor.ts";
-import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary } from "./docs.ts";
+import { verifyDocPassword, rekeyDoc, moveDoc, renameDoc, dirtyDocCount, deleteFolder, snapshotFolders, createProjectDoc, exportBranchToLibrary, sealedBlobOf, createDoc } from "./docs.ts";
 import { docKind, formatDate, statsForText, decodeTextBytes, hex4, parseLooseDate, fmtLooseDate, splitDatedName, isCodeTitle } from "./doc-model.ts";
 import { slimImage, makeCoverPng, NotAnImageError, type SlimResult } from "./image/import-image.ts";
 import { sniffImageSize, importPageName } from "./image/policy.ts";
@@ -43,7 +44,7 @@ import { initDiagLog, note as diagNote } from "./diag-log.ts";   // 2026-09-09 �
 import { holdUntilSettled } from "./settle-hold.ts";   // 2026-09-09 更新提示/reload 等 auth boot 落地
 import { setStoreQuietStatus } from "./store-ui.ts";
 import { initDiagLogUi } from "./diag-log-ui.ts";
-import { NaturalCodeIME, DEFAULT_SCHEMA, isImeSchema, type ImeSchema, type UserDictDump } from "./ime.ts";
+import { NaturalCodeIME, DEFAULT_SCHEMA, isImeSchema, type ImeSchema, type UserDictDump, b64 as imeB64, unb64 as imeUnb64 } from "./ime.ts";
 import { normalizeFuzzy, type FuzzyPair } from "./ime-fuzzy.ts";
 import type { VoiceSession, VoiceState } from "./voice/session.ts";
 import { isLocalVoiceSupported, LocalSession } from "./voice/local.ts";
@@ -256,6 +257,29 @@ const labelsForUnlock = () => ({
 
 // ── 编辑器 / 抽屉 ──
 const ime = new NaturalCodeIME();
+const ENC_CONTAINER = {   // 和稿子同一种容器（图库口令）
+  seal: async (json: Uint8Array, password: string) => imeB64(new Uint8Array(await (await appEncryption.packContainer({ dataBytes: json, fileName: "rime-enc-dict", ext: "json", password })).arrayBuffer())),
+  unseal: async (value: string, password: string) => { try { return new Uint8Array(await (await appEncryption.unpackContainer(imeUnb64(value), password)).dataBlob.arrayBuffer()); } catch { return null; } },
+};
+// 加密词库（家族工单 D3，src/enc-dict.ts）：加密稿学到的词封好了跟账号走；一切只在加密稿开着 + 图库口令在内存里时发生。
+const encDict = createEncDict({
+  collection: rimeEncDict,
+  layer: { memoryOnly: () => ime.memoryOnly, load: (e) => ime.loadMemoryLayer(e), read: (f) => ime.readMemoryLayer(f), reset: (e) => ime.resetMemoryLayer(e) },
+  password: currentPassword,
+  ...ENC_CONTAINER,
+  device: () => deviceLabel(),
+  kvGet: deviceKvGet, kvSet: deviceKvSet,
+  newId: () => crypto.randomUUID(),
+  now: () => Date.now(),
+  note: (line) => diagNote("ime", line),
+  report: (e) => reportError(e, "warning"),   // 封不上 / 读不了词库：说一声（只丢联想，不丢稿），不当成功
+  tellNewer: () => setStatus(t("ime.encDictNewer")),
+  sleep: (ms) => new Promise((r) => { setTimeout(r, ms); }),
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (h) => { clearTimeout(h as ReturnType<typeof setTimeout>); },
+});
+ime.onCommit = () => { encDict.poke(); };
+rimeEncDict.onChange((ids) => { encDict.noteChanged(ids); });
 // 快进等待（user 2026-09-29「wxhw 要不要快进的时候就 waiting，这样稳一点。写书本来就没有画画那么短平快」）：云端新版开始换掉本地的那一刻升整屏等待，
 //   新版载入完（或没换成）才收。每分钟例行的「查一下云端」不升——只有真要换的时候才等。
 let replacingDone: (() => void) | null = null;
@@ -399,7 +423,7 @@ async function exportBranchFlow(name: string): Promise<void> {
   if (!project.active()) return;
   const isLocal = project.home()?.kind === "local";
   const def = nodeDisplayName(name).replace(/\.[A-Za-z0-9]{1,8}$/, "");
-  const v = await openInputSheet(t("edge.exportTitle", { name: nodeDisplayName(name) }), { message: t("edge.exportHint"), defaultValue: def, placeholder: t("edge.namePh"), okLabel: isLocal ? t("edge.exportDownload") : t("edge.exportSave"), secondary: isLocal ? undefined : { label: t("edge.exportDownload") } });
+  const v = await openInputSheet(t("edge.exportTitle", { name: nodeDisplayName(name) }), { message: t("edge.exportHint") + (project.encrypted() ? "\n" + t("edge.exportPlainNote") : ""), defaultValue: def, placeholder: t("edge.namePh"), okLabel: isLocal ? t("edge.exportDownload") : t("edge.exportSave"), secondary: isLocal ? undefined : { label: t("edge.exportDownload") } });
   if (v == null) return;
   const download = isLocal || v === INPUT_SECONDARY;
   const title = (download && v === INPUT_SECONDARY ? def : v).trim() || def;
@@ -631,7 +655,7 @@ async function ensureExportFont(): Promise<boolean> {
   if (!ok) setStatus(t("export.fontFailed"), { error: true });
   return ok;
 }
-type ExportFormat = "text" | "image" | "pdf" | "txt" | "cover";
+type ExportFormat = "sealed" | "text" | "image" | "pdf" | "txt" | "cover";
 /** 导出 sheet（v2.3.17，user 2026-10-01「长图的选项帮我精简一下…页 支 本 字 图 pdf」）：范围和格式是两条正交的轴——
  *  一条段选定范围（这一页 / 这一支 / 整本；txt 稿只有整篇，不画段选）+ 一条段选定长图 / PDF 的行宽（v2.3.19）+ 三个钮定格式（复制文字 / 长图 / PDF）。一层 sheet。
  *  以前是五个钮（复制只有这一页、长图三个范围各一个钮、PDF 再弹第二层选范围）。「这一支」只在这页底下真有子页时才露（否则和这一页是同一件事）。
@@ -666,7 +690,7 @@ async function exportSheetFlow(): Promise<void> {
   }
   const note = (scope: LongImageScope): string => {
     const st = scopeStats(scope);
-    return st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") + "\n" + imageLine(st.img) + " · " + t("export.pdfPages", { n: st.pdfPages }) : t("export.empty");   // 页数跟着范围和行宽那两条段选变（点一下就重算）
+    return (activeEncrypted() ? t("export.encryptedNote") + "\n" : "") + (st ? t("export.scopeStats", { cjk: st.cjk, en: st.en, pages: st.pages }) + (st.images ? t("export.scopeStatsImages", { images: st.images }) : "") + "\n" + imageLine(st.img) + " · " + t("export.pdfPages", { n: st.pdfPages }) : t("export.empty"));   // 页数跟着范围和行宽那两条段选变（点一下就重算）
   };
   // 第二条段选 = 导出的行宽（长图 / PDF）：默认跟编辑器，点了就记（setExportChars）
   // 长图约多高：像素 + 折成几屏；超过单张上限的提前说会问怎么切
@@ -682,8 +706,10 @@ async function exportSheetFlow(): Promise<void> {
   // 第四个钮 TXT（v2.3.55）：图片页的「这一页」没有正文，不露
   const choices = (scope: LongImageScope): Choice<ExportFormat>[] => {
     const imagePage = scope === "page" && inBook && project.currentKind() === "image";
+    const enc = activeEncrypted();   // 出门规则（F-181）：加密的默认给加密副本，明文是显式选项
     return [
-      { label: t(imagePage ? "export.fmt.copyImage" : "export.fmt.text"), value: "text", primary: true },
+      ...(enc ? [{ label: t("export.fmt.sealed"), value: "sealed" as const, primary: true }] : []),
+      { label: t(imagePage ? "export.fmt.copyImage" : "export.fmt.text"), value: "text", primary: !enc },
       { label: t("export.fmt.image"), value: "image" }, { label: t("export.fmt.pdf"), value: "pdf" },
       ...(imagePage ? [] : [{ label: t("export.fmt.txt"), value: "txt" as const }])];
   };
@@ -701,7 +727,8 @@ async function exportSheetFlow(): Promise<void> {
     const r: { scope: LongImageScope; value: ExportFormat } | null = await openScopedChoiceSheet<LongImageScope, ExportFormat>(t("export.title"), { scopes, initial: scope0, extras: rows, note, choices, aux, check });
     if (!r) return;
     if (r.value === "cover") { if (cur) await pickPartCoverFlow(cur); scope0 = r.scope; continue; }
-    if (r.value === "text") await copyScopeText(r.scope);
+    if (r.value === "sealed") await exportSealedCopyFlow();
+    else if (r.value === "text") await copyScopeText(r.scope);
     else if (r.value === "image") await exportLongImageFlow(r.scope);
     else if (r.value === "txt") await exportTxtFlow(r.scope);
     else await exportPdfFlow(r.scope);
@@ -906,8 +933,47 @@ async function exportLongImageFlow(scope: LongImageScope): Promise<void> {
   catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); return; }
   await offerFiles(files, t("export.readyTitle", { n: files.length }), t("export.readyMsg", { cjk: plan.cjk, en: plan.en, pages: plan.textPages, images: plan.imagePages, size: humanSize(files.reduce((a, f) => a + f.size, 0)) }), { copyPng: true });
 }
+const activeEncrypted = (): boolean => (project.active() ? project.encrypted() : !editor.isParked() && editor.state.encrypted);
+/** 加密副本（规则书 §1 第 5 条出门规则，user 11-03 选 b，F-181）：另存到磁盘的默认。容器字节原样出门（和库里、云上那份同一种），带口令可导回；整份，不分范围。 */
+async function exportSealedCopyFlow(): Promise<void> {
+  try {
+    await flushLocalAny();
+    if (project.active() ? project.session()?.dirty : editor.hasUnsavedText()) { setStatus(t("export.sealedNotSaved"), { error: true }); return; }   // 容器是落盘那一版：差着没存上的字就不假装是最新的
+    const name = activeName(), blob = name ? await sealedBlobOf(name) : null;
+    if (!name) { setStatus(t("export.empty")); return; }
+    if (!blob) { setStatus(t("export.sealedFailed"), { error: true }); return; }
+    const file = new File([blob], `${parseDocName(name).stem}.encrypted.zip`, { type: "application/zip" });
+    await offerFiles([file], t("export.sealedReadyTitle"), t("export.sealedReadyMsg", { size: humanSize(file.size) }), { sealed: true });
+  } catch (e) { reportError(e, "warning"); setStatus(t("export.failed", { e: errText(e) }), { error: true }); }
+}
+/** 加密副本导回：先试现在的口令，不对再问这个文件的口令。进库 = 一篇新稿 / 一本新书，用现在的口令封（先封再存）。 */
+async function importSealedFile(f: Blob, fileName: string): Promise<void> {
+  if (!(await ensureUnlocked())) { setStatus(t("project.encryptSkipped"), { error: true }); return; }
+  const tryPw = async (pw: string) => { try { return await appEncryption.unpackContainer(f, pw); } catch { return null; } };
+  let r = await tryPw(currentPassword()!);
+  if (!r) {
+    const tmp = `import-${crypto.randomUUID()}`;
+    const ok = await cryptoEnsureFileUnlocked(tmp, { title: t("import.sealedPwTitle"), hint: t("import.sealedPwHint", { name: fileName }), wrong: t("pw.wrong"), ok: t("import.sealedPwOk") }, async (pw) => { r = await tryPw(pw); return r != null; });
+    forgetFilePassword(tmp);
+    if (!ok || !r) return;
+  }
+  const got = r!;
+  try {
+    const metaName = typeof got.meta?.name === "string" ? got.meta.name : "";
+    const stem = (metaName ? parseDocName(metaName).stem : "") || fileName.replace(/\.encrypted\.zip$/i, "").replace(/\.zip$/i, "") || formatDate(Date.now());
+    const head = new Uint8Array(await got.dataBlob.slice(0, 4).arrayBuffer());
+    const isBook = head.length === 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+    const dir = project.active() ? parseDocName(project.name() ?? "").dir : editor.currentDir();
+    const created = isBook
+      ? await createProjectDoc(stem, got.dataBlob, formatDate(Date.now()), dir, { encrypted: true })
+      : await createDoc(stem, decodeTextBytes(new Uint8Array(await got.dataBlob.arrayBuffer())).text, formatDate(Date.now()), dir, { encrypted: true });
+    await openAny(created);
+    setStatus(t("import.sealedDone", { name: parseDocName(created).stem }));
+  } catch (e) { reportError(e); setStatus(t("export.failed", { e: errText(e) }), { error: true }); }
+}
 /** 「好了」sheet：分享（系统分享面板，要在用户手势里调）/ 下载 /（单张 PNG 时）进剪贴板。长图、PDF、TXT 共用。 */
-async function offerFiles(files: File[], title: string, message: string, opts: { copyPng?: boolean } = {}): Promise<void> {
+async function offerFiles(files: File[], title: string, message: string, opts: { copyPng?: boolean; sealed?: boolean } = {}): Promise<void> {
+  if (!opts.sealed && activeEncrypted()) message += "\n" + t("export.plainNote");   // 出门规则：加密稿的明文格式，下载前明说一句
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   const canShare = typeof navigator.share === "function" && !!nav.canShare?.({ files });
   const canCopy = !!opts.copyPng && files.length === 1 && files[0]!.type === "image/png" && typeof ClipboardItem !== "undefined" && !!navigator.clipboard?.write;
@@ -1114,7 +1180,10 @@ async function confirmAddImagePages(files: File[]): Promise<boolean> {
   if (!project.active() || !project.canEdit()) return true;   // 不在书里 / 锁着：让 importImageFiles 自己报那句
   return openConfirmSheet(t("img.pasteAddTitle", { n: files.length }), t("img.pasteAddMsg"), { okLabel: t("img.pasteAddOk") });
 }
-async function importDroppedFiles(files: File[]): Promise<void> {
+async function importDroppedFiles(all: File[]): Promise<void> {
+  const files: File[] = [];
+  for (const f of all) { if (await appEncryption.looksEncryptedContainer(f)) await importSealedFile(f, f.name); else files.push(f); }
+  if (!files.length) return;
   const isTxt = (f: File) => /\.txt$/i.test(f.name) || f.type === "text/plain";
   const txts = files.filter(isTxt), imgs = files.filter((f) => !isTxt(f));
   if (project.active()) {
@@ -1275,6 +1344,8 @@ async function newProjectFlow(): Promise<void> {
 async function openLocalProjectFlow(): Promise<void> {
   const lh = await pickLocalProject();
   if (!lh) return;
+  const blob = await lh.read();
+  if (blob && (await appEncryption.looksEncryptedContainer(blob))) { await importSealedFile(blob, lh.fileName); return; }   // 加密副本：导回库里，不当本机的书开
   await openLocalHome(lh);
 }
 /** 开一个本机的书（LocalHome 已在手；也给 ui-audit 直接喂夹具用）。 */
@@ -1778,16 +1849,23 @@ async function pullUserDict(): Promise<void> {
 // 加密稿里学到的词只进内存（家族规则书 §1 第 5 条：加密稿的一切副产品只存密文；Fable 11-03 裁定）：本次会话能联想，关稿即忘，不落 /rime、不进同步文件。明文稿照旧。
 function syncImeMemoryOnly(): void {
   const on = project.active() ? project.encrypted() : (!editor.isParked() && editor.state.encrypted);
-  if (on === ime.memoryOnly) return;
-  diagNote("ime", `learned words: ${on ? "memory only (encrypted doc open)" : "saved again (encrypted doc closed)"}`);
-  void ime.setMemoryOnly(on).then(() => { if (!on) void pullUserDict(); }).catch((e) => reportError(e));
+  if (on !== ime.memoryOnly) {
+    diagNote("ime", `learned words: ${on ? "memory only (encrypted doc open)" : "saved again (encrypted doc closed)"}`);
+    const done = ime.setMemoryOnly(on, !on && encDict.loaded());
+    if (on) done.catch((e) => reportError(e));
+    else void encDict.leave(done).then(() => pullUserDict()).catch((e) => reportError(e));
+  }
+  if (on && ime.initialized) encDict.ensureLoaded();
 }
 /** 设置 →「清空用户词库…」（2026-11-03）：以前在加密稿里学到的词可能已经在词库里（从哪篇学的分不出来），给人一个清的入口；默认不自动清。别的设备看到 clearedAt 也会清。 */
 async function clearUserDictFlow(): Promise<void> {
   if (!ime.initialized) { setStatus(t("ime.clearDictNotReady")); return; }
   if (!(await openConfirmSheet(t("ime.clearDictTitle"), t("ime.clearDictMsg"), { okLabel: t("ime.clearDictOk"), cancelLabel: t("common.cancel") }))) return;
   try {
+    const inLayer = encDict.loaded();
+    if (inLayer) await encDict.sealNow(true);   // 明文词库清空会把内存层一起换掉：先封，清完再灌
     await ime.clearUserDict();
+    if (inLayer) await encDict.reload();
     const now = Date.now();
     deviceKvSet(KV_DICT_CLEARED, String(now)); dictRestoredSavedAt = now; lastDictPushAt = now;
     rimeDict.setItem("dump", { files: [], savedAt: now, clearedAt: now, device: deviceLabel() });
@@ -1796,6 +1874,15 @@ async function clearUserDictFlow(): Promise<void> {
   } catch (e) { reportError(e); setStatus(t("ime.clearDictFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
 $("clearUserDictButton").addEventListener("click", () => { void clearUserDictFlow(); });
+/** 设置 →「清空加密词库…」：要口令（值是封着的）。别的设备下次打开加密稿时跟着清（enc-dict.ts）。 */
+async function clearEncDictFlow(): Promise<void> {
+  if (encDict.isEmpty()) { setStatus(t("ime.clearEncDictEmpty")); return; }
+  if (!(await ensureUnlocked())) return;
+  if (!(await openConfirmSheet(t("ime.clearEncDictTitle"), t("ime.clearEncDictMsg"), { okLabel: t("ime.clearDictOk"), cancelLabel: t("common.cancel") }))) return;
+  const ok = await encDict.clear();
+  setStatus(ok ? t("ime.clearEncDictDone") : t("ime.clearDictFailed", { e: "locked" }), ok ? undefined : { error: true });
+}
+$("clearEncDictButton").addEventListener("click", () => { void clearEncDictFlow(); });
 rimeDict.onChange("dump", () => { void pullUserDict(); });
 
 // ── 语音（全本机：硬规则 #8 声音不出设备；Web Speech / Groq / OpenAI 2026-09-03 sunset）──
@@ -2147,12 +2234,14 @@ async function onSignIn(opts: { later?: boolean } = {}): Promise<boolean | null>
 async function onSignOut(): Promise<void> {
   if (!(await openConfirmSheet(t("auth.signOutTitle"), t("auth.signOutMsg")))) return;
   await flushLocalAny();
+  await encDict.sealNow(true);   // 口令一丢就封不了了
   try { await flushCollections(); cryptoLock(); await forgetRemembered(); await auth.signOut(); setStatus(t("auth.signedOut")); }
   catch (e) { reportError(e); }
   renderAuthRow(); renderTopbar();
 }
 async function lockCryptoNow(): Promise<void> {
   await flushLocalAny();    // 先把最后几秒的字加密落盘，再丢密码（工程的锁态由 mode.onLockChange 接手）
+  await encDict.sealNow(true);   // 同上：这段时间新学的词也先封好
   const wasRemembered = rememberedUntil() != null;
   cryptoLock();
   try { await forgetRemembered(); } catch (e) { reportError(e); }   // 锁定 = 这台设备也忘掉（订阅里已经在忘，这里等它落地）
@@ -2234,6 +2323,7 @@ async function changePasswordFlow(): Promise<void> {
   let moved = 0, kept = 0;
   await withBusy(t("busy.migrating"), async () => {
     await setCurrentPassword(next);
+    await encDict.rekey(old, next);   // 加密词库跟图库口令走，不管稿子换不换
     if (mode === "keep" && openName && editor.state.encrypted && !editor.state.locked) rememberFilePassword(openName, old);   // 正开着的这篇是用旧密码开的：登记，重载不用再问
     if (mode === "migrate") {
       for (const it of drawer.items()) {
@@ -2422,11 +2512,12 @@ async function resumeSync(): Promise<void> {
   await refreshIfCleanAny();   // 干净快进在前
   await pushNowAny();          // 只推 pending（编辑器 / 书各自的「不脏不推」门）
   await requireStore().files.drainOfflineQueue().catch((e) => reportError(e, "log"));
-  await offerPushLocalOnly();   // 2026-09-26：开着的推完再问库还有谁没推（顺序保证开着的那篇不会被推两遍）；v2.3.52 起问一次再推
   await reconcileCollections();
   drawer.subscribe();   // 2026-09-09 审计 #8：refresh 只重画缓存帧，回线/复查要重拉
   setState(stateAny());
+  void offerPushLocalOnly();   // 2026-09-26：开着的推完再问库还有谁没推（顺序保证开着的那篇不会被推两遍）。2026-11-03 不等人答（工单 D3 核 F-182）：这条路是闸门的「正在同步」，等人 = 条一直亮着、词库偏好也对不齐
 }
+onLockChange((unlocked) => { if (unlocked) syncImeMemoryOnly(); else void encDict.onLocked(); });   // 锁定 = 灌进内存层的词立刻丢（2026-11-03，D3）
 onLockChange((unlocked) => { if (unlocked) void offerPushLocalOnly({ verbose: true }); });   // v2.3.52：也走「问一次」闸门（点过传上去才自动补）   // 2026-09-26：解锁 = 加密文件的推送第一次有钥匙；登录 / 回前台那两下如果当时锁着都推不动（库 locked 算失败留 dirty）
 // ── 闸门：网盘掉登录 / 没网（家族设计稿 ai-docs/20261103-cloud-gate-design.md；状态机 src/cloud-gate.ts，界面 src/cloud-gate-ui.ts）──
 let homeKnown = false;   // 这台设备的 MSAL 里有账号 = 有家。从 initAuth / onAuthChanged 来，不新增存储（账号本来就在 MSAL 缓存里）
@@ -2481,7 +2572,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") hiddenAt ||= Date.now();
-  if (document.visibilityState === "hidden") { void flushLocalAny().then(() => { if (auth.isSignedIn()) return pushNowAny(); }); void pushUserDict(); void flushCollections(); }
+  if (document.visibilityState === "hidden") { void flushLocalAny().then(() => { if (auth.isSignedIn()) return pushNowAny(); }); void pushUserDict(); void encDict.sealNow(false).then(() => flushCollections()); }
 });
 // #60-C 同款（2026-09-09，对账 WeebPaint v0.14.4）：只在 persisted=false（页面真在销毁）时写。persisted=true = 要进 bfcache：WebKit 上 pagehide 里起的
 //   IDB 写永远 commit 不了，只会把锁冻在旧页里、让 redirect 回来的新页全挂（WeebPaint ai-docs/20260909-bfcache-idb-lock-daily-reauth-analysis.md）；
@@ -2552,6 +2643,7 @@ async function boot(): Promise<void> {
       if (ime.initializeError) setStatus(t("ime.fallback", { e: ime.initializeError }), { error: true });
       else reportFuzzyError();
       renderImeState();
+      syncImeMemoryOnly();   // 开着加密稿时输入法才起来：这时才灌得进加密词库
       await pullUserDict();
       const idle = (fn: () => void) => (typeof requestIdleCallback === "function" ? requestIdleCallback(() => fn()) : setTimeout(fn, 1));
       idle(() => { void ime.warmUp(); imeDock.warmUp(); });
@@ -2640,4 +2732,4 @@ window.addEventListener("unhandledrejection", (event) => {
 void boot();
 
 // 供 boot smoke / 调试台探针（非 API）
-(window as unknown as { __xhw?: unknown }).__xhw = { gate, cloudOnline, newProject: newProjectFlow, liftDraft: liftDraftToBook, looksEncrypted: (b: Blob | Uint8Array) => appEncryption.looksEncryptedContainer(b), version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };
+(window as unknown as { __xhw?: unknown }).__xhw = { encDict, rimeEncDict, encContainer: ENC_CONTAINER, exportSheet: exportSheetFlow, importDropped: importDroppedFiles, gate, cloudOnline, newProject: newProjectFlow, liftDraft: liftDraftToBook, looksEncrypted: (b: Blob | Uint8Array) => appEncryption.looksEncryptedContainer(b), version: APP_VERSION, fontReady, setExportFont, exportFontPref, editorFontPref, setPartCover, partCoverOf, setExportEmbed, exportEmbedPref, editor, drawer, project, reference: refHost, sidebar: edgeSidebar, setSidebar, sidebarOpen, openAny, copyPage: copyCurrentPage, exportLongImage: renderLongImageFiles, exportPdf: renderPdfFile, exportTxt: renderTxtFile, renderPageKin, openLocalBook: openLocalHome, exportBranchFlow, store: requireStore, hasVerifier, parseDocName, choice: openChoiceSheet, confirm: openConfirmSheet, asr, models: MODELS, factoryReset, changePassword: changePasswordFlow, verifyDocPassword, forgetFilePassword, deleteFolder, snapshotFolders, ime, setImeEnabled, voiceBackspace: deleteBeforeCaret, lockNow: lockCryptoNow, isUnlocked, remember: { until: rememberedUntil, forget: forgetRemembered }, smartSave, idle, resumeSync, setPassword: setCurrentPassword, newDraft: openNewDraft, setVoiceMode: (on: boolean) => { voiceMode = on; renderMicVisibility(); }, recoverEditorFocus, followCaret, pip: () => pip };

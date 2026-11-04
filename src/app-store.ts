@@ -1,6 +1,6 @@
 // app-store —— @internal/store 的**唯一接缝**（本仓唯一值级 import 点，build.sh lint 守着）。created 2026-09-03 by Claude Fable 5.1
 // 只做 config 注入（provider / ui bundle / encryption / crypt / validateAdopt）+ collections 装配 + 窄再导出。
-// 消费方拿 requireStore() / auth / prefs / appState / rimeDict；类型用 `import type` 从本文件或 @internal/store 拿。
+// 消费方拿 requireStore() / auth / prefs / appState / rimeDict / rimeEncDict；类型用 `import type` 从本文件或 @internal/store 拿。
 //
 // 姿态（对齐 MASTER §A 与 WeebPaint app-store.ts）：
 //   · 身份 = path/name（`YYYYMMDD 标题.txt`，appfolder 根平铺）；v1 的 itemId(GUID) 身份废弃，本地 IDB 新命名空间从零重建（user 2026-09-03：OneDrive 是 SSoT，本地可丢）。
@@ -64,18 +64,19 @@ export function requireStore(): Store { return store; }
 export const prefs: Collection = store.collection(COLLECTIONS.prefs);
 export const appState: Collection = store.collection(COLLECTIONS.appState);
 export const rimeDict: Collection = store.collection(COLLECTIONS.rimeDict);
+export const rimeEncDict: Collection = store.collection(COLLECTIONS.rimeEncDict);
 
-/** boot 门：hydrate 三个 collection（本地快、离线 OK、不碰网；云端后台对齐）。 */
+/** boot 门：hydrate 四个 collection（本地快、离线 OK、不碰网；云端后台对齐）。 */
 export async function initCollections(): Promise<void> {
-  await Promise.all([prefs.init(), appState.init(), rimeDict.init()]);
+  await Promise.all([prefs.init(), appState.init(), rimeDict.init(), rimeEncDict.init()]);
 }
 /** 事件驱动对齐（focus/online/idle 复查）——读 status，别只 await。 */
 export async function reconcileCollections(): Promise<void> {
   if (!cloudOnline()) return;   // 2026-11-03 闸门：库的 collection 不看 isOnline（store 2.2.3 create-store.js collection() 没把它递给 createCollection），选了离线这里自己不去问；已报家族工单 D 报告
-  await Promise.allSettled([prefs.reconcileWithRemote(), appState.reconcileWithRemote(), rimeDict.reconcileWithRemote()]);
+  await Promise.allSettled([prefs.reconcileWithRemote(), appState.reconcileWithRemote(), rimeDict.reconcileWithRemote(), rimeEncDict.reconcileWithRemote()]);
 }
 export async function flushCollections(): Promise<void> {
-  await Promise.allSettled([prefs.flushLocal(), appState.flushLocal(), rimeDict.flushLocal()]);
+  await Promise.allSettled([prefs.flushLocal(), appState.flushLocal(), rimeDict.flushLocal(), rimeEncDict.flushLocal()]);
 }
 
 export { requestStoragePersistence, isCached, isDirty };

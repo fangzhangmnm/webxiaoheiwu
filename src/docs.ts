@@ -41,6 +41,13 @@ async function sealForNewDoc(name: string, plain: Uint8Array | Blob): Promise<Ui
 const zipFile = (name: string, mode: "new" | "existing" = "existing") => requireStore().zip(name, { mode });
 /** 按身份分派句柄（2.0 两档：txt = RawFile、工程 = ZipFile）。身份动词（改名/移动/回收站/判加密）一律走这里，别裸用 file()。 */
 const anyFile = (name: string) => (docKind(name) === "project" ? zipFile(name) : file(name));
+/** 加密稿现在的容器字节（和库里、云上那份同一种，图库「全库备份」也是这么取的）：出门不解密、不重封（规则书 §1 第 5 条出门规则，F-181）。不是加密件 = null。调用方先落盘。 */
+export async function sealedBlobOf(name: string): Promise<Blob | null> {
+  const f = anyFile(name);
+  let b: Blob | null = await f.getEncryptedBlob();
+  if (!b && (await f.isEncrypted())) { const warmed = await f.open(); b = warmed ? await f.getEncryptedBlob() : null; }
+  return b;
+}
 export function readProjectBlob(name: string): Promise<Blob | null> { return zipFile(name).open(); }
 /** 干净快进的可选项：localDirty = 还停在编辑器里没落盘的改动（库只认得已落盘的脏）；onReplaceStart = 库决定替换的那一刻（同步），调用方冻结输入。 */
 export interface PullIfCleanOpts { localDirty?: () => boolean; onReplaceStart?: () => void; probe?: Promise<unknown> }

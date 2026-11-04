@@ -46,4 +46,5 @@ export declare const COLLECTIONS: {
     readonly prefs: "synced-user-preference";
     readonly appState: "synced-app-state";
     readonly rimeDict: "rime-user-dict";
+    readonly rimeEncDict: "rime-enc-dict";
 };

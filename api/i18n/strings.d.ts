@@ -1088,6 +1088,34 @@ export declare const S: {
         readonly zh: "输入法还没加载好，等一下再清";
         readonly en: "The input method is still loading";
     };
+    readonly "ui.ime.clearEncDict": {
+        readonly zh: "清空加密词库…";
+        readonly en: "Clear words learned in encrypted drafts…";
+    };
+    readonly "ui.ime.clearEncDictHint": {
+        readonly zh: "加密稿里学到的词（封好了同步，只在加密稿开着、解了锁时用）。要口令";
+        readonly en: "Words learned in encrypted drafts (synced sealed, used only while an encrypted draft is open and unlocked). Needs your password";
+    };
+    readonly "ime.clearEncDictTitle": {
+        readonly zh: "清空加密词库？";
+        readonly en: "Clear words learned in encrypted drafts?";
+    };
+    readonly "ime.clearEncDictMsg": {
+        readonly zh: "加密稿里学到的词都会清掉，别的设备下次打开加密稿时也会清。以后重新学。";
+        readonly en: "Everything learned in encrypted drafts will be cleared. Other devices follow the next time they open an encrypted draft. It will learn again from scratch.";
+    };
+    readonly "ime.clearEncDictDone": {
+        readonly zh: "加密词库清空了";
+        readonly en: "Words learned in encrypted drafts cleared";
+    };
+    readonly "ime.clearEncDictEmpty": {
+        readonly zh: "加密词库是空的";
+        readonly en: "No words learned in encrypted drafts yet";
+    };
+    readonly "ime.encDictNewer": {
+        readonly zh: "加密词库有一部分是更新版本的小黑屋写的：能用，有些信息这一版看不懂，存的时候原样带着";
+        readonly en: "Some encrypted-draft words were saved by a newer version: they work, and whatever this version does not understand is kept as is";
+    };
     readonly "cf.checkingCloud": {
         readonly zh: "正在检查云端…";
         readonly en: "Checking the cloud…";
@@ -2755,6 +2783,54 @@ export declare const S: {
     readonly "export.locked": {
         readonly zh: "已锁定，先解锁再导出";
         readonly en: "Locked — unlock first to export";
+    };
+    readonly "export.fmt.sealed": {
+        readonly zh: "加密副本（整份）";
+        readonly en: "Encrypted copy (whole)";
+    };
+    readonly "export.encryptedNote": {
+        readonly zh: "这篇是加密的。「加密副本」出门还是密文，带口令可以导回；别的格式都是明文。";
+        readonly en: "This is encrypted. The encrypted copy stays encrypted and can be imported back with the password; every other format is plain.";
+    };
+    readonly "export.plainNote": {
+        readonly zh: "这是明文：这篇在小黑屋里是加密的，但这个文件谁拿到都能读。";
+        readonly en: "This is plain: the draft is encrypted in the app, but anyone who gets this file can read it.";
+    };
+    readonly "export.sealedReadyTitle": {
+        readonly zh: "加密副本好了";
+        readonly en: "Encrypted copy ready";
+    };
+    readonly "export.sealedReadyMsg": {
+        readonly zh: "{size}。没有口令打不开。要导回：拖到纸上，或者在书库选「打开本机的书」。";
+        readonly en: "{size}. It cannot be opened without the password. To import it back, drop it on the page or use “open a local book” in the library.";
+    };
+    readonly "export.sealedNotSaved": {
+        readonly zh: "还有字没存上，先等它存好再导出加密副本";
+        readonly en: "Some text has not been saved yet. Wait for it before exporting the encrypted copy";
+    };
+    readonly "export.sealedFailed": {
+        readonly zh: "这份拿不到加密的字节，没有导出";
+        readonly en: "Could not get the encrypted bytes; nothing was exported";
+    };
+    readonly "edge.exportPlainNote": {
+        readonly zh: "这本书是加密的：存进书库还是加密的；「下载一份」是明文，这个文件谁拿到都能读。";
+        readonly en: "This book is encrypted: saved to the library it stays encrypted; “Download a copy” is plain, and anyone who gets that file can read it.";
+    };
+    readonly "import.sealedPwTitle": {
+        readonly zh: "这个文件的口令";
+        readonly en: "Password for this file";
+    };
+    readonly "import.sealedPwHint": {
+        readonly zh: "「{name}」不是用现在的口令封的。输入当时的口令；导回后用现在的口令封。";
+        readonly en: "“{name}” was not sealed with your current password. Enter the one it was sealed with; once imported it is sealed with your current password.";
+    };
+    readonly "import.sealedPwOk": {
+        readonly zh: "导回";
+        readonly en: "Import";
+    };
+    readonly "import.sealedDone": {
+        readonly zh: "导回了「{name}」（加密）";
+        readonly en: "Imported “{name}” (encrypted)";
     };
     readonly "export.failed": {
         readonly zh: "长图生成失败：{e}";

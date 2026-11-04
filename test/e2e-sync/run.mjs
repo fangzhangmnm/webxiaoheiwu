@@ -511,6 +511,30 @@ scenario("闸门 ③ 续签失败：闸 + 两个钮；离线继续能写、零�
   await D.close();
 });
 
+scenario("闸门 ③e 回线：问「去处理」的面开着时，「正在同步」条已经收了（不等人答）", async (w) => {
+  const { D } = await seedThenReopen(w, "A", { probing: true, renew: "interaction" }, true);
+  await waitPhase(D, "blocked");
+  await D.page.waitForFunction(() => document.getElementById("editor").value.includes("本机这一份。"), null, { timeout: 5000 });
+  await D.clickGate("离线继续"); await D.wait(200);
+  await D.type("离线写的第一篇。"); await D.wait(800);
+  await D.eval(() => window.__xhw.newDraft()); await D.wait(400);
+  await D.type("离线写的第二篇。"); await D.wait(800);
+  await waitBar(D, /还有 2 份没传上去/);
+  await D.patchGate({ renew: "ok" });
+  await D.hide(); await D.wait(150); await D.show();   // 走「回前台 → 悄悄续签 → 跟上」这条路（online 事件那条路自己先问，分辨不出 resumeSync 等不等人）
+  await D.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 8000 });
+  await D.wait(300);
+  const msg = await D.eval(() => document.getElementById("sheet").textContent);
+  check("开着的那篇推了、另一篇问一句（前提）", /没同步好/.test(msg), msg.slice(0, 60));
+  const v = await D.gateView();
+  check("面开着：条已经收了，不写「正在同步」", v.bar === null, JSON.stringify(v));
+  check("面开着：在线", v.online === true, JSON.stringify(v));
+  await D.page.click("#sheetCancel"); await D.wait(300);
+  check("先不：稿还在、没被批量推", (await D.eval(() => window.__xhw.store().files.dirty.count())) >= 1);
+  check("页面零报错", D.errors.length === 0, D.errors.join(" ; "));
+  await D.close();
+});
+
 scenario("闸门 ③d 点常驻条 = 书库「要处理的」", async (w) => {
   const { D } = await seedThenReopen(w, "A", { probing: true, renew: "interaction" }, true);
   await waitPhase(D, "blocked");
@@ -1093,6 +1117,322 @@ scenario("先封再存：加密稿冲突留底（上传途中打的字）从建�
   const txt = await B.eval((n) => window.__xhw.store().file(n, { mode: "existing" }).open().then((b) => b?.text() ?? null), rescue);
   check("留底能开、里面有途中打的字", (txt ?? "").includes("ZZRESCUEMARK5566"), String(txt));
   check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
+// ── 加密词库（家族工单 D3）：真 RIME 重放我们写的日志 + 真容器 + 两台设备 ──
+const encLoaded = (D) => D.page.waitForFunction(() => window.__xhw.encDict.loaded(), null, { timeout: 20000 });
+const openEnc = async (D) => { await D.eval(() => window.__xhw.newDraft({ encrypted: true })); await D.wait(300); await encLoaded(D); await D.wait(200); };
+/** 打一个音节但不上屏，看候选排第几（-1 = 这一页没有）。 */
+const candidates = async (D, syl) => {
+  await D.page.evaluate(() => document.getElementById("editor").focus());
+  await D.page.keyboard.type(syl, { delay: 25 }); await D.wait(150);
+  const list = await D.eval(() => window.__xhw.ime.getState().candidates);
+  await D.page.keyboard.press("Escape"); await D.wait(120);
+  return list;
+};
+/** 选这个音节候选里的第 n 个上屏（数字键）。前后各打一个垫字：重开后第一个词不进日志、最后一个挂着（探针量过）。 */
+const learnNth = async (D, syl, n) => {
+  await typePinyin(D, ["de"]);
+  await D.page.keyboard.type(syl, { delay: 25 }); await D.wait(150);
+  const list = await D.eval(() => window.__xhw.ime.getState().candidates);
+  await D.page.keyboard.press(String(n + 1)); await D.wait(250);
+  await typePinyin(D, ["le"]);
+  return list[n];
+};
+const encItems = (D) => D.eval(async () => { const c = window.__xhw.rimeEncDict, out = []; for (const k of c.keys()) { const v = c.getItem(k); const bytes = Uint8Array.from(atob(v), (x) => x.charCodeAt(0)); out.push({ k, sealed: await window.__xhw.looksEncrypted(bytes), size: bytes.length }); } return out; });
+const encRaw = (D) => D.eval(() => { const c = window.__xhw.rimeEncDict; return JSON.stringify(c.keys().sort().map((k) => [k, c.getItem(k)])); });
+const cloudEnc = async (w) => { const b = await w.cloudBytes(".webxiaoheiwu/rime-enc-dict.json"); return b ? Buffer.from(b).toString("utf8") : null; };
+const reconcile = async (D) => { await D.hide(); await D.wait(1800); await D.show(); await D.wait(700); };
+
+scenario("加密词库：两台设备各学一个词，第三次打开两个都能联想；只有密文出门、/rime 不变、明文稿不加载", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  for (const D of [A, B]) { await D.ctx.addInitScript(IDB_SPY); await withIme(D); await D.boot(server.url); await waitIme(D); await D.wait(300); await D.eval(() => window.__xhw.setPassword("e2e-pw")); await D.wait(150); }
+  const base = await candidates(A, "shi"), baseX = await candidates(A, "xiao");
+  check("候选够多（前提）", base.length >= 5 && baseX.length >= 5, `${base.length}/${baseX.length}`);
+
+  await openEnc(A);
+  const diskA = await rimeOnDisk(A);
+  check("没词的时候灌了也是空的，同步文件一个字节没写", (await encItems(A)).length === 0);
+  const wordA = await learnNth(A, "shi", 4);
+  console.log(`  A 在加密稿里选了第 5 个：${wordA}（原来排 ${base.indexOf(wordA)}）`);
+  check("内存层当场能联想", (await candidates(A, "shi")).indexOf(wordA) < base.indexOf(wordA), JSON.stringify((await candidates(A, "shi")).slice(0, 5)));
+  check("学着的时候 /rime 字节不变", stable(await rimeOnDisk(A)) === stable(diskA));
+  check("空闲 60 s 之前不写（还没到点）", (await encItems(A)).length === 0);
+  await A.hide(); await A.wait(800); await A.show(); await A.wait(200);
+  check("切后台：先封好（iPad 随时杀页面）", (await encItems(A)).length === 1);
+  check("切后台：/rime 还是不变", stable(await rimeOnDisk(A)) === stable(diskA));
+
+  await A.eval(() => window.__xhw.newDraft()); await A.wait(1200);
+  const itemsA = await encItems(A);
+  check("关稿：封好写回一把键", itemsA.length === 1 && itemsA.every((x) => x.sealed), JSON.stringify(itemsA));
+  check("键名里没有词", itemsA.every((x) => /^dict\.[0-9a-f-]{36}$/.test(x.k)), itemsA[0]?.k);
+  const markerA = `shi \t${wordA}`, markerJson = `shi \\t${wordA}`;
+  check("关稿：明文稿排序没被污染（没加载）", (await candidates(A, "shi")).indexOf(wordA) === base.indexOf(wordA), JSON.stringify((await candidates(A, "shi")).slice(0, 6)));
+  check("关稿：/rime 里没有这个词", !decodedHas(await rimeOnDisk(A), markerA));
+  await A.pushNow(); await reconcile(A);
+  const cloudA = await cloudEnc(w);
+  check("上云了", !!cloudA);
+  check("云上没有明文词", !cloudA.includes(wordA) && !cloudA.includes(markerJson));
+  const scanA = await scanDevice(A, markerA), scanJ = await scanDevice(A, markerJson);
+  check("真 IDB 探针：任何库里没有明文词条", scanA.hits.length === 0 && scanJ.hits.length === 0, JSON.stringify([...scanA.hits, ...scanJ.hits]));
+  const spied = await A.page.evaluate(async () => {
+    const out = { writes: 0, values: 0, sealed: 0 };
+    for (const r of window.__idbWrites) {
+      if (!/rime-enc-dict/.test(r.key) && !/rime-enc-dict/.test(r.store)) continue;
+      out.writes++;
+      let items = []; try { items = JSON.parse(await r.bytes.text()).items ?? []; } catch { /* 不是信封就当一笔读不了的 */ }
+      for (const it of items) { if (typeof it.value !== "string" || !it.id?.startsWith?.("dict.")) continue; out.values++; if (await window.__xhw.looksEncrypted(Uint8Array.from(atob(it.value), (c) => c.charCodeAt(0)))) out.sealed++; }
+    }
+    return out;
+  });
+  check("真 IDB 探针：加密词库的每一笔 put 里，每个值都是容器", spied.writes > 0 && spied.values > 0 && spied.sealed === spied.values, JSON.stringify(spied));
+
+  // B：拉到 A 的词，自己再学一个
+  await reconcile(B);
+  const baseB = await candidates(B, "shi");
+  check("B 的明文稿排序是原样（前提）", baseB.indexOf(wordA) === base.indexOf(wordA));
+  await openEnc(B);
+  const seenB = await candidates(B, "shi");
+  check("B 打开加密稿：A 学的词能联想（灌进去的日志真被 RIME 重放了）", seenB.indexOf(wordA) >= 0 && seenB.indexOf(wordA) < base.indexOf(wordA), JSON.stringify(seenB.slice(0, 6)));
+  const diskB0 = await rimeOnDisk(B);
+  check("B：/rime 里没有灌进来的词", !decodedHas(diskB0, markerA));
+  const wordB = await learnNth(B, "xiao", 4);
+  console.log(`  B 在加密稿里选了第 5 个：${wordB}（原来排 ${baseX.indexOf(wordB)}）`);
+  await B.eval(() => window.__xhw.newDraft()); await B.wait(1200);
+  const itemsB = await encItems(B);
+  check("B 写了自己的键：一机一键", itemsB.length === 2 && itemsB.every((x) => x.sealed), JSON.stringify(itemsB));
+  check("B：关稿后明文稿没有 A 的词", (await candidates(B, "shi")).indexOf(wordA) === base.indexOf(wordA));
+  await B.pushNow(); await reconcile(B);
+
+  // 第三次打开：两个都能联想
+  await reconcile(A);
+  check("A 收到 B 的键", (await encItems(A)).length === 2);
+  await openEnc(A);
+  const third = await candidates(A, "shi"), thirdX = await candidates(A, "xiao");
+  check("第三次打开：A 自己的词还在", third.indexOf(wordA) >= 0 && third.indexOf(wordA) < base.indexOf(wordA), JSON.stringify(third.slice(0, 6)));
+  check("第三次打开：B 学的词也能联想", thirdX.indexOf(wordB) >= 0 && thirdX.indexOf(wordB) < baseX.indexOf(wordB), JSON.stringify(thirdX.slice(0, 7)));
+  await A.eval(() => window.__xhw.newDraft()); await A.wait(800);
+  check("关稿又忘：内存层没有了", (await candidates(A, "xiao")).indexOf(wordB) === baseX.indexOf(wordB));
+  check("页面零报错", A.errors.length === 0 && B.errors.length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
+scenario("加密词库：清空入口要口令 + 别的设备不把词传回来；锁定 = 内存层立刻丢、字节不变", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  for (const D of [A, B]) { await withIme(D); await D.boot(server.url); await waitIme(D); await D.wait(300); await D.eval(() => window.__xhw.setPassword("e2e-pw")); await D.wait(150); }
+  const base = await candidates(A, "shi");
+  await openEnc(A);
+  const word = await learnNth(A, "shi", 4);
+  await A.eval(() => window.__xhw.newDraft()); await A.wait(1000); await A.pushNow(); await reconcile(A);
+  await reconcile(B);
+  await openEnc(B);
+  check("B 有 A 的词（前提）", (await candidates(B, "shi")).indexOf(word) < base.indexOf(word));
+  const own = await learnNth(B, "shi", 3);
+  await B.eval(() => window.__xhw.newDraft()); await B.wait(1000); await B.pushNow(); await reconcile(B);
+  const twoKeys = await encItems(B);
+  check("两把键（前提）", twoKeys.length === 2, JSON.stringify(twoKeys));
+
+  // 锁定：内存层丢、字节不变
+  await reconcile(A);
+  await openEnc(A);
+  check("A 打开：词在（前提）", (await candidates(A, "shi")).indexOf(word) < base.indexOf(word));
+  const rawBefore = await encRaw(A), cloudBefore = await cloudEnc(w);
+  await A.eval(() => window.__xhw.lockNow()); await A.wait(800);
+  check("锁定：会话结束", !(await A.eval(() => window.__xhw.encDict.loaded())));
+  const memLocked = await memoryDump(A);
+  check("锁定：内存层里没有加密词库的词了", !decodedHas(memLocked, `shi \t${word}`));
+  await reconcile(A);
+  check("口令不在：加密词库字节不变", (await encRaw(A)) === rawBefore);
+  check("口令不在：云上字节不变", (await cloudEnc(w)) === cloudBefore);
+  check("口令不在：/rime 没有词", !decodedHas(await rimeOnDisk(A), `shi \t${word}`));
+
+  // 清空：入口要口令（这时锁着 → 先问口令；取消 = 没动）
+  const sheetUp = (D) => D.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 5000 });
+  await A.eval(() => document.getElementById("clearEncDictButton").click());
+  await sheetUp(A);
+  await A.page.click("#sheetCancel"); await A.wait(300);
+  check("锁着点清空：先问口令，取消 = 没动", (await encRaw(A)) === rawBefore);
+  await A.eval(() => window.__xhw.setPassword("e2e-pw")); await A.wait(200);
+  await A.eval(() => window.__xhw.newDraft()); await A.wait(600);
+  await A.eval(() => document.getElementById("clearEncDictButton").click());
+  await sheetUp(A);
+  const msg = await A.eval(() => document.getElementById("sheetMessage").textContent);
+  check("点了先说明（别的设备也会清）", /别的设备/.test(msg), msg);
+  await A.page.click("#sheetCancel"); await A.wait(300);
+  check("取消 = 没动", (await encRaw(A)) === rawBefore);
+  await A.eval(() => document.getElementById("clearEncDictButton").click());
+  await sheetUp(A);
+  await A.page.click("#sheetConfirm"); await A.wait(800);
+  check("确认：自己的键重写了", (await encRaw(A)) !== rawBefore);
+  check("确认：值还是容器", (await encItems(A)).every((x) => x.sealed));
+  await A.pushNow(); await reconcile(A);
+  await openEnc(A);
+  check("A：清空后这个词不再被推前", (await candidates(A, "shi")).indexOf(word) === base.indexOf(word), JSON.stringify((await candidates(A, "shi")).slice(0, 6)));
+  await A.eval(() => window.__xhw.newDraft()); await A.wait(500);
+
+  // B 还没跟上：一打开先清自己的键，词不回来
+  await reconcile(B);
+  const bKeyBefore = await encRaw(B);
+  await openEnc(B); await B.wait(500);
+  const seen = await candidates(B, "shi");
+  check("B：A 的词不再被推前", seen.indexOf(word) === base.indexOf(word), JSON.stringify(seen.slice(0, 6)));
+  check("B：自己以前学的也清了（先清再说）", seen.indexOf(own) === base.indexOf(own), JSON.stringify(seen.slice(0, 6)));
+  check("B：自己的键重写了（带着 clearedAt）", (await encRaw(B)) !== bKeyBefore);
+  await B.eval(() => window.__xhw.newDraft()); await B.wait(800); await B.pushNow(); await reconcile(B);
+  await reconcile(A);
+  await openEnc(A);
+  const finalA = await candidates(A, "shi");
+  check("A 再打开：B 没把词传回来", finalA.indexOf(word) === base.indexOf(word) && finalA.indexOf(own) === base.indexOf(own), JSON.stringify(finalA.slice(0, 6)));
+  check("页面零报错", A.errors.length === 0 && B.errors.length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
+scenario("加密词库：这台设备从没用过的方案（词库目录还不存在）：切过去才重放；关稿目录也收回", async (w) => {
+  const A = await w.device("A");
+  await withIme(A); await A.boot(server.url); await waitIme(A); await A.wait(300);
+  await A.eval(() => window.__xhw.setPassword("e2e-pw")); await A.wait(150);
+  check("没有 wubi86 的词库（前提）", !Object.keys(await memoryDump(A)).some((p) => p.startsWith("wubi86.userdb")));
+  await openEnc(A);
+  const r = await A.eval(() => window.__xhw.ime.loadMemoryLayer({ wubi86: { "aaaa \t工": [7, 5] }, luna_pinyin: { "shi \t石": [9, 5] } }).then((x) => x.status));
+  check("灌进一本还不存在的词库", r === "ok", String(r));
+  await A.wait(300);
+  check("别的方案的词库不挡当前方案：luna 的词上来了", (await candidates(A, "shi")).indexOf("石") >= 0, JSON.stringify(await candidates(A, "shi")));
+  const dump = await memoryDump(A);
+  check("目录建在内存盘上", Object.keys(dump).some((p) => p.startsWith("wubi86.userdb/")), Object.keys(dump).join(","));
+  await A.eval(() => window.__xhw.ime.setSchema("wubi86")); await A.wait(1500);
+  const read = await A.eval(() => window.__xhw.ime.readMemoryLayer(false).then((m) => { const e = m?.wubi86?.entries; return e ? [...e.keys()] : null; }));
+  check("切到那个方案：LevelDB 新建 + 重放了日志，词在", !!read && read.includes("aaaa \t工"), JSON.stringify(read));
+  await A.eval(() => window.__xhw.ime.setSchema("luna_pinyin")); await A.wait(800);
+  await A.eval(() => window.__xhw.newDraft()); await A.wait(1000);
+  const after = await memoryDump(A);
+  check("关稿：那本词库的文件都收回了", !Object.keys(after).some((p) => p.startsWith("wubi86.userdb/") && /\\.log$|\\.ldb$/.test(p) && Buffer.from(after[p], "base64").includes(Buffer.from("aaaa"))), Object.keys(after).join(","));
+  check("/rime 里没有这些词", !decodedHas(await rimeOnDisk(A), "shi \t石") && !decodedHas(await rimeOnDisk(A), "aaaa \t工"));
+  check("输入法还能打", (await candidates(A, "shi")).length > 0);
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("加密词库：大词库的代价（一万词，真容器）", async (w) => {
+  const A = await w.device("A");
+  await withIme(A); await A.boot(server.url); await waitIme(A); await A.wait(300);
+  await A.eval(() => window.__xhw.setPassword("e2e-pw")); await A.wait(150);
+  const m = await A.eval(async () => {
+    const entries = {}; for (let i = 0; i < 10000; i++) entries[`ci${i} yu${i % 97} \t词语${i}`] = [1 + (i % 5), 1];
+    const json = new TextEncoder().encode(JSON.stringify({ version: 1, minor: 0, patch: 0, entries: { luna_pinyin: entries }, savedAt: 1, device: "x" }));
+    const box = window.__xhw.encContainer;
+    const t0 = performance.now(); const value = await box.seal(json, "e2e-pw"); const t1 = performance.now();
+    const back = await box.unseal(value, "e2e-pw"); const t2 = performance.now();
+    const c = window.__xhw.rimeEncDict; c.setItem("dict.bulk", value);
+    return { json: json.length, sealed: value.length, sealMs: Math.round(t1 - t0), unsealMs: Math.round(t2 - t1), same: back?.length === json.length };
+  });
+  console.log(`  一万词：明文 ${m.json} 字节 → 容器 base64 ${m.sealed} 字节；封 ${m.sealMs} ms，解 ${m.unsealMs} ms`);
+  check("读得回来", m.same);
+  const t0 = Date.now(); await openEnc(A); const dt = Date.now() - t0;
+  console.log(`  开稿到灌好：${dt} ms`);
+  const has = await A.eval(() => window.__xhw.ime.readMemoryLayer(false).then((s) => s?.luna_pinyin?.entries.size ?? 0));
+  check("一万词都灌进去了", has >= 10000, String(has));
+  const t1 = Date.now(); await A.eval(() => window.__xhw.newDraft()); await A.page.waitForFunction(() => !window.__xhw.encDict.loaded(), null, { timeout: 15000 }); const dt2 = Date.now() - t1;
+  console.log(`  关稿到丢完：${dt2} ms`);
+  check("输入法还能打", (await candidates(A, "shi")).length > 0);
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+// 出门规则（规则书 §1 第 5 条，F-181）：另存到磁盘默认容器；明文显式 + 下载前明说；带口令可导回
+scenario("加密稿出门：默认加密副本（字节是容器、没有明文），带口令可导回；明文显式 + 明说；明文稿没有这些", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const SECRET = "出门规则的秘密正文甲乙丙";
+  const sheetUp = (D) => D.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 8000 });
+  const sheetText = (D) => D.eval(() => document.getElementById("sheet").textContent);
+  const clickBtn = (D, label) => D.page.click(`#sheet button:has-text("${label}")`);
+  await A.boot(server.url); await A.wait(400);
+  await A.eval(() => window.__xhw.setPassword("e2e-pw")); await A.wait(150);
+  await A.eval(() => window.__xhw.newDraft({ encrypted: true })); await A.wait(400);
+  await A.type(SECRET); await A.wait(500);
+  void A.eval(() => window.__xhw.exportSheet());
+  await sheetUp(A);
+  const sheet = await sheetText(A);
+  check("加密稿：导出面板第一个就是加密副本", /加密副本/.test(sheet) && /别的格式都是明文/.test(sheet), sheet.slice(0, 80));
+  const first = await A.eval(() => document.querySelector("#sheet button.primary")?.textContent ?? "");
+  check("加密副本是默认（主按钮）", /加密副本/.test(first), first);
+  await clickBtn(A, "加密副本");
+  await sheetUp(A); await A.wait(150);
+  const dl = A.page.waitForEvent("download", { timeout: 8000 });
+  check("加密副本的面板不说明文", !/这是明文/.test(await sheetText(A)));
+  await clickBtn(A, "下载");
+  const d1 = await dl;
+  const fs = await import("node:fs");
+  const bytes = fs.readFileSync(await d1.path());
+  check("文件名说得清", /\.encrypted\.zip$/.test(d1.suggestedFilename()), d1.suggestedFilename());
+  const b64Out = bytes.toString("base64");
+  const isBox = (D, b) => D.eval((x) => window.__xhw.looksEncrypted(Uint8Array.from(atob(x), (c) => c.charCodeAt(0))), b);
+  check("加密稿另存：字节是容器（isEncryptedBlob 为真）", await isBox(A, b64Out));
+  check("字节里没有明文", !bytes.includes(Buffer.from(SECRET)) && !bytes.includes(Buffer.from(SECRET.slice(0, 4))));
+
+  // 明文显式：TXT 面板先说再下
+  void A.eval(() => window.__xhw.exportSheet());
+  await sheetUp(A);
+  await clickBtn(A, "TXT");
+  await sheetUp(A); await A.wait(150);
+  check("TXT：下载前明说这是明文", /这是明文/.test(await sheetText(A)), (await sheetText(A)).slice(0, 80));
+  const dl2 = A.page.waitForEvent("download", { timeout: 8000 });
+  await clickBtn(A, "下载");
+  const txt = fs.readFileSync(await (await dl2).path());
+  check("TXT 是明文（人显式选的）", txt.includes(Buffer.from(SECRET)));
+  const stillEnc = await A.eval(() => window.__xhw.editor.state.encrypted);
+  check("导出不碰加密状态（不靠解除加密）", stillEnc === true);
+
+  // 带口令导回：另一台设备，同口令直接进；不同口令先问
+  await B.boot(server.url); await B.wait(400);
+  await B.eval(() => window.__xhw.setPassword("other-pw")); await B.wait(150);
+  const drop = (D, b, name) => D.eval(([x, n]) => { const f = new File([Uint8Array.from(atob(x), (c) => c.charCodeAt(0))], n, { type: "application/zip" }); return void window.__xhw.importDropped([f]); }, [b, name]);
+  await drop(B, b64Out, d1.suggestedFilename());
+  await sheetUp(B);
+  check("口令不同：先问这个文件的口令", /这个文件的口令/.test(await sheetText(B)));
+  await B.page.fill("#sheetInput", "wrong-pw"); await B.page.click("#sheetConfirm"); await B.wait(500);
+  check("口令不对：还在问，什么都没进库", !(await B.eval(() => document.getElementById("sheet").classList.contains("hidden"))));
+  await B.page.fill("#sheetInput", "e2e-pw"); await B.page.click("#sheetConfirm");
+  await B.page.waitForFunction((s) => document.getElementById("editor").value.includes(s), SECRET, { timeout: 8000 });
+  check("导回：打开就是原文", (await B.text()).includes(SECRET));
+  check("导回：还是加密稿", await B.eval(() => window.__xhw.editor.state.encrypted));
+  await B.wait(800);
+  const scan = await scanDevice(B, SECRET);
+  check("导回：库里没有明文", scan.hits.length === 0, JSON.stringify(scan.hits));
+
+  // 加密书：同一条路（书 zip 的容器，导回还是书）
+  const lifting = A.eval(() => window.__xhw.liftDraft());
+  await sheetUp(A); await A.page.click("#sheetConfirm");
+  check("拆成加密书（前提）", await lifting);
+  await A.wait(600);
+  check("是加密书（前提）", await A.eval(() => window.__xhw.project.active() && window.__xhw.project.encrypted()));
+  void A.eval(() => window.__xhw.exportSheet());
+  await sheetUp(A);
+  await clickBtn(A, "加密副本");
+  await sheetUp(A); await A.wait(150);
+  const dlBook = A.page.waitForEvent("download", { timeout: 8000 });
+  await clickBtn(A, "下载");
+  const bookFile = await dlBook, bookBytes = fs.readFileSync(await bookFile.path());
+  check("加密书另存：字节是容器", await isBox(A, bookBytes.toString("base64")));
+  check("加密书另存：字节里没有明文", !bookBytes.includes(Buffer.from(SECRET.slice(0, 4))));
+  await drop(B, bookBytes.toString("base64"), bookFile.suggestedFilename());
+  await sheetUp(B);
+  await B.page.fill("#sheetInput", "e2e-pw"); await B.page.click("#sheetConfirm");
+  await B.page.waitForFunction(() => window.__xhw.project.active(), null, { timeout: 8000 });
+  check("加密书导回：还是一本加密书", await B.eval(() => window.__xhw.project.encrypted()));
+  check("加密书导回：内容在", (await B.text()).includes(SECRET.slice(0, 4)), (await B.text()).slice(0, 40));
+
+  // 明文稿：没有这些
+  await A.eval(() => window.__xhw.newDraft()); await A.wait(400);
+  await A.type("普通的明文稿正文"); await A.wait(500);
+  void A.eval(() => window.__xhw.exportSheet());
+  await sheetUp(A);
+  check("明文稿：没有加密副本这个选项", !/加密副本/.test(await sheetText(A)));
+  await clickBtn(A, "TXT");
+  await sheetUp(A); await A.wait(150);
+  check("明文稿：不多嘴", !/这是明文/.test(await sheetText(A)));
+  await A.page.click("#sheetCancel").catch(() => {});
+  check("页面零报错", A.errors.length === 0 && B.errors.length === 0, [...A.errors, ...B.errors].join(" ; "));
   await A.close(); await B.close();
 });
 

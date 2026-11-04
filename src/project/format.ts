@@ -22,7 +22,7 @@
 import { zipPack, zipUnpackRaw, zipReadRaw, levelForPath, type RawEntry, type ZipEntryIn } from "../zip.ts";
 import { encodeText, decodeTextBytes } from "../doc-model.ts";
 import { APP_VERSION } from "../version.ts";
-import { FORMAT, migrate, stampFields, FormatTooNewError, FormatTooOldError, type Component, type Stamp } from "./migrate/index.ts";
+import { FORMAT, migrate, stampFields, FormatTooNewError, FormatTooOldError, type BookComponent, type Component, type Stamp } from "./migrate/index.ts";
 
 // ── 格式版本纪律（2026-10-21，周账 F-23 / F-69，家族规矩 = 家族根 ai-docs/20261021-format-version-discipline.md，user「三级语义 同意」）──
 //   · 拍子（major.minor.patch）、升级代码、too-new / too-old 判定全住 `./migrate/`（SSoT = FORMAT 表）；本文件只负责字段的解析与直通。
@@ -78,7 +78,7 @@ export interface Project {
   graphExtra: Record<string, unknown>;
   editorStateExtra: Record<string, unknown>;
   /** 读到的各子结构的拍子（./migrate/ 判过：老的已升到本版 major；minor / patch 可能比本版新）。 */
-  readStamps: Record<Component, Stamp>;
+  readStamps: Record<BookComponent, Stamp>;
   /** minor 比本版新的子结构（能开能存、未知键带回；宿主告诉用户一次）。patch 比本版新不列（静默）。 */
   newerThanApp: Component[];
   /** 修改锁（user 2026-09-10「zip 锁跟着作品」）：成品不想被误改。切换 = 正经改动（标脏、推云）。 */

@@ -68,6 +68,23 @@ describe("接线", () => {
     assert(/ime\.memoryOnly\) return;/.test(push), "推之前看"); assert((push.match(/ime\.memoryOnly/g) ?? []).length >= 2, "导完再看一次（导的时候可能刚开了加密稿）");
     assert(/ime\.memoryOnly\) return;/.test(pull), "拉之前看");
   });
+  it("加密词库的接线（D3）：开稿灌、关稿先拿最后一眼、丢口令前先封、输入法后起也灌", () => {
+    const sync = /function syncImeMemoryOnly\(\): void \{[\s\S]*?\n\}/.exec(app)?.[0] ?? "";
+    assert(/encDict\.ensureLoaded\(\)/.test(sync), "开着加密稿就灌");
+    assert(/encDict\.leave\(done\)/.test(sync) && /ime\.setMemoryOnly\(on, !on && encDict\.loaded\(\)\)/.test(sync), "关稿用丢内存层之前最后一眼");
+    assert(/await encDict\.sealNow\(true\);[^\n]*\n(?:[^\n]*\n)?\s*(?:const wasRemembered[^\n]*\n\s*)?cryptoLock\(\);/.test(app), "锁定：先封再丢口令");
+    assert(/await encDict\.sealNow\(true\);[^\n]*\n\s*try \{ await flushCollections\(\); cryptoLock\(\);/.test(app), "登出：先封再丢口令");
+    assert(/syncImeMemoryOnly\(\);[^\n]*\n\s*await pullUserDict\(\);/.test(app), "输入法后起来：再看一次");
+    assert(/else void encDict\.onLocked\(\)/.test(app), "锁定：灌进去的丢掉");
+    assert(/collection: rimeEncDict/.test(app) && /rime-enc-dict/.test(readFileSync("src/config.ts", "utf8")), "走自己的 collection，不和明文词库混");
+  });
+  it("出门规则（F-181）：加密副本取容器字节、不解密；明文下载前明说；不走「解除加密」", () => {
+    const flow = /async function exportSealedCopyFlow\(\)[\s\S]*?\n\}/.exec(app)?.[0] ?? "";
+    assert(/sealedBlobOf\(name\)/.test(flow) && !/decryptDoc|toggleEncryption|unpackContainer|\.open\(\)/.test(flow), "容器字节原样出门");
+    assert(/!opts\.sealed && activeEncrypted\(\)\) message \+= /.test(app), "offerFiles 一处管明说（长图 / PDF / TXT 都过它）");
+    assert(/value: "sealed" as const, primary: true/.test(app) && /primary: !enc/.test(app), "加密稿的默认是加密副本");
+    assert(/getEncryptedBlob\(\)/.test(readFileSync("src/docs.ts", "utf8")), "docs.ts 走库发的容器字节");
+  });
   it("状态变化都过 syncImeMemoryOnly（renderTopbar 第一句）", () => {
     assert(/function renderTopbar\(\): void \{\n  syncImeMemoryOnly\(\);/.test(app));
   });

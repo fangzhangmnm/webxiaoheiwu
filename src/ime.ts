@@ -12,6 +12,7 @@ const NATURAL_CODE_STARTER_MAP: Record<string, string[]> = {
   na: ["那", "哪", "纳"], ai: ["爱", "矮", "哎"], ma: ["吗", "妈", "马"], le: ["了", "乐", "勒"], ren: ["人", "仁", "忍"],
   wen: ["文", "问", "闻"], xie: ["写", "谢", "鞋"], xiaoshuo: ["小说"],
 };
+import { buildLogFile, emptyParsed, logFileName, packValue, parseUserdbFiles, planLoad, type DictEntries, type LayerSnapshot } from "./rime-userdb.ts";
 const RIME_WORKER_URL = "./vendor/my-rime/worker-guard.js";   // 2026-11-03：上游 worker.js 外面包一层，多一个「只进内存」开关（见 setMemoryOnly）
 export const IME_SCHEMAS = ["luna_pinyin", "luna_pinyin_fluency", "double_pinyin_mspy", "double_pinyin", "double_pinyin_flypy", "double_pinyin_abc", "double_pinyin_pyjj", "wubi86"] as const;
 export type ImeSchema = (typeof IME_SCHEMAS)[number];   // 全拼（默认）/ 语句流 / 微软·自然码·小鹤·ABC·拼音加加 双拼（user「双拼顺手支持其他方案」）/ 五笔86（「加一个五笔玩玩」，依赖 pinyin_simp → stroke）
@@ -20,6 +21,7 @@ export const isImeSchema = (v: unknown): v is ImeSchema => (IME_SCHEMAS as reado
 const PUNCTUATION_KEYS = new Set([",", ".", ";", ":", "?", "!", '"', "'", "(", ")", "<", ">", "{", "}", "[", "]", "\\", "~", "@", "#", "$", "&", "*", "|"]);
 
 export type ImeResult = { type: "passthrough" | "composing" | "clear" | "toggle" } | { type: "commit"; text: string; consumedBuffer: string };
+export type MemoryLayerResult = { status: "ok"; base: LayerSnapshot } | { status: "composing" } | { status: "off" };
 export interface ImeState { enabled: boolean; asciiMode: boolean; buffer: string; candidates: string[]; engine: string; initializeError: string | null; /** 候选翻到第几页（0 起）；hasMore = 后面还有。软键盘候选条的「更多」用。 */ page: number; hasMore: boolean }
 
 interface Backend {
@@ -38,7 +40,11 @@ interface Backend {
   changePage(prev: boolean): Promise<ImeResult>;
   dumpUserDir?(): Promise<UserDictDump>;
   restoreUserDir?(dump: UserDictDump): Promise<void>;
-  setMemoryOnly?(on: boolean): Promise<void>;
+  setMemoryOnly?(on: boolean, capture?: boolean): Promise<LayerSnapshot | null>;
+  /** 加密词库（enc-dict.ts）：灌进内存层 / 读内存层 / 丢掉内存层再灌。 */
+  loadMemoryLayer?(entries: DictEntries): Promise<MemoryLayerResult>;
+  readMemoryLayer?(flush: boolean): Promise<LayerSnapshot | null>;
+  resetMemoryLayer?(entries: DictEntries): Promise<MemoryLayerResult>;
   clearUserDict?(): Promise<void>;
   setSimplified?(v: boolean): Promise<void>;
   /** 候选每页几个（v2.1.34：软键盘露着时 40 → 候选条整条横滑；PC 悬浮条 9 → 数字选词）。 */
@@ -82,8 +88,8 @@ class StarterMapBackend implements Backend {
   async typePunctuation(): Promise<ImeResult> { return { type: "passthrough" }; }
 }
 
-const b64 = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!); return btoa(s); };
-const unb64 = (s: string) => { const bin = atob(s); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
+export const b64 = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!); return btoa(s); };
+export const unb64 = (s: string) => { const bin = atob(s); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
 
 class RimeWorkerBackend implements Backend {
   engine = "rime";
@@ -113,15 +119,91 @@ class RimeWorkerBackend implements Backend {
   //   出 = 重开（加密稿挂着的词提交进内存层，关掉老的数据库，它的文件句柄不会再往回写）→ 删掉这段时间多出来的文件、写回记下的那份 → 再重开（新数据库读回来的就是记下的那份）→ 才恢复写回。
   //   多出来的文件必须删：LevelDB 重开时会重放比 MANIFEST 新的日志，不删 = 学到的词又回来了。全程排在输入法队列里，和按键不抢。
   wantMemoryOnly = false;
+  onCommit: (() => void) | null = null;
   private ephemeral = false;
   private beforeEphemeral: UserDictDump = { files: [] };
   private async enterEphemeral(): Promise<void> { await this.reopenEngine(); await this.call("setMemoryOnly", true); this.beforeEphemeral = await this.dumpUserDir(); this.ephemeral = true; }
+  private captureOnLeave = false;
+  private leftWith: LayerSnapshot | null = null;
   private async leaveEphemeral(): Promise<void> {
     await this.reopenEngine();
+    this.leftWith = this.captureOnLeave ? await this.readUserdbDirs() : null;   // 加密词库要的最后一眼：挂着的词已提交、还没丢（一条队列里做完，中间插不进按键）
     await this.replaceUserFiles(this.beforeEphemeral);
     await this.reopenEngine();
     await this.call("setMemoryOnly", false);
     this.ephemeral = false; this.beforeEphemeral = { files: [] };
+  }
+  // ── 加密词库（家族工单 D3）：词在内存盘上进出，垫片开着 = 不落 IndexedDB ──
+  private async readUserdbDirs(): Promise<LayerSnapshot> {
+    const out: LayerSnapshot = {};
+    let names: string[];
+    try { names = await this.call("fsOperate", "readdir", "/rime"); } catch { return out; }
+    for (const dir of names) {
+      if (!dir.endsWith(".userdb")) continue;
+      const files = [];
+      for (const name of (await this.call("fsOperate", "readdir", `/rime/${dir}`)) as string[]) {
+        if (!/^\d+\.(ldb|sst|log)$/.test(name)) continue;
+        const data = await this.call("fsOperate", "readFile", `/rime/${dir}/${name}`);
+        files.push({ name, data: data instanceof Uint8Array ? data : new Uint8Array(data) });
+      }
+      out[dir.slice(0, -".userdb".length)] = parseUserdbFiles(files);
+    }
+    return out;
+  }
+  private beforeSnapshot(): LayerSnapshot {
+    const byDir = new Map<string, { name: string; data: Uint8Array }[]>();
+    for (const f of this.beforeEphemeral.files) {
+      const m = /^(.+)\.userdb\/(\d+\.(?:ldb|sst|log))$/.exec(f.path);
+      if (!m) continue;
+      if (!byDir.has(m[1]!)) byDir.set(m[1]!, []);
+      byDir.get(m[1]!)!.push({ name: m[2]!, data: unb64(f.data) });
+    }
+    const out: LayerSnapshot = {};
+    for (const [dict, files] of byDir) out[dict] = parseUserdbFiles(files);
+    return out;
+  }
+  /** 往每本词库放一个比谁都新的日志，重开引擎让 LevelDB 重放。回 base = 进加密稿时的词 + 灌进去的词（期间打的字不算 base，才进得了 delta）。调用前先重开过（挂着的词的序号不能和灌的撞）。 */
+  private async injectLayer(entries: DictEntries): Promise<LayerSnapshot> {
+    const now = await this.readUserdbDirs(), base = this.beforeSnapshot();
+    for (const [dict, incoming] of Object.entries(entries)) {
+      const cur = now[dict] ?? emptyParsed();
+      const plan = planLoad(cur, incoming);
+      const was = (base[dict] ??= emptyParsed());
+      was.tick = cur.tick;
+      if (!plan.size) continue;
+      for (const [k, v] of plan) was.entries.set(k, v);
+      const dir = `/rime/${dict}.userdb`;
+      try { await this.call("fsOperate", "mkdir", dir); } catch { /* EEXIST */ }
+      await this.call("fsOperate", "writeFile", `${dir}/${logFileName(cur)}`, buildLogFile([...plan].map(([k, v]) => [k, packValue(v)] as [string, string]), cur.maxSeq + 1));
+    }
+    await this.reopenEngine();
+    return base;
+  }
+  loadMemoryLayer(entries: DictEntries): Promise<MemoryLayerResult> {
+    return this.enqueue(async () => {
+      if (!this.ephemeral) return { status: "off" } as const;
+      if (!Object.keys(entries).length) return { status: "ok", base: this.beforeSnapshot() } as const;   // 没东西可灌：不重开（第一次用、或者清空之后）
+      if (this.buffer) return { status: "composing" } as const;   // 重开引擎会丢组字：打字的人优先，等一下再来
+      await this.reopenEngine();
+      return { status: "ok", base: await this.injectLayer(entries) } as const;
+    }, { compose: false });
+  }
+  readMemoryLayer(flush: boolean): Promise<LayerSnapshot | null> {
+    return this.enqueue(async () => {
+      if (!this.ephemeral) return null;
+      if (flush && !this.buffer) await this.reopenEngine();
+      return this.readUserdbDirs();
+    }, { compose: false });
+  }
+  resetMemoryLayer(entries: DictEntries): Promise<MemoryLayerResult> {
+    return this.enqueue(async () => {
+      if (!this.ephemeral) return { status: "off" } as const;
+      if (this.buffer) return { status: "composing" } as const;
+      await this.reopenEngine();
+      await this.replaceUserFiles(this.beforeEphemeral);
+      await this.reopenEngine();
+      return { status: "ok", base: await this.injectLayer(entries) } as const;
+    }, { compose: false });
   }
   private async replaceUserFiles(dump: UserDictDump): Promise<void> {
     const now = await this.dumpUserDir();
@@ -137,11 +219,15 @@ class RimeWorkerBackend implements Backend {
     await this.writeUserFiles(dump);
   }
   private async reopenEngine(): Promise<void> { await this.call("setIME", this.schema); await this.applyOptions(); }
-  setMemoryOnly(on: boolean): Promise<void> {
+  setMemoryOnly(on: boolean, capture = false): Promise<LayerSnapshot | null> {
     return this.enqueue(async () => {
-      if (on === this.ephemeral) return;
-      if (on) await this.enterEphemeral();
-      else { await this.leaveEphemeral(); this.resetState(); }
+      if (on === this.ephemeral) return null;
+      if (on) { await this.enterEphemeral(); return null; }
+      this.captureOnLeave = capture;
+      await this.leaveEphemeral();
+      this.resetState();
+      const left = this.leftWith; this.leftWith = null; this.captureOnLeave = false;
+      return left;
     }, { compose: false });
   }
   /** 「清空用户词库」：这台设备学过的词全丢（模糊音的补丁和编译产物不算词库，留着）。setIME 会连带把空目录写回 IndexedDB。 */
@@ -280,7 +366,7 @@ class RimeWorkerBackend implements Backend {
   }
   normalize(result: any): ImeResult {
     if (!result || typeof result !== "object") return { type: "passthrough" };
-    if (typeof result.committed === "string") { const consumedBuffer = this.body; this.resetState(); this.refreshOptionsSoon(); return { type: "commit", text: result.committed, consumedBuffer }; }
+    if (typeof result.committed === "string") { const consumedBuffer = this.body; this.resetState(); this.refreshOptionsSoon(); this.onCommit?.(); return { type: "commit", text: result.committed, consumedBuffer }; }
     if (result.state === 1) {
       const head = String(result.head ?? ""), body = String(result.body ?? ""), tail = String(result.tail ?? "");
       this.body = body;
@@ -407,7 +493,7 @@ export class NaturalCodeIME {
     if (this.initialized) return;
     if (!this.initPromise) {   // 加载中连点不起第二个 worker（审计 UI-21）
       const rime = new RimeWorkerBackend();
-      rime.simplified = this.simplified; rime.pageSize = this.pageSize; rime.fuzzy = this.fuzzy; rime.wantMemoryOnly = this.memoryOnly;
+      rime.simplified = this.simplified; rime.pageSize = this.pageSize; rime.fuzzy = this.fuzzy; rime.wantMemoryOnly = this.memoryOnly; rime.onCommit = () => this.onCommit?.();
       this.backend = rime;
       this.initPromise = (async () => {
         try { await rime.initialize(schema); this.initializeError = null; }
@@ -419,7 +505,12 @@ export class NaturalCodeIME {
   }
   /** 现在学到的词是不是只留内存（开着加密稿）。同步读：app 推 / 拉词库前看它。 */
   memoryOnly = false;
-  setMemoryOnly(on: boolean): Promise<void> { this.memoryOnly = on; return this.backend.setMemoryOnly?.(on) ?? Promise.resolve(); }
+  setMemoryOnly(on: boolean, capture = false): Promise<LayerSnapshot | null> { this.memoryOnly = on; return this.backend.setMemoryOnly?.(on, capture) ?? Promise.resolve(null); }
+  /** 上屏了一个词（加密词库的空闲计时用）。 */
+  onCommit: (() => void) | null = null;
+  loadMemoryLayer(entries: DictEntries): Promise<MemoryLayerResult> { return this.backend.loadMemoryLayer?.(entries) ?? Promise.resolve({ status: "off" }); }
+  readMemoryLayer(flush: boolean): Promise<LayerSnapshot | null> { return this.backend.readMemoryLayer?.(flush) ?? Promise.resolve(null); }
+  resetMemoryLayer(entries: DictEntries): Promise<MemoryLayerResult> { return this.backend.resetMemoryLayer?.(entries) ?? Promise.resolve({ status: "off" }); }
   clearUserDict(): Promise<void> { return this.backend.clearUserDict?.() ?? Promise.resolve(); }
   /** 预热（空闲时调一次；见 RimeWorkerBackend.warmUp）。未初始化 / 降级后端 → 无事。 */
   warmUp(): Promise<void> {

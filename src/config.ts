@@ -58,4 +58,5 @@ export const COLLECTIONS = {
   prefs: "synced-user-preference",   // 跨设备偏好：readingMode / voice provider+keys+vocab / lang
   appState: "synced-app-state",      // 跨设备 app 态：lastActive 指针 / 密码 verifier（旧 legacyImport.* 记账键为死数据，不读不删）
   rimeDict: "rime-user-dict",        // RIME 用户词库 dump（单 item "dump"，uat-LWW；可再生）
+  rimeEncDict: "rime-enc-dict",      // 加密词库：加密稿学到的词（一台设备一个键 dict.<guid>，值 = 容器的 base64；src/enc-dict.ts）
 } as const;

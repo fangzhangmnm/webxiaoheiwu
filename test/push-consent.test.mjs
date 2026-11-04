@@ -8,11 +8,16 @@ const app = readFileSync("src/app.ts", "utf8");
 
 describe("push-consent · 没同步好的稿：提一次「去处理」，不批量推", () => {
   it("files.dirty.pushAll() 全 app 零调用（批量推已撤；每一份在库的面里选）", () => { eq((app.match(/files\.dirty\.pushAll\(\)/g) ?? []).length, 0); });
+  it("跟上网盘的路不等人答（闸门的「正在同步」条、词库偏好对齐都在这条路上；2026-11-03 D3 核 F-182）", () => {
+    const body = /async function resumeSync\(\)[\s\S]*?\n\}/.exec(app)?.[0] ?? "";
+    assert(/void offerPushLocalOnly\(\)/.test(body) && !/await offerPushLocalOnly\(\)/.test(body), "resumeSync 不 await 问句");
+    assert(body.indexOf("reconcileCollections") < body.indexOf("void offerPushLocalOnly"), "该对齐的先对齐，再问");
+  });
   it("offerPushLocalOnly 把人带进书库的「要处理的」视图，三处入口（登录后 / 回线 / 解锁）都走它", () => {
     assert(/async function offerPushLocalOnly\(/.test(app), "offerPushLocalOnly 在");
     assert(/await galleryHost\.openAttention\(\);/.test(app), "去处理 = galleryHost.openAttention()");
     assert(!/pushDirtyAll/.test(app), "pushDirtyAll 已删");
-    assert(/then\(\(\) => offerPushLocalOnly\(\)\)/.test(app) && /await offerPushLocalOnly\(\);/.test(app) && /if \(unlocked\) void offerPushLocalOnly/.test(app), "三处入口都走闸门");
+    assert(/then\(\(\) => offerPushLocalOnly\(\)\)/.test(app) && /void offerPushLocalOnly\(\);/.test(app) && /if \(unlocked\) void offerPushLocalOnly/.test(app), "三处入口都走闸门");
   });
   it("文案四条 zh/en 都在，且 ok 不再是方向动词", () => { for (const k of ["pushAll.askTitle", "pushAll.askMsg", "pushAll.ok", "pushAll.later"]) assert(S[k]?.zh && S[k]?.en, k); eq(S["pushAll.ok"].zh, "去处理"); });
 });

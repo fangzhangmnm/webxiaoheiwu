@@ -10,7 +10,8 @@ export declare function requireStore(): Store;
 export declare const prefs: Collection;
 export declare const appState: Collection;
 export declare const rimeDict: Collection;
-/** boot 门：hydrate 三个 collection（本地快、离线 OK、不碰网；云端后台对齐）。 */
+export declare const rimeEncDict: Collection;
+/** boot 门：hydrate 四个 collection（本地快、离线 OK、不碰网；云端后台对齐）。 */
 export declare function initCollections(): Promise<void>;
 /** 事件驱动对齐（focus/online/idle 复查）——读 status，别只 await。 */
 export declare function reconcileCollections(): Promise<void>;
