@@ -17,7 +17,7 @@
 | `41ec277` | v3.0.12：收 store 2.2.3 / gallery 0.8.10；接 `resolveRenameOld`（`src/store-ui.ts`）；`docs.ts` / `editor.ts` / `app.ts` 认「取消」「留着」；e2e 三种选法 |
 | `f34d098` | v3.0.13：闸门（`src/cloud-gate.ts` + `src/cloud-gate-ui.ts` + 接线）；云端判断统一 `cloudOnline()`；守卫 `test/cloud-gate.test.mjs`；e2e 闸门 13 组 + 加密副产品扫描；service-worker 壳缓存按正式版 / 开发版分开 |
 | `875e260` | 闸门「没有稿可比」时另问云端（e2e ⑤c）+ 一条测试时序修正 + 本报告 |
-| （D2 这一笔，见 git log） | v3.0.14：词库只进内存（`vendor/my-rime/worker-guard.js` + `src/ime.ts`）+ 清空用户词库入口；先封再存（`src/docs.ts sealForNewDoc`）；第二台设备认不出加密件的老 bug；收 store 2.2.4 |
+| `54f6e34` | v3.0.14：词库只进内存（`vendor/my-rime/worker-guard.js` + `src/ime.ts`）+ 清空用户词库入口；先封再存（`src/docs.ts sealForNewDoc`）；第二台设备认不出加密件的老 bug；收 store 2.2.4 |
 
 验证（v3.0.14）：`npm test` 全过；`npm run smoke` 全过；`node tools/ui-audit.mjs` 全过；`npm run e2e:sync` 全过（5 分多钟）；`test/redline-guard.test.mjs` 绿。
 
