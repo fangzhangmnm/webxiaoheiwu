@@ -1,15 +1,20 @@
-// share-platform.ts —— 黑匣子（诊断日志）的「分享」该不该走系统分享面板。
+// share-platform.ts —— 「这台是不是手机 / 平板系统」的唯一判断（分享面板只在那里是自然的「保存」路径）。
 // created 2026-11-09 by Claude Opus 5.5（家族周账 F-111；user 2026-10-27「黑匣子的分享windows下面应该是下载，windows的分享就是个流氓软件」）。
-// 只给手机 / 平板系统（iOS / iPadOS / Android）；别的（Windows / Mac / Linux 桌面、Quest）一律下载 .txt。
-// Windows 上的 Edge / Chrome 也有 navigator.share，弹出来的是系统分享面板，所以不能只看有没有这个函数。
-// iPadOS 的 Safari / Edge 默认自称 Macintosh：看触点数认出来（Mac 桌面是 0）。
-// 只管黑匣子：作品导出的分享 / 下载（app.ts offerFiles）不归这里。
+// 小黑屋这里只有黑匣子一个用户（diag-log-ui.ts）；作品导出的分享 / 下载（app.ts offerFiles）不归这里。
+// iPadOS 13+ 默认伪装成 Mac 桌面：UA 是 Macintosh / platform 是 MacIntel，看多点触控认出来（Mac 桌面是 0）。
+// WeebPaint src/share-platform.ts 同一份（那边作品导出也用 isMobileShareOs）。
 
-export interface SharePlatformNav { share?: unknown; userAgent?: string; maxTouchPoints?: number }
+export interface SharePlatformNav { share?: unknown; userAgent?: string; maxTouchPoints?: number; platform?: string }
 
-export function shareSheetPlatform(nav: SharePlatformNav = navigator): boolean {
-  if (typeof nav.share !== "function") return false;
+/** iOS / iPadOS / Android。 */
+export function isMobileShareOs(nav: SharePlatformNav = navigator): boolean {
   const ua = nav.userAgent ?? "";
   if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
-  return /Macintosh/i.test(ua) && (nav.maxTouchPoints ?? 0) > 1;
+  const touch = (nav.maxTouchPoints ?? 0) > 1;
+  return touch && (nav.platform === "MacIntel" || /Macintosh/i.test(ua));
+}
+
+/** 黑匣子的「分享」走不走系统分享面板：手机 / 平板系统且浏览器有 share；别的（Windows / Mac / Linux 桌面、Quest）一律下载。 */
+export function shareSheetPlatform(nav: SharePlatformNav = navigator): boolean {
+  return typeof nav.share === "function" && isMobileShareOs(nav);
 }
