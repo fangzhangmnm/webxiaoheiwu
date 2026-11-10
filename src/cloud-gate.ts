@@ -102,17 +102,24 @@ export interface CloudGate {
 }
 
 /** 黑匣子去重：同一个 key 连着来只写第一次；key 变了才写，第一行带上「上一种又来了几次、没写」。reset = 从头算。 */
-function dedupeNotes(note: (s: string) => void): { note(key: string, lines: string[]): void; reset(): void } {
-  let last: string | null = null, repeats = 0;
+// 心跳（user 11-10「那么可以加一句」）：同样的结果每重复 HEARTBEAT_EVERY 次留一行——离线重试每分钟一次 → 约半小时一行。
+//   用处：网一直断着时，黑匣子里分得清「还在每分钟试、一直没连上」和「重试的定时器死了、根本没在试」。
+export const HEARTBEAT_EVERY = 30;
+function dedupeNotes(note: (s: string) => void, every = HEARTBEAT_EVERY): { note(key: string, lines: string[]): void; reset(): void } {
+  let last: string | null = null, lastLine = "", repeats = 0;
   return {
     note(key, lines) {
       if (!lines.length) return;
-      if (key === last) { repeats++; return; }
-      const tail = repeats ? ` (previous result repeated ${repeats}x, not logged)` : "";
-      last = key; repeats = 0;
+      if (key === last) {
+        repeats++;
+        if (repeats % every === 0) note(`${lastLine} — still the same, repeated ${repeats}x so far (one line every ${every})`);
+        return;
+      }
+      const tail = repeats ? ` (previous result repeated ${repeats}x, ${repeats >= every ? `one line every ${every}` : "not logged"})` : "";
+      last = key; lastLine = lines[0] ?? ""; repeats = 0;
       lines.forEach((l, i) => note(i === 0 ? l + tail : l));
     },
-    reset() { last = null; repeats = 0; },
+    reset() { last = null; lastLine = ""; repeats = 0; },
   };
 }
 

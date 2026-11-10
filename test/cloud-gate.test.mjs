@@ -335,6 +335,18 @@ describe("闸门 · 离线态静默再试（设计稿 §3 硬要求，11-04；�
   });
   // 黑匣子去重（家族周账 F-189，2026-11-09，Claude Opus 5.5）：网一直不通时每分钟一次的重试不再每次写一行。
   const NET_ERR = "[auth] silent token renewal failed (retry-silent): name=BrowserAuthError code=network_error sub= msg=x";
+  it("黑匣子心跳：同样的失败每重复 30 次留一行（约半小时），分得清「还在试」和「定时器死了」", async () => {
+    const t = makeGate({ renew: async () => { t.calls.renew++; return false; } });
+    await t.gate.boot();
+    t.press().offline();
+    try {
+      const n0 = t.calls.notes.length;
+      for (let i = 0; i < 1 + 65; i++) await t.fire();   // 第一次记 + 重复 65 次
+      const beats = t.calls.notes.slice(n0).filter((l) => /still the same, repeated \d+x so far/.test(l));
+      eq(beats.length, 2, `一次重试的几行是一组：重复 65 次 = 第 30、60 次各一行：${beats.join(" / ")}`);
+      assert(/^silent renew \(reconnect\): failed.*repeated 30x so far/.test(beats[0] ?? "") && /repeated 60x so far/.test(beats[1] ?? ""), beats.join(" / "));
+    } finally { await resetOffline(); }
+  });
   it("黑匣子去重：一样的结果只记第一次；变了才记、带上省掉几次；连上一定记", async () => {
     let mode = "fail";
     const t = makeGate({ renew: async () => { t.calls.renew++; if (mode === "ok") { t.setSigned(true); return true; } if (mode === "net") noteAuthFailure(NET_ERR); return false; } });
