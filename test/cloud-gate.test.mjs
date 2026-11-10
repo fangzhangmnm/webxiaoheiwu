@@ -11,7 +11,7 @@ Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, get:
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 function makeGate(over = {}) {
-  const calls = { checking: 0, blocked: [], release: 0, bars: [], renew: 0, check: 0, catchUp: 0, signIn: 0, reach: 0, timers: [] };
+  const calls = { checking: 0, blocked: [], release: 0, bars: [], renew: 0, check: 0, catchUp: 0, signIn: 0, reach: 0, timers: [], notes: [] };
   let onEscape = null, on = null, foreign = false;
   const ui = {
     checking: (e) => { calls.checking++; onEscape = e; },
@@ -22,7 +22,7 @@ function makeGate(over = {}) {
   };
   let signed = over.signed ?? false;
   const gate = createCloudGate({
-    ui, timeoutMs: over.timeoutMs ?? 40, note: () => {},
+    ui, timeoutMs: over.timeoutMs ?? 40, note: (s) => { calls.notes.push(s); },
     hasHome: () => over.home ?? true,
     signedIn: () => signed,
     renew: over.renew ?? (async () => { calls.renew++; signed = true; return true; }),
@@ -333,6 +333,61 @@ describe("闸门 · 离线态静默再试（设计稿 §3 硬要求，11-04；�
     t.gate.authChanged(false, "signOut");
     assert(t.calls.timers[0].stopped);
   });
+  // 黑匣子去重（家族周账 F-189，2026-11-09，Claude Opus 5.5）：网一直不通时每分钟一次的重试不再每次写一行。
+  const NET_ERR = "[auth] silent token renewal failed (retry-silent): name=BrowserAuthError code=network_error sub= msg=x";
+  it("黑匣子去重：一样的结果只记第一次；变了才记、带上省掉几次；连上一定记", async () => {
+    let mode = "fail";
+    const t = makeGate({ renew: async () => { t.calls.renew++; if (mode === "ok") { t.setSigned(true); return true; } if (mode === "net") noteAuthFailure(NET_ERR); return false; } });
+    await t.gate.boot();
+    t.press().offline();
+    const n0 = t.calls.notes.length;
+    for (let i = 0; i < 5; i++) await t.fire();
+    let got = t.calls.notes.slice(n0);
+    eq(got.filter((l) => /^silent renew \(reconnect\): failed/.test(l)).length, 1, "五次一样的失败只记一次续签");
+    eq(got.filter((l) => /^gate: reconnect: still offline/.test(l)).length, 1, "「还离线」也只一次");
+    mode = "net";
+    await t.fire();
+    got = t.calls.notes.slice(n0);
+    const changed = got.find((l) => /code=network_error/.test(l));
+    assert(changed && /previous result repeated 4x, not logged/.test(changed), `变了才记、带上省掉的次数：${changed}`);
+    const n1 = t.calls.notes.length;
+    await t.fire(); await t.fire();
+    eq(t.calls.notes.length, n1, "同一种新结果再来不写");
+    mode = "ok";
+    await t.fire();
+    got = t.calls.notes.slice(n1);
+    assert(got.some((l) => /^silent renew \(reconnect\): ok.*previous result repeated 2x/.test(l)), `连上那次写、带上省掉的次数：${got.join(" / ")}`);
+    assert(got.includes("gate: reconnected → catching up"));
+    assert(!isUserOffline());
+    await resetOffline();
+  });
+  it("黑匣子去重：新的一段离线从头算，第一次重试一定记", async () => {
+    let ok = false;
+    const t = makeGate({ renew: async () => { t.calls.renew++; if (ok) t.setSigned(true); return ok; } });
+    await t.gate.boot();
+    t.press().offline();
+    await t.fire(); await t.fire();
+    ok = true; await t.fire();
+    assert(!isUserOffline(), "第一段离线结束");
+    ok = false; t.setSigned(false);
+    await t.gate.wake(true);
+    t.press().offline();
+    const n0 = t.calls.notes.length;
+    await t.fire();
+    eq(t.calls.notes.slice(n0).filter((l) => /^silent renew \(reconnect\): failed/.test(l)).length, 1, "和上一段最后一次失败一样，也要记");
+    await resetOffline();
+  });
+  it("黑匣子去重：续签超时之后才回来的结果另一路去重，也只记一次", async () => {
+    const t = makeGate({ renew: async () => { t.calls.renew++; await tick(70); return false; } });
+    await t.gate.boot(); await tick(100);
+    t.press().offline();
+    const n0 = t.calls.notes.length;
+    for (let i = 0; i < 3; i++) { await t.fire(); await tick(100); }
+    const got = t.calls.notes.slice(n0);
+    eq(got.filter((l) => /^gate: reconnect: still offline \(timeout\)/.test(l)).length, 1, "超时那条只记一次");
+    eq(got.filter((l) => /\(late: the retry had already given up\)$/.test(l)).length, 1, `迟到的续签结果只记一次：${got.join(" / ")}`);
+    await resetOffline();
+  });
 });
 
 describe("闸门 · 结构守卫（§8）", () => {
@@ -342,7 +397,7 @@ describe("闸门 · 结构守卫（§8）", () => {
 
   it("§8① 每一趟等云端都和硬超时 + 逃生钮赛跑；boot() 自己不 await 云端", () => {
     assert(/Promise\.race\(\[work, timedOut, esc\.then/.test(gateSrc), "run() 的 race");
-    assert(/Promise\.race\(\[renewOnce\("reconnect"\), timedOut\]\)/.test(gateSrc), "reconnect 的续签 race");
+    assert(/Promise\.race\(\[renewOnce\("reconnect"(?:, \w+)?\), timedOut\]\)/.test(gateSrc), "reconnect 的续签 race");
     assert(/Promise\.race\(\[d\.reachable\(\)[\s\S]*?timedOut\]\)/.test(gateSrc), "reconnect 问云端也 race 硬超时");
     const rc = /async function reconnect\(\)[\s\S]*?\n {2}\}/.exec(gateSrc)?.[0] ?? "";
     assert(rc.indexOf("cloudAnswers()") > 0 && rc.indexOf("cloudAnswers()") < rc.indexOf("setUserOffline(false)"), "先问云端、通了才放开离线（设计稿 §3 11-04）");

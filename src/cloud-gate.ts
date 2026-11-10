@@ -101,6 +101,21 @@ export interface CloudGate {
   storeEscape(): { probe: Promise<unknown>; settle: () => void } | null;
 }
 
+/** 黑匣子去重：同一个 key 连着来只写第一次；key 变了才写，第一行带上「上一种又来了几次、没写」。reset = 从头算。 */
+function dedupeNotes(note: (s: string) => void): { note(key: string, lines: string[]): void; reset(): void } {
+  let last: string | null = null, repeats = 0;
+  return {
+    note(key, lines) {
+      if (!lines.length) return;
+      if (key === last) { repeats++; return; }
+      const tail = repeats ? ` (previous result repeated ${repeats}x, not logged)` : "";
+      last = key; repeats = 0;
+      lines.forEach((l, i) => note(i === 0 ? l + tail : l));
+    },
+    reset() { last = null; repeats = 0; },
+  };
+}
+
 type Trigger = "boot" | "wake" | "retry";
 const never = new Promise<never>(() => {});
 
@@ -116,15 +131,18 @@ export function createCloudGate(d: CloudGateDeps): CloudGate {
   let probe: Promise<void> | null = null;
   const armEscape = (): Promise<void> => { probe = new Promise<void>((res) => { escaped = res; }); return probe; };
 
-  /** 静默续签（已经登录着就跳过）。回 null = 登录好了；否则是没成的原因。 */
-  async function renewOnce(trigger: string): Promise<GateReason | null> {
+  /** 静默续签（已经登录着就跳过）。回 null = 登录好了；否则是没成的原因。
+   *  log 缺 = 直接进黑匣子；给了 = 交给调用方（离线态重试拿去去重，key 是不带耗时的结果）。 */
+  async function renewOnce(trigger: string, log?: (key: string, line: string) => void): Promise<GateReason | null> {
     if (d.signedIn()) return null;
     _lastFailure = null;
     const t0 = now();
     let ok = false;
-    try { ok = await d.renew(); } catch (e) { d.note(`silent renew threw (${trigger}): ${String((e as Error)?.message ?? e)}`); }
+    const out = log ?? ((_key: string, line: string) => d.note(line));
+    try { ok = await d.renew(); } catch (e) { const msg = String((e as Error)?.message ?? e); out(`renew threw ${msg}`, `silent renew threw (${trigger}): ${msg}`); }
     const f = _lastFailure as AuthFailure | null;
-    d.note(`silent renew (${trigger}): ${ok ? "ok" : "failed"} elapsed=${now() - t0}ms${f ? ` name=${f.name} code=${f.code} sub=${f.sub}` : ""}`);   // §1 / §7⑧：黑匣子里有每次的结果和原因码
+    const code = f ? ` name=${f.name} code=${f.code} sub=${f.sub}` : "";
+    out(`renew ${ok ? "ok" : "failed"}${code}`, `silent renew (${trigger}): ${ok ? "ok" : "failed"} elapsed=${now() - t0}ms${code}`);   // §1 / §7⑧：黑匣子里有每次的结果和原因码
     if (ok) return null;
     return !rawOnline() ? "offline" : (f?.reason ?? "expired");   // 没日志又没成 = 库手里没账号可续（不是网的事）
   }
@@ -157,8 +175,12 @@ export function createCloudGate(d: CloudGateDeps): CloudGate {
   // ── 离线态静默再试（设计稿 §3 硬要求，11-04）：慢网误判离线时浏览器从没离线、online 事件永不来——不定时再试就卡到刷新。
   //   每 OFFLINE_RETRY_MS 一次（页面藏着不试；回前台那一下走 wake → reconnect）；失败不弹不扰，成功 = reconnect 里清离线、补一轮、收条。
   let stopRetry: (() => void) | null = null;
+  // 黑匣子去重（家族周账 F-189，2026-11-09）：网一直不通时每分钟一次的重试，结果和上一次一样就不写——
+  //   只记第一次、结果变了的那次（带上中间省掉几次）、连上的那次。续签超时之后才回来的结果另一路去重。
+  const retryLog = dedupeNotes((s) => d.note(s)), lateLog = dedupeNotes((s) => d.note(s));
   function startOfflineRetry(): void {
     if (stopRetry) return;
+    retryLog.reset(); lateLog.reset();   // 新的一段离线：第一次重试一定记
     const ms = d.offlineRetryMs?.() ?? OFFLINE_RETRY_MS;
     const every = d.every ?? ((t: number, fn: () => void) => { const h = setInterval(fn, t); (h as { unref?: () => void }).unref?.(); return () => clearInterval(h); });
     stopRetry = every(ms, () => {
@@ -222,20 +244,30 @@ export function createCloudGate(d: CloudGateDeps): CloudGate {
     reconnecting = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timedOut = new Promise<"timeout">((res) => { timer = setTimeout(() => res("timeout"), timeoutMs); });
+    // 这一次的黑匣子行先攒着，收尾时按「结果」整条交给 retryLog 去重（F-189）；收尾之后才回来的（续签超时后）走 lateLog。
+    const keys: string[] = [], lines: string[] = [];
+    let settled = false;
+    const log = (key: string, line: string): void => {
+      if (settled) lateLog.note(key, [`${line} (late: the retry had already given up)`]);
+      else { keys.push(key); lines.push(line); }
+    };
+    const settle = (): void => { if (!settled) { settled = true; retryLog.note(keys.join(" | "), lines); } };
     try {
       // ① 先试登录（不进库的网）；② 再问云端一次（不经库，硬超时）——两样都通才把「离线」放开（设计稿 §3：令牌可能是缓存的，云端不答 = 不清离线、不弹；§2 最后一行：失败 = 条还在，不再弹闸）
-      const r = await Promise.race([renewOnce("reconnect"), timedOut]);
-      if (r !== null) { d.note(`gate: reconnect: still offline (${String(r)})`); return; }
+      const r = await Promise.race([renewOnce("reconnect", log), timedOut]);
+      if (r !== null) { log(`still offline ${String(r)}`, `gate: reconnect: still offline (${String(r)})`); return; }
       const why = await cloudAnswers();
-      if (why !== null) { d.note(`gate: reconnect: cloud did not answer (${why}) → stay offline`); return; }
+      if (why !== null) { log(`cloud did not answer ${why}`, `gate: reconnect: cloud did not answer (${why}) → stay offline`); return; }
       if (!_userOffline) return;   // 等云端那会儿别的路（登出）已经收了
       setUserOffline(false);
       endOfflineRetry();
-      d.note("gate: reconnected → catching up");
+      log("reconnected", "gate: reconnected → catching up");
+      settle();
       d.ui.bar("syncing");
       try { await d.catchUp(); } catch (e) { d.note(`gate: catch-up threw: ${String((e as Error)?.message ?? e)}`); }
       d.ui.bar("hidden");
     } finally {
+      settle();
       clearTimeout(timer);
       reconnecting = false;
     }
