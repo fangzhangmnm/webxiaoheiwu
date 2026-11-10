@@ -15,6 +15,7 @@ import "./cloud-gate.test.mjs";   // 2026-11-03 网盘闸门：状态机 + 结�
 import "./push-consent.test.mjs";   // 2026-10-21 只在本机的稿：登录 / 回线后问一次再补传；2026-11-04 D4 改成三种分
 import "./cloud-return.test.mjs";   // 2026-11-04 D4 回来时没传的分三种（纯函数）
 import "./share-platform.test.mjs";   // 2026-11-09 F-111 黑匣子分享：只给手机 / 平板，桌面下载
+import "./open-swap.test.mjs";   // 2026-11-10 换稿：名字和内容同一步换（结构守卫；行为在 e2e「换稿」）
 import "./asr.test.mjs";
 import "./storage-whitelist.test.mjs";
 import "./csp-guard.test.mjs";   // 2026-10-17 CSP 不许悄悄放松

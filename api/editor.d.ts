@@ -65,9 +65,13 @@ export declare function createEditor(d: EditorDeps): {
     hasUnsavedText: () => boolean;
     isUnlockedDoc: () => boolean;
     lastOpenName: () => string | null;
-    /** 工程模式接管前：flush 后静默；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。 */
-    park: () => Promise<void>;
+    /** 工程模式 / 书库接管前：离开这一篇（冻结 → 保存全部做完）后静默、放下身份；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。
+     *  返回 false = 没放下（没存上的字也没能另存：人留在这一篇上，调用方别接着换）。 */
+    park: () => Promise<boolean>;
+    /** 没有身份的那一刻（放下之后、下一篇 show 之前）：编辑框只读，里面的字不算没存（不归任何一篇）。 */
     resume: () => void;
+    /** 回收站那条路：离开这一篇（冻结 → 保存全部做完）。**必须紧跟 clear()**（冻结由它解开）。返回 false = 没存上的字也没能另存。 */
+    leave: () => Promise<boolean>;
     isParked: () => boolean;
 };
 export type Editor = ReturnType<typeof createEditor>;

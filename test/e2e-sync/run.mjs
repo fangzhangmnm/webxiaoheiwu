@@ -1585,6 +1585,226 @@ scenario("加密稿出门：默认加密副本（字节是容器、没有明文�
   await A.close(); await B.close();
 });
 
+// ── 换稿：「开着的是谁」和「编辑框里的字」同一步换（v3.0.18，2026-11-10，Claude Opus 5.5；设计稿 = 家族根 ai-docs/20261110-design-wxhw-open-swap-fix.md §4，
+//   毛病 = ai-docs/20261110-audit-cross-write-on-open.md：以前名字先换、读完新稿才换字，中间敲的字让旧稿全文存到新稿名下并推上网盘）──
+const ORIG_A = "AAAA 第一篇原文。", ORIG_B = "BBBB 第二篇原文。";
+/** 一台设备上写两篇、都推上网盘；最后开着第二篇。 */
+async function seedTwo(w, A) {
+  await A.boot(server.url); await A.type(ORIG_A); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const a = await A.eval(() => window.__xhw.editor.state.name);
+  await A.eval(() => window.__xhw.newDraft({})); await A.wait(300);
+  await A.type(ORIG_B); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const b = await A.eval(() => window.__xhw.editor.state.name);
+  if ((await w.cloudText(a)) !== ORIG_A || (await w.cloudText(b)) !== ORIG_B) throw new Error("seedTwo: docs did not reach the cloud");
+  return { a, b };
+}
+const localText = (D, n) => D.eval((x) => window.__xhw.store().file(x, { mode: "existing" }).open().then((b) => (b ? b.text() : null)), n);
+const editorReadOnly = (D) => D.eval(() => document.getElementById("editor").readOnly);
+
+scenario("换稿 ① 点开另一篇、新稿的字还没出来就敲字：读的时候编辑框只读；两篇在本机和网盘上都没变", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  w.gate.delayMs = 1500;
+  await A.eval((n) => { window.__probeOpen = window.__xhw.openAny(n); }, a);   // 不等：就是人点了一下
+  await A.wait(50);
+  const ro = await editorReadOnly(A);
+  await A.type("x"); await A.wait(700);                                         // 0.2 s 的本机落盘早过了
+  await A.eval(() => window.__probeOpen); await A.wait(300);
+  w.gate.delayMs = 0;
+  check("读新稿那段时间编辑框只读", ro === true, String(ro));
+  check("开完：开着的是第一篇", (await A.eval(() => window.__xhw.editor.state.name)) === a);
+  check("开完：编辑框 = 第一篇原文", (await A.text()) === ORIG_A, await A.text());
+  await A.pushNow(); await A.wait(800);
+  check("本机第一篇 = 原文", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  check("本机第二篇 = 原文", (await localText(A, b)) === ORIG_B, await localText(A, b));
+  check("网盘第一篇 = 原文", (await w.cloudText(a)) === ORIG_A, await w.cloudText(a));
+  check("网盘第二篇 = 原文", (await w.cloudText(b)) === ORIG_B, await w.cloudText(b));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("换稿 ② 冷启动续写：页面一出来就打字 → 敲不进去；读完是上次那篇原文；推了不弹面、网盘没变", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  w.gate.delayMs = 2000;
+  await A.page.goto(server.url, { waitUntil: "load" });
+  await A.page.waitForFunction(() => !!window.__xhw, null, { timeout: 20000 });
+  const seen = [];
+  for (let i = 0; i < 3; i++) {                                                 // 头 0.5 s 里敲三下：网盘每次请求慢 2 s，新稿肯定还没读完
+    seen.push(await A.eval(() => ({ name: window.__xhw.editor.state.name, ro: document.getElementById("editor").readOnly, val: document.getElementById("editor").value })));
+    await A.page.evaluate(() => document.getElementById("editor").focus()); await A.page.keyboard.type("h");
+    await A.wait(150);
+  }
+  await A.page.waitForFunction((n) => window.__xhw.editor.state.name === n && !document.getElementById("editor").readOnly, b, { timeout: 30000 }).catch(() => {});
+  await A.wait(700);
+  w.gate.delayMs = 0;
+  check("读的那段时间编辑框一直只读", seen.every((s) => s.ro), JSON.stringify(seen));
+  check("读完：编辑框 = 上次那篇（第二篇）原文，没多出敲的字", (await A.text()) === ORIG_B, await A.text());
+  check("本机第二篇 = 原文", (await localText(A, b)) === ORIG_B, await localText(A, b));
+  await Promise.race([A.pushNow(), A.wait(4000)]); await A.wait(1500);
+  check("推了不弹冲突面", !(await A.gateShown()));
+  check("网盘第二篇 = 原文", (await w.cloudText(b)) === ORIG_B, await w.cloudText(b));
+  check("网盘第一篇 = 原文", (await w.cloudText(a)) === ORIG_A, await w.cloudText(a));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("换稿 ③ 从书切回文本稿时敲字：文本稿和书在本机和网盘上都没变", async (w) => {
+  const A = await w.device("A");
+  await A.boot(server.url); await A.type(ORIG_A); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const a = await A.eval(() => window.__xhw.editor.state.name);
+  await A.eval(() => window.__xhw.newDraft({})); await A.wait(300);
+  await A.type("书的一页原文。"); await A.wait(500);
+  void A.eval(() => window.__xhw.liftDraft());
+  await A.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 8000 });
+  await A.page.click("#sheetConfirm");
+  await A.page.waitForFunction(() => window.__xhw.project.active(), null, { timeout: 8000 }); await A.wait(500);
+  await A.eval(() => window.__xhw.setSidebar(false));
+  await A.type("改。"); await A.wait(500); await A.pushNow(); await A.wait(600);   // 拆出来的书不脏，推送是空操作：改一个字让它推上去
+  const book = await A.eval(() => window.__xhw.project.name()), page = await A.eval(() => window.__xhw.project.current());
+  const BOOK_PAGE = "书的一页原文。改。";
+  const bookBefore = await bookPages(await w.cloudBytes(book));
+  if (bookBefore[page] !== BOOK_PAGE) throw new Error("seed: book page did not reach the cloud: " + JSON.stringify(bookBefore));
+  w.gate.delayMs = 1500;
+  await A.eval((n) => { window.__probeOpen = window.__xhw.openAny(n); }, a);
+  await A.page.waitForFunction(() => !window.__xhw.project.active(), null, { timeout: 15000 });   // 书关完了、文本稿正在读
+  const ro = await editorReadOnly(A);
+  await A.type("x"); await A.wait(700);
+  await A.eval(() => window.__probeOpen); await A.wait(300);
+  w.gate.delayMs = 0;
+  check("读文本稿那段时间编辑框只读", ro === true, String(ro));
+  check("开完：编辑框 = 文本稿原文", (await A.text()) === ORIG_A, await A.text());
+  await A.pushNow(); await A.wait(800);
+  check("本机文本稿 = 原文", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  check("网盘文本稿 = 原文", (await w.cloudText(a)) === ORIG_A, await w.cloudText(a));
+  const bookAfter = await bookPages(await w.cloudBytes(book));
+  check("网盘上书的那一页没变", bookAfter[page] === BOOK_PAGE, JSON.stringify(bookAfter));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("换稿 ④ 打字的同时点开另一篇（0.2 s 的落盘还没到）：先敲的字存进原来那一篇，另一篇没变", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  w.gate.delayMs = 300;
+  await A.type("yy");
+  await A.eval((n) => window.__xhw.openAny(n), a); await A.wait(300);
+  w.gate.delayMs = 0;
+  check("开完：编辑框 = 第一篇原文", (await A.text()) === ORIG_A, await A.text());
+  check("本机第二篇 = 原文 + 先敲的字", (await localText(A, b)) === ORIG_B + "yy", await localText(A, b));
+  check("本机第一篇 = 原文", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  await A.eval(() => window.__xhw.store().files.dirty.pushAll()); await A.wait(500);   // 旧稿的欠推靠库的待传记号（回来时补推）；这里直接让库推
+  check("网盘第二篇 = 原文 + 先敲的字", (await w.cloudText(b)) === ORIG_B + "yy", await w.cloudText(b));
+  check("网盘第一篇 = 原文", (await w.cloudText(a)) === ORIG_A, await w.cloudText(a));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("换稿 ⑤ 读新稿时出错（读盘抛错）：人还在原来那一篇上，能接着打字，打的字存进原来那一篇", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  const patched = await A.eval((target) => {
+    const s = window.__xhw.store(), orig = s.file;
+    const fake = function (n, o) { if (n === target) throw new Error("e2e: read failed"); return orig.call(s, n, o); };
+    try { s.file = fake; } catch { return false; }
+    window.__restoreFile = () => { s.file = orig; };
+    return s.file === fake;
+  }, a);
+  if (!patched) { check("能在页面里把读盘换成会抛错的（测试前提）", false, "store.file is not writable"); await A.close(); return; }
+  const r = await A.eval((n) => window.__xhw.openAny(n).then(() => "ok", (e) => "threw: " + String(e?.message ?? e)), a);
+  await A.eval(() => window.__restoreFile());
+  check("这次打开报了错（测试前提）", /threw/.test(r), r);
+  check("人还在第二篇上", (await A.eval(() => window.__xhw.editor.state.name)) === b, await A.eval(() => window.__xhw.editor.state.name));
+  check("编辑框能打字", !(await editorReadOnly(A)));
+  await A.type("zz"); await A.wait(700);
+  check("打的字存进第二篇（本机）", (await localText(A, b)) === ORIG_B + "zz", await localText(A, b));
+  check("第一篇没被碰（本机）", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  await A.pushNow(); await A.wait(500);
+  check("网盘第二篇 = 原文 + 打的字", (await w.cloudText(b)) === ORIG_B + "zz", await w.cloudText(b));
+  check("网盘第一篇 = 原文", (await w.cloudText(a)) === ORIG_A, await w.cloudText(a));
+  await A.close();   // 不查零报错：这一条故意让读盘抛错
+});
+
+scenario("换稿 ⑥ 冲突面选了云端 → 重载时敲字：编辑框里还是旧世界的字时一直只读；重载后是云端版；旧世界不写回、不多弹面", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  const OLD = "原文。B也改了。", CLOUD = "原文。A改了。";
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  await B.type("B也改了。"); await B.wait(500);
+  const push = B.pushNow();
+  await B.resolveGate(TAKE_CLOUD);
+  w.gate.delayMs = 800;                                                         // 重载那一下读稿慢
+  await B.page.waitForFunction(() => document.getElementById("editor").readOnly, null, { timeout: 20000 });   // 世界线换了：旧世界封住（之前那段能打字，打的进留底稿，不归这条管）
+  const seen = [];
+  for (let i = 0; i < 40; i++) {                                                // 一直敲到编辑框换成云端版
+    const s = await B.eval(() => ({ ro: document.getElementById("editor").readOnly, val: document.getElementById("editor").value }));
+    if (!s.val.startsWith(OLD)) break;
+    seen.push(s.ro);
+    await B.page.evaluate(() => document.getElementById("editor").focus()); await B.page.keyboard.type("q");
+    await B.wait(150);
+  }
+  await push.catch(() => {});
+  await B.wait(1000);
+  w.gate.delayMs = 0;
+  check("敲过字（测试前提：重载够慢）", seen.length >= 3, String(seen.length));
+  check("编辑框里还是旧世界的字时一直只读", seen.every(Boolean), JSON.stringify(seen));
+  check("重载后编辑框是云端版（之后敲的 q 算正常编辑）", (await B.text()).replace(/q+$/, "") === CLOUD, await B.text());
+  await Promise.race([B.pushNow(), B.wait(4000)]); await B.wait(800);
+  const local = await localText(B, name), cloud = await w.cloudText(name);
+  check("本机那篇没有旧世界的字", !!local && local.startsWith(CLOUD) && !local.includes("B也改了"), local);
+  check("云端没有旧世界的字（A 的版本还在）", !!cloud && cloud.startsWith(CLOUD) && !cloud.includes("B也改了"), cloud);
+  check("没有多弹出冲突面", !(await B.gateShown()));
+  check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
+scenario("换稿 ⑦ 保存排着队的时候换稿（一轮推送卡在网上，后面又排了落盘）：全部落进原来那一篇，另一篇没变", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  await A.type("1"); await A.wait(400);
+  let release; w.gate.holdUploads = new Promise((r) => (release = r));
+  const push = A.pushNow(); await A.wait(200);                                  // 这一轮推送卡在上传
+  await A.type("2"); await A.wait(400);                                         // 0.2 s 的落盘排在推送后面
+  await A.type("3");                                                            // 这一下的定时器还没到
+  const opening = A.eval((n) => window.__xhw.openAny(n), a); await A.wait(300);
+  const midName = await A.eval(() => window.__xhw.editor.state.name), midRo = await editorReadOnly(A);
+  w.gate.holdUploads = null; release();
+  await push.catch(() => {}); await opening; await A.wait(500);
+  check("等保存的时候还开着第二篇、编辑框只读", midName === b && midRo === true, `${midName} ro=${midRo}`);
+  check("开完：编辑框 = 第一篇原文", (await A.text()) === ORIG_A, await A.text());
+  check("本机第二篇 = 原文 + 123（排在后面的也落了）", (await localText(A, b)) === ORIG_B + "123", await localText(A, b));
+  check("本机第一篇 = 原文", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  await A.eval(() => window.__xhw.store().files.dirty.pushAll()); await A.wait(500);
+  check("网盘第二篇 = 原文 + 123", (await w.cloudText(b)) === ORIG_B + "123", await w.cloudText(b));
+  check("网盘第一篇 = 原文", (await w.cloudText(a)) === ORIG_A, await w.cloudText(a));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("换稿 ⑧ 改名还在路上的时候换稿（改名期间又敲了字）：敲的字落进改了名的那一篇，旧名字不复活，另一篇没变", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  w.gate.delayMs = 800;                                                         // 改名的云端那一腿慢
+  const renaming = A.eval(() => { window.__renDone = false; return window.__xhw.editor.renameTo("改过的名字").then((r) => { window.__renDone = true; return r; }); });
+  await A.wait(100);
+  await A.type("rr"); await A.wait(300);                                        // 改名期间敲字：落盘被改名挡着，只重挂定时器
+  const stillRenaming = await A.eval(() => window.__renDone === false);
+  const opening = A.eval((n) => window.__xhw.openAny(n), a);
+  const renamed = await renaming; await opening; await A.wait(500);
+  w.gate.delayMs = 0;
+  check("测试前提：点开第一篇时改名还在路上", stillRenaming);
+  check("改名成了", renamed === true, String(renamed));
+  check("开完：开着的是第一篇、编辑框 = 第一篇原文", (await A.eval(() => window.__xhw.editor.state.name)) === a && (await A.text()) === ORIG_A, await A.text());
+  const names = await libraryNames(A);
+  const newName = names.find((n) => /改过的名字/.test(n));
+  check("书库里有改了名的那一篇", !!newName, JSON.stringify(names));
+  if (newName) check("改了名的那一篇 = 原文 + 改名期间敲的字", (await localText(A, newName)) === ORIG_B + "rr", await localText(A, newName));
+  check("旧名字没有复活（本机没有了）", (await localText(A, b)) === null, String(await localText(A, b)));
+  check("本机第一篇 = 原文", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
 for (const s of scenarios) {
   if (only && !s.name.includes(only)) continue;
   console.log(`\n── ${s.name}`);

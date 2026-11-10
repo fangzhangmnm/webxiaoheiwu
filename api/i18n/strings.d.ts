@@ -828,6 +828,14 @@ export declare const S: {
         readonly zh: "上传途中打的字没能留底：{e}";
         readonly en: "Could not keep what you typed during the upload: {e}";
     };
+    readonly "rescue.keptAside": {
+        readonly zh: "换稿前有没存上的字，已另存为「{name}」";
+        readonly en: "Text that hadn't been saved was kept as “{name}” before switching";
+    };
+    readonly "rescue.keepFailed": {
+        readonly zh: "还有没存上的字，也没能另存，先留在这一篇上：{e}";
+        readonly en: "Some text couldn't be saved or kept aside, so you're staying on this one: {e}";
+    };
     readonly "st.pushedAll": {
         readonly zh: "已补传 {n} 个文件";
         readonly en: "Caught up: {n} file(s) uploaded";

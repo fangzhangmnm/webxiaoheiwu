@@ -220,6 +220,8 @@ export const S = {
   "rescue.title":        { zh: "{name} 冲突留底", en: "{name} (conflict copy)" },
   "rescue.saved":        { zh: "上传途中打的字已另存为「{name}」", en: "What you typed during the upload was saved as “{name}”" },
   "rescue.failed":       { zh: "上传途中打的字没能留底：{e}", en: "Could not keep what you typed during the upload: {e}" },
+  "rescue.keptAside":    { zh: "换稿前有没存上的字，已另存为「{name}」", en: "Text that hadn't been saved was kept as “{name}” before switching" },
+  "rescue.keepFailed":   { zh: "还有没存上的字，也没能另存，先留在这一篇上：{e}", en: "Some text couldn't be saved or kept aside, so you're staying on this one: {e}" },
   "st.pushedAll":        { zh: "已补传 {n} 个文件", en: "Caught up: {n} file(s) uploaded" },
   // 回来时没传的稿（规则书 §1 第 15 条，工单 D4）：从没传过的问一次；传过的直接续传；没传成的带名单「去处理」
   "pushAll.askOnly":     { zh: "有 {n} 份只在这台设备，现在传上去？", en: "{n} item(s) are only on this device. Upload them now?" },

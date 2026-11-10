@@ -73,7 +73,7 @@ export function createEditor(d: EditorDeps) {
   }
   function applyGuards(): void {
     if (parked) return;
-    const blocked = st.readOnly || st.locked || st.unavailable || replacing || worldReplaced;
+    const blocked = !canEdit();   // 锁 / 只读 / 不可用 / 世界线守卫 / 没有身份 / 换稿途中（v3.0.18：换稿冻结也是真 readOnly）
     d.editor.classList.toggle("locked", blocked);
     d.editor.readOnly = blocked;   // 锁/只读 = 真 readOnly：敲进去的字不再被悄悄吞掉（user 2026-09-04「没解锁密码导致的煤气灯」；根治=0.3 懒空白稿）
   }
@@ -99,23 +99,116 @@ export function createEditor(d: EditorDeps) {
   //   worldReplaced = 本地字节刚被云端那一版换掉（冲突面选了云端），编辑器里还是旧世界 → 旧世界**绝不再写回原名**，persist 链外整体重载；
   //   replacing     = 库正在用云端新版覆盖本地（干净快进下载中）→ 冻结输入，别让字打进一个马上被换掉的世界。
   let worldReplaced = false, replacing = false;
-  let reloadAfterPersist: string | null = null;   // 重载不能在 persist 链里做：open → flushLocal 会 await persistInFlight = 自己（2026-09-29 之前就是这么死锁的：选了「云端覆盖本地」之后保存链永远卡住，之后打的字再也不落盘）
-  const canEdit = () => !parked && !st.readOnly && !st.locked && !st.unavailable && !replacing && !worldReplaced;
+  let reloadAfterPersist: string | null = null;   // 重载不能在 persist 链里做：open → flushLocal 会等保存链 = 等自己（2026-09-29 之前就是这么死锁的：选了「云端覆盖本地」之后保存链永远卡住，之后打的字再也不落盘）
+  // 换稿（v3.0.18，2026-11-10，Claude Opus 5.5；设计稿 = 家族根 ai-docs/20261110-design-wxhw-open-swap-fix.md，毛病 = ai-docs/20261110-audit-cross-write-on-open.md）：
+  //   以前 open() 先换 st.name、await readDoc 之后才换编辑框里的字，中间敲的字让「旧稿的字 + 新稿的名字」落盘、推上网盘 = 新稿原文没了（真 app 复现，正式版也有）。三条不变量：
+  //   甲：st.name 和编辑框里的字只在 show()（以及只换名字的 renameIdentity / 放下身份的 releaseIdentity）里一起换，中间没有 await。
+  //   乙：离开一篇之前，它的保存全部做完（在飞的、排着的、定时器里的、编辑框里还没进定时器的）——leaveCurrent → settleSaves。
+  //   丙：离开的过程里不收新的字（switching ≠ null = 冻结，真 readOnly）。
+  //   保存那一头另有一道绊线：起跑时 holds ≠ st.name 就不写（以后有人又在 show 之外改了其中一个）。
+  let switching: number | null = null;   // 正在离开当前这一篇（值 = 这一次换稿的令牌）；旧的那一对仍是对的一对，它的保存照常落，只是不收新的字
+  let holds: string | null = null;        // 编辑框里现在是哪一篇的字（未物化的新稿 / 没有身份 = null）
+  let switchSeq = 0;
+  /** 这一对（st.name + 编辑框）现在可以落盘吗。保存用它。没有身份（开机还没开稿 / 进书库放下了）= 不可以。 */
+  const canPersist = () => !parked && (st.name !== null || st.pendingDate !== null) && !st.readOnly && !st.locked && !st.unavailable && !replacing && !worldReplaced;
+  /** 现在收不收输入。输入、输入法、语音、改名 / 挪夹 / 加密切换 / 推送都用它。 */
+  const canEdit = () => canPersist() && switching === null;
+
+  /** 唯一一处同时换「开着的是谁」和「编辑框里的字」。同步，中间没有 await。 */
+  function show(next: { name: string | null; text: string; encrypted?: boolean; locked?: boolean; unavailable?: boolean; pendingDate?: string | null; pendingDir?: string }): void {
+    st.name = next.name; st.pendingDate = next.pendingDate ?? null; st.pendingTitle = null;
+    if (next.pendingDir !== undefined) st.pendingDir = next.pendingDir;
+    st.encrypted = !!next.encrypted; st.locked = !!next.locked; st.unavailable = !!next.unavailable; st.readOnly = false;
+    d.editor.value = next.text; savedText = next.text; holds = next.name;
+    setActiveDoc(next.name); deviceKvSet(KV_LAST_OPEN, next.name);
+    switching = null;
+    applyGuards(); d.onDocChanged();
+  }
+  /** 同一篇换了名字（新稿物化 / 改名 / 挪夹）：内容没变。同步。 */
+  function renameIdentity(to: string): void {
+    st.name = to; st.pendingDate = null; st.pendingTitle = null; holds = to;
+    setActiveDoc(to); deviceKvSet(KV_LAST_OPEN, to);
+  }
+  /** 放下身份（进书模式 / 进书库）：编辑框归别人管，这里不再有「开着的那一篇」。同步。 */
+  function releaseIdentity(): void {
+    st.name = null; st.pendingDate = null; st.pendingTitle = null; holds = null;
+    switching = null;
+  }
+  /** 新的一篇接手之前：上一篇的推送节律、加密未成、世界线标记都不归它。 */
+  function resetPerDoc(): void {
+    encryptPending = false; pushFailures = 0;
+    worldReplaced = false; replacing = false; reloadAfterPersist = null;
+    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
+    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+    firstDirtyAt = 0; pushPending = false;
+  }
+  /** 离开现在这一篇之前：冻结输入 → 把它的保存全部做完 → 编辑框里没有没落盘的字。返回令牌；
+   *  调用方接着看 `switching === 令牌`：不等 = 等的时候又有一次换稿接管了，或者没存上的字也没能另存（解冻，人留在原来那一篇上）。 */
+  async function leaveCurrent(): Promise<number> {
+    const tok = ++switchSeq;
+    switching = tok; applyGuards();                                   // 丙：先冻结
+    await settleSaves();                                              // 乙：全部落地（旧名字 + 旧内容）
+    if (switching === tok && canPersist() && d.editor.value !== savedText && !(await keepAside()) && switching === tok) { switching = null; applyGuards(); }
+    return tok;
+  }
+  /** 等到「没有在飞的改名 ∧ 没有排着的保存 ∧ 定时器空 ∧（编辑框 == 已存的 ∨ 这一对现在不许落盘）」。上一轮存失败的再试一次，还不成交给 keepAside。 */
+  async function settleSaves(): Promise<void> {
+    let retried = false;
+    for (;;) {
+      if (renaming) { await renaming.catch(() => { /* 改名自己报过 */ }); continue; }   // 改名在飞时 persist 只重挂定时器：等改名落地，不空转
+      if (persistQueued > 0) { await persistChain; continue; }
+      if (localTimer) {
+        clearTimeout(localTimer); localTimer = null;
+        if (!canPersist()) return;
+        try { await persist(false); } catch (e) { reportError(e); }
+        continue;
+      }
+      if (!canPersist() || d.editor.value === savedText || retried) return;
+      retried = true;   // 编辑框里还有没落盘的字、又没有定时器在等（上一轮存失败 / 加密封不上）
+      try { await persist(false); } catch (e) { reportError(e); }
+    }
+  }
+  /** 保险丝：甲乙丙都对的时候永远不触发。触发了 = 这一篇存不上（或有一条输入路径绕过了冻结）：另存一份，不丢、也不写到别人名下。返回 false = 也没能另存。 */
+  async function keepAside(): Promise<boolean> {
+    const from = holds ?? `${st.pendingDir ? st.pendingDir + "/" : ""}${st.pendingTitle || st.pendingDate || "draft"}.txt`;
+    const text = d.editor.value;
+    diagNote("editor", `leaving "${from}" with unsaved text (${text.length} chars on screen, ${savedText.length} saved) → keep aside`);
+    try {
+      const saved = await rescueText(from, text, { encrypted: st.encrypted });
+      d.setStatus(t("rescue.keptAside", { name: parseDocName(saved).stem })); d.onDocChanged();
+      return true;
+    } catch (e) {
+      reportError(e); d.setStatus(t("rescue.keepFailed", { e: errMsg(e) }), { error: true });
+      diagNote("editor", `keep aside failed: ${errMsg(e)} → stay on "${from}"`);
+      return false;
+    }
+  }
 
   // ── 落盘 / 推云 ──
-  let persistInFlight: Promise<void> | null = null;   // 串行：两个 persist 同飞 = 双建稿（审计 L3）
+  // 串行 = 一条真队列（v3.0.18）：前一轮落地下一轮才开始，轮到时按那一刻的状态重新判断要不要做。
+  //   以前是「有在飞的就先等它」：两个调用同时等同一轮，那一轮落地后两个一起起跑，后一个不在 persistInFlight 里 → 「等在飞的那一轮」不等于「全部做完」（换稿设计稿 §2.3）。
+  //   两个 persist 同飞 = 双建稿（审计 L3），队列照样挡住。
+  let persistChain: Promise<void> = Promise.resolve();   // 队尾（永不 reject）：等它 = 排在它前面的全部做完
+  let persistQueued = 0;                                 // 排着的 + 正在做的
   let renameInFlight = false;                          // 改名中不写旧名（写了旧名就复活成 local-only 脏稿，审计 L7）
   let encryptPending = false;                          // 预定加密但封失败：什么都没写（字还在编辑器里）、下次 persist 重试（审计 M8；2026-11-03 起先封再存）
   let pushFailures = 0;                                // 推云连续失败 → 指数退避（审计 L2）
-  async function persist(push: boolean): Promise<void> {
-    if (persistInFlight) await persistInFlight;
+  function persist(push: boolean): Promise<void> {
+    persistQueued++;
+    const run = async (): Promise<void> => { try { await persistOnce(push); } finally { persistQueued--; } };
+    const p = persistChain.then(run, run);
+    persistChain = p.catch(() => { /* 已在调用方报过 */ });
+    return p;
+  }
+  async function persistOnce(push: boolean): Promise<void> {
     const gen = loadGen;
-    const run = (async () => {
-      if (gen !== loadGen) return;
-      if (worldReplaced || replacing) return;   // 旧世界不写回（见上「世界线守卫」）
-      if (st.locked || st.unavailable || st.readOnly) return;   // 锁定/不可用/只读稿绝不写（other-password 态尤其：否则用当前密码封空容器覆盖，审计 UI-3）
+    {
+      // 旧世界不写回（见上「世界线守卫」）；锁定/不可用/只读稿绝不写（other-password 态尤其：否则用当前密码封空容器覆盖，审计 UI-3）；没有身份不写。
+      //   注意是 canPersist 不是 canEdit：换稿冻结期间旧的那一对的保存照常落（乙要靠它）。
+      if (!canPersist()) return;
       if (renameInFlight) { scheduleLocalSave(); return; }
       const text = d.editor.value;
+      if (holds !== st.name) { reportError(new Error(`[editor] refusing to save: editor holds "${holds}" but identity is "${st.name}"`), "error"); return; }   // 绊线（换稿设计稿 §2.6）：甲成立时永远不触发
       if (!st.name) {
         if (!st.pendingDate) return;
         if (!text && !st.pendingTitle) return;   // 空稿不物化
@@ -125,9 +218,8 @@ export function createEditor(d: EditorDeps) {
         try { name = await createDoc(st.pendingTitle ?? "", text, st.pendingDate, st.pendingDir, { encrypted: st.encrypted }); encryptPending = false; }   // 没给名 → 日期码（加密稿默认即藏标题）
         catch (e) { if (!st.encrypted) throw e; encryptPending = true; reportError(e, "warning"); return; }
         if (gen !== loadGen) return;   // 建稿期间用户切走了：文件留在本地（下次列表可见），不把身份塞给现在的编辑器
-        st.name = name; st.pendingDate = null; st.pendingTitle = null;
+        renameIdentity(name);
         savedText = text;
-        setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
         d.onDocChanged();
       }
       const name = st.name!;
@@ -143,9 +235,7 @@ export function createEditor(d: EditorDeps) {
       } else {
         pushPending = true;
       }
-    })();
-    persistInFlight = run;
-    try { await run; } finally { if (persistInFlight === run) persistInFlight = null; }
+    }
   }
   /** 本地字节刚被云端那一版换掉。snapshot = 库备份进备份箱的那一版正文；编辑器里比它多出来的字 = 上传途中才打的，另存留底。 */
   async function worldWasReplaced(name: string, snapshot: string): Promise<void> {
@@ -208,12 +298,12 @@ export function createEditor(d: EditorDeps) {
       schedulePush(Math.min(PUSH_DEBOUNCE_MS * 2 ** Math.min(pushFailures, 5), 5 * 60_000));   // 指数退避，封顶 5 分钟
     }
   }
-  /** 只落本地（切稿/锁定/退出前）。幂等：没有 pending 就不写。 */
+  /** 只落本地（锁定 / 导出 / 退出前）。幂等：没有 pending 就不写。换稿不用它（用 leaveCurrent：它还等排着的、改名中的、存失败的）。 */
   async function flushLocal(): Promise<void> {
-    if (persistInFlight) { try { await persistInFlight; } catch { /* 已在 persist 内报过 */ } }
+    await persistChain;   // 排着的、正在做的都做完（队尾永不 reject）
     if (!localTimer) return;
     clearTimeout(localTimer); localTimer = null;
-    if (!canEdit()) return;
+    if (!canPersist()) return;   // canPersist 不是 canEdit：换稿冻结期间旧稿照样能落
     try { await persist(false); } catch (e) { reportError(e); }
   }
 
@@ -222,16 +312,27 @@ export function createEditor(d: EditorDeps) {
   function adoptName(from: string, to: string): void {
     if (from === to) return;
     renameFilePassword(from, to);
-    st.name = to; setActiveDoc(to); deviceKvSet(KV_LAST_OPEN, to);
+    renameIdentity(to);
+  }
+  let renaming: Promise<unknown> | null = null;   // 在飞的改名 / 挪夹（settleSaves 等它落地）
+  function trackRename<T>(p: Promise<T>): Promise<T> {
+    renaming = p;
+    void p.then(() => { if (renaming === p) renaming = null; }, () => { if (renaming === p) renaming = null; });
+    return p;
   }
   /** 改文件名（顶栏 sheet）。空 = 不改（禁「未命名」）。未物化的新稿只记 pendingTitle，物化时兑现。返回 false = 没改成（已 toast）。 */
   async function renameTo(raw: string): Promise<boolean> {
+    if (switching !== null) return false;   // 换稿途中不起跑
     const title = sanitizeTitle(raw);
     if (!title) return false;
     if (!st.name) { st.pendingTitle = title; d.onDocChanged(); return true; }
     if (title === parseDocName(st.name).stem) return true;
     await flushLocal();
-    const gen = loadGen, from = st.name;
+    if (switching !== null || !st.name) return false;
+    return trackRename(renameNow(st.name, title));
+  }
+  async function renameNow(from: string, title: string): Promise<boolean> {
+    const gen = loadGen;
     renameInFlight = true;
     try {
       const rr = await renameDoc(from, title);
@@ -261,22 +362,20 @@ export function createEditor(d: EditorDeps) {
   async function open(name: string, opts: { keepCaret?: boolean; promptUnlock?: boolean } = {}): Promise<boolean> {
     if (docKind(name) === "project") { reportError(new Error("[editor] open() got a project name; route through app openAny"), "log"); return false; }   // 护栏在改状态之前：以前先把 st.name 换掉再让 readDoc 抛
     d.onBeforeLoad?.();
-    await flushLocal();
-    encryptPending = false; pushFailures = 0;
-    worldReplaced = false; replacing = false; reloadAfterPersist = null;
-    const gen = ++loadGen;
-    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    firstDirtyAt = 0; pushPending = false;
+    const tok = await leaveCurrent();
+    if (switching !== tok) return false;                 // 等的时候又有一次换稿接管了 / 没存上的字也没能另存（人留在原来那一篇上）
+    // —— 从这里到 show()：st.name 和编辑框仍是旧的那一对（冻结着）。不许碰 st.name，不许把编辑框清空当「加载中」的占位（那又是一次「名字和内容对不上」）。——
+    //   旧稿自己的标记（欠推、世界线、加密未成）也留到 show 之前才清：读失败时人还在旧稿上，那些标记照旧归它。
+    const gen = ++loadGen;                               // 放在 leaveCurrent 之后：旧稿在飞的保存要按旧的 gen 记完账（savedText）
     const caret = opts.keepCaret ? d.editor.selectionStart : 0;
-    st.name = name; st.pendingDate = null; st.pendingTitle = null; st.readOnly = false; st.unavailable = false; st.locked = false; st.encrypted = false;
-    setActiveDoc(name); deviceKvSet(KV_LAST_OPEN, name);
     d.setStatus(t("st.loading"));
-    let r = await readDoc(name);
+    let r: Awaited<ReturnType<typeof readDoc>>;
+    try { r = await readDoc(name); }
+    catch (e) { if (switching === tok) { switching = null; applyGuards(); if (pushPending) schedulePush(); } throw e; }   // 读失败：解冻，人还在旧稿上，什么都没换
     if (gen !== loadGen) return false;
+    resetPerDoc();
     if (r.kind === "locked" || r.kind === "other-password") {
-      st.encrypted = true; st.locked = true;
-      d.editor.value = ""; savedText = "";
-      applyGuards(); d.onDocChanged();
+      show({ name, text: "", encrypted: true, locked: true });   // 新稿 + 锁着 + 空：对的一对，保存被 st.locked 拦着
       d.setState(r.kind === "locked" ? "" : t("st.otherPasswordHint"));
       if (!opts.promptUnlock) return true;   // 非手势：停在锁态，点锁图标再问
       const ok = r.kind === "locked" ? await d.ensureUnlocked() : await d.ensureFileUnlocked(name);
@@ -293,22 +392,17 @@ export function createEditor(d: EditorDeps) {
       }
     }
     if (r.kind === "ok") {
-      st.encrypted = r.encrypted; st.locked = false;
-      d.editor.value = r.text; savedText = r.text;
-      applyGuards();
+      show({ name, text: r.text, encrypted: r.encrypted });
       if (opts.keepCaret) { try { d.editor.selectionStart = d.editor.selectionEnd = Math.min(caret, r.text.length); } catch { /* ignore */ } }
       else moveCaretToStart();
       d.setState(statusForDoc());
-      d.onDocChanged();
       if (r.encoding !== "utf-8" && r.encoding !== "utf-8-bom" && canEdit()) {   // 旧编码 → 以 UTF-8 写回（v1 同款规范化）
         void saveDoc(name, r.text, { push: d.isSignedIn() }).then((w) => { if (w.resolution === "takeCloud" && st.name === name && gen === loadGen) void reload(name); }).catch((e) => reportError(e, "log"));   // 这一推也可能撞冲突面：选了云端就得重载，别让屏上留着旧世界
       }
       return true;
     }
     if (r.kind === "locked" || r.kind === "other-password") { d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }
-    st.unavailable = true;
-    d.editor.value = ""; savedText = "";
-    applyGuards(); d.onDocChanged();
+    show({ name, text: "", unavailable: true });
     d.setStatus(t("st.unavailable"), { error: true });
     return false;
   }
@@ -319,44 +413,34 @@ export function createEditor(d: EditorDeps) {
   async function newDoc(opts: { encrypted?: boolean; dir?: string } = {}): Promise<boolean> {
     if (opts.encrypted && !(await d.ensureUnlocked())) return false;
     d.onBeforeLoad?.();
-    await flushLocal();
-    encryptPending = false; pushFailures = 0;
-    worldReplaced = false; replacing = false; reloadAfterPersist = null;
+    const tok = await leaveCurrent();   // 以前只 flushLocal：存旧稿那一下里敲的字会丢
+    if (switching !== tok) return false;
     loadGen++;
-    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    firstDirtyAt = 0; pushPending = false;
     const dir = opts.dir ?? currentDir();
-    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.pendingTitle = null; st.encrypted = !!opts.encrypted; st.locked = false; st.readOnly = false; st.unavailable = false;
-    setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
-    d.editor.value = ""; savedText = "";
-    applyGuards();
+    resetPerDoc();
+    show({ name: null, text: "", pendingDate: formatDate(Date.now()), pendingDir: dir, encrypted: !!opts.encrypted });
     d.setState(st.encrypted ? t("st.pendingEncrypted") : "");
-    d.onDocChanged();
     d.editor.focus();
     return true;
   }
 
-  /** 当前稿被移到回收站 / 被别处改名后：编辑器变成一篇**空新稿**（可继续写，落盘有身份；审计 UI-4：以前是无身份可打字、永不落盘）。 */
+  /** 当前稿被移到回收站 / 被别处改名后：编辑器变成一篇**空新稿**（可继续写，落盘有身份；审计 UI-4：以前是无身份可打字、永不落盘）。
+   *  同步、不存旧稿：调用方先 `await leave()`（回收站那条路）——它把旧稿排着的、改名中的保存都等完，不会在挪进回收站之后把字写回旧名字。 */
   function clear(): void {
     d.onBeforeLoad?.();
     loadGen++;
-    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
-    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     const dir = currentDir();
-    st.name = null; st.pendingDate = formatDate(Date.now()); st.pendingDir = dir; st.pendingTitle = null; st.encrypted = false; st.locked = false; st.readOnly = false; st.unavailable = false;
-    pushPending = false; encryptPending = false; pushFailures = 0;
-    worldReplaced = false; replacing = false; reloadAfterPersist = null;
-    setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);
-    d.editor.value = ""; savedText = "";
-    applyGuards(); d.setState(""); d.onDocChanged();
+    resetPerDoc();
+    show({ name: null, text: "", pendingDate: formatDate(Date.now()), pendingDir: dir });
+    d.setState("");
   }
 
   // ── 新鲜度（focus/online/idle 复查）：只干净快进；dirty 留给推送的冲突面 ──
   /** 回库的终态串（闸门要分「问成了」和 cloud-error）；没去问 = undefined。 */
   async function refreshIfClean(): Promise<string | undefined> {
     const name = st.name;
-    if (!name || refreshInFlight || !d.isSignedIn() || st.locked) return undefined;
-    if (localTimer || renameInFlight || pushPending || persistInFlight || worldReplaced) return undefined;
+    if (!name || refreshInFlight || !d.isSignedIn() || st.locked || switching !== null) return undefined;   // 换稿途中：新稿的 open 自带新鲜度门
+    if (localTimer || renameInFlight || pushPending || persistQueued > 0 || worldReplaced) return undefined;
     refreshInFlight = true;
     const gen = loadGen;
     let froze = false;
@@ -364,7 +448,7 @@ export function createEditor(d: EditorDeps) {
       // 库只认得已经落盘的脏；还停在编辑器里的字由 localDirty 告诉它（查云端那一下网络往返里用户可能刚好开始打字）。
       // 一旦库决定替换（onReplaceStart，同步回调）：冻结输入直到新版载入——下载途中打进去的字会被整篇覆盖且不进备份箱（2026-09-29 端到端测试复现）。
       const r = await pullDocIfClean(name, {
-        localDirty: () => !!localTimer || !!persistInFlight || pushPending || d.editor.value !== savedText,
+        localDirty: () => !!localTimer || persistQueued > 0 || pushPending || d.editor.value !== savedText,
         onReplaceStart: () => { froze = true; replacing = true; applyGuards(); d.onReplacing?.(true); },
       });
       if (gen !== loadGen) return undefined;
@@ -385,33 +469,37 @@ export function createEditor(d: EditorDeps) {
 
   // ── 加密切换 ──
   async function toggleEncryption(confirmDecrypt: () => Promise<boolean>, busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
+    if (switching !== null) return;   // 换稿途中不起跑
+    const gen0 = loadGen;
+    const same = () => gen0 === loadGen && switching === null;   // 等的那一下里换了稿：别把加密态记到别的稿身上
     if (!st.name) {
       if (!st.pendingDate) return;
       // 未物化的新稿：切「预定加密」，物化那一刻兑现（persist）
-      if (!st.encrypted) { if (!(await d.ensureUnlocked())) return; st.encrypted = true; d.setState(t("st.pendingEncrypted")); }
+      if (!st.encrypted) { if (!(await d.ensureUnlocked()) || !same()) return; st.encrypted = true; d.setState(t("st.pendingEncrypted")); }
       else { st.encrypted = false; d.setState(t("st.pendingPlain")); }
       d.onDocChanged();
       return;
     }
     if (st.locked) { await open(st.name, { keepCaret: true, promptUnlock: true }); return; }   // 锁图标 = 手势：这里才弹密码框
     await flushLocal();
+    if (!same() || !st.name) return;
     const name = st.name;
     if (!st.encrypted) {
       const ok = await d.ensureUnlocked();
-      if (!ok) return;
+      if (!ok || !same()) return;
       let sealed = false;
       try {
         await busy(t("busy.encrypting"), () => encryptDoc(name));
-        sealed = true; st.encrypted = true;
+        sealed = true; if (same()) st.encrypted = true;
       } catch (e) { reportError(e); d.setStatus(t("st.encryptFailed", { e: errMsg(e) }), { error: true }); }
       if (sealed) d.setStatus(t("st.encryptedKeepName", { time: fmtTime(Date.now()), name: parseDocName(name).stem }));   // 名字不动（2026-09-26 user「加密不改名同意」，ADR-0007 修订）
       d.onDocChanged();
       return;
     }
-    if (!(await confirmDecrypt())) return;
+    if (!(await confirmDecrypt()) || !same()) return;
     try {
       const r = await busy(t("busy.decrypting"), () => decryptDoc(name));
-      st.encrypted = false;
+      if (same()) st.encrypted = false;
       d.setStatus(t("st.decrypted", { time: fmtTime(Date.now()), status: r.status }));
     } catch (e) { reportError(e); d.setStatus(t("st.decryptFailed", { e: errMsg(e) }), { error: true }); }
     d.onDocChanged();
@@ -419,9 +507,14 @@ export function createEditor(d: EditorDeps) {
 
   /** 移到别的夹（ADR-0006）。未物化的新稿只改预定夹；已物化走 tryMove（撞名追加后缀）。返回最终身份（未变 → 原名 / null）。 */
   async function moveTo(dir: string): Promise<string | null> {
+    if (switching !== null) return null;   // 换稿途中不起跑
     if (!st.name) { st.pendingDir = dir; d.onDocChanged(); return null; }
     await flushLocal();
-    const gen = loadGen, from = st.name;
+    if (switching !== null || !st.name) return null;
+    return trackRename(moveNow(st.name, dir));
+  }
+  async function moveNow(from: string, dir: string): Promise<string | null> {
+    const gen = loadGen;
     renameInFlight = true;
     try {
       const rr = await moveDoc(from, dir);
@@ -439,9 +532,11 @@ export function createEditor(d: EditorDeps) {
 
   /** 显式换钥匙：这篇（用别的密码封的）→ 解开 → 用当前密码重封。规则①的唯一例外入口（横幅按钮）。 */
   async function rekeyToCurrent(busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>): Promise<void> {
-    if (!st.name || !st.encrypted || st.locked || !fileUsesOtherPassword(st.name)) return;
+    if (switching !== null || !st.name || !st.encrypted || st.locked || !fileUsesOtherPassword(st.name)) return;   // 换稿途中不起跑
+    const gen0 = loadGen;
     if (!(await d.ensureUnlocked())) return;
     await flushLocal();
+    if (gen0 !== loadGen || switching !== null || !st.name) return;
     const name = st.name;
     try {
       await busy(t("busy.rekeying"), async () => {
@@ -463,13 +558,14 @@ export function createEditor(d: EditorDeps) {
     scheduleLocalSave();
     d.setState(statusForDoc(), { unsynced: d.isSignedIn() });
   });
+  applyGuards();   // 一建好就套上（v3.0.18）：开机到第一篇读完之前编辑框只读——以前这一下能敲进去、然后被第一篇的字盖掉（收下再吞掉）
   onLockChange((unlocked) => { if (!unlocked && st.encrypted && st.name) { void lockNow(); } });
   async function lockNow(): Promise<void> {
     // 锁定前 flush（否则最后几秒的字困在 textarea 里没法加密落盘）——注意：此刻密码已清，persist 会抛 LockedError；
     // 所以锁定由 app 层先 flushLocal 再调 crypto-state.lock()。这里只是兜底把画面清掉。
-    st.locked = true;
-    d.editor.value = ""; savedText = "";
-    applyGuards(); d.onDocChanged();
+    const sw = switching;
+    show({ name: st.name, text: "", encrypted: true, locked: true });   // 同一篇、换成锁态：名字没变，字清空（也走唯一的换身份入口）
+    switching = sw; applyGuards();   // 换稿途中锁上：画面照清，换稿照旧由那一次 open 收尾
     d.setState("");
   }
 
@@ -491,9 +587,19 @@ export function createEditor(d: EditorDeps) {
     hasUnsavedText: () => !parked && d.editor.value !== savedText,
     isUnlockedDoc: () => st.encrypted && isUnlocked(),
     lastOpenName: () => deviceKvGet(KV_LAST_OPEN),   // 裸字符串（写的就是裸的）。2026-09-10 前这里走 JSON.parse → 永远 null → 每次刷新都开「最新一篇」而不是上次那篇（user「刷新之后说文件找不到」的根：排序变了就跳到没缓存的稿）
-    /** 工程模式接管前：flush 后静默；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。 */
-    park: async () => { await flushLocal(); parked = true; st.name = null; st.pendingDate = null; st.pendingTitle = null; },
-    resume: () => { parked = false; applyGuards(); },
+    /** 工程模式 / 书库接管前：离开这一篇（冻结 → 保存全部做完）后静默、放下身份；resume 后恢复守卫。parked 期间 canEdit/isDirty 恒 false，syncKind 由 app 门面绕开。
+     *  返回 false = 没放下（没存上的字也没能另存：人留在这一篇上，调用方别接着换）。 */
+    park: async (): Promise<boolean> => {
+      d.onBeforeLoad?.();   // 语音会话中止、没提交的拼音清掉（同 open / newDoc / clear；以前 park 不调，转写结果会落进接手的书页）
+      const tok = await leaveCurrent();
+      if (switching !== tok) return false;
+      parked = true; releaseIdentity();
+      return true;
+    },
+    /** 没有身份的那一刻（放下之后、下一篇 show 之前）：编辑框只读，里面的字不算没存（不归任何一篇）。 */
+    resume: () => { parked = false; savedText = d.editor.value; applyGuards(); },
+    /** 回收站那条路：离开这一篇（冻结 → 保存全部做完）。**必须紧跟 clear()**（冻结由它解开）。返回 false = 没存上的字也没能另存。 */
+    leave: async (): Promise<boolean> => { const tok = await leaveCurrent(); return switching === tok; },
     isParked: () => parked,
   };
 }

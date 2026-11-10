@@ -1199,7 +1199,7 @@ async function importDroppedFiles(all: File[]): Promise<void> {
   if (imgs.length) setStatus(t("img.dropTxtMode"), { error: true });
   const f = txts[0]; if (!f) return;
   const text = decodeTextBytes(new Uint8Array(await f.arrayBuffer())).text;
-  await openNewDraft();
+  if (!(await openNewDraft())) return;   // 没换成新稿（v3.0.18 起可能：被另一次换稿接管 / 旧稿没存上也没能另存）：别把文件内容写进原来那一篇
   const stem = f.name.replace(/\.txt$/i, "").trim();
   editor.state.pendingTitle = stem || null;
   editorEl.value = text; editorEl.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1279,9 +1279,10 @@ const isDirtyAny = () => (project.active() ? (project.session()?.dirty ?? false)
 async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
 /** 打开任一身份：工程 → 工程模式（txt 编辑器 park）；txt → txt 编辑器（工程模式关）。 */
 async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
+  input.flushText();   // 软键盘 app 道里排着的改字先落进**现在这一篇**（v3.0.18：换稿那一刻起编辑框冻结，排着的改字做的时候问 canEdit 会被丢掉）
   libraryReturn = "replaced";   // 换了文档：书库返回时不再重开旧的
   if (docKind(name) === "project") {
-    if (!editor.isParked()) await editor.park();
+    if (!editor.isParked() && !(await editor.park())) return false;   // 没放下（没存上的字也没能另存）：人留在这一篇上
     const ok = await project.openStore(name, { promptUnlock: opts.promptUnlock });
     if (!ok) { await openNewDraft(); return false; }   // 打不开（本地无、坏、旧格式）→ 退出书模式、开一张新稿（park 过的 txt 编辑器没有身份，不能就那么留着）
     document.body.dataset.project = "1";
@@ -1298,6 +1299,7 @@ async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Pro
  *  encrypted 要先有密码：取消 = 什么都不换、返回 false（调用方别关书库）。 */
 async function openNewDraft(opts: { encrypted?: boolean; dir?: string } = {}): Promise<boolean> {
   if (opts.encrypted && !(await ensureUnlocked())) return false;
+  input.flushText();   // 同 openAny
   const dir = opts.dir ?? (project.active() ? parseDocName(project.name() ?? "").dir : editor.currentDir());
   libraryReturn = "replaced";
   await leaveProject();
@@ -1310,9 +1312,10 @@ async function openNewDraft(opts: { encrypted?: boolean; dir?: string } = {}): P
 //   v2.3.30：以前返回时拿「现在有没有打开的文档名」去猜换没换——新稿没打字前没有名字，猜错 → 重开上一本（user 2026-10-04「新建稿为什么会跳到上一本书」）。现在是显式的。
 let libraryReturn: { reopen: string | null } | "replaced" = { reopen: null };
 async function releaseForLibrary(): Promise<void> {
+  input.flushText();
   libraryReturn = { reopen: activeName() };
   if (project.active()) { await project.close(); delete document.body.dataset.project; edgeSidebar.render(); }
-  if (!editor.isParked()) await editor.park();   // park = 先 flush 再静默：不收 input、不落盘、身份清空
+  if (!editor.isParked() && !(await editor.park())) { libraryReturn = "replaced"; return; }   // park = 离开这一篇（保存全部做完）再静默、身份清空；没放下 = 稿留在书库底下原样，回来时什么都不换
   editorEl.value = "";   // 纸面别留上一篇的字（parked 期间 input 不算数）
   renderTopbar(); setState(stateAny());
   galleryHost.refresh();   // 「打开中」标签 / 可删性按「没有打开的」重算
@@ -1334,7 +1337,7 @@ async function newProjectFlow(): Promise<void> {
   try {
     const empty = await packProject(emptyProject());
     const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder(), { encrypted: wantEncrypt });
-    if (!editor.isParked()) await editor.park();
+    if (!editor.isParked() && !(await editor.park())) return;   // 没放下（没存上的字也没能另存）：书建好了留在书库里，人留在这一篇上
     await project.createInStore(name, firstNode, { encrypted: wantEncrypt });
     document.body.dataset.project = "1";
     libraryReturn = "replaced";
@@ -1351,7 +1354,7 @@ async function openLocalProjectFlow(): Promise<void> {
 }
 /** 开一个本机的书（LocalHome 已在手；也给 ui-audit 直接喂夹具用）。 */
 async function openLocalHome(lh: LocalHome): Promise<void> {
-  if (!editor.isParked()) await editor.park();
+  if (!editor.isParked() && !(await editor.park())) return;
   const ok = await project.openLocal(lh);
   document.body.dataset.project = "1";
   libraryReturn = "replaced";
@@ -1405,7 +1408,7 @@ const drawer = createDrawer({
   },
   onOpenDoc: async (name) => { await openAny(name, { promptUnlock: true }); },
   onRenameDoc: async (name) => { if (name === editor.state.name) await renameCurrentDoc(); else await renameOtherDoc(name); },   // 2026-09-09 审计 #6
-  onActiveTrashed: async () => { if (project.active()) await leaveProject(); else await editor.flushLocal(); editor.clear(); },
+  onActiveTrashed: async () => { if (project.active()) await leaveProject(); else { input.flushText(); await editor.leave(); } editor.clear(); },   // leave 不只等在飞的那一轮：排着的、改名中的也等完，不会在挪进回收站之后把字写回旧名字（v3.0.18）
   onSettingsShown: () => renderSettings(),
   focusEditor: () => focusWriting(),
   setStatus,
@@ -2751,11 +2754,15 @@ function afterSignIn(): Promise<void> {
         bootLastActiveHandled = true;
         // 冷启动尊重远端 lastActive（别的设备最后写的那篇）；本机正在打字/加密锁定的不切。
         // 两种身份都走 openAny（2026-09-10 黑匣子：远端指针是工程名时曾塞给 txt 编辑器 → readDoc 护栏抛 → 每次开工程一条 warning 横幅）
-        const remote = appState.getItem<{ name?: string }>("lastActive");
-        if (remote?.name && remote.name !== activeName() && !isDirtyAny() && !editor.state.pendingDate) {
-          const known = drawer.findByName(remote.name);
-          if (known && !known.encrypted) await openAny(remote.name);   // 换稿 = open() 自带新鲜度门，不用再快进一次
-        }
+        // 开机那一篇读完再比（v3.0.18：读的时候「开着的是谁」还是空的——不等就会把同一篇再开一次，顶掉开机那次，开机以为「上次那篇打不开」去开新稿）。
+        //   不 await：开机开稿要是抛了，bootDocReady 永远不来，别把这一轮登录（和以后每一轮）卡在这里。
+        void bootDocReady.then(async () => {
+          const remote = appState.getItem<{ name?: string }>("lastActive");
+          if (remote?.name && remote.name !== activeName() && !isDirtyAny() && !editor.state.pendingDate) {
+            const known = drawer.findByName(remote.name);
+            if (known && !known.encrypted) await openAny(remote.name);   // 换稿 = open() 自带新鲜度门，不用再快进一次
+          }
+        }).catch((e) => reportError(e, "warning"));
       }
       drawer.subscribe();   // 重拉（drawer.refresh 只重画缓存帧——审计 #8）
     } catch (e) { reportError(e, "warning"); }
