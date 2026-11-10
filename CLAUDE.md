@@ -154,6 +154,7 @@ Web Speech / Groq / OpenAI 2026-09-03 sunset（语音字节永不外发）；旧
    - **开发版已经部署过的提交号，再部署一次线上不换。** Pages 按提交号（`pages_build_version`）去重：eed000b 11-04 当开发版部署过，11-09 在它上面 dispatch 报成功、根目录照旧是 v2.3.39。要换一个新提交号。
    - **去重的那次在 Pages 那边会挂「进行中」好几分钟**（Actions 已报成功）：这期间再部署 = 400「due to in progress deployment. Please cancel <sha> first」。7 分钟后重试被拒、15 分钟后重试就过了；看 `gh api repos/fangzhangmnm/webxiaoheiwu/pages/deployments/<sha>` 是不是 `succeed` 再试。
    - **所以推 prod 的顺序**（先问人照旧）：`git commit --allow-empty`（换提交号）→ `git push origin HEAD:prod`，等它那次跑完（红，正常）→ `git push origin main`（或 `gh workflow run deploy.yml --ref main`），`gh run watch <号> --exit-status` 等绿 → 验三条：根目录 index 引用的 `xiaoheiwu-<hash>.mjs` 是新的、这个文件 200、文件里有新版本字样。
+   - **2026-11-10 正式版 = v3.0.18**（user 11-10「推正式版」；main = prod = a86f8a8，空提交，内容同 4d7e4be；照上面的顺序一次过：prod 那次红、main 那次 1 分 12 秒绿；线上 17:10 UTC 验过三条，根目录 index 和 `service-worker.js` 与仓里逐字节一致；edited by Claude Opus 5.5 2026-11-10）。之前：
    - **2026-11-09 正式版 = v3.0.16**（main = prod = d9130a4，内容同 eed000b；线上 03:15 UTC 验过三条 + 根目录 `service-worker.js` 和 d9130a4 逐字节一致）。之前正式版 = v2.3.39。
 
 图标：`python3 "../20260708 SVG Icons/extract-icons.py" assets/icons.svg <ids…> --catalog` → `python3 tools/inline-sprites.py`。缺的先烤 stopgap（`tools/bake-stopgap-glyphs.py` SPECS）+ 登记图标库 `TODO.md`；**stopgap 现已清零**（2026-09-29：`microphone` `backspace` 真图标收货）；PENDING 待过目在用：`book` `forward` `chevron-left` `chevron-right` `bookshelf`（2026-09-10）+ `microphone` `backspace` + 软键盘键帽 `key-shift` `key-enter`（2026-09-29 新画）。edited by Claude Fable 5.1 2026-09-29
