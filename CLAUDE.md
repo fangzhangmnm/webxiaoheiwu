@@ -147,6 +147,12 @@ Web Speech / Groq / OpenAI 2026-09-03 sunset（语音字节永不外发）；旧
    改了界面 → `node tools/ui-audit.mjs`；改了输入 / 键盘 → `node tools/kb-audit.mjs`；改了稿纸 / 字号 / 行距 → `node tools/ruled-audit.mjs`；改了推 / 拉 / 重载 → `npm run e2e:sync`。
 3. 重构/大功能：`bash scripts/gen-api.sh` 重打 `api/`。
 4. `git add -A && git commit && git push origin main`。prod = `git push origin <sha>:prod` **然后** `gh workflow run deploy.yml --ref main`（**先问人**；github-pages environment 只放行 main，直接 push prod 触发的 run 必红，deploy job 本来就同时 checkout 两分支再合成，所以在 main 上 dispatch 一次才真上线；验证探 `/dist/xiaoheiwu-<hash>.mjs` 的 200，别只看 index.html。2026-09-30 v2.2.0 = v2 首次上 prod，edited by Claude Fable 5.1）。
+   **2026-11-09 推 v3.0.16 时照上面那句做，撞了三个坑**（edited by Claude Opus 5.5 2026-11-09；经过 = 家族根 `ai-docs/20261109-handoff-wxhw-prod-deploy.md`）：
+   - **main 和 prod 别同时推。** `deploy.yml` 是 `concurrency: pages, cancel-in-progress: true`：prod 那次后到，先取消 main 那次，自己又因为环境只放行 main 而红 → 两次都没部署。
+   - **开发版已经部署过的提交号，再部署一次线上不换。** Pages 按提交号（`pages_build_version`）去重：eed000b 11-04 当开发版部署过，11-09 在它上面 dispatch 报成功、根目录照旧是 v2.3.39。要换一个新提交号。
+   - **去重的那次在 Pages 那边会挂「进行中」好几分钟**（Actions 已报成功）：这期间再部署 = 400「due to in progress deployment. Please cancel <sha> first」。7 分钟后重试被拒、15 分钟后重试就过了；看 `gh api repos/fangzhangmnm/webxiaoheiwu/pages/deployments/<sha>` 是不是 `succeed` 再试。
+   - **所以推 prod 的顺序**（先问人照旧）：`git commit --allow-empty`（换提交号）→ `git push origin HEAD:prod`，等它那次跑完（红，正常）→ `git push origin main`（或 `gh workflow run deploy.yml --ref main`），`gh run watch <号> --exit-status` 等绿 → 验三条：根目录 index 引用的 `xiaoheiwu-<hash>.mjs` 是新的、这个文件 200、文件里有新版本字样。
+   - **2026-11-09 正式版 = v3.0.16**（main = prod = d9130a4，内容同 eed000b；线上 03:15 UTC 验过三条 + 根目录 `service-worker.js` 和 d9130a4 逐字节一致）。之前正式版 = v2.3.39。
 
 图标：`python3 "../20260708 SVG Icons/extract-icons.py" assets/icons.svg <ids…> --catalog` → `python3 tools/inline-sprites.py`。缺的先烤 stopgap（`tools/bake-stopgap-glyphs.py` SPECS）+ 登记图标库 `TODO.md`；**stopgap 现已清零**（2026-09-29：`microphone` `backspace` 真图标收货）；PENDING 待过目在用：`book` `forward` `chevron-left` `chevron-right` `bookshelf`（2026-09-10）+ `microphone` `backspace` + 软键盘键帽 `key-shift` `key-enter`（2026-09-29 新画）。edited by Claude Fable 5.1 2026-09-29
 
