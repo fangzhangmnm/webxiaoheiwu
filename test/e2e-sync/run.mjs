@@ -1,16 +1,29 @@
 // 两台设备的同步冲突端到端测试。created 2026-09-29 by Claude Fable 5.1（user 2026-09-29「先确保现在如果有冲突的话会进 backup 文件夹」）
 //   用法：node test/e2e-sync/run.mjs [场景名子串]。真 app + 真 store 库 + 真 IndexedDB；只有云是内存假云。
 //   断言按数据安全词典序写（云端不丢 >> 当前操作不丢 > 自愈）：①云端赢家没被静默覆盖 ②输家字节有留底 ③之后还能继续写、继续推。
-import { buildBundle, startServer, createWorld, makeChecker } from "./harness.mjs";
+//   分区 / 并行（2026-11-10，Claude Fable 5.2；规矩 = ai-docs/20261110-test-tiers.md）：
+//     node test/e2e-sync/run.mjs                 整套，并行（推开发版之后跑）
+//     node test/e2e-sync/run.mjs @swap @gate     只跑这几区（区表 = ./areas.mjs；--list 看每区有哪些场景）
+//     node test/e2e-sync/run.mjs --changed       看 git 改了什么（相对 HEAD + 没跟踪的；--changed=main 相对 main），按区表推出该跑哪几区
+//     node test/e2e-sync/run.mjs "换稿 ㉑"        场景名子串（照旧）
+//     --jobs=N 并行几条（默认 min(12, 核数 − 4)）；--serial = 一条一条跑（查偶发红时用）
+import { AsyncLocalStorage } from "node:async_hooks";
+import { availableParallelism } from "node:os";
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { buildBundle, startServer, createWorld } from "./harness.mjs";
+import { AREAS, SOLO, areasOf, areasForPath } from "./areas.mjs";
 import { ensureZipLoaded } from "../zip-node.mjs";
 
-const only = process.argv[2] ?? "";
-const { check, failed } = makeChecker();
+// 每个场景一份输出：并行时各场景的行先攒着，跑完整块打出来（场景里的 console.log 也收进来）。
+const scope = new AsyncLocalStorage();
+const rawLog = console.log.bind(console);
+console.log = (...a) => { const c = scope.getStore(); if (c) c.lines.push(a.map(String).join(" ")); else rawLog(...a); };
+const check = (name, ok, detail = "") => { const c = scope.getStore(); if (c) c.checks.push(!!ok); console.log(`${ok ? "✓" : "✗"} ${name}${ok ? "" : "  ← " + detail}`); };
 const TAKE_CLOUD = /云端覆盖本地/, KEEP_MINE = /本地覆盖云端/;
 const dec = (u8) => new TextDecoder().decode(u8);
 
-await buildBundle();
-const server = await startServer();
+let server = null;   // 选好要跑哪些场景之后才打包、起服务（--list / 没有要跑的 = 不起）
 ensureZipLoaded();
 const { unpackProject } = await import("../../src/project/format.ts");
 const bookPages = async (bytes) => { if (!bytes) return {}; const r = await unpackProject(new Blob([bytes])); if (r.kind !== "ok") throw new Error("cloud book unreadable: " + r.kind); const o = {}; for (const [k, v] of r.project.contents) o[k] = /\.txt$/i.test(k) ? new TextDecoder().decode(v) : `<${v.length} bytes>`; return o; };
@@ -341,7 +354,10 @@ scenario("加密 txt · 挂机：锁屏那一下的推送回执丢了 → 醒来
   await A.type("密文原文。"); await A.wait(600); await A.pushNow(); await A.wait(500);
   const name = await A.eval(() => window.__xhw.editor.state.name);
   const stem = name.replace(/\.txt$/, "");
-  const cloudName = (await w.cloudList("")).map((i) => i.name).find((n) => n.startsWith(stem));   // 加密容器的云端名另有后缀（docKinds 表）
+  // 加密容器的云端名另有后缀（docKinds 表）。等它真到了云端再往下（最多 8 s）：以前推完固定睡 0.5 s 就查，机器忙时还没到 →
+  //   拿不到云端名、下面「丢回执」的门没装上、后面几项白白通过（家族周账 F-239；2026-11-10 Claude Fable 5.2 改成轮询）。
+  let cloudName;
+  for (let i = 0; i < 40 && !cloudName; i++) { cloudName = (await w.cloudList("")).map((x) => x.name).find((n) => n.startsWith(stem)); if (!cloudName) await A.wait(200); }
   check("加密稿已上云", !!cloudName, JSON.stringify((await w.cloudList("")).map((i) => i.name)));
   await A.type("挂机前。"); await A.wait(500);
   w.gate.loseUploadOf = cloudName;                                              // 锁屏那一下对这篇的上传：云端收到了、回执没回来
@@ -2134,14 +2150,113 @@ async function staleAfterFailedSwap(w, failAfterMs) {
 scenario("换稿 ⑲ 云端快进还在路上时点开另一篇、那一篇很快读失败（快进后到）→ 人回到原来那篇：编辑框换成云端版，旧的字不盖掉别的设备的改动", (w) => staleAfterFailedSwap(w, 0));
 scenario("换稿 ⑳ 云端快进还在路上时点开另一篇、那一篇读了好一会才失败（快进先到）→ 同上", (w) => staleAfterFailedSwap(w, 2500));
 
-for (const s of scenarios) {
-  if (only && !s.name.includes(only)) continue;
-  console.log(`\n── ${s.name}`);
-  const w = await createWorld();
-  try { await Promise.race([s.fn(w), new Promise((_, rej) => setTimeout(() => rej(new Error("scenario timed out (60s)")), 60000))]); }
-  catch (e) { check(`场景跑完`, false, String(e?.message ?? e)); }
-  finally { await w.close().catch(() => {}); }
+// ── v3.0.19 审稿时加（2026-11-10，Claude Fable 5.2；探针 = probe/open-swap/close-window.mjs）：书开着、刚敲了字，两次换稿落在「关这本书（存盘）」的那一下里。
+//   ㉑ 在审稿前的提交（ff0bc00）上红：「去文本稿」那一次还没开始读，后来的「开另一本书」没有东西可以取消，两边读完都往编辑框里摆；
+//      接着进书库，文本稿编辑器把书的那一页存到自己那一篇名下。现在书接手编辑框之前先问一句文本稿编辑器放下了没有（mode.ts textareaIsOurs）。
+//   ㉒ 是反过来的顺序（一直是绿的）：看着那句绊线没有把「后来的文本稿压过先来的书」弄坏。
+async function swapsDuringBookClose(w, textFirst) {
+  const A = await w.device("A");
+  const { a, book, page } = await seedTxtAndBook(w, A);
+  await A.type("第二本书的一页。"); await A.wait(500);
+  void A.eval(() => window.__xhw.liftDraft());
+  await A.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 8000 });
+  await A.page.click("#sheetConfirm");
+  await A.page.waitForFunction(() => window.__xhw.project.active(), null, { timeout: 8000 }); await A.wait(500);
+  await A.eval(() => window.__xhw.setSidebar(false));
+  const book2 = await A.eval(() => window.__xhw.project.name()), page2 = await A.eval(() => window.__xhw.project.current());
+  await A.type("脏");   // 第二本书有没存的字：关它要真写一次盘，先来的那次换稿停在这一下里
+  const r = await A.eval(async ([txt, bk, tf]) => {
+    const go = (n) => window.__xhw.openAny(n).then((x) => "ok:" + x, (e) => "threw:" + String(e?.message ?? e));
+    const first = go(tf ? txt : bk), second = go(tf ? bk : txt);
+    const [x, y] = [await first, await second];
+    return tf ? { t: x, b: y } : { t: y, b: x };
+  }, [a, book, textFirst]);
+  await A.wait(1200);
+  const end = await modeSnap(A);
+  check("落定后两边没有同时管着编辑框（书开着 ⇒ 文本稿编辑器放下了）", !(end.projActive && !end.parked), JSON.stringify(end));
+  check(textFirst ? "先到的文本稿留下，后来的那本书这一次不开（false，不抛）" : "后来的文本稿压过先来的那本书（书那次 false，不抛）",
+    r.t === "ok:true" && r.b === "ok:false" && !end.projActive && !end.bookUi && !end.parked && end.name === a && end.val === ORIG_A, `${JSON.stringify(r)} ${JSON.stringify(end)}`);
+  await A.type("x"); await A.wait(700);
+  await A.page.click("#libraryButton"); await A.wait(1200);   // 进书库 = 先关书、再让文本稿编辑器放下（把它手上的字存好）
+  check("本机：文本稿 = 原文 + x（没被写成书的那一页）", (await localText(A, a)) === ORIG_A + "x", JSON.stringify(await localText(A, a)));
+  const lb = await localBook(A, book), lb2 = await localBook(A, book2);
+  check("本机：第一本书那一页没变", lb[page] === BOOK_PAGE, JSON.stringify(lb));
+  check("本机：第二本书刚敲的字存上了", /脏/.test(lb2[page2] ?? ""), JSON.stringify(lb2));
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
 }
+scenario("换稿 ㉑ 书开着、刚敲了字 →「开文本稿」还在关这本书时又来「开另一本书」：只有一边管着编辑框；进书库后文本稿没被写成书的字", (w) => swapsDuringBookClose(w, true));
+scenario("换稿 ㉒ 书开着、刚敲了字 → 先「开另一本书」、关书的那一下里再「开文本稿」：后来的文本稿开着，两边都没被写错", (w) => swapsDuringBookClose(w, false));
+
+// ── 选场景 ──
+const argv = process.argv.slice(2);
+const flag = (name) => argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
+const flagValue = (name) => { const f = flag(name); return f && f.includes("=") ? f.slice(f.indexOf("=") + 1) : null; };
+const wantAreas = argv.filter((a) => a.startsWith("@")).map((a) => a.slice(1));
+const wantSubs = argv.filter((a) => !a.startsWith("--") && !a.startsWith("@"));
+for (const a of wantAreas) if (!AREAS[a]) { rawLog(`没有 @${a} 这一区。有：${Object.keys(AREAS).map((k) => "@" + k).join(" ")}`); process.exit(2); }
+if (flag("list")) {
+  for (const [k, v] of Object.entries(AREAS)) { const mine = scenarios.filter((s) => areasOf(s.name).includes(k)); rawLog(`\n@${k}  ${v.title}  （${mine.length} 个）`); for (const s of mine) rawLog("  " + s.name); }
+  const orphan = scenarios.filter((s) => areasOf(s.name).length === 0);
+  if (orphan.length) { rawLog(`\n没分区的（${orphan.length} 个；npm test 会红）`); for (const s of orphan) rawLog("  " + s.name); }
+  process.exit(0);
+}
+let everything = wantAreas.length === 0 && wantSubs.length === 0 && !flag("changed");
+const changedAreas = new Set();
+if (flag("changed")) {
+  const base = flagValue("changed") ?? "HEAD";
+  const git = (...a) => execFileSync("git", a, { encoding: "utf8" }).split("\n").map((x) => x.trim()).filter(Boolean);
+  const files = [...new Set([...git("diff", "--name-only", base), ...git("ls-files", "--others", "--exclude-standard")])];
+  const notes = new Set();
+  rawLog(`改动（相对 ${base}，含没跟踪的）${files.length} 个文件：`);
+  for (const f of files) {
+    const r = areasForPath(f);
+    if (r.areas === "all") everything = true; else for (const a of r.areas) changedAreas.add(a);
+    if (r.note) notes.add(r.note);
+    rawLog(`  ${f} → ${r.areas === "all" ? "整套" : r.areas.length ? r.areas.map((a) => "@" + a).join(" ") : "—"}（${r.why}）`);
+  }
+  for (const n of notes) rawLog(`  另外：${n}`);
+}
+const picked = everything ? scenarios : scenarios.filter((s) => {
+  const mine = areasOf(s.name);
+  return wantSubs.some((x) => s.name.includes(x)) || wantAreas.some((a) => mine.includes(a)) || mine.some((a) => changedAreas.has(a));
+});
+if (picked.length === 0) { rawLog(flag("changed") ? "\n没有端到端同步场景要跑（npm run check 就够）。" : "\n没有场景对得上。--list 看有哪些。"); process.exit(0); }
+
+// ── 跑：并行 N 条，慢的先跑（上次的用时记在 tmp/，不进仓）；红了接着跑，最后一起列 ──
+const TIMES = new URL("../../tmp/e2e-sync/times.json", import.meta.url);
+const jobs = flag("serial") ? 1 : Math.max(1, Number(flagValue("jobs")) || Math.min(12, availableParallelism() - 4));   // 16 核上量过：8 条 93 s、12 条 74 s（下限 = 最慢那个场景 42 s）
+const SCENARIO_TIMEOUT_MS = 90_000;   // 一条一条跑时最慢的约 30 s；并行时机器忙，留足
+await buildBundle();
+server = await startServer();
+let times = {};
+try { times = JSON.parse(readFileSync(TIMES, "utf8")); } catch { /* 第一次跑 */ }
+const queue = [...picked].sort((a, b) => (times[b.name] ?? 1e9) - (times[a.name] ?? 1e9));
+rawLog(`\n跑 ${picked.length} / ${scenarios.length} 个场景${everything ? "（整套）" : ""}，并行 ${Math.min(jobs, picked.length)} 条`);
+const t0 = Date.now();
+const done = [];
+async function runOne(s) {
+  const ctx = { lines: [], checks: [] };
+  const started = Date.now();
+  await scope.run(ctx, async () => {
+    const w = await createWorld();
+    try { await Promise.race([s.fn(w), new Promise((_, rej) => setTimeout(() => rej(new Error(`scenario timed out (${SCENARIO_TIMEOUT_MS / 1000}s)`)), SCENARIO_TIMEOUT_MS))]); }
+    catch (e) { check("场景跑完", false, String(e?.message ?? e)); }
+    finally { await w.close().catch(() => {}); }
+  });
+  const ms = Date.now() - started;
+  rawLog(`\n── ${s.name}  （${(ms / 1000).toFixed(1)} s）\n${ctx.lines.join("\n")}`);
+  done.push({ name: s.name, ms, checks: ctx.checks.length, bad: ctx.checks.filter((ok) => !ok).length, lines: ctx.lines });
+}
+const solo = queue.filter((s) => SOLO.some((re) => re.test(s.name)));   // 量时长的：等别的都跑完再一条一条跑
+for (const s of solo) queue.splice(queue.indexOf(s), 1);
+await Promise.all(Array.from({ length: Math.min(jobs, queue.length) }, async () => { for (let s = queue.shift(); s; s = queue.shift()) await runOne(s); }));
+for (const s of solo) await runOne(s);
 server.close();
-console.log(`\n${failed() ? "✗" : "✓"} ${failed()} failed`);
-process.exit(failed() ? 1 : 0);
+for (const d of done) times[d.name] = d.ms;
+try { writeFileSync(TIMES, JSON.stringify(times, null, 1)); } catch { /* 记不上不碍事 */ }
+const red = done.filter((d) => d.bad > 0);
+const secs = Math.round((Date.now() - t0) / 1000), serial = Math.round(done.reduce((a, d) => a + d.ms, 0) / 1000);
+if (red.length) { rawLog("\n红的场景："); for (const d of red) { rawLog(`  ✗ ${d.name}`); for (const l of d.lines.filter((x) => x.startsWith("✗"))) rawLog(`      ${l.slice(0, 300)}`); } }
+rawLog(`\n${red.length ? "✗" : "✓"} ${done.length} 个场景、${done.reduce((a, d) => a + d.checks, 0)} 项，${done.reduce((a, d) => a + d.bad, 0)} 项红（${red.length} 个场景）；用时 ${secs} s（一条一条跑要 ${serial} s）`);
+process.exit(red.length ? 1 : 0);

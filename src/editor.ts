@@ -339,7 +339,10 @@ export function createEditor(d: EditorDeps) {
     // 不脏不推（v2.3.35，2026-10-16）：以前已有稿不管脏不脏每次登录 / 回前台 / 锁屏 / 解锁都整篇重推一遍（v2.1.10 的实现细节，没拍过）。
     //   副作用 = 别的设备改过而这台没动时，本该静默快进，却先推 → 412 → 弹「本地覆盖云端」面（user 2026-10-16「挂机之后还是有要你本地覆盖云端的 bug」；
     //   e2e「txt · 挂机：别的设备改过、这台干净」复现）。pending（落了盘没推 / 上次没推成）照推；新稿（未物化）走 persist 自己的空稿门。
-    if (st.name && !pushPending && !localTimer && d.editor.value === savedText) return;
+    //   「不脏」把排着的 / 正在做的保存也算上（v3.0.19，2026-11-10 Claude Fable 5.2；和 refreshIfClean 交给库的 localDirty 同一个定义）：新稿第一次落盘时
+    //   建稿那一步一回来 savedText 就对上了、pushPending 要等后面那次写完才立——这中间按推送（保存钮 / 锁屏那一下）以前被当成干净的、直接跳过，
+    //   要等十几秒后的定时推送才补上（机器忙时端到端「加密 txt · 挂机」撞进这一下 = 家族周账 F-239 的真原因）。
+    if (st.name && !pushPending && !localTimer && persistQueued === 0 && d.editor.value === savedText) return;
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     const gen = loadGen;
     d.setStatus(t("st.syncing"));

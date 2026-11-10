@@ -309,6 +309,16 @@ export function createProjectMode(d: ProjectModeDeps) {
     d.setStatus(t(r.kind === "corrupt" ? "project.corrupt" : r.kind === "not-project" ? "project.notProject" : "project.unavailable"), { error: true });
     return false;
   }
+  /** 编辑框现在交不交得到书手上（v3.0.19 丁在书这一头的绊线；2026-11-10 Claude Fable 5.2 审稿时加，对着文本稿那头 show() 开头的那一句）。
+   *  文本稿编辑器没放下 = 不接，这一次开书作废（和「被更新的 open 抢先」同一个结局）。
+   *  会走到这里的时序（实测：probe/open-swap/close-window.mjs，端到端「换稿 ㉑」）：书开着、有没存的字 → 一次「去文本稿」还在关这本书（存盘那一下）→ 又来一次「开另一本书」。
+   *  后一次看见文本稿编辑器还放下着，不用再放；前一次关完书就把它叫醒、开自己的稿——它那时还没开始读，后一次没有东西可以取消。
+   *  两边读完都往编辑框里摆；然后进书库，文本稿编辑器把书的那一页存到自己那一篇名下。在这里拦：先到的文本稿留下，后来的这本书不开（人再点一次）。 */
+  function textareaIsOurs(what: string): boolean {
+    if (!d.ownsTextarea || d.ownsTextarea()) return true;
+    diagNote("book", `not opening ${what}: the text-draft editor holds the textarea (a switch to a text draft that started earlier got there first)`);
+    return false;
+  }
   function enterLocked(projectName: string): void {
     home = { kind: "store", name: projectName }; session = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     encrypted = true; locked = true; back = []; forward = []; pushPending = false;
@@ -326,6 +336,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     try { encrypted = await isDocEncrypted(projectName); } catch { encrypted = false; }
     if (g !== gen) return true;   // 被更新的 open 抢先：不是失败，调用方别退回新稿
     if (encrypted && !d.isUnlocked()) {
+      if (!textareaIsOurs(`"${projectName}" (locked)`)) return true;
       enterLocked(projectName);
       if (!opts.promptUnlock) return true;
       const ok = await d.ensureUnlocked();
@@ -338,6 +349,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     // 纯云端的加密书、这台第一次开：上面那次看的是还没有的本地字节 = 假，open 才拉下来（同 docs.ts readDoc；2026-11-03 工单 D2）
     if (!encrypted) { try { encrypted = await isDocEncrypted(projectName); } catch { /* 下面按打开结果走 */ } }
     if (g !== gen) return true;
+    if (!textareaIsOurs(`"${projectName}"`)) return true;
     diagNote("book", `open "${projectName}": ${r.kind}${r.kind === "ok" ? ` pages=${s.project.contents.size}` : ""} encrypted=${encrypted}`);
     home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; forward = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
@@ -419,6 +431,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     const s = createProjectSession({ references: d.references, read: () => lh.read(), write: async (_n, blob) => { await lh.write(blob); return { pushed: false }; } });
     const r = await s.open(lh.fileName);
     if (g !== gen) return true;
+    if (!textareaIsOurs(`local book "${lh.fileName}"`)) return true;
     home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; forward = []; pushPending = false; encrypted = false; locked = false;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
@@ -430,6 +443,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   async function createInStore(projectName: string, firstNode: string, opts: { encrypted?: boolean } = {}): Promise<void> {
     d.onBeforeLoad?.(); await flushLocal();
     const g = ++gen; resetWorld();
+    if (!textareaIsOurs(`new book "${projectName}"`)) return;   // 书已经建在书库里了，只是不接手编辑框
     const s = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
     home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = !!opts.encrypted; locked = false;   // 调用方已先封再存（库按已存字节继续封）

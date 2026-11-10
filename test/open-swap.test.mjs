@@ -122,6 +122,14 @@ describe("换稿守卫 · app 那一头", () => {
   });
 });
 
+describe("推送守卫 · 「不脏不推」的不脏把排着的保存也算上（v3.0.19 审稿时加，Claude Fable 5.2；家族周账 F-239）", () => {
+  it("pushNow：有保存排着 / 正在做 = 不算干净，接着推（和 refreshIfClean 的 localDirty 同一个定义）", () => {
+    const b = body(ed, /async function pushNow\(\)/).text;
+    assert(/if \(st\.name && !pushPending && !localTimer && persistQueued === 0 && d\.editor\.value === savedText\) return;/.test(b), "四样都看：欠推、定时器、排着的保存、编辑框和已存的一样");
+    assert(/localDirty: \(\) => !!localTimer \|\| persistQueued > 0 \|\| pushPending \|\| d\.editor\.value !== savedText/.test(ed), "localDirty 的定义没变（两处要对得上）");
+  });
+});
+
 // ── v3.0.19（2026-11-10，Claude Opus 5.5；方案 = 家族根 ai-docs/20261110-review-wxhw-open-swap-fix.md 第五节）。行为在端到端「换稿 ⑬–⑱」。──
 const mode = readFileSync("src/project/mode.ts", "utf8");
 describe("换稿守卫 · 同一时刻只有一个模式管着编辑框（不变量丁）", () => {
@@ -156,6 +164,18 @@ describe("换稿守卫 · 同一时刻只有一个模式管着编辑框（不变
     assert(/const bookIsOpen = \(name: string\): boolean => project\.active\(\) && project\.name\(\) === name/.test(app), "bookIsOpen 的定义");
     const c = body(mode, /async function createInStore\(/).text;
     assert(/await s\.flush\(false\);\s*if \(g !== gen\) return;/.test(c), "createInStore 落盘之后核代数");
+  });
+  it("书那一头的绊线：接手编辑框的四处之前都问「文本稿编辑器放下了吗」（Fable 审 v3.0.19 时加；行为在端到端「换稿 ㉑㉒」）", () => {
+    assert(/function textareaIsOurs\(what: string\): boolean \{\s*if \(!d\.ownsTextarea \|\| d\.ownsTextarea\(\)\) return true;/.test(mode), "textareaIsOurs = 没接 ownsTextarea 或者它说是 → 可以接");
+    const o = body(mode, /async function openStore\(/).text;
+    const iChk1 = o.indexOf("if (!textareaIsOurs("), iLock = o.indexOf("enterLocked(projectName);");
+    assert(iChk1 > 0 && iLock > iChk1, "openStore：进锁态之前");
+    const iChk2 = o.indexOf("if (!textareaIsOurs(", iLock), iHome = o.indexOf('home = { kind: "store", name: projectName }; session = s;');
+    assert(iChk2 > iLock && iHome > iChk2, "openStore：换成新书之前");
+    for (const [h, set] of [[/async function openLocal\(/, 'home = { kind: "local", home: lh }'], [/async function createInStore\(/, 'home = { kind: "store", name: projectName }']]) {
+      const b = body(mode, h).text, iC = b.indexOf("if (!textareaIsOurs("), iS = b.indexOf(set);
+      assert(iC > 0 && iS > iC, `${h.source}：接手之前`);
+    }
   });
   it("第三层：两边保存起跑时问「编辑框归不归我」，app 两边都注入", () => {
     const p = body(ed, /async function persistOnce\(/).text;

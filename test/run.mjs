@@ -43,3 +43,4 @@ console.log("\n  WebXiaoHeiWu —— app 域测试（store 契约在 internal-st
 await run();
 import "./first-frame-watchdog.test.ts";   // 2026-09-09 首帧看门狗（从 WeebPaint 搬）
 import "./sw-redirect.test.mjs";   // 2026-10-14 离线壳：跳转响应原样交回（家族周账 F-28）
+import "./e2e-sync-areas.test.mjs";   // 2026-11-10 测试分档：端到端同步场景的分区表（漏登记 = 红）
