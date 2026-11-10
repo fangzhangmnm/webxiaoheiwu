@@ -24,6 +24,15 @@ export interface EditorDeps {
     /** 云端新版正在换掉本地这一篇（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待
      *  （user 2026-09-29「wxhw 要不要快进的时候就 waiting，这样稳一点。写书本来就没有画画那么短平快」）。 */
     onReplacing?: (on: boolean) => void;
+    /** 编辑框现在归不归文本稿管（v3.0.19 第三层：app 注入 `() => !project.active()`）。为假时保存不写、报错——书开着时这里的保存一个字节都不落。 */
+    ownsTextarea?: () => boolean;
+    /** 离开这一篇时，没存上的字存不进去、另存一份也没成（v3.0.19，user 2026-11-10「同意，挽留，加出口，这时候应该有导出对吧」）：
+     *  app 弹面问人。"go" = 人导出了 / 说丢掉，可以走；"stay" = 留在这一篇；"not-asked" = 现在弹不了面（别的面 / 遮罩开着），按留下算。没给 = 一律留下（v3.0.18）。 */
+    onCannotKeep?: (o: {
+        name: string;
+        text: string;
+        error: string;
+    }) => Promise<"go" | "stay" | "not-asked">;
 }
 export interface EditorState {
     name: string | null;
@@ -70,8 +79,10 @@ export declare function createEditor(d: EditorDeps): {
     park: () => Promise<boolean>;
     /** 没有身份的那一刻（放下之后、下一篇 show 之前）：编辑框只读，里面的字不算没存（不归任何一篇）。 */
     resume: () => void;
-    /** 回收站那条路：离开这一篇（冻结 → 保存全部做完）。**必须紧跟 clear()**（冻结由它解开）。返回 false = 没存上的字也没能另存。 */
+    /** 回收站那条路：离开这一篇（冻结 → 保存全部做完）。**必须紧跟 clear()**（冻结由它解开）。返回 false = 没离开（存不上、另存不了，人选了留下 / 被别的换稿压过）：调用方别扔、别 clear。 */
     leave: () => Promise<boolean>;
+    /** 离开前另存成功的那句提示（书那边开书会用「加载中…」盖掉它）：取走，调用方开完再说一次。 */
+    takeLeaveNote: () => string | null;
     isParked: () => boolean;
 };
 export type Editor = ReturnType<typeof createEditor>;

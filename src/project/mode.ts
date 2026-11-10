@@ -65,6 +65,8 @@ export interface ProjectModeDeps {
   isUnlocked: () => boolean;
   ensureUnlocked: () => Promise<boolean>;
   onLockChange: (cb: (unlocked: boolean) => void) => void;
+  /** 编辑框现在归不归书管（v3.0.19 第三层：app 注入 `() => editor.isParked()`）。为假时不把编辑框里的字收进书、报错——文本稿编辑器没放下时，它的字一个也不进书。 */
+  ownsTextarea?: () => boolean;
 }
 const KV_LAST_OPEN = "last-open";
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -159,6 +161,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   // ── 落盘节律 ──
   function commitTextarea(): void {
     if (!(canEdit() && session!.current() && currentKind() !== "image")) return;
+    if (d.ownsTextarea && !d.ownsTextarea()) { reportError(new Error(`[book] refusing to take the textarea into "${name() ?? displayName() ?? "?"}": the text-draft editor still owns it`), "error"); return; }   // 第三层（v3.0.19）：丁成立时永远不触发
     const cur = session!.current()!;
     if (session!.setCurrentText(d.editorEl.value)) d.references?.pageChanged(cur);   // 链接了这一页的参考卡要重取（ADR-0016）
   }   // 图片页的 textarea 是空壳，绝不提交   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
@@ -426,18 +429,21 @@ export function createProjectMode(d: ProjectModeDeps) {
   /** 新建（store）：调用方已 createProjectDoc 得到身份；这里开一个空工程带首节点。 */
   async function createInStore(projectName: string, firstNode: string, opts: { encrypted?: boolean } = {}): Promise<void> {
     d.onBeforeLoad?.(); await flushLocal();
-    gen++; resetWorld();
+    const g = ++gen; resetWorld();
     const s = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
     home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = !!opts.encrypted; locked = false;   // 调用方已先封再存（库按已存字节继续封）
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     applyReferences();
     await s.flush(false);
+    if (g !== gen) return;   // 落盘那一下里被关掉 / 又开了别的（v3.0.19）：书已在本机，别再往编辑框里摆它
     pushPending = true;   // 新书 = 云端还没有：待推（以前这里不标，15 s 后 pushNow 的 flush 因 session 不脏直接跳过，新书直到用户打第一个字才上云；2026-09-26 user 真机「新书一直卡在上传」链条之一）
     diagNote("book", `created "${projectName}" (local); signedIn=${d.isSignedIn()}`);
     loadCurrentIntoEditor(); d.setState(stateText(), { unsynced: d.isSignedIn() }); d.onChanged();
     if (d.isSignedIn()) schedulePush();
   }
+  /** 书还没开着、但正在读的那一次作废（v3.0.19 丁：文本稿要接管编辑框了）。开着的书用 close()。 */
+  function abandonOpen(): void { if (!active()) gen++; }
   async function close(): Promise<void> {
     if (!active()) return;
     await flushLocal();
@@ -645,7 +651,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
-    openStore, openLocal, createInStore, adoptName, close, flushLocal, pushNow, refreshIfClean, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
+    openStore, openLocal, createInStore, abandonOpen, adoptName, close, flushLocal, pushNow, refreshIfClean, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
     jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText, commitEditor,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, setPageTime, pageTime: (n: string) => session?.project.nodes.get(n)?.modified ?? 0, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,

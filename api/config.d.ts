@@ -13,6 +13,8 @@ export declare const DOC_EXT = ".txt";
 export declare const PROJECT_EXT = ".webxiaoheiwu.zip";
 /** 编辑 → 本地落盘（IDB）防抖。 */
 export declare const LOCAL_SAVE_DEBOUNCE_MS = 200;
+/** 冲突面选了云端 / 干净快进之后重载那一篇，读失败时隔多久自动再试一次（v3.0.19；只再试一次，还不成就停在只读、说清楚）。 */
+export declare const RELOAD_RETRY_MS = 3000;
 /** 书（zip）专用（ADR-0015 b；txt 稿不受影响）：本地防抖随上次落盘耗时放缓——debounce = clamp(200, 耗时 × 系数, 封顶)。 */
 export declare const BOOK_LOCAL_SAVE_DEBOUNCE_MAX_MS = 3000;
 export declare const BOOK_LOCAL_SAVE_COST_FACTOR = 5;

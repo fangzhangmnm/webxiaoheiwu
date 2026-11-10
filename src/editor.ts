@@ -8,7 +8,7 @@
 //   · 打开落在开头（moveCaretToStart）。
 //   · 加密稿：locked 时编辑区空白 + 禁输入；解锁循环在 busy 外；错密码不碰文件（库 seal 保证）。
 //   · 新稿惰性物化：没内容前不建文件（v1 的「自动空稿清理」由此消失）。
-import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS } from "./config.ts";
+import { LOCAL_SAVE_DEBOUNCE_MS, PUSH_DEBOUNCE_MS, PUSH_HEARTBEAT_MS, RELOAD_RETRY_MS } from "./config.ts";
 import { formatDate, parseDocName, splitDocPath, sanitizeTitle, docKind } from "./doc-model.ts";
 import { readDoc, saveDoc, createDoc, renameDoc, pullDocIfClean, setActiveDoc, encryptDoc, decryptDoc, rekeyDoc, moveDoc } from "./docs.ts";
 import { isUnlocked, onLockChange, renameFilePassword, forgetFilePassword, fileUsesOtherPassword, currentPassword } from "./crypto-state.ts";
@@ -40,6 +40,11 @@ export interface EditorDeps {
   /** 云端新版正在换掉本地这一篇（干净快进）：true = 开始，false = 新版已载入 / 没换成。app 据此升 / 收整屏等待
    *  （user 2026-09-29「wxhw 要不要快进的时候就 waiting，这样稳一点。写书本来就没有画画那么短平快」）。 */
   onReplacing?: (on: boolean) => void;
+  /** 编辑框现在归不归文本稿管（v3.0.19 第三层：app 注入 `() => !project.active()`）。为假时保存不写、报错——书开着时这里的保存一个字节都不落。 */
+  ownsTextarea?: () => boolean;
+  /** 离开这一篇时，没存上的字存不进去、另存一份也没成（v3.0.19，user 2026-11-10「同意，挽留，加出口，这时候应该有导出对吧」）：
+   *  app 弹面问人。"go" = 人导出了 / 说丢掉，可以走；"stay" = 留在这一篇；"not-asked" = 现在弹不了面（别的面 / 遮罩开着），按留下算。没给 = 一律留下（v3.0.18）。 */
+  onCannotKeep?: (o: { name: string; text: string; error: string }) => Promise<"go" | "stay" | "not-asked">;
 }
 
 const KV_LAST_OPEN = "last-open";
@@ -109,6 +114,12 @@ export function createEditor(d: EditorDeps) {
   let switching: number | null = null;   // 正在离开当前这一篇（值 = 这一次换稿的令牌）；旧的那一对仍是对的一对，它的保存照常落，只是不收新的字
   let holds: string | null = null;        // 编辑框里现在是哪一篇的字（未物化的新稿 / 没有身份 = null）
   let switchSeq = 0;
+  // v3.0.19（2026-11-10，Claude Opus 5.5；方案 = 家族根 ai-docs/20261110-review-wxhw-open-swap-fix.md 第五节）：
+  //   丁：同一时刻只有一个模式管着编辑框。放下（park）的同一步 loadGen++：在飞的 open / reload / refreshIfClean 读回来自己收手，不往书的编辑框里摆字。
+  //   后来的换稿压过先来的：open 读回来时 switchSeq 已经变了（又开始了一次换稿，哪怕它还在等旧稿存完）= 不摆，交给后来那一次。
+  let staleName: string | null = null;     // 本机那份已被云端那一版换掉（快进）、而那一下里正在换稿：换稿读失败、人留在这一篇上时要重载
+  let leaveNote: string | null = null;     // 离开前另存成功的那句提示：换稿完成后再说一次（不然被「加载中…」盖掉）
+  let cannotKeepAsk: Promise<"go" | "stay" | "not-asked"> | null = null;   // 同一时刻只问一次：问着的时候又来一次换稿，等同一个答案
   /** 这一对（st.name + 编辑框）现在可以落盘吗。保存用它。没有身份（开机还没开稿 / 进书库放下了）= 不可以。 */
   const canPersist = () => !parked && (st.name !== null || st.pendingDate !== null) && !st.readOnly && !st.locked && !st.unavailable && !replacing && !worldReplaced;
   /** 现在收不收输入。输入、输入法、语音、改名 / 挪夹 / 加密切换 / 推送都用它。 */
@@ -116,6 +127,9 @@ export function createEditor(d: EditorDeps) {
 
   /** 唯一一处同时换「开着的是谁」和「编辑框里的字」。同步，中间没有 await。 */
   function show(next: { name: string | null; text: string; encrypted?: boolean; locked?: boolean; unavailable?: boolean; pendingDate?: string | null; pendingDir?: string }): void {
+    // 绊线（v3.0.19 不变量丁：同一时刻只有一个模式管着编辑框）：放下着（书 / 书库管着编辑框）时不许往编辑框里摆文本稿。丁成立时永远不触发。
+    if (parked) { reportError(new Error(`[editor] refusing to show "${next.name ?? "(new draft)"}" while parked: book mode owns the textarea`), "error"); return; }
+    staleName = null;
     st.name = next.name; st.pendingDate = next.pendingDate ?? null; st.pendingTitle = null;
     if (next.pendingDir !== undefined) st.pendingDir = next.pendingDir;
     st.encrypted = !!next.encrypted; st.locked = !!next.locked; st.unavailable = !!next.unavailable; st.readOnly = false;
@@ -146,10 +160,28 @@ export function createEditor(d: EditorDeps) {
    *  调用方接着看 `switching === 令牌`：不等 = 等的时候又有一次换稿接管了，或者没存上的字也没能另存（解冻，人留在原来那一篇上）。 */
   async function leaveCurrent(): Promise<number> {
     const tok = ++switchSeq;
+    leaveNote = null;
     switching = tok; applyGuards();                                   // 丙：先冻结
     await settleSaves();                                              // 乙：全部落地（旧名字 + 旧内容）
-    if (switching === tok && canPersist() && d.editor.value !== savedText && !(await keepAside()) && switching === tok) { switching = null; applyGuards(); }
+    if (switching !== tok || !canPersist() || d.editor.value === savedText) return tok;
+    const kept = await keepAside();
+    if (kept === null || switching !== tok) return tok;
+    // 存不进去、另存也没成（v3.0.19 出口）：问人——留下 / 导出成 txt 再走 / 丢掉再走。
+    const answer = await askLeaveAnyway({ name: holdsLabel(), text: d.editor.value, error: kept });
+    if (switching !== tok) return tok;
+    diagNote("editor", `keep aside failed on "${holdsLabel()}" → ${answer === "go" ? "leaving anyway (exported or discarded by the user)" : answer === "stay" ? "the user chose to stay" : "staying (not asked)"}`);
+    if (answer === "go") return tok;
+    switching = null; applyGuards();                                  // 留下：解冻，人还在这一篇上
+    if (answer === "not-asked") d.setStatus(t("rescue.keepFailed", { e: kept }), { error: true });   // 没弹面（别的面开着 / 没接）：状态栏说清楚
     return tok;
+  }
+  /** 编辑框里那一篇的名字（未物化的新稿 = 它将来的名字）。 */
+  function holdsLabel(): string { return holds ?? `${st.pendingDir ? st.pendingDir + "/" : ""}${st.pendingTitle || st.pendingDate || "draft"}.txt`; }
+  function askLeaveAnyway(o: { name: string; text: string; error: string }): Promise<"go" | "stay" | "not-asked"> {
+    if (!d.onCannotKeep) return Promise.resolve("not-asked");
+    const ask = d.onCannotKeep;
+    cannotKeepAsk ??= (async () => { try { return await ask(o); } catch (e) { reportError(e); return "not-asked" as const; } finally { cannotKeepAsk = null; } })();
+    return cannotKeepAsk;
   }
   /** 等到「没有在飞的改名 ∧ 没有排着的保存 ∧ 定时器空 ∧（编辑框 == 已存的 ∨ 这一对现在不许落盘）」。上一轮存失败的再试一次，还不成交给 keepAside。 */
   async function settleSaves(): Promise<void> {
@@ -168,19 +200,46 @@ export function createEditor(d: EditorDeps) {
       try { await persist(false); } catch (e) { reportError(e); }
     }
   }
-  /** 保险丝：甲乙丙都对的时候永远不触发。触发了 = 这一篇存不上（或有一条输入路径绕过了冻结）：另存一份，不丢、也不写到别人名下。返回 false = 也没能另存。 */
-  async function keepAside(): Promise<boolean> {
-    const from = holds ?? `${st.pendingDir ? st.pendingDir + "/" : ""}${st.pendingTitle || st.pendingDate || "draft"}.txt`;
+  /** 保险丝：甲乙丙都对的时候永远不触发。触发了 = 这一篇存不上（或有一条输入路径绕过了冻结）：另存一份，不丢、也不写到别人名下。
+   *  返回 null = 另存成了；否则 = 没能另存的原因（调用方决定说什么、问不问人）。 */
+  async function keepAside(): Promise<string | null> {
+    const from = holdsLabel();
     const text = d.editor.value;
     diagNote("editor", `leaving "${from}" with unsaved text (${text.length} chars on screen, ${savedText.length} saved) → keep aside`);
     try {
       const saved = await rescueText(from, text, { encrypted: st.encrypted });
-      d.setStatus(t("rescue.keptAside", { name: parseDocName(saved).stem })); d.onDocChanged();
-      return true;
+      leaveNote = t("rescue.keptAside", { name: parseDocName(saved).stem });
+      d.setStatus(leaveNote); d.onDocChanged();
+      return null;
     } catch (e) {
-      reportError(e); d.setStatus(t("rescue.keepFailed", { e: errMsg(e) }), { error: true });
-      diagNote("editor", `keep aside failed: ${errMsg(e)} → stay on "${from}"`);
-      return false;
+      reportError(e);
+      diagNote("editor", `keep aside failed: ${errMsg(e)}`);
+      return errMsg(e);
+    }
+  }
+  /** 编辑框里是旧世界（本机那份刚被云端那一版换掉：冲突面选了云端 / 干净快进）：封住不写回，重载。
+   *  读不出来（v3.0.19，审稿第四节第 4 条）：说清楚「先只读」、过一会儿自动再试一次；还不成就停在只读，等人重开。返回 true = 重载好了。 */
+  async function reloadReplaced(name: string): Promise<boolean> {
+    if (st.name !== name || parked) return false;
+    if (!worldReplaced) {
+      if (localTimer) { clearTimeout(localTimer); localTimer = null; }
+      const dirty = d.editor.value !== savedText;
+      worldReplaced = true; applyGuards();
+      if (dirty) await keepAside();   // 按理到不了（快进只在干净时做、替换途中冻着）；到了也不丢
+    }
+    for (let attempt = 1; ; attempt++) {
+      try { await reload(name); }
+      catch (e) {
+        reportError(e, "log");
+        diagNote("editor", `reload "${name}" after its local copy was replaced: read failed (attempt ${attempt}): ${errMsg(e)}`);
+        if (st.name !== name || !worldReplaced) return false;
+        if (attempt >= 2) { d.setStatus(t("st.reloadFailed"), { error: true }); return false; }
+        d.setStatus(t("st.reloadRetrying"), { error: true });
+        await new Promise((r) => setTimeout(r, RELOAD_RETRY_MS));
+        if (st.name !== name || !worldReplaced || switching !== null) return false;   // 等的时候换了稿 / 别处已经重载好了
+        continue;
+      }
+      return st.name === name && !worldReplaced;
     }
   }
 
@@ -206,6 +265,7 @@ export function createEditor(d: EditorDeps) {
       // 旧世界不写回（见上「世界线守卫」）；锁定/不可用/只读稿绝不写（other-password 态尤其：否则用当前密码封空容器覆盖，审计 UI-3）；没有身份不写。
       //   注意是 canPersist 不是 canEdit：换稿冻结期间旧的那一对的保存照常落（乙要靠它）。
       if (!canPersist()) return;
+      if (d.ownsTextarea && !d.ownsTextarea()) { reportError(new Error(`[editor] refusing to save "${st.name ?? "(new draft)"}": book mode owns the textarea`), "error"); return; }   // 第三层（v3.0.19）：丁成立时永远不触发
       if (renameInFlight) { scheduleLocalSave(); return; }
       const text = d.editor.value;
       if (holds !== st.name) { reportError(new Error(`[editor] refusing to save: editor holds "${holds}" but identity is "${st.name}"`), "error"); return; }   // 绊线（换稿设计稿 §2.6）：甲成立时永远不触发
@@ -286,7 +346,7 @@ export function createEditor(d: EditorDeps) {
     try {
       await persist(true);
       if (gen !== loadGen) return;
-      if (reloadAfterPersist) { const n = reloadAfterPersist; reloadAfterPersist = null; await reload(n); return; }   // 冲突面选了云端：persist 链已经放开，这里才重载
+      if (reloadAfterPersist) { const n = reloadAfterPersist; reloadAfterPersist = null; await reloadReplaced(n); return; }   // 冲突面选了云端：persist 链已经放开，这里才重载（读失败 = 先只读、再试一次，v3.0.19）
       d.setState(statusForDoc(), { unsynced: pushPending });
       if (pushPending) schedulePush();   // 冲突未解 / 库判未推 → 下个周期再试
     } catch (e) {
@@ -371,24 +431,32 @@ export function createEditor(d: EditorDeps) {
     d.setStatus(t("st.loading"));
     let r: Awaited<ReturnType<typeof readDoc>>;
     try { r = await readDoc(name); }
-    catch (e) { if (switching === tok) { switching = null; applyGuards(); if (pushPending) schedulePush(); } throw e; }   // 读失败：解冻，人还在旧稿上，什么都没换
-    if (gen !== loadGen) return false;
+    catch (e) {   // 读失败：解冻，人还在旧稿上，什么都没换
+      if (switching === tok) {
+        switching = null; applyGuards();
+        if (staleName !== null && staleName === st.name) { const n = staleName; staleName = null; void reloadReplaced(n); }   // 换稿那一下里旧稿被云端快进过：编辑框是旧的，重载（审稿第四节第 3 条）
+        else if (pushPending) schedulePush();
+      }
+      throw e;
+    }
+    const superseded = () => gen !== loadGen || switchSeq !== tok;   // 被放下（park）/ 新稿 / 又一次换稿压过
+    if (superseded()) return false;
     resetPerDoc();
     if (r.kind === "locked" || r.kind === "other-password") {
       show({ name, text: "", encrypted: true, locked: true });   // 新稿 + 锁着 + 空：对的一对，保存被 st.locked 拦着
       d.setState(r.kind === "locked" ? "" : t("st.otherPasswordHint"));
       if (!opts.promptUnlock) return true;   // 非手势：停在锁态，点锁图标再问
       const ok = r.kind === "locked" ? await d.ensureUnlocked() : await d.ensureFileUnlocked(name);
-      if (gen !== loadGen) return false;
+      if (superseded()) return false;
       if (!ok) return true;
       r = await readDoc(name);
-      if (gen !== loadGen) return false;
+      if (superseded()) return false;
       if (r.kind === "other-password") {   // 当前密码解锁了但这篇是别的密码：再问这篇的
         const ok2 = await d.ensureFileUnlocked(name);
-        if (gen !== loadGen) return false;
+        if (superseded()) return false;
         if (!ok2) return true;
         r = await readDoc(name);
-        if (gen !== loadGen) return false;
+        if (superseded()) return false;
       }
     }
     if (r.kind === "ok") {
@@ -396,8 +464,9 @@ export function createEditor(d: EditorDeps) {
       if (opts.keepCaret) { try { d.editor.selectionStart = d.editor.selectionEnd = Math.min(caret, r.text.length); } catch { /* ignore */ } }
       else moveCaretToStart();
       d.setState(statusForDoc());
+      if (leaveNote) { d.setStatus(leaveNote); leaveNote = null; }   // 离开前另存成功的提示：「加载中…」把它盖掉了，再说一次（审稿第四节第 8 条）
       if (r.encoding !== "utf-8" && r.encoding !== "utf-8-bom" && canEdit()) {   // 旧编码 → 以 UTF-8 写回（v1 同款规范化）
-        void saveDoc(name, r.text, { push: d.isSignedIn() }).then((w) => { if (w.resolution === "takeCloud" && st.name === name && gen === loadGen) void reload(name); }).catch((e) => reportError(e, "log"));   // 这一推也可能撞冲突面：选了云端就得重载，别让屏上留着旧世界
+        void saveDoc(name, r.text, { push: d.isSignedIn() }).then((w) => { if (w.resolution === "takeCloud" && st.name === name && gen === loadGen) void reloadReplaced(name); }).catch((e) => reportError(e, "log"));   // 这一推也可能撞冲突面：选了云端就得重载，别让屏上留着旧世界
       }
       return true;
     }
@@ -420,6 +489,7 @@ export function createEditor(d: EditorDeps) {
     resetPerDoc();
     show({ name: null, text: "", pendingDate: formatDate(Date.now()), pendingDir: dir, encrypted: !!opts.encrypted });
     d.setState(st.encrypted ? t("st.pendingEncrypted") : "");
+    if (leaveNote) { d.setStatus(leaveNote); leaveNote = null; }
     d.editor.focus();
     return true;
   }
@@ -451,10 +521,14 @@ export function createEditor(d: EditorDeps) {
         localDirty: () => !!localTimer || persistQueued > 0 || pushPending || d.editor.value !== savedText,
         onReplaceStart: () => { froze = true; replacing = true; applyGuards(); d.onReplacing?.(true); },
       });
-      if (gen !== loadGen) return undefined;
+      if (gen !== loadGen) {
+        // 本机那份已经换成了云端那一版，可这一下里换了稿（审稿第四节第 3 条）：换稿还在路上 → 记下来，成了就不用管（show 清掉）、读失败留在这一篇上时 open 那边重载；
+        //   已经回到这一篇上（换稿读失败了）→ 现在就重载。都是同步先封住（worldReplaced），旧的那份字一下都不让再写回。
+        if (r.status === "fast-forwarded") { if (switching !== null) staleName = name; else if (st.name === name && !parked) void reloadReplaced(name); }
+        return undefined;
+      }
       if (r.status === "fast-forwarded") {
-        await reload(name);
-        d.setStatus(t("st.loadedCloudLatest", { time: fmtTime(Date.now()) }));
+        if (await reloadReplaced(name)) d.setStatus(t("st.loadedCloudLatest", { time: fmtTime(Date.now()) }));
       } else if (r.status === "cloud-absent") {
         d.setStatus(t("st.cloudGone"), { error: true });
       }
@@ -593,13 +667,16 @@ export function createEditor(d: EditorDeps) {
       d.onBeforeLoad?.();   // 语音会话中止、没提交的拼音清掉（同 open / newDoc / clear；以前 park 不调，转写结果会落进接手的书页）
       const tok = await leaveCurrent();
       if (switching !== tok) return false;
+      loadGen++;   // 丁（v3.0.19）：放下的同一步作废在飞的 open / reload / refreshIfClean——读回来的字不许摆进书的编辑框
       parked = true; releaseIdentity();
       return true;
     },
     /** 没有身份的那一刻（放下之后、下一篇 show 之前）：编辑框只读，里面的字不算没存（不归任何一篇）。 */
     resume: () => { parked = false; savedText = d.editor.value; applyGuards(); },
-    /** 回收站那条路：离开这一篇（冻结 → 保存全部做完）。**必须紧跟 clear()**（冻结由它解开）。返回 false = 没存上的字也没能另存。 */
-    leave: async (): Promise<boolean> => { const tok = await leaveCurrent(); return switching === tok; },
+    /** 回收站那条路：离开这一篇（冻结 → 保存全部做完）。**必须紧跟 clear()**（冻结由它解开）。返回 false = 没离开（存不上、另存不了，人选了留下 / 被别的换稿压过）：调用方别扔、别 clear。 */
+    leave: async (): Promise<boolean> => { const tok = await leaveCurrent(); return switching === tok; },   // 存不上、另存不了时同样问人（v3.0.19）：留下 = 返回 false，回收站那条路就不扔
+    /** 离开前另存成功的那句提示（书那边开书会用「加载中…」盖掉它）：取走，调用方开完再说一次。 */
+    takeLeaveNote: (): string | null => { const n = leaveNote; leaveNote = null; return n; },
     isParked: () => parked,
   };
 }

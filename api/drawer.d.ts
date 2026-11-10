@@ -20,7 +20,7 @@ export interface DrawerDeps {
     /** 抽屉行「改名…」（2026-09-09 审计 #6：以前只能先打开再从顶栏改）。 */
     onRenameDoc: (name: string) => Promise<void>;
     /** 当前稿被移入回收站/改名后：编辑器清空或切稿。 */
-    onActiveTrashed: () => Promise<void>;
+    onActiveTrashed: () => Promise<boolean>;
     onSettingsShown: () => void;
     focusEditor: () => void;
     setStatus: (text: string, opts?: {

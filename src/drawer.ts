@@ -25,7 +25,7 @@ export interface DrawerDeps {
   /** 抽屉行「改名…」（2026-09-09 审计 #6：以前只能先打开再从顶栏改）。 */
   onRenameDoc: (name: string) => Promise<void>;
   /** 当前稿被移入回收站/改名后：编辑器清空或切稿。 */
-  onActiveTrashed: () => Promise<void>;
+  onActiveTrashed: () => Promise<boolean>;   // false = 编辑器没放手（存不上、另存不了，人选了留着）：不扔
   onSettingsShown: () => void;
   focusEditor: () => void;
   setStatus: (text: string, opts?: { error?: boolean }) => void;
@@ -202,7 +202,7 @@ export function createDrawer(d: DrawerDeps) {
 
   async function onTrash(name: string): Promise<void> {
     const wasActive = d.activeName() === name;
-    if (wasActive) await d.onActiveTrashed();   // 先让编辑器放手（flush + 清空），再让库 move-aside
+    if (wasActive && !(await d.onActiveTrashed())) return;   // 先让编辑器放手（flush + 清空），再让库 move-aside；没放手 = 不扔（v3.0.19）
     try {
       const r = await trashDoc(name);
       if (r.status === "cancelled") { d.setStatus(t("st.cancelled")); return; }

@@ -73,4 +73,6 @@ export interface CloudGate {
         settle: () => void;
     } | null;
 }
+/** 黑匣子去重：同一个 key 连着来只写第一次；key 变了才写，第一行带上「上一种又来了几次、没写」。reset = 从头算。 */
+export declare const HEARTBEAT_EVERY = 30;
 export declare function createCloudGate(d: CloudGateDeps): CloudGate;

@@ -298,6 +298,8 @@ const editor = createEditor({
   ensureUnlocked, ensureFileUnlocked,
   onBeforeLoad: () => { voiceAbortHook?.(); if (ime.isComposing()) { ime.resetComposition(); renderImeState(); } },   // 没提交的拼音别漏进下一篇（2026-09-04 复现：上一篇残留「def」进了新稿）
   onReplacing: (on) => setReplacing(on),
+  ownsTextarea: () => !project.active(),   // v3.0.19 第三层：书开着时文本稿一个字节都不存
+  onCannotKeep: (o) => cannotKeepFlow(o),
 });
 let voiceAbortHook: (() => void) | null = null;
 // ── 参考窗（ADR-0016）：宿主适配层；书模式的钩子在 createProjectMode 里接（保存前 collect / 开书后 apply / 页改动 → 链接卡重取）。──
@@ -320,6 +322,7 @@ const project = createProjectMode({
   onReplacing: (on) => setReplacing(on),
   askName: (title, def, hint) => openInputSheet(title, { message: hint, defaultValue: def, placeholder: t("edge.namePh"), okLabel: t("common.ok") }),
   isUnlocked, ensureUnlocked, onLockChange: (cb) => { onLockChange(cb); },
+  ownsTextarea: () => editor.isParked(),   // v3.0.19 第三层：文本稿编辑器没放下时，编辑框里的字一个也不进书
 });
 refHost.bindMode(project);
 onKeyboardFloor = () => refHost.relayout();
@@ -973,7 +976,7 @@ async function importSealedFile(f: Blob, fileName: string): Promise<void> {
   } catch (e) { reportError(e); setStatus(t("export.failed", { e: errText(e) }), { error: true }); }
 }
 /** 「好了」sheet：分享（系统分享面板，要在用户手势里调）/ 下载 /（单张 PNG 时）进剪贴板。长图、PDF、TXT 共用。 */
-async function offerFiles(files: File[], title: string, message: string, opts: { copyPng?: boolean; sealed?: boolean } = {}): Promise<void> {
+async function offerFiles(files: File[], title: string, message: string, opts: { copyPng?: boolean; sealed?: boolean } = {}): Promise<boolean> {   // true = 交出去了（分享 / 下载 / 进剪贴板）
   if (!opts.sealed && activeEncrypted()) message += "\n" + t("export.plainNote");   // 出门规则：加密稿的明文格式，下载前明说一句
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   const canShare = typeof navigator.share === "function" && !!nav.canShare?.({ files });
@@ -983,7 +986,7 @@ async function offerFiles(files: File[], title: string, message: string, opts: {
   choices.push({ label: t("export.download"), value: "download", primary: !canShare });
   if (canCopy) choices.push({ label: t("export.copyPng"), value: "copy" });
   const v = await openChoiceSheet(title, message, choices);
-  if (v == null) return;
+  if (v == null) return false;
   try {
     if (v === "share") { await navigator.share({ files, title: files[0]!.name }); setStatus(t("export.shared")); }
     else if (v === "copy") { await navigator.clipboard.write([new ClipboardItem({ "image/png": files[0]! })]); setStatus(t("export.copied")); }
@@ -991,7 +994,26 @@ async function offerFiles(files: File[], title: string, message: string, opts: {
       for (let i = 0; i < files.length; i++) { triggerDownload(files[i]!, files[i]!.name); if (i < files.length - 1) await new Promise((res) => setTimeout(res, 350)); }
       setStatus(files.length === 1 && !files[0]!.type.startsWith("image/") ? t("export.downloadedName", { name: files[0]!.name }) : t("export.downloaded", { n: files.length }));   // PDF / TXT 不按「张」数
     }
-  } catch (e) { if ((e as { name?: string })?.name === "AbortError") return; reportError(e, "log"); setStatus(t("export.deliverFailed", { e: errText(e) }), { error: true }); }
+    return true;
+  } catch (e) { if ((e as { name?: string })?.name === "AbortError") return false; reportError(e, "log"); setStatus(t("export.deliverFailed", { e: errText(e) }), { error: true }); return false; }
+}
+/** 离开一篇时没存上的字存不进去、另存一份也没成（v3.0.19 出口；user 2026-11-10「同意，挽留，加出口，这时候应该有导出对吧」）：
+ *  默认留下（先留着它）；导出 = 屏上这一篇的全文交成一个 .txt（走「好了」那张面：分享 / 下载；不经过库，库正写不进去），交出去了才走，取消回到这三选；
+ *  丢掉 = 这一篇停在上一次存上的样子，走。别的面 / 遮罩正开着 = 不弹（弹了会把那一张顶掉），按留下算。 */
+async function cannotKeepFlow(o: { name: string; text: string; error: string }): Promise<"go" | "stay" | "not-asked"> {
+  if (isSheetOpen() || isBusyActive()) return "not-asked";
+  const stem = parseDocName(o.name).stem;
+  for (;;) {
+    const v = await openChoiceSheet(t("leave.cannotKeepTitle"), t("leave.cannotKeepMsg", { name: stem, e: o.error }), [
+      { label: t("leave.stay"), value: "stay" as const, primary: true },
+      { label: t("leave.exportThenGo"), value: "export" as const },
+      { label: t("leave.discardThenGo"), value: "discard" as const, danger: true },
+    ]);
+    if (v === "discard") return "go";
+    if (v !== "export") return "stay";   // 先留着它 / 取消
+    const file = new File([o.text], `${stem.replace(/[\\/:*?"<>|]/g, "-") || "draft"}.txt`, { type: "text/plain" });
+    if (await offerFiles([file], t("leave.exportTitle"), t("leave.exportMsg", { name: stem, n: o.text.length }))) return "go";
+  }
 }
 // ── PDF 导出（v2.3.14，user 2026-09-30「只要比高考作文和童话长一点的，导出长图都很费劲。老老实实做 pdf 吧」「先把 pdf 导出给做出来」）：
 //   引擎 = src/export/{ttf,pdf,pdf-book}.ts（纯函数）：行宽三档 + 行距跟档（同长图），嵌一款 TrueType 字体的子集，可搜索可复制，带书签。
@@ -1276,16 +1298,24 @@ let refreshShared: Promise<string | undefined> | null = null;   // 2026-11-03 �
 const refreshIfCleanAny = (): Promise<string | undefined> => (refreshShared ??= (project.active() ? project.refreshIfClean() : editor.refreshIfClean()).finally(() => { refreshShared = null; }));   // 2026-09-26：书也快进（以前书这一面是空操作 → 别的设备改了书这台永远看不到）
 const stateAny = () => (project.active() ? project.stateText() : editor.statusForDoc());   // 顶栏粘性稿态也是「谁活着问谁」（以前 boot 末尾拿 parked 的 txt 编辑器状态 → 工程一开就显「本地没有缓存」）
 const isDirtyAny = () => (project.active() ? (project.session()?.dirty ?? false) : editor.isDirty());
-async function leaveProject(): Promise<void> { if (!project.active()) return; await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume(); }
+async function leaveProject(): Promise<void> {
+  if (!project.active()) { project.abandonOpen(); return; }   // 书还在读（还没开着）：那一次作废，读回来不接管编辑框（v3.0.19 丁）
+  await project.close(); delete document.body.dataset.project; edgeSidebar.render(); editor.resume();
+}
+/** 书这一次真的开着的是不是它（v3.0.19 丁）：开书被放弃时 openStore 返回 true（「被更新的 open 抢先，不算失败」），不核这一句就会把界面切成书的样子。 */
+const bookIsOpen = (name: string): boolean => project.active() && project.name() === name;
 /** 打开任一身份：工程 → 工程模式（txt 编辑器 park）；txt → txt 编辑器（工程模式关）。 */
 async function openAny(name: string, opts: { promptUnlock?: boolean } = {}): Promise<boolean> {
   input.flushText();   // 软键盘 app 道里排着的改字先落进**现在这一篇**（v3.0.18：换稿那一刻起编辑框冻结，排着的改字做的时候问 canEdit 会被丢掉）
   libraryReturn = "replaced";   // 换了文档：书库返回时不再重开旧的
   if (docKind(name) === "project") {
-    if (!editor.isParked() && !(await editor.park())) return false;   // 没放下（没存上的字也没能另存）：人留在这一篇上
+    const parkNow = !editor.isParked();
+    if (parkNow && !(await editor.park())) return false;   // 没放下（存不上、另存不了，人选了留下）：人留在这一篇上
     const ok = await project.openStore(name, { promptUnlock: opts.promptUnlock });
+    if (!bookIsOpen(name)) return false;                    // 这一次被放弃了（又换了别的）：界面不切成书，编辑框归后来那一次
     if (!ok) { await openNewDraft(); return false; }   // 打不开（本地无、坏、旧格式）→ 退出书模式、开一张新稿（park 过的 txt 编辑器没有身份，不能就那么留着）
     document.body.dataset.project = "1";
+    const note = parkNow ? editor.takeLeaveNote() : null; if (note) setStatus(note);   // 离开前另存成功的提示：开书的「加载中…」盖掉了它
     return ok;
   }
   await leaveProject();
@@ -1315,7 +1345,9 @@ async function releaseForLibrary(): Promise<void> {
   input.flushText();
   libraryReturn = { reopen: activeName() };
   if (project.active()) { await project.close(); delete document.body.dataset.project; edgeSidebar.render(); }
+  else project.abandonOpen();   // 书还在读：那一次作废（v3.0.19 丁）
   if (!editor.isParked() && !(await editor.park())) { libraryReturn = "replaced"; return; }   // park = 离开这一篇（保存全部做完）再静默、身份清空；没放下 = 稿留在书库底下原样，回来时什么都不换
+  editor.takeLeaveNote();   // 书库里没有「加载中…」盖它：提示已经露过了
   editorEl.value = "";   // 纸面别留上一篇的字（parked 期间 input 不算数）
   renderTopbar(); setState(stateAny());
   galleryHost.refresh();   // 「打开中」标签 / 可删性按「没有打开的」重算
@@ -1337,12 +1369,14 @@ async function newProjectFlow(): Promise<void> {
   try {
     const empty = await packProject(emptyProject());
     const name = await createProjectDoc(raw.trim() || t("project.defaultName"), empty, date, galleryHost.isOpen() ? galleryHost.currentFolder() : drawer.currentFolder(), { encrypted: wantEncrypt });
-    if (!editor.isParked() && !(await editor.park())) return;   // 没放下（没存上的字也没能另存）：书建好了留在书库里，人留在这一篇上
+    const parkNow = !editor.isParked();
+    if (parkNow && !(await editor.park())) return;   // 没放下（存不上、另存不了，人选了留下）：书建好了留在书库里，人留在这一篇上
     await project.createInStore(name, firstNode, { encrypted: wantEncrypt });
+    if (!bookIsOpen(name)) return;   // 建的那一下里又换了别的（v3.0.19 丁）：书在书库里，界面不切
     document.body.dataset.project = "1";
     libraryReturn = "replaced";
     if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
-    setStatus(t("project.created", { name: parseDocName(name).stem }));
+    setStatus((parkNow ? editor.takeLeaveNote() : null) ?? t("project.created", { name: parseDocName(name).stem }));
   } catch (e) { reportError(e); setStatus(t("project.createFailed", { e: e instanceof Error ? e.message : String(e) }), { error: true }); }
 }
 async function openLocalProjectFlow(): Promise<void> {
@@ -1354,12 +1388,16 @@ async function openLocalProjectFlow(): Promise<void> {
 }
 /** 开一个本机的书（LocalHome 已在手；也给 ui-audit 直接喂夹具用）。 */
 async function openLocalHome(lh: LocalHome): Promise<void> {
-  if (!editor.isParked() && !(await editor.park())) return;
+  const parkNow = !editor.isParked();
+  if (parkNow && !(await editor.park())) return;
   const ok = await project.openLocal(lh);
+  const h = project.home();
+  if (!(project.active() && h?.kind === "local" && h.home === lh)) return;   // 读的那一下里又换了别的（v3.0.19 丁）
   document.body.dataset.project = "1";
   libraryReturn = "replaced";
   if (galleryHost.isOpen()) galleryHost.close(); else drawer.close();
-  if (ok) setStatus(lh.canWriteBack ? t("project.localWriteBack") : t("project.localDownloadOnly"));
+  const note = parkNow ? editor.takeLeaveNote() : null;
+  if (note) setStatus(note); else if (ok) setStatus(lh.canWriteBack ? t("project.localWriteBack") : t("project.localDownloadOnly"));
 }
 // ── 2.0 图库屏（@internal/gallery）：☰ 打开独立一屏；抽屉只剩设置。──
 const galleryHost = initGalleryHost({
@@ -1408,7 +1446,12 @@ const drawer = createDrawer({
   },
   onOpenDoc: async (name) => { await openAny(name, { promptUnlock: true }); },
   onRenameDoc: async (name) => { if (name === editor.state.name) await renameCurrentDoc(); else await renameOtherDoc(name); },   // 2026-09-09 审计 #6
-  onActiveTrashed: async () => { if (project.active()) await leaveProject(); else { input.flushText(); await editor.leave(); } editor.clear(); },   // leave 不只等在飞的那一轮：排着的、改名中的也等完，不会在挪进回收站之后把字写回旧名字（v3.0.18）
+  onActiveTrashed: async () => {   // 抽屉先调它、再把这一篇挪进回收站；返回 false = 别扔
+    if (project.active()) { await leaveProject(); editor.clear(); return true; }
+    project.abandonOpen(); input.flushText();
+    if (!(await editor.leave())) return false;   // leave 不只等在飞的那一轮：排着的、改名中的也等完，不会在挪进回收站之后把字写回旧名字（v3.0.18）；存不上、另存不了，人选了留着（v3.0.19）= 不扔
+    editor.clear(); return true;
+  },
   onSettingsShown: () => renderSettings(),
   focusEditor: () => focusWriting(),
   setStatus,

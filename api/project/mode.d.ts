@@ -62,6 +62,8 @@ export interface ProjectModeDeps {
     isUnlocked: () => boolean;
     ensureUnlocked: () => Promise<boolean>;
     onLockChange: (cb: (unlocked: boolean) => void) => void;
+    /** 编辑框现在归不归书管（v3.0.19 第三层：app 注入 `() => editor.isParked()`）。为假时不把编辑框里的字收进书、报错——文本稿编辑器没放下时，它的字一个也不进书。 */
+    ownsTextarea?: () => boolean;
 }
 export declare function createProjectMode(d: ProjectModeDeps): {
     active: () => boolean;
@@ -180,6 +182,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     createInStore: (projectName: string, firstNode: string, opts?: {
         encrypted?: boolean;
     }) => Promise<void>;
+    abandonOpen: () => void;
     adoptName: (newName: string) => void;
     close: () => Promise<void>;
     flushLocal: () => Promise<void>;

@@ -808,6 +808,14 @@ export declare const S: {
         readonly zh: "已加载云端最新 {time}";
         readonly en: "Loaded latest from cloud {time}";
     };
+    readonly "st.reloadRetrying": {
+        readonly zh: "没能重新载入这一篇，先只读，过几秒自动再试一次";
+        readonly en: "Couldn't reload this one. It's read-only for now; trying again in a few seconds";
+    };
+    readonly "st.reloadFailed": {
+        readonly zh: "还是没能重新载入，这一篇先只读；在书库里重新点开它就好";
+        readonly en: "Still couldn't reload it, so it stays read-only. Reopen it from the library";
+    };
     readonly "st.cloudGone": {
         readonly zh: "此文件在云端已不存在";
         readonly en: "This file no longer exists in the cloud";
@@ -835,6 +843,34 @@ export declare const S: {
     readonly "rescue.keepFailed": {
         readonly zh: "还有没存上的字，也没能另存，先留在这一篇上：{e}";
         readonly en: "Some text couldn't be saved or kept aside, so you're staying on this one: {e}";
+    };
+    readonly "leave.cannotKeepTitle": {
+        readonly zh: "这一篇还有字没存上";
+        readonly en: "Some text here isn't saved";
+    };
+    readonly "leave.cannotKeepMsg": {
+        readonly zh: "「{name}」里有字存不进去，另存一份也没成（{e}）。\n可以先留着它，等解决了再走；也可以把屏上的全文导出成一个 txt 文件再走；或者丢掉没存上的字，这一篇停在上一次存上的样子。";
+        readonly en: "Some text in “{name}” couldn't be saved, and keeping a copy failed too ({e}).\nYou can stay on it until that's sorted out, export the full text on screen as a .txt file and then leave, or discard the unsaved text — this one stays as it was last saved.";
+    };
+    readonly "leave.stay": {
+        readonly zh: "先留着它";
+        readonly en: "Stay on it";
+    };
+    readonly "leave.exportThenGo": {
+        readonly zh: "导出成 txt 再走";
+        readonly en: "Export as .txt, then leave";
+    };
+    readonly "leave.discardThenGo": {
+        readonly zh: "丢掉没存上的字，走";
+        readonly en: "Discard the unsaved text and leave";
+    };
+    readonly "leave.exportTitle": {
+        readonly zh: "导出没存上的这一篇";
+        readonly en: "Export the unsaved text";
+    };
+    readonly "leave.exportMsg": {
+        readonly zh: "「{name}」屏上的全文，{n} 个字符。交出去之后就离开这一篇。";
+        readonly en: "The full text of “{name}” as it is on screen ({n} characters). Once it's handed over, you'll leave this one.";
     };
     readonly "st.pushedAll": {
         readonly zh: "已补传 {n} 个文件";

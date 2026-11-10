@@ -1856,12 +1856,25 @@ scenario("换稿 ⑨ 冷启动：这台上次开的是书（读得慢），别�
   await A.close();
 });
 
-scenario("换稿 ⑩ 这一篇存不上、另存也失败 → 不换稿、解冻、字还在；修好后接着写、能换稿", async (w) => {
+/** 通用面（#sheet）：等它带着这个标题出来 / 看它 / 点其中一个选项。 */
+const waitSheet = (D, titleRe) => D.page.waitForFunction((src) => { const s = document.getElementById("sheet"); return !s.classList.contains("hidden") && new RegExp(src).test(document.getElementById("sheetTitle").textContent ?? ""); }, titleRe.source, { timeout: 8000 });
+const sheetView = (D) => D.eval(() => ({ up: !document.getElementById("sheet").classList.contains("hidden"), title: document.getElementById("sheetTitle").textContent, choices: [...document.querySelectorAll("#sheetChoices button")].map((b) => b.textContent) }));
+const clickChoice = (D, labelRe) => D.eval((src) => { const b = [...document.querySelectorAll("#sheetChoices button")].find((x) => new RegExp(src).test(x.textContent ?? "")); if (!b) throw new Error("sheet choice not found: " + src); b.click(); }, labelRe.source);
+const CANNOT_KEEP = /这一篇还有字没存上/;
+const toastText = (D) => D.eval(() => document.getElementById("toast").textContent ?? "");
+
+scenario("换稿 ⑩ 这一篇存不上、另存也失败 → 问人（三选，留下在头一个）；选「先留着它」= 不换稿、解冻、字还在；修好后接着写、能换稿", async (w) => {
   const A = await w.device("A");
   const { a, b } = await seedTwo(w, A);
   if (!(await breakSaves(A, "all"))) { check("能在页面里让写盘失败（测试前提）", false, "store.file is not writable"); await A.close(); return; }
   await A.type("qq");
-  const r = await A.eval((n) => window.__xhw.openAny(n).then((x) => "ret:" + x, (e) => "threw:" + String(e?.message ?? e)), a);
+  await A.eval((n) => { window.__o = window.__xhw.openAny(n).then((x) => "ret:" + x, (e) => "threw:" + String(e?.message ?? e)); }, a);
+  await waitSheet(A, CANNOT_KEEP);
+  const v = await sheetView(A);
+  check("问了：三个选项，「先留着它」在头一个", v.choices.length === 3 && /先留着它/.test(v.choices[0] ?? "") && v.choices.some((c) => /导出成 txt/.test(c)) && v.choices.some((c) => /丢掉/.test(c)), JSON.stringify(v));
+  check("问着的时候：还是第二篇、编辑框冻着", (await A.eval(() => window.__xhw.editor.state.name)) === b && (await editorReadOnly(A)), "");
+  await clickChoice(A, /先留着它/);
+  const r = await A.eval(() => window.__o);
   await A.wait(300);
   check("换稿没成（返回 false，不抛）", r === "ret:false", r);
   check("人还在第二篇上、编辑框解冻了、敲的字还在", (await A.eval(() => window.__xhw.editor.state.name)) === b && !(await editorReadOnly(A)) && (await A.text()) === ORIG_B + "qq", await A.text());
@@ -1870,7 +1883,7 @@ scenario("换稿 ⑩ 这一篇存不上、另存也失败 → 不换稿、解冻
   await A.type("w"); await A.wait(700);
   check("修好后：之前的字连同接着敲的都存进第二篇", (await localText(A, b)) === ORIG_B + "qqw", await localText(A, b));
   const r2 = await A.eval((n) => window.__xhw.openAny(n), a); await A.wait(300);
-  check("修好后：能换到第一篇，编辑框 = 第一篇原文", r2 === true && (await A.text()) === ORIG_A, `${r2} ${await A.text()}`);
+  check("修好后：能换到第一篇，编辑框 = 第一篇原文；没再问", r2 === true && (await A.text()) === ORIG_A && !(await sheetView(A)).up, `${r2} ${await A.text()}`);
   await A.close();   // 不查零报错：这一条故意让写盘抛错
 });
 
@@ -1889,6 +1902,7 @@ scenario("换稿 ⑪ 这一篇存不上、另存能成 → 没存上的字另存
   if (kept[0]) check("留底 = 第二篇原文 + 没存上的字", (await localText(A, kept[0])) === ORIG_B + "qq", await localText(A, kept[0]));
   check("第二篇本机还是原文（没存上，也没被写坏）", (await localText(A, b)) === ORIG_B, await localText(A, b));
   check("第一篇本机 = 原文", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  check("换稿后还看得到「已另存为…」那句（没被「加载中…」盖掉）", /已另存为/.test(await toastText(A)), await toastText(A));
   await A.close();   // 不查零报错：这一条故意让写盘抛错
 });
 
@@ -1914,6 +1928,211 @@ scenario("换稿 ⑫ 连着换两次（第一次还在读就来了第二次）�
   check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
   await A.close();
 });
+
+// ── v3.0.19（2026-11-10，Claude Opus 5.5；方案 = 家族根 ai-docs/20261110-review-wxhw-open-swap-fix.md 第五节）：文本稿和书共用一个编辑框，一边正在读的时候换到另一边。
+//   在 v3.0.18 的代码上 ⑬⑭ 红（审稿探针 probe/open-swap/cross-mode.mjs 的甲乙）。做法：第一次换稿时假网盘每次请求慢 2.5 秒，0.25 秒后归零再发第二次换稿。
+const BOOK_PAGE = "书的一页原文。改。";
+const localBook = async (D, n) => { const b64 = await D.eval(async (x) => { const b = await window.__xhw.store().file(x, { mode: "existing" }).open(); if (!b) return null; const u = new Uint8Array(await b.arrayBuffer()); let s = ""; for (const c of u) s += String.fromCharCode(c); return btoa(s); }, n); return b64 ? bookPages(Buffer.from(b64, "base64")) : {}; };
+const modeSnap = (D) => D.eval(() => ({ name: window.__xhw.editor.state.name, parked: window.__xhw.editor.isParked(), projActive: window.__xhw.project.active(), projName: window.__xhw.project.name(), ro: document.getElementById("editor").readOnly, val: document.getElementById("editor").value, bookUi: document.body.dataset.project === "1" }));
+/** 一篇文本稿 + 一本一页的书，都推上网盘；最后停在一张空新稿上（没物化）。 */
+async function seedTxtAndBook(w, A) {
+  await A.boot(server.url); await A.type(ORIG_A); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const a = await A.eval(() => window.__xhw.editor.state.name);
+  await A.eval(() => window.__xhw.newDraft({})); await A.wait(300);
+  await A.type("书的一页原文。"); await A.wait(500);
+  void A.eval(() => window.__xhw.liftDraft());
+  await A.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 8000 });
+  await A.page.click("#sheetConfirm");
+  await A.page.waitForFunction(() => window.__xhw.project.active(), null, { timeout: 8000 }); await A.wait(500);
+  await A.eval(() => window.__xhw.setSidebar(false));
+  await A.type("改。"); await A.wait(500); await A.pushNow(); await A.wait(600);
+  const book = await A.eval(() => window.__xhw.project.name()), page = await A.eval(() => window.__xhw.project.current());
+  if ((await bookPages(await w.cloudBytes(book)))[page] !== BOOK_PAGE) throw new Error("seed: book page not on cloud");
+  if ((await w.cloudText(a)) !== ORIG_A) throw new Error("seed: txt not on cloud");
+  await A.eval(() => window.__xhw.newDraft({})); await A.wait(500);
+  return { a, book, page };
+}
+
+scenario("换稿 ⑬ 文本稿读得慢 → 接着开书，书先装好：文本稿读回来不碰编辑框，书那一页没被写成文本稿的字", async (w) => {
+  const A = await w.device("A");
+  const { a, book, page } = await seedTxtAndBook(w, A);
+  w.gate.delayMs = 2500;
+  await A.eval((n) => { window.__p1 = window.__xhw.openAny(n).then((r) => "ok:" + r, (e) => "threw:" + (e?.message ?? e)); }, a);
+  await A.wait(250);
+  w.gate.delayMs = 0;
+  const r2 = await A.eval((n) => window.__xhw.openAny(n), book); await A.wait(300);
+  const mid = await modeSnap(A);
+  const r1 = await A.eval(() => window.__p1); await A.wait(300);
+  const end = await modeSnap(A);
+  check("前提：书先装好（书模式开着、编辑框 = 书的那一页）", r2 === true && mid.projActive && mid.val === BOOK_PAGE, JSON.stringify(mid));
+  check("文本稿那次读回来算被顶掉（false，不抛）", r1 === "ok:false", r1);
+  check("文本稿读完后：还是书开着、文本稿编辑器放着、编辑框 = 书的那一页", end.projActive && end.parked && end.bookUi && end.val === BOOK_PAGE && end.name === null, JSON.stringify(end));
+  await A.type("x"); await A.wait(700);
+  await A.eval(() => window.__xhw.project.flushLocal()); await A.pushNow(); await A.wait(800);
+  const lb = await localBook(A, book), cb = await bookPages(await w.cloudBytes(book));
+  check("本机：书的那一页 = 原文 + x", lb[page] === BOOK_PAGE + "x", JSON.stringify(lb));
+  check("网盘：书的那一页 = 原文 + x", cb[page] === BOOK_PAGE + "x", JSON.stringify(cb));
+  check("本机 / 网盘：文本稿没变", (await localText(A, a)) === ORIG_A && (await w.cloudText(a)) === ORIG_A, `${await localText(A, a)} | ${await w.cloudText(a)}`);
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("换稿 ⑭ 书读得慢 → 接着开文本稿，文本稿先开好：书读回来不接管编辑框，文本稿没被写成书的字", async (w) => {
+  const A = await w.device("A");
+  const { a, book, page } = await seedTxtAndBook(w, A);
+  w.gate.delayMs = 2500;
+  await A.eval((n) => { window.__p1 = window.__xhw.openAny(n).then((r) => "ok:" + r, (e) => "threw:" + (e?.message ?? e)); }, book);
+  await A.wait(250);
+  w.gate.delayMs = 0;
+  const r2 = await A.eval((n) => window.__xhw.openAny(n), a); await A.wait(300);
+  const mid = await modeSnap(A);
+  const r1 = await A.eval(() => window.__p1); await A.wait(300);
+  const end = await modeSnap(A);
+  check("前提：文本稿先开好", r2 === true && mid.name === a && mid.val === ORIG_A, JSON.stringify(mid));
+  check("书那次读回来算被顶掉（false，不抛）", r1 === "ok:false", r1);
+  check("书读完后：书没开着、界面不是书的样子、开着的是文本稿、编辑框 = 文本稿原文", !end.projActive && !end.bookUi && !end.parked && end.name === a && end.val === ORIG_A, JSON.stringify(end));
+  await A.type("x"); await A.wait(800);
+  await A.eval(() => window.__xhw.editor.pushNow()); await A.wait(800);
+  check("本机 / 网盘：文本稿 = 原文 + x", (await localText(A, a)) === ORIG_A + "x" && (await w.cloudText(a)) === ORIG_A + "x", `${await localText(A, a)} | ${await w.cloudText(a)}`);
+  const lb = await localBook(A, book), cb = await bookPages(await w.cloudBytes(book));
+  check("本机 / 网盘：书的那一页没变", lb[page] === BOOK_PAGE && cb[page] === BOOK_PAGE, `${JSON.stringify(lb)} | ${JSON.stringify(cb)}`);
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
+scenario("换稿 ⑮ 存不上、另存也失败 → 选「导出成 txt 再走」：在下载那张面上取消 = 回到三选；再导出、下载，下载的就是屏上全文，然后换稿；原稿停在上次存上的样子", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  if (!(await breakSaves(A, "all"))) { check("能在页面里让写盘失败（测试前提）", false, "store.file is not writable"); await A.close(); return; }
+  await A.type("qq");
+  await A.eval((n) => { window.__o = window.__xhw.openAny(n).then((x) => "ret:" + x, (e) => "threw:" + String(e?.message ?? e)); }, a);
+  await waitSheet(A, CANNOT_KEEP);
+  await clickChoice(A, /导出成 txt/);
+  await waitSheet(A, /导出没存上的这一篇/);
+  const offer = await sheetView(A);
+  check("下载那张面：有「下载」", offer.choices.includes("下载"), JSON.stringify(offer));
+  await A.page.click("#sheetCancel");
+  await waitSheet(A, CANNOT_KEEP);
+  check("取消下载 = 回到三选，还没换稿", (await A.eval(() => window.__xhw.editor.state.name)) === b && (await sheetView(A)).choices.length === 3, "");
+  await clickChoice(A, /导出成 txt/);
+  await waitSheet(A, /导出没存上的这一篇/);
+  const dlP = A.page.waitForEvent("download", { timeout: 8000 });
+  await clickChoice(A, /^下载$/);
+  const dl = await dlP;
+  const { readFileSync } = await import("node:fs");
+  const got = readFileSync(await dl.path(), "utf8");
+  check("下载的文件 = 屏上全文（原文 + 没存上的 qq）", got === ORIG_B + "qq", got);
+  check("文件名 = 这一篇的名字 .txt", dl.suggestedFilename() === b.replace(/^.*\//, ""), dl.suggestedFilename());
+  const r = await A.eval(() => window.__o); await A.wait(300);
+  await A.eval(() => window.__restoreSaves());
+  check("交出去之后换稿成了", r === "ret:true", r);
+  check("开着的是第一篇、编辑框 = 第一篇原文、能打字", (await A.eval(() => window.__xhw.editor.state.name)) === a && (await A.text()) === ORIG_A && !(await editorReadOnly(A)), await A.text());
+  check("第二篇本机 = 上次存上的样子（原文）", (await localText(A, b)) === ORIG_B, await localText(A, b));
+  check("第一篇本机 = 原文", (await localText(A, a)) === ORIG_A, await localText(A, a));
+  await A.close();   // 不查零报错：这一条故意让写盘抛错
+});
+
+scenario("换稿 ⑯ 存不上、另存也失败 → 选「丢掉没存上的字，走」：换稿成了；原稿停在上次存上的样子；书库里没多出东西", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  if (!(await breakSaves(A, "all"))) { check("能在页面里让写盘失败（测试前提）", false, "store.file is not writable"); await A.close(); return; }
+  await A.type("qq");
+  await A.eval((n) => { window.__o = window.__xhw.openAny(n).then((x) => "ret:" + x, (e) => "threw:" + String(e?.message ?? e)); }, a);
+  await waitSheet(A, CANNOT_KEEP);
+  await clickChoice(A, /丢掉/);
+  const r = await A.eval(() => window.__o); await A.wait(300);
+  await A.eval(() => window.__restoreSaves());
+  check("换稿成了", r === "ret:true", r);
+  check("开着的是第一篇、编辑框 = 第一篇原文、能打字", (await A.eval(() => window.__xhw.editor.state.name)) === a && (await A.text()) === ORIG_A && !(await editorReadOnly(A)), await A.text());
+  check("第二篇本机 = 原文（qq 丢了，是人选的）", (await localText(A, b)) === ORIG_B, await localText(A, b));
+  const names = await libraryNames(A);
+  check("书库里还是这两篇", names.length === 2 && names.includes(a) && names.includes(b), JSON.stringify(names));
+  await A.type("k"); await A.wait(700);
+  check("接着写：第一篇本机 = 原文 + k", (await localText(A, a)) === ORIG_A + "k", await localText(A, a));
+  await A.close();   // 不查零报错：这一条故意让写盘抛错
+});
+
+scenario("换稿 ⑰ 抽屉里把开着的这一篇移到回收站，可它存不上、另存也失败 → 问人；选「先留着它」= 不扔、还开着、字还在", async (w) => {
+  const A = await w.device("A");
+  const { a, b } = await seedTwo(w, A);
+  if (!(await breakSaves(A, "all"))) { check("能在页面里让写盘失败（测试前提）", false, "store.file is not writable"); await A.close(); return; }
+  await A.type("qq");
+  await A.eval(() => window.__xhw.drawer.open()); await A.wait(800);
+  const clicked = await A.eval((n) => { const row = [...document.querySelectorAll("#docList .doc-row")].find((li) => li.querySelector(".doc-main")?.title === n); if (!row) return false; row.querySelector(".doc-more").click(); return true; }, b);
+  check("测试前提：抽屉里找到第二篇那一行", clicked);
+  await A.wait(200);
+  await A.eval(() => document.querySelector('.popup-menu [data-id="trash"]').click());
+  await waitSheet(A, CANNOT_KEEP);
+  await clickChoice(A, /先留着它/);
+  await A.wait(600);
+  check("还开着第二篇、编辑框能打字、字还在", (await A.eval(() => window.__xhw.editor.state.name)) === b && !(await editorReadOnly(A)) && (await A.text()) === ORIG_B + "qq", await A.text());
+  const names = await libraryNames(A);
+  check("第二篇没进回收站（书库里还在）", names.includes(b) && names.includes(a), JSON.stringify(names));
+  await A.eval(() => window.__restoreSaves());
+  await A.type("w"); await A.wait(700);
+  check("修好后：字都存进第二篇", (await localText(A, b)) === ORIG_B + "qqw", await localText(A, b));
+  await A.close();   // 不查零报错：这一条故意让写盘抛错
+});
+
+scenario("换稿 ⑱ 冲突面选了云端 → 重载那一下读失败：先只读、状态栏说清楚，过几秒自动再试，读到云端版、能接着写；云端赢家没被旧世界盖掉", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  const CLOUD = "原文。A改了。";
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  await B.type("B也改了。"); await B.wait(500);
+  await B.eval((tg) => {   // 下一次读这一篇失败一次（= 冲突面选了云端之后那次重载）
+    const s = window.__xhw.store(), orig = s.file; let left = 1;
+    s.file = function (n, o) { const f = orig.call(s, n, o); if (n === tg) { const op = f.open.bind(f); f.open = async (...x) => { if (left > 0) { left--; throw new Error("e2e: read failed once"); } return op(...x); }; } return f; };
+    window.__restoreFile = () => { s.file = orig; };
+  }, name);
+  const push = B.pushNow();
+  await B.resolveGate(TAKE_CLOUD);
+  await B.page.waitForFunction(() => /没能重新载入这一篇/.test(document.getElementById("toast").textContent ?? ""), null, { timeout: 15000 });
+  check("读失败那一下：编辑框只读", await editorReadOnly(B));
+  await B.page.waitForFunction((c) => { const e = document.getElementById("editor"); return e.value === c && !e.readOnly; }, CLOUD, { timeout: 10000 }).then(() => check("自动再试成了：编辑框 = 云端版、能打字", true), (e) => check("自动再试成了：编辑框 = 云端版、能打字", false, String(e?.message ?? e)));
+  await push.catch(() => {});
+  await B.eval(() => window.__restoreFile());
+  await B.type("z"); await B.wait(700);
+  check("接着写：本机 = 云端版 + z", (await localText(B, name)) === CLOUD + "z", await localText(B, name));
+  check("网盘上还是 A 的版本（旧世界没写回去）", (await w.cloudText(name)) === CLOUD, await w.cloudText(name));
+  await A.close(); await B.close();   // 不查零报错：这一条故意让读盘失败
+});
+
+/** ⑲⑳：A、B 都开着同一篇；B 改了推上去。A 上悄悄快进（refreshIfClean，网盘慢）还在路上时点开另一篇，那一篇读失败——人退回原来那篇。
+ *  failAfterMs = 0：读失败得快（快进后到）；> 0：读失败得慢（快进先到、换稿还在路上）。v3.0.18：编辑框留着快进之前的旧字、能写，敲一个字就把 B 的改动盖掉（本机 + 网盘）。 */
+async function staleAfterFailedSwap(w, failAfterMs) {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  await A.eval(() => window.__xhw.newDraft({})); await A.wait(300); await A.type("另一篇。"); await A.wait(700);
+  const other = await A.eval(() => window.__xhw.editor.state.name);
+  await A.eval((n) => window.__xhw.openAny(n), name); await A.wait(600);
+  await B.type("B改了。"); await B.wait(500); await B.pushNow(); await B.wait(600);
+  const CLOUD = "原文。B改了。";
+  if ((await w.cloudText(name)) !== CLOUD) throw new Error("seed: B's edit did not reach the cloud");
+  await A.eval(([tg, ms]) => {
+    const s = window.__xhw.store(), orig = s.file;
+    s.file = function (n, o) { const f = orig.call(s, n, o); if (n === tg) f.open = async () => { if (ms) await new Promise((r) => setTimeout(r, ms)); throw new Error("e2e: read failed"); }; return f; };
+    window.__restoreFile = () => { s.file = orig; };
+  }, [other, failAfterMs]);
+  w.gate.delayMs = 800;
+  await A.eval(() => { window.__rf = window.__xhw.editor.refreshIfClean(); });
+  await A.wait(200);
+  const r = await A.eval((n) => window.__xhw.openAny(n).then(() => "ok", (e) => "threw: " + String(e?.message ?? e)), other);
+  await A.eval(() => window.__rf);
+  w.gate.delayMs = 0;
+  await A.wait(1500);
+  await A.eval(() => window.__restoreFile());
+  check("测试前提：点开的那一篇读失败了", /threw/.test(r), r);
+  check("人还在原来那篇上", (await A.eval(() => window.__xhw.editor.state.name)) === name, await A.eval(() => window.__xhw.editor.state.name));
+  check("编辑框 = 快进来的云端版、能打字（不是快进之前的旧字）", (await A.text()) === CLOUD && !(await editorReadOnly(A)), await A.text());
+  await A.type("z"); await A.wait(700); await A.pushNow(); await A.wait(800);
+  check("接着写：本机 = 云端版 + z", (await localText(A, name)) === CLOUD + "z", await localText(A, name));
+  check("网盘 = 云端版 + z（B 的改动还在）", (await w.cloudText(name)) === CLOUD + "z", await w.cloudText(name));
+  check("另一篇没被碰", (await localText(A, other)) === "另一篇。", await localText(A, other));
+  await A.close(); await B.close();   // 不查零报错：这一条故意让读盘失败
+}
+scenario("换稿 ⑲ 云端快进还在路上时点开另一篇、那一篇很快读失败（快进后到）→ 人回到原来那篇：编辑框换成云端版，旧的字不盖掉别的设备的改动", (w) => staleAfterFailedSwap(w, 0));
+scenario("换稿 ⑳ 云端快进还在路上时点开另一篇、那一篇读了好一会才失败（快进先到）→ 同上", (w) => staleAfterFailedSwap(w, 2500));
 
 for (const s of scenarios) {
   if (only && !s.name.includes(only)) continue;
