@@ -1,12 +1,13 @@
 // diag-log-ui.ts —— 设置页「诊断日志」：看 + 复制 + 分享/下载 .txt + 清空（数据源 = diag-log.ts）。
 // created 2026-09-09 by Claude Fable 5.1 —— 从 WeebPaint src/diag-log-sheet.ts 照抄（WXHW 设置页本就是一块 <pre>，不另开 sheet）。
 // 复制走 navigator.clipboard.writeText（点击手势内）→ 失败回退 textarea+execCommand → 再失败选中 <pre> 让用户长按复制。
-// 分享：canShare files → .txt 文件（微信/QQ 吃不下 60KB 长文本——WeebPaint 2026-09-06 教训）；没有 share（Quest/桌面）→ 下载 .txt。
+// 分享：canShare files → .txt 文件（微信/QQ 吃不下 60KB 长文本——WeebPaint 2026-09-06 教训）；不是手机 / 平板系统（Windows / Mac 桌面、Quest）→ 下载 .txt（share-platform.ts，家族周账 F-111）。
 // 无系统弹窗（家规）：结果走状态栏。
 
 import { t } from "./i18n/index.ts";
 import { entries, toText, clear } from "./diag-log.ts";
 import { reportError } from "./error-badge.ts";
+import { shareSheetPlatform } from "./share-platform.ts";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
 
@@ -53,11 +54,11 @@ export function initDiagLogUi(deps: { status: (text: string) => void }): void {
     deps.status(t("diag.copyFailed"));
   }
   const logFile = () => new File([toText()], `xiaoheiwu-diag-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`, { type: "text/plain" });
-  const canShare = typeof navigator.share === "function";
+  const canShare = shareSheetPlatform();   // Windows 上的 Edge / Chrome 也有 navigator.share，但这里要下载（F-111）
   if (shareBtn) {
     if (!canShare) shareBtn.textContent = t("diag.download");
     shareBtn.addEventListener("click", async () => {
-      if (!canShare) {   // Quest / 桌面：下载
+      if (!canShare) {   // 桌面 / Quest：下载
         const f = logFile();
         const url = URL.createObjectURL(f);
         const a = document.createElement("a"); a.href = url; a.download = f.name; a.style.display = "none";
