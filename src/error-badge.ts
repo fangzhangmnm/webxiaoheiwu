@@ -7,6 +7,7 @@
 // 已毕业项目 logging 统一英文（家规 2026-08-19）；用户可见文案走 i18n（调用方传 t() 结果或 Error.message）。
 // 这里是**最终消费者**：层层上报只有这里 console。
 
+import { redactForEgress } from "./egress-redact.ts";
 import { record as diagRecord } from "./diag-log.ts";   // 2026-09-09 黑匣子（diag-log 不反向 import 本文件，无环）
 
 export type ErrorLevel = "error" | "warning" | "info" | "log";
@@ -48,7 +49,7 @@ function showBanner(text: string, level: "error" | "warning"): void {
 
 /** 唯一 error 上报入口。app 各处 catch / store 的 ui.reportError 都汇到这里。 */
 export function reportError(err: unknown, level: ErrorLevel = "error"): void {
-  const msg = errToText(err);
+  const msg = redactForEgress(errToText(err));   // v3.0.21：横幅会被截图、黑匣子会被导出——地址只留到主机、密钥参数抹掉（统筹重审裁定二）
   try { diagRecord(level, msg); } catch { /* 黑匣子静默 */ }
   _ring.push(`${new Date().toISOString().slice(11, 19)} ${level} ${msg}`);
   if (_ring.length > RING_MAX) _ring.shift();

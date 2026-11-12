@@ -42,6 +42,7 @@ import { initIdleGate } from "./idle-gate.ts";
 import type { SyncKind } from "./editor.ts";
 import { initPwaShell } from "./pwa-shell.ts";
 import { initDiagLog, note as diagNote } from "./diag-log.ts";   // 2026-09-09 黑匣子
+import { originOnly } from "./egress-redact.ts";
 import { holdUntilSettled } from "./settle-hold.ts";   // 2026-09-09 更新提示/reload 等 auth boot 落地
 import { setStoreQuietStatus } from "./store-ui.ts";
 import { initDiagLogUi } from "./diag-log-ui.ts";
@@ -2815,7 +2816,7 @@ function afterSignIn(): Promise<void> {
 
 window.addEventListener("error", (event) => { reportError(new Error(`[window] ${(event.message || "").slice(0, 160)}`)); });
 // CSP（index.html 的 meta，2026-10-17）拦下的东西进黑匣子：真机上某个功能突然不灵时，先看这里是不是策略挡了它。
-document.addEventListener("securitypolicyviolation", (e) => { diagNote("csp", `blocked ${e.effectiveDirective} ${String(e.blockedURI).slice(0, 120)} (${e.sourceFile ? e.sourceFile.split("/").pop() : "?"}:${e.lineNumber})`); console.warn("[csp] blocked", e.effectiveDirective, e.blockedURI); });
+document.addEventListener("securitypolicyviolation", (e) => { diagNote("csp", `blocked ${e.effectiveDirective} ${originOnly(String(e.blockedURI))} (${e.sourceFile ? e.sourceFile.split("/").pop() : "?"}:${e.lineNumber})`); console.warn("[csp] blocked", e.effectiveDirective, e.blockedURI); });   // v3.0.21：被拦的东西只记来源（协议 + 主机），不记整条地址（统筹重审裁定二）
 window.addEventListener("unhandledrejection", (event) => {
   const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
   reportError(err, err.message === "Not signed in" ? "log" : "error");   // 未登录 = 正常态（库后台云动作的 getToken 抛），只记日志

@@ -13,6 +13,7 @@
 // - 日志文案英文（已毕业项目 logging 英文，家规 2026-08-19）。
 
 import { deviceKvGetJson, deviceKvSetJson } from "./device-kv.ts";
+import { redactForEgress } from "./egress-redact.ts";   // v3.0.21：黑匣子是给人导出去发给别人的——写进来之前、导出时都过一遍（地址只留到主机、密钥参数抹掉）
 import { APP_VERSION } from "./version.ts";
 
 export type DiagLevel = "error" | "warning" | "info" | "log" | "note";
@@ -48,7 +49,7 @@ export function flush(): void {
 /** 记一条。msg 截到 600 字符；环满丢最旧。 */
 export function record(level: DiagLevel, msg: string): void {
   const arr = load();
-  arr.push({ t: Date.now(), l: level, m: String(msg).slice(0, MAX_MSG) });
+  arr.push({ t: Date.now(), l: level, m: redactForEgress(String(msg)).slice(0, MAX_MSG) });
   if (arr.length > MAX_ENTRIES) arr.splice(0, arr.length - MAX_ENTRIES);
   scheduleFlush();
 }
@@ -77,7 +78,7 @@ function env(): string {
 }
 /** 复制/展示用的整段文本：环境头 + 每条一行「MM-DD HH:MM:SS.mmm L msg」（旧在上、新在下）。 */
 export function toText(): string {
-  const lines = load().map((e) => `${fmtTime(e.t)} ${LEVEL_TAG[e.l] ?? "?"} ${e.m}`);
+  const lines = load().map((e) => `${fmtTime(e.t)} ${LEVEL_TAG[e.l] ?? "?"} ${redactForEgress(e.m)}`);   // 升级前记下的旧行导出时也过一遍
   return env() + "\n----\n" + (lines.length ? lines.join("\n") : "(empty)");
 }
 

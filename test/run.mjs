@@ -1,6 +1,7 @@
 // 跑全部测：`npm test`（node 直跑 .ts：node 24 strip-types）。新测文件在这里 import 一行即可。created 2026-09-03 by Claude Fable 5.1
 import "./doc-model.test.mjs";
 import "./zh-punct.test.mjs";
+import "./egress-redact.test.mjs";   // 2026-11-12 出口关：黑匣子 / 横幅写之前地址截到主机、密钥参数抹掉（统筹重审裁定二）
 import "./ime-fuzzy.test.mjs";   // 2026-10-19 模糊音：十对开关 → RIME 方案补丁
 import "./rime-userdb.test.mjs";   // 2026-11-03 D3：RIME 词库字节读写
 import "./enc-dict.test.mjs";      // 2026-11-03 D3：加密词库的规矩
