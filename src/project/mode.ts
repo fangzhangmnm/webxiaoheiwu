@@ -236,7 +236,9 @@ export function createProjectMode(d: ProjectModeDeps) {
       catch (e) { if (e instanceof LocalWriteDeniedError) { reportError(e, "log"); d.setStatus(t("project.writeBackDenied"), { error: true }); } else { reportError(e); d.setStatus(t("st.saveFailed", { e: errMsg(e) }), { error: true }); } }
       d.onChanged(); return;
     }
-    if (!d.isSignedIn() || isOffline()) { if (localTimer) { clearTimeout(localTimer); localTimer = null; } try { await persist(false); } catch (e) { reportError(e, "log"); } pushPending = true; d.setState(stateText(), { unsynced: d.isSignedIn() }); return; }
+    // v3.0.21（统筹重审裁定七；施工单第 5 条的根）：未登录 / 离线也守「不脏不推」——persist(false) 真写了才在里面立欠推（会话不脏 = 不写）；
+    //   以前这里无条件 pushPending = true：没人改过的书一过这条路就欠着推，网一「通」就被 flush(force) 重新打包推上去、网盘比它新时弹冲突面。
+    if (!d.isSignedIn() || isOffline()) { if (localTimer) { clearTimeout(localTimer); localTimer = null; } try { await persist(false); } catch (e) { reportError(e, "log"); } d.setState(stateText(), { unsynced: d.isSignedIn() && pushPending }); return; }
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     const g = gen;
     try {

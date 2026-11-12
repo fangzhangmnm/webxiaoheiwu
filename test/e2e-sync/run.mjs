@@ -526,6 +526,107 @@ const netCalls = (w) => w.log.length;
 const CLOUD_READS = (w) => w.log.filter((l) => /^(getItemByPath|list)\b/.test(l)).length;
 const diagText = (D) => D.page.evaluate(async () => { await new Promise((r) => setTimeout(r, 350)); const k = Object.keys(localStorage).find((x) => x.endsWith("diag-log")); return k ? localStorage.getItem(k) : ""; });
 
+// ── v3.0.21 统筹重审裁定七（施工单第 5 条的根；Claude Opus 5.5）：没有人改过的稿，任何路径都不许把它变成待传、推上去跟云端争 ──
+//   11-12 那天：选了「离线继续」之后，切后台 / 闲置锁屏 / 保存钮会走 pushNow 的离线分支——只落本地、但无条件立欠推（文本稿还把原样的字再存一遍）；
+//   网一「通」（只问元数据，下载被拦不影响）→ 快进失败、本机还是旧的那份 → 把没改过的旧字节推上去 → 网盘比它新 → 412 → 弹「在你编辑期间被别的设备改过」。
+async function offlineContinueBlockedDownloads(D) {
+  await D.setGate({ hangCloud: true }, false);
+  await D.bootRaw(server.url);
+  await D.page.waitForFunction(() => window.__xhw?.gate?.phase() === "blocked", null, { timeout: 20000 });
+  await D.clickGate("离线继续"); await D.wait(300);
+  await D.eval(() => { window.__e2eGate = { ...(window.__e2eGate ?? {}), hangCloud: false }; window.__e2eContentBlocked = true; });   // 云端答话了，只有下载内容被拦（同那天）
+}
+const NO_TYPING_TRIGGERS = {
+  "切后台再回来": async (D) => { await D.hide(); await D.wait(400); await D.show(); },                                              // 回前台 = 闸门立刻静默重连
+  // 解开锁屏 / 重新连接会一路等到补同步做完——旧代码在那儿弹面、等人回答，所以只发出去不等（等了就把整个场景卡死，红不出来）
+  "闲置锁屏再解开": async (D) => { await D.eval(() => window.__xhw.idle.show()); await D.wait(600); void D.eval(() => window.__xhw.idle.dismiss()).catch(() => {}); },
+  "按 Ctrl+S": async (D) => { await D.page.keyboard.press("Control+s"); await D.wait(600); void D.eval(() => window.__xhw.gate.reconnect()).catch(() => {}); },   // 之后网「通」一次
+};
+const sameBytes = (a, b) => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+async function settleNoSheet(D, ms = 3500) {   // 等补同步跑完：期间只要露过「在你编辑期间」的面就记下来
+  let seen = null;
+  for (let t0 = Date.now(); Date.now() - t0 < ms; ) { const v = await gateSheetView(D); if (v.up && /在你编辑期间/.test(v.message)) { seen = v.message; break; } await D.wait(100); }
+  return seen;
+}
+for (const kind of ["txt", "书"]) {
+  for (const [label, trigger] of Object.entries(NO_TYPING_TRIGGERS)) {
+    scenario(`回来 · 没改过的${kind} · 离线继续 + 只拦下载 + 一个字不打 · ${label} → 不弹冲突面、待传 0、网盘字节没变`, async (w) => {
+      const A = await w.device("A"), B = await w.device("B");
+      let name;
+      if (kind === "txt") { name = await seedTxt(w, A, B, "原文。"); await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300); }
+      else { const bk = await seedBook(w, A, B); name = bk.name; await jumpAndType(A, bk.ch1, "A改了。"); await A.pushNow(); await A.wait(600); }
+      const cloudBefore = await w.cloudBytes(name);
+      await offlineContinueBlockedDownloads(B);
+      check("选了离线", await B.eval(() => !window.__xhw.cloudOnline()), "");
+      await trigger(B);
+      const seen = await settleNoSheet(B);
+      check("一个字没打：不弹「在你编辑期间被别的设备改过」", seen == null, String(seen));
+      check("库里待传 = 0", (await B.eval(() => window.__xhw.store().files.dirty.count())) === 0, String(await B.eval(() => window.__xhw.store().files.dirty.count())));
+      check("网盘字节没变（没把旧的推上去）", sameBytes(cloudBefore, await w.cloudBytes(name)), "");
+      check("页面零报错", [...A.errors, ...B.errors].filter((e) => !/文件内容刚才没下载下来/.test(e)).length === 0, [...A.errors, ...B.errors].join(" ; "));
+      await A.close(); await B.close();
+    });
+  }
+}
+scenario("回来 · 没改过的稿 · 没登录时切后台、按 Ctrl+S，重新登录后：不推、不弹（txt 和书）", async (w) => {
+  for (const kind of ["txt", "书"]) {
+    const A = await w.device(`A-${kind}`), B = await w.device(`B-${kind}`);
+    let name;
+    if (kind === "txt") { name = await seedTxt(w, A, B, `${kind}原文。`); await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300); }
+    else { const bk = await seedBook(w, A, B); name = bk.name; await jumpAndType(A, bk.ch1, "A改了。"); await A.pushNow(); await A.wait(600); }
+    const cloudBefore = await w.cloudBytes(name);
+    await B.eval(() => window.__e2eAuth.signOut()); await B.wait(300);
+    await B.hide(); await B.wait(400); await B.show(); await B.wait(300);   // 没登录时切后台（只落本机，不调 pushNow）
+    await B.page.keyboard.press("Control+s"); await B.wait(500);              // 没登录时按保存：smartSave → pushNowAny → pushNow 的未登录分支
+    await B.eval(() => { window.__e2eContentBlocked = true; });
+    void B.eval(() => window.__e2eAuth.signIn()).catch(() => {}); await B.wait(300);
+    const seen = await settleNoSheet(B, 8000);   // 登录之后先对收藏夹、拉词库、快进核对，最后才推开着的那篇：多等一会
+    check(`${kind}：重新登录后不弹「在你编辑期间」`, seen == null, String(seen));
+    check(`${kind}：库里待传 = 0`, (await B.eval(() => window.__xhw.store().files.dirty.count())) === 0, "");
+    check(`${kind}：网盘字节没变`, sameBytes(cloudBefore, await w.cloudBytes(name)), "");
+    await A.close(); await B.close();
+  }
+});
+scenario("回来 · 干净的书 · 云端有新版、下载不通（没选离线）· 按 Ctrl+S → 不推、不弹，状态行说没能核对", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const bk = await seedBook(w, A, B);
+  await jumpAndType(A, bk.ch1, "A改了。"); await A.pushNow(); await A.wait(600);
+  const cloudBefore = await w.cloudBytes(bk.name);
+  await B.eval(() => { window.__e2eContentBlocked = true; });
+  await B.page.keyboard.press("Control+s");
+  const seen = await settleNoSheet(B);
+  check("不弹「在你编辑期间」", seen == null, String(seen));
+  check("网盘字节没变", sameBytes(cloudBefore, await w.cloudBytes(bk.name)), "");
+  check("库里待传 = 0", (await B.eval(() => window.__xhw.store().files.dirty.count())) === 0, "");
+  const status = await B.eval(() => [...document.querySelectorAll(".toast, #statusToast, [data-status]")].map((x) => x.textContent).join(" | ") + " | " + (document.getElementById("toast")?.textContent ?? ""));
+  check("状态行说实话：没能核对云端，这次没有上传。", status.includes("没能核对云端，这次没有上传。"), status);
+  await A.close(); await B.close();
+});
+// 反方向的守卫：真的打了字的，照旧落本机、照旧欠推、网通后照旧推上去（不许把真改动吞掉）
+for (const kind of ["txt", "书"]) {
+  scenario(`回来 · 离线时真打了字的${kind} → 照旧落本机、网通后照旧推上去（不许吞掉真改动）`, async (w) => {
+    const A = await w.device("A"), B = await w.device("B");
+    let name;
+    if (kind === "txt") name = await seedTxt(w, A, B, "原文。");
+    else name = (await seedBook(w, A, B)).name;
+    await offlineContinueBlockedDownloads(B);
+    await B.eval(() => { window.__e2eContentBlocked = false; });   // 这条只验「真改动不被吞」：下载照常
+    await B.type("离线时打的字。"); await B.wait(800);
+    await B.hide(); await B.wait(400);
+    check("还离线时：库里待传 = 1（落本机了）", (await B.eval(() => window.__xhw.store().files.dirty.count())) === 1, String(await B.eval(() => window.__xhw.store().files.dirty.count())));
+    await B.show();
+    let ok = false;
+    for (let t0 = Date.now(); Date.now() - t0 < 8000 && !ok; ) {
+      const bytes = await w.cloudBytes(name);
+      const text = kind === "txt" ? (bytes ? new TextDecoder().decode(bytes) : "") : JSON.stringify(await bookPages(bytes));
+      ok = text.includes("离线时打的字。");
+      if (!ok) await B.wait(200);
+    }
+    check("网通后推上去了（网盘里有离线时打的字）", ok, "");
+    await A.close(); await B.close();
+  });
+}
+
 scenario("闸门 ① 没挂库：开机 / 醒来零闸", async (w) => {
   const D = await w.device("A");
   await D.ctx.addInitScript(GATE_OVERLAY_WATCH);

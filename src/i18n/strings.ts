@@ -48,6 +48,7 @@ export const S = {
   "save.local":          { zh: "已存本机", en: "Saved on this device" },
   "save.offline":        { zh: "离线：已存本机，联网后自动上传", en: "Offline: saved locally, uploads when back online" },
   "save.stillPending":   { zh: "还没推上去，稍后自动重试", en: "Not uploaded yet — will retry" },
+  "save.notVerified":    { zh: "没能核对云端，这次没有上传。", en: "Couldn't check the cloud; nothing was uploaded this time." },   // v3.0.21 裁定七：干净的书按保存，核对没成就不推（定稿 = 统筹）
   "save.upToDate":       { zh: "已是云端最新", en: "Up to date with the cloud" },
   "ui.voiceBackspace":   { zh: "退格（按住连删）", en: "Backspace (hold to repeat)" },
   "voice.blockedLocked": { zh: "这篇锁着，先解锁再口述", en: "This draft is locked — unlock it to dictate" },

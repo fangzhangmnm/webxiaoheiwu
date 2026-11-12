@@ -116,9 +116,14 @@ async function smartSave(): Promise<void> {
   saveButton.classList.add("flash"); setTimeout(() => saveButton.classList.remove("flash"), 500);
   void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
   if (before === "clean") {
-    await refreshIfCleanAny();
+    const checked = await refreshIfCleanAny();
     // 书：干净态也 force 写 + 推——把不标脏的 editor-state（参考窗显隐 / 排版档 / 导航位置）顺手捞上去（user 2026-09-30；WeebPaint smartSaveAndPush 同款不看脏）；txt 稿没有这种状态，只快进
-    if (project.active() && syncKindAny() === "clean" && project.home()?.kind === "store" && auth.isSignedIn()) { await project.pushNow({ force: true }); renderSaveButton(); return; }
+    //   v3.0.21（统筹重审裁定七）：只有这次核对明确回了「和云端同一版」或快进成功才推。核对没成（离线 / 云端出错 / 快进失败 / 跳过 / 没结果）= 不推：
+    //   推上去的是可能已经过时的旧书，网盘比它新时弹「在你编辑期间被别的设备改过」（11-12 下载被拦那天）。状态行说实话。
+    if (project.active() && project.home()?.kind === "store" && auth.isSignedIn()) {
+      if (checked !== "in-sync" && checked !== "fast-forwarded") { setStatus(t("save.notVerified")); renderSaveButton(); return; }
+      if (syncKindAny() === "clean") { await project.pushNow({ force: true }); renderSaveButton(); return; }
+    }
     if (syncKindAny() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return;
   }
   if (before === "local" && !auth.isSignedIn() && !(project.active() && project.home()?.kind === "local")) {

@@ -261,6 +261,7 @@ export function createEditor(d: EditorDeps) {
   }
   async function persistOnce(push: boolean): Promise<void> {
     const gen = loadGen;
+    const existing = !!st.name;   // 进门时就有身份（不是这一次才物化的新稿）
     {
       // 旧世界不写回（见上「世界线守卫」）；锁定/不可用/只读稿绝不写（other-password 态尤其：否则用当前密码封空容器覆盖，审计 UI-3）；没有身份不写。
       //   注意是 canPersist 不是 canEdit：换稿冻结期间旧的那一对的保存照常落（乙要靠它）。
@@ -283,6 +284,10 @@ export function createEditor(d: EditorDeps) {
         d.onDocChanged();
       }
       const name = st.name!;
+      // v3.0.21（裁定七）：已有的稿、只落本机、屏上的字和上次存下的一样 → 不把原样的字交给库再存一遍（存一遍 = 库里算一份待传）、也不立欠推。
+      //   新稿这一次刚物化的照旧往下走（那一次 saveDoc 负责立欠推，v3.0.19）；要推的（push）照旧走：欠着的字节还得交给库推。
+      //   加密切换、改名、换钥匙不走 persist（走库自己的接口），这里管不到它们。
+      if (existing && !push && text === savedText) return;
       const effPush = push;
       const r = await saveDoc(name, text, { push: effPush });
       if (effPush) diagNote("sync", `push "${name}": ${r.pushed ? "pushed" : `not pushed (${r.reason ?? "?"})`}${r.resolution ? ` resolution=${r.resolution}` : ""}`);   // 黑匣子：每一次推和它的结果（book 模式 mode.ts 同款）
@@ -329,11 +334,15 @@ export function createEditor(d: EditorDeps) {
     firstDirtyAt = 0;
     if (!st.name && !st.pendingDate) return;
     if (!canEdit()) return;   // 锁定/只读/不可用稿：没有可推的正文（审计 UI-3）
+    // v3.0.21（统筹 Claude Fable 5.2 重审裁定七；施工单第 5 条的根）：「不脏不推」也管离线 / 未登录那两条路。
+    //   没人改过的稿：不存、不立欠推、直接回去。以前离线分支只落本地却无条件 pushPending = true（切后台 / 闲置锁屏 / 保存钮都会走到），
+    //   网一「通」就把没改过的旧字节推上去，网盘比它新时弹「在你编辑期间被别的设备改过」（11-12 办公室那台；端到端「回来 · 没改过的…」）。
+    if (st.name && !pushPending && !localTimer && persistQueued === 0 && d.editor.value === savedText) return;
     if (!d.isSignedIn()) { await flushLocal(); return; }
     if (isOffline()) {   // 离线：只落本地，不刷红横幅；`online` 事件会回来推（审计 L2）
       if (localTimer) { clearTimeout(localTimer); localTimer = null; }
-      try { await persist(false); } catch (e) { reportError(e, "log"); }
-      pushPending = true; d.setState(statusForDoc(), { unsynced: true });
+      try { await persist(false); } catch (e) { reportError(e, "log"); }   // 真写了才立欠推（persistOnce 里立）；以前这里无条件立
+      d.setState(statusForDoc(), { unsynced: true });
       return;
     }
     // 不脏不推（v2.3.35，2026-10-16）：以前已有稿不管脏不脏每次登录 / 回前台 / 锁屏 / 解锁都整篇重推一遍（v2.1.10 的实现细节，没拍过）。
@@ -342,7 +351,6 @@ export function createEditor(d: EditorDeps) {
     //   「不脏」把排着的 / 正在做的保存也算上（v3.0.19，2026-11-10 Claude Fable 5.2；和 refreshIfClean 交给库的 localDirty 同一个定义）：新稿第一次落盘时
     //   建稿那一步一回来 savedText 就对上了、pushPending 要等后面那次写完才立——这中间按推送（保存钮 / 锁屏那一下）以前被当成干净的、直接跳过，
     //   要等十几秒后的定时推送才补上（机器忙时端到端「加密 txt · 挂机」撞进这一下 = 家族周账 F-239 的真原因）。
-    if (st.name && !pushPending && !localTimer && persistQueued === 0 && d.editor.value === savedText) return;
     if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     const gen = loadGen;
     d.setStatus(t("st.syncing"));
