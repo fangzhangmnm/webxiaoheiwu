@@ -78,6 +78,40 @@ scenario("txt · 推送冲突 → 云端覆盖本地：输家进本机备份箱�
   await A.close(); await B.close();
 });
 
+// v3.0.21（施工单第 2、3 条，Claude Opus 5.5）：下载文件内容不通时冲突面说实话；网通之后和以前一模一样。
+const gateSheetView = (D) => D.eval(() => ({ up: !document.getElementById("gateSheet").classList.contains("hidden"), message: document.getElementById("gateMessage").textContent, buttons: [...document.querySelectorAll("#gateActions button")].map((b) => ({ label: b.textContent, primary: b.classList.contains("primary") })) }));
+async function waitGateSheet(D, timeout = 8000) { const t0 = Date.now(); while (Date.now() - t0 < timeout) { const v = await gateSheetView(D); if (v.up && v.buttons.length) return v; await D.wait(50); } return gateSheetView(D); }
+scenario("txt · 下载内容不通 · 推送冲突 → 面多一行实话、默认钮是取消、三个钮都在；选云端覆盖本地完不成、本机字不动、横幅说刚才没下载下来；网通后再弹 = 和以前一样", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  await B.eval(() => { window.__e2eContentBlocked = true; });               // 只有下载内容被拦（列文件、上传照常）
+  await B.type("B也改了。"); await B.wait(500);
+  let push = B.pushNow();
+  let v = await waitGateSheet(B);
+  check("面弹出来了（推送撞冲突；自愈那一拉下载不下来）", v.up, JSON.stringify(v));
+  check("正文多一行：刚才下载云端那份的内容没成功", /\n刚才下载云端那份的内容没成功。选「云端覆盖本地」可能完不成；选「本地覆盖云端」会把别的设备写的换成这台的，被换掉的那份进备份箱。$/.test(v.message), v.message);
+  check("三个钮都在（一个不藏）", JSON.stringify(v.buttons.map((b) => b.label)) === JSON.stringify(["云端覆盖本地", "本地覆盖云端", "取消"]), JSON.stringify(v.buttons));
+  check("默认钮 = 取消（只有它一个高亮）", JSON.stringify(v.buttons.filter((b) => b.primary).map((b) => b.label)) === JSON.stringify(["取消"]), JSON.stringify(v.buttons));
+  check("钮都能点（不变灰）", await B.eval(() => [...document.querySelectorAll("#gateActions button")].every((b) => !b.disabled)), "");
+  await B.resolveGate(TAKE_CLOUD); await push.catch(() => {}); await B.wait(800);   // 人偏要选云端覆盖本地：完不成，但不许丢字
+  check("选了云端覆盖本地却下载不下来 → 本机的字原样还在", (await B.text()) === "原文。B也改了。", await B.text());
+  check("云端还是 A 的版本（没被动）", (await w.cloudText(name)) === "原文。A改了。", await w.cloudText(name));
+  const banner = await B.eval(() => document.getElementById("errBanner")?.textContent ?? "");
+  check("横幅说「云端连得上，但文件内容刚才没下载下来」，不说成连不上云端", banner.includes("云端连得上，但文件内容刚才没下载下来") && !banner.includes("连不上云端"), banner);
+  await B.eval(() => { window.__e2eContentBlocked = false; });              // 网通了
+  push = B.pushNow();
+  v = await waitGateSheet(B);
+  check("网通之后再撞：正文和以前一模一样（没有那行字）", v.message === "「" + name.replace(/\.txt$/i, "") + "」在你编辑期间被别的设备改过。保留哪一边？", v.message);
+  check("网通之后：默认钮回到云端覆盖本地、三个钮", JSON.stringify(v.buttons) === JSON.stringify([{ label: "云端覆盖本地", primary: true }, { label: "本地覆盖云端", primary: false }, { label: "取消", primary: false }]), JSON.stringify(v.buttons));
+  await B.resolveGate(TAKE_CLOUD); await push.catch(() => {}); await B.wait(1200);
+  check("网通之后云端覆盖本地照常做成", (await B.text()) === "原文。A改了。", await B.text());
+  check("B 的那版进了备份箱（不丢）", (await B.listBackup()).some((b) => b.name === name), JSON.stringify(await B.listBackup()));
+  const unexpected = [...A.errors, ...B.errors].filter((e) => !e.includes("文件内容刚才没下载下来"));   // 选了云端覆盖本地没做成 = 故意响亮报的那一条（横幅），不算意外
+  check("除了那条预期的横幅，页面零报错", unexpected.length === 0, unexpected.join(" ; "));
+  await A.close(); await B.close();
+});
+
 scenario("txt · 推送冲突 → 本地覆盖云端：云端输家进云端 .backup 夹", async (w) => {
   const A = await w.device("A"), B = await w.device("B");
   const name = await seedTxt(w, A, B, "原文。");

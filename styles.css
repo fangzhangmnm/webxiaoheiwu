@@ -1494,6 +1494,7 @@ body.adv:has(.offline-bar:not(.hidden)) .toast { bottom: calc(var(--sheet-bottom
 .gate-actions button { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line-strong, #c9b89a); background: var(--paper, #f1e6cf); color: inherit; font: inherit; cursor: pointer; }
 .gate-actions button.primary { background: var(--accent, #a05826); color: #fff; border-color: transparent; }
 .gate-note { margin-top: 10px; font-size: 12px; opacity: .75; }
+#gateMessage { white-space: pre-line; }   /* v3.0.21：冲突面在下载不通时另起一行说实话（施工单第 3 条）；别的面正文里没有换行符，不受影响 */
 .gate-note.hidden, .gate-spinner.hidden { display: none; }
 .gate-spinner { width: 22px; height: 22px; margin: 12px auto 0; border: 2px solid rgba(0,0,0,.15); border-top-color: var(--accent, #a05826); border-radius: 50%; animation: xhw-spin .9s linear infinite; }
 @keyframes xhw-spin { to { transform: rotate(360deg); } }

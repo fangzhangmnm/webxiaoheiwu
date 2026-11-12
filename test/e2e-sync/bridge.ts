@@ -41,6 +41,14 @@ async function call(op: string, ...args: unknown[]): Promise<unknown> {
   return dec(res.ok ?? null);
 }
 const blobOf = (u: unknown): Blob => new Blob([u as Uint8Array]);
+// v3.0.21（施工单第 2、3 条，Claude Opus 5.5）：只让「下载文件内容」失败（登录、列文件、上传照常）= 11-12 办公室那台：微软发文件的服务器被拦。
+//   形状同库 2.3.3 的 CloudNetworkError（name + stage "content" + 只有主机名）。开关：window.__e2eContentBlocked。
+const contentGate = (): void => {
+  if (!(window as unknown as { __e2eContentBlocked?: boolean }).__e2eContentBlocked) return;
+  const e = new Error("downloadUrl: network fetch failed host=e2e-files.example after=3ms (TypeError: Failed to fetch)") as Error & { name: string; stage: string; host: string };
+  e.name = "CloudNetworkError"; e.stage = "content"; e.host = "e2e-files.example";
+  throw e;
+};
 
 // 闸门的测试开关（2026-11-03，家族工单 D）。全部从 localStorage `e2eGate` 读初值（JSON）、之后写 window.__e2eGate 改：
 //   probing: initAuth 回「有账号、在后台探测」（= 真 app 没登录但有家的样子）；renew: 静默续签怎么回 ok / interaction / network / hang；
@@ -85,8 +93,8 @@ export function createBridgeProvider(): { provider: CloudProvider; auth: unknown
     list: (folder?: string) => call("list", folder) as Promise<CloudItem[]>,
     getItemByPath: (path: string) => call("getItemByPath", path) as Promise<CloudItem | null>,
     getApprootRef: () => call("getApprootRef") as Promise<string>,
-    download: async (ref: string) => blobOf(await call("download", ref)),
-    downloadRange: async (ref: string, offset: number, length: number) => (await call("downloadRange", ref, offset, length)) as Uint8Array,
+    download: async (ref: string) => { contentGate(); return blobOf(await call("download", ref)); },
+    downloadRange: async (ref: string, offset: number, length: number) => { contentGate(); return (await call("downloadRange", ref, offset, length)) as Uint8Array; },
     upload: (path: string, blob: unknown, opts?: unknown) => call("upload", path, blob, opts) as Promise<CloudItem>,
     ensureFolder: (path: string) => call("ensureFolder", path) as Promise<string>,
     delete: (ref: string, eTag?: string) => call("delete", ref, eTag) as Promise<void>,

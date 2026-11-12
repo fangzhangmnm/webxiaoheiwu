@@ -9,7 +9,7 @@
 //   · 每条等云端的路都和「硬超时 + 逃生钮」赛跑（§4 / 数据安全模型 A19）；守卫 §8① 看 run() 里的 race。
 import { CLOUD_CHECK_TIMEOUT_MS, OFFLINE_RETRY_MS } from "./config.ts";
 
-export type GateReason = "expired" | "offline" | "noResponse";
+export type GateReason = "expired" | "offline" | "noResponse" | "content";
 export type GatePhase = "open" | "checking" | "blocked";
 /** 常驻条三态：不显示 / 离线（带份数）/ 已连上正在补传。 */
 export type BarState = "hidden" | "offline" | "syncing";
@@ -34,6 +34,14 @@ export function onUserOfflineChange(f: () => void): () => void { _offlineSubs.ad
 const AUTH_LINE = /^\[auth\] silent token renewal failed \(([^)]*)\): name=(\S*) code=(\S*) sub=(\S*)/;
 const NEEDS_INTERACTION = /^(interaction_required|login_required|consent_required|no_tokens_found|invalid_grant|bad_token|refresh_token_expired|token_refresh_required|no_account_error)$/;
 export interface AuthFailure { where: string; name: string; code: string; sub: string; reason: GateReason }
+
+// ── 文件内容下载不下来（v3.0.21，2026-11-12 小黑屋维修线施工单第 2 条；规矩 = 统筹 Claude Fable 5.2，代码 = Claude Opus 5.5）──
+//   库 2.3.3 起，下载文件内容失败抛的 CloudNetworkError 带 stage "content"（微软发文件的那台服务器，和登录 / 列文件不是同一个地址）；
+//   store-ui.reportError 把它递到这里。闸门判成「没回应」时，如果这一趟开始以后来过这种信号 → 说「云端连得上、文件内容刚才没下载下来」，
+//   不说成网盘没回应 / 没网（11-12 办公室那台：列文件好好的，下载连着失败，闸门却说「网盘没有回应」）。
+//   用计数不用钟（本机墙上钟会被往回拨）：这一趟开头记一下，判的时候比一下变没变。只在「没回应」上改判，没网 / 登录过期照旧。
+let _contentFailures = 0;
+export function noteContentFailure(): void { _contentFailures++; }
 export function parseAuthFailure(message: string): AuthFailure | null {
   const m = AUTH_LINE.exec(message);
   if (!m) return null;
@@ -219,6 +227,7 @@ export function createCloudGate(d: CloudGateDeps): CloudGate {
     if (d.ui.foreignFaceUp()) return;
     const wasBlocked = phase === "blocked";
     const id = ++runId;
+    const cf0 = _contentFailures;   // 这一趟开头：之后来的下载内容失败才算这一趟的
     if (!rawOnline()) { block("offline", trigger); return; }   // §7④ 没网：直接进闸，不等超时
     const esc = armEscape();
     if (lock) { phase = "checking"; d.ui.checking(() => chooseOffline("escape")); }
@@ -238,7 +247,9 @@ export function createCloudGate(d: CloudGateDeps): CloudGate {
       if (wasBlocked || trigger === "retry") void d.catchUp();
       return;
     }
-    block(r === "timeout" ? "noResponse" : r, r === "timeout" ? `${trigger}: no answer in ${timeoutMs}ms` : trigger);
+    const base: GateReason = r === "timeout" ? "noResponse" : r;
+    const contentNow = base === "noResponse" && _contentFailures !== cf0;   // 这一趟里文件内容下载失败过 → 不是「没回应」
+    block(contentNow ? "content" : base, `${r === "timeout" ? `${trigger}: no answer in ${timeoutMs}ms` : trigger}${contentNow ? `; ${_contentFailures - cf0} content download failure(s) during this check` : ""}`);
     if (r === "timeout") {   // 迟到的好消息：云端终于回了 = 自己放行，不让人卡在闸上
       void work.then((late) => {
         if (id === runId && late === "ok" && phase === "blocked") { phase = "open"; d.ui.release(); d.note("gate: late answer → released"); void d.catchUp(); }

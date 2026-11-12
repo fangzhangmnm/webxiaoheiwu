@@ -38,9 +38,9 @@ export function createGateUi(o: GateUiDeps): GateUi {
       mine = gateGeneration();
     },
     blocked(reason: GateReason, on) {
-      const body = reason === "expired" ? t("gate.reasonExpired") : reason === "offline" ? t("gate.reasonOffline") : t("gate.reasonNoResponse");
+      const body = reason === "expired" ? t("gate.reasonExpired") : reason === "offline" ? t("gate.reasonOffline") : reason === "content" ? t("gate.reasonContent") : t("gate.reasonNoResponse");
       void lockSyncGate<"signin" | "offline" | null>({
-        title: t("gate.title"), message: body,
+        title: t(reason === "content" ? "gate.titleContent" : "gate.title"), message: body,   // v3.0.21：下载内容失败 ≠「网盘没连上」（云端连得上），标题跟着换
         actions: [{ label: t("gate.signIn"), value: "signin", primary: true }, { label: t("gate.offline"), value: "offline" }],
       }).then((v) => { if (v === "signin") on.signIn(); else if (v === "offline") on.offline(); });
       mine = gateGeneration();

@@ -4,7 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, assert, eq } from "./runner.mjs";
 import { S } from "../src/i18n/strings.ts";
-import { createCloudGate, cloudOnline, isUserOffline, noteAuthFailure, parseAuthFailure, rawOnline } from "../src/cloud-gate.ts";
+import { createCloudGate, cloudOnline, isUserOffline, noteAuthFailure, noteContentFailure, parseAuthFailure, rawOnline } from "../src/cloud-gate.ts";
 
 let net = true;
 Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, get: () => net });
@@ -87,6 +87,38 @@ describe("闸门 · 正文按真实原因（§5）", () => {
     const t = makeGate({ signed: true, check: async () => "cloud-error" });
     await t.gate.boot();
     eq(t.calls.blocked[0], "noResponse");
+  });
+  // v3.0.21（施工单第 2 条，Claude Opus 5.5）：云端连得上、文件内容下载不下来 ≠ 网盘没回应 / 没网（11-12 办公室那台）。
+  it("这一趟核对里文件内容下载失败过 + 问云端回 cloud-error = 文件内容没下载下来（content）", async () => {
+    const t = makeGate({ signed: true, check: async () => { noteContentFailure(); noteContentFailure(); return "cloud-error"; } });
+    await t.gate.boot();
+    eq(t.calls.blocked[0], "content");
+    assert(t.calls.notes.some((n) => /2 content download failure\(s\) during this check/.test(n)), "黑匣子里写清这一趟下载失败了几次");
+  });
+  it("下载失败是上一趟的：这一趟照旧 = 网盘没有回应（不串）", async () => {
+    noteContentFailure();
+    const t = makeGate({ signed: true, check: async () => "cloud-error" });
+    await t.gate.boot();
+    eq(t.calls.blocked[0], "noResponse");
+  });
+  it("核对超时、这一趟里下载失败过 = content（出事那天：下载连着失败，8 秒没结果）", async () => {
+    const t = makeGate({ signed: true, timeoutMs: 30, check: () => { noteContentFailure(); return new Promise(() => {}); } });
+    await t.gate.boot();
+    eq(t.calls.blocked[0], "content");
+  });
+  it("没网照旧 = 没有网络（下载失败的信号不改判没网）", async () => {
+    net = false;
+    try {
+      const t = makeGate({ signed: true, check: async () => { noteContentFailure(); return "cloud-error"; } });
+      await t.gate.boot();
+      eq(t.calls.blocked[0], "offline");
+    } finally { await resetOffline(); }
+  });
+  it("content 的标题和正文都有中英文，正文和横幅那句同一个意思", () => {
+    for (const k of ["gate.titleContent", "gate.reasonContent", "err.cloudContent"]) assert(S[k]?.zh && S[k]?.en, `${k} 中英都有`);
+    eq(S["gate.reasonContent"].zh, S["err.cloudContent"].zh, "闸门和横幅说同一句");
+    assert(!/失败|错误/.test(S["gate.titleContent"].zh), "标题不许用「失败 / 错误」（设计稿 §5）");
+    assert(S["err.cloudContent"].zh.includes("刚才"), "说「刚才」，不说死成现在");
   });
   it("原因码解析：表里没有的错不当「过期」", () => {
     eq(parseAuthFailure("[auth] silent token renewal failed (boot-probe): name=BrowserAuthError code=monitor_window_timeout sub= msg=t").reason, "noResponse");

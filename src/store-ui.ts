@@ -4,7 +4,7 @@
 //   v1 的 sibling-copy（「不要 diff」）在库模型里 = keepMine/takeCloud 二选一 + 败方自动进 .backup（不丢字节，也不做 diff）。
 import type { StoreUI, StoreTextKey, StoreTextParams } from "@internal/store";
 import { withBusy, lockSyncGate, settleSyncGate, gateGeneration } from "./sheets.ts";
-import { noteAuthFailure, type CloudGate } from "./cloud-gate.ts";
+import { noteAuthFailure, noteContentFailure, type CloudGate } from "./cloud-gate.ts";
 import { t, type Key } from "./i18n/index.ts";
 import { reportError } from "./error-badge.ts";
 import { note as diagNote } from "./diag-log.ts";
@@ -49,19 +49,25 @@ export const storeUI: StoreUI = {
     return k ? t(k, params) : undefined;
   },
 
-  resolveConflict: async ({ name, occasion }): Promise<"keepMine" | "takeCloud" | "cancel"> => {
+  resolveConflict: async ({ name, occasion, contentFailing }): Promise<"keepMine" | "takeCloud" | "cancel"> => {
     const n = stripExt(name);
+    // v3.0.21（施工单第 3 条；规矩 = 统筹 Claude Fable 5.2，代码 = Claude Opus 5.5）：库 2.3.3 的 contentFailing =
+    //   这个页面里最近一次下载文件内容失败了、之后还没成功过。为真：多一行实话（另起一行，在正文里，不放小字附注），默认钮换成「取消」；
+    //   钮一个不藏、不变灰（user 的规矩：不硬拦，只说清楚）。为假 / 没给 = 和以前一模一样。
+    //   开文件那张面只有两个钮（先打开本地 = 取消、云端覆盖本地），默认本来就是取消；那行字只说「云端覆盖本地」那半（面上没有「本地覆盖云端」钮，提它会误导）。
+    const cf = contentFailing === true;
     const choice = occasion === "open"
       ? await lockSyncGate<"cancel" | "takeCloud">({
-          title: t("cf.title"), message: t("cf.bodyOpen", { name: n }), note: t("cf.noteKeptSafe"),
+          title: t("cf.title"), message: cf ? `${t("cf.bodyOpen", { name: n })}\n${t("cf.contentFailingOpen")}` : t("cf.bodyOpen", { name: n }), note: t("cf.noteKeptSafe"),
           actions: [{ label: t("cf.openLocal"), value: "cancel", primary: true }, { label: t("cf.cloudWins"), value: "takeCloud" }],
         })
       : await lockSyncGate<"keepMine" | "takeCloud" | "cancel">({
-          title: t("cf.title"), message: t("cf.bodyPush", { name: n }), note: t("cf.noteKeptSafe"),
+          title: t("cf.title"), message: cf ? `${t("cf.bodyPush", { name: n })}\n${t("cf.contentFailingPush")}` : t("cf.bodyPush", { name: n }), note: t("cf.noteKeptSafe"),
           // primary = 云端（v2.3.35，2026-10-16，user 同日在 KudsRocket「默认云端才是 authority」；挂机醒来撞面的那台通常是旧的一方；本机那份照旧进本机备份箱）
-          actions: [{ label: t("cf.cloudWins"), value: "takeCloud", primary: true }, { label: t("cf.localWins"), value: "keepMine" }, { label: t("common.cancel"), value: "cancel" }],
+          //   v3.0.21：下载内容刚失败过 → 「云端覆盖本地」大概完不成，默认钮换成「取消」（三个钮照旧都在）
+          actions: [{ label: t("cf.cloudWins"), value: "takeCloud", primary: !cf }, { label: t("cf.localWins"), value: "keepMine" }, { label: t("common.cancel"), value: "cancel", primary: cf }],
         });
-    diagNote("sync", `conflict sheet "${name}" occasion=${occasion} → ${choice ?? "cancel"}`);   // 黑匣子：真机上「又弹面了」能对出是哪一次推 / 开
+    diagNote("sync", `conflict sheet "${name}" occasion=${occasion}${cf ? " contentFailing" : ""} → ${choice ?? "cancel"}`);   // 黑匣子：真机上「又弹面了」能对出是哪一次推 / 开
     return choice ?? "cancel";
   },
 
@@ -82,7 +88,11 @@ export const storeUI: StoreUI = {
     noteAuthFailure(String((err as { message?: string } | null)?.message ?? ""));   // 2026-11-03 闸门：续签失败的原因码只有这行日志里有（行格式 test/cloud-gate.test.mjs 对着库钉住）
     if ((err as { name?: string } | null)?.name === "CloudNetworkError") {
       reportError(err, "log");
-      reportError(new Error(t("err.cloudNetwork")), level ?? "error");
+      // v3.0.21（施工单第 2 条）：库 2.3.3 起网络错带 stage。"content" = 云端连得上、文件内容（微软另一台发文件的服务器）没下载下来——
+      //   不说成「连不上云端（网络问题）」；同时告诉闸门（它判「没回应」时据此换说法）。没有 stage（老的报错 / 别的段）照旧。
+      const content = (err as { stage?: string }).stage === "content";
+      if (content) noteContentFailure();
+      reportError(new Error(t(content ? "err.cloudContent" : "err.cloudNetwork")), level ?? "error");
       return;
     }
     reportError(err, level ?? "error");
