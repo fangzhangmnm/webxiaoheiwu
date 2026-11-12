@@ -1466,9 +1466,12 @@ scenario("先封再存：新建加密稿 / 拆新书 / 新书勾加密 / 加密�
   // ① 新建加密稿
   await clearWrites(D);
   await D.eval(() => window.__xhw.newDraft({ encrypted: true })); await D.wait(400);
-  await D.type("ZZSEALMARK1188"); await D.wait(900);
-  const n1 = await D.eval(() => window.__xhw.editor.state.name);
-  check("新建加密稿落成了", !!n1 && (await D.eval((n) => window.__xhw.store().file(n, { mode: "existing" }).open().then((b) => b?.text()), n1)) === "ZZSEALMARK1188", String(n1));
+  await D.type("ZZSEALMARK1188");
+  // 等落成用轮询，不猜机器多快（以前固定等 0.9 s：机器忙时读回来还是空的，假红；统筹 11-12 照测试规矩改）
+  const readBack = (n) => D.eval((x) => window.__xhw.store().file(x, { mode: "existing" }).open().then((b) => b?.text()), n);
+  let n1 = null;
+  await pollUntil(async () => { n1 = await D.eval(() => window.__xhw.editor.state.name); return !!n1 && (await readBack(n1)) === "ZZSEALMARK1188"; }, 10000);
+  check("新建加密稿落成了", !!n1 && (await readBack(n1)) === "ZZSEALMARK1188", String(n1));
   await D.type("再写一点"); await D.wait(800);
   const a1 = await auditWrites(D, new RegExp(n1.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), ["ZZSEALMARK1188", "再写一点"]);
   console.log(`  新建加密稿：${a1.matched} 笔写入，${a1.sealed} 笔是容器`);
@@ -1537,8 +1540,9 @@ scenario("先封再存：没有口令 = 不建、不写，字还在编辑器里�
   check("字还在编辑器里", (await D.text()).includes("ZZNOPWMARK3377"), await D.text());
   check("存的状态说了实话（不是「已存」）", await D.eval(() => document.getElementById("saveButton")?.dataset?.kind === "encryptPending" || /加密还没成功/.test(document.body.innerText)));
   await D.eval(() => window.__xhw.setPassword("e2e-pw")); await D.wait(100);
-  await D.type("X"); await D.wait(900);
-  const n = await D.eval(() => window.__xhw.editor.state.name);
+  await D.type("X");
+  let n = null;
+  await pollUntil(async () => { n = await D.eval(() => window.__xhw.editor.state.name); return !!n; }, 10000);   // 等落成用轮询（同上）
   check("有口令之后落成了", !!n, String(n));
   const b = await auditWrites(D, /./, ["ZZNOPWMARK3377"]);
   check("落成的也是密文", b.markerHits.length === 0, b.markerHits.join(" ; "));
