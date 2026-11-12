@@ -14,8 +14,8 @@ export const S = {
   "common.continue":     { zh: "继续", en: "Continue" },
   "err.dismissHint":     { zh: "点击关闭", en: "tap to dismiss" },
   "err.cloudNetwork":    { zh: "连不上云端（网络问题），本地已保留，稍后自动重试", en: "Cloud unreachable (network); kept locally, will retry" },
-  // v3.0.21（施工单第 2 条，中文定稿 = 统筹）：库报的网络错 stage = "content"——云端连得上，下载文件内容的那台服务器没下下来。「刚才」：库记的是最近一次，不一定是此刻。
-  "err.cloudContent":    { zh: "云端连得上，但文件内容刚才没下载下来。可能是这个网络拦了微软发文件的服务器，或者微软那边暂时有问题。本地已保留，稍后自动重试。", en: "OneDrive is reachable, but the file contents didn't download just now. This network may be blocking Microsoft's file servers, or Microsoft may be having trouble. Kept locally; will retry later." },
+  // v3.0.21（施工单第 2 条，中文定稿 = 统筹，重审裁定五删了猜原因的半句）：库报的网络错 stage = "content"——云端连得上，下载文件内容的那台服务器没下下来。「刚才」：库记的是最近一次，不一定是此刻。
+  "err.cloudContent":    { zh: "云端连得上，但文件内容刚才没下载下来。本地已保留。", en: "OneDrive is reachable, but the file contents didn't download just now. Kept locally." },   // 统筹重审裁定五：只说事实，不猜原因
 
   // ── 静态页面（data-i18n）──
   "ui.appTitle":         { zh: "网页版小黑屋", en: "WebXiaoHeiWu" },
@@ -296,9 +296,10 @@ export const S = {
   "cf.bodyPush":         { zh: "「{name}」在你编辑期间被别的设备改过。保留哪一边？", en: "“{name}” was changed by another device while you edited. Keep which side?" },
   "cf.noteKeptSafe":     { zh: "被替换的版本会自动留底，不会丢失。", en: "The replaced version is kept as a backup; nothing is lost." },
   // v3.0.21（施工单第 3 条，中文定稿 = 统筹，11-12 审稿改成「刚才」）：库说这个页面里最近一次下载文件内容失败了、之后还没成功过。
-  "cf.contentFailingPush": { zh: "刚才下载云端那份的内容没成功。选「云端覆盖本地」可能完不成；选「本地覆盖云端」会把别的设备写的换成这台的，被换掉的那份进备份箱。", en: "Downloading the cloud copy didn't work just now. “Cloud wins” may not be able to finish; “Local wins” replaces what the other device wrote with this device's version, and the replaced copy goes to the backup box." },
-  // 开文件那张面只有「先打开本地 / 云端覆盖本地」两个钮：只说定稿的前半句（没有「本地覆盖云端」钮，提它会误导）——待统筹定。
-  "cf.contentFailingOpen": { zh: "刚才下载云端那份的内容没成功。选「云端覆盖本地」可能完不成。", en: "Downloading the cloud copy didn't work just now. “Cloud wins” may not be able to finish." },
+  //   统筹重审裁定五：库记的是全页面的事实、不一定是这一篇 → 不指「那份」。
+  "cf.contentFailingPush": { zh: "这台设备刚才有文件内容没能从云端下载下来。选「云端覆盖本地」可能完不成；选「本地覆盖云端」会把别的设备写的换成这台的，被换掉的那份进备份箱。", en: "This device couldn't download some file contents from the cloud just now. “Cloud wins” may not be able to finish; “Local wins” replaces what the other device wrote with this device's version, and the replaced copy goes to the backup box." },
+  // 开文件那张面只有「先打开本地 / 云端覆盖本地」两个钮：只说前半句（没有「本地覆盖云端」钮，提它会误导；统筹重审裁定五同意）。
+  "cf.contentFailingOpen": { zh: "这台设备刚才有文件内容没能从云端下载下来。选「云端覆盖本地」可能完不成。", en: "This device couldn't download some file contents from the cloud just now. “Cloud wins” may not be able to finish." },
   "cf.openLocal":        { zh: "先打开本地", en: "Open local for now" },
   "cf.cloudWins":        { zh: "云端覆盖本地", en: "Cloud wins" },
   "cf.localWins":        { zh: "本地覆盖云端", en: "Local wins" },
@@ -334,7 +335,7 @@ export const S = {
   "gate.reasonNoResponse": { zh: "网盘没有回应", en: "OneDrive isn't responding" },
   // v3.0.21（施工单第 2 条）：这一趟核对里文件内容下载失败过 → 正文用 err.cloudContent 同一句；标题不能再说「没连上」（云端连得上）。
   "gate.titleContent":   { zh: "文件内容没下载下来", en: "File contents didn't download" },
-  "gate.reasonContent":  { zh: "云端连得上，但文件内容刚才没下载下来。可能是这个网络拦了微软发文件的服务器，或者微软那边暂时有问题。本地已保留，稍后自动重试。", en: "OneDrive is reachable, but the file contents didn't download just now. This network may be blocking Microsoft's file servers, or Microsoft may be having trouble. Kept locally; will retry later." },
+  "gate.reasonContent":  { zh: "云端连得上，但文件内容刚才没下载下来。本地已保留。", en: "OneDrive is reachable, but the file contents didn't download just now. Kept locally." },
   "gate.signIn":         { zh: "重新登录", en: "Sign in again" },
   "gate.offline":        { zh: "离线继续", en: "Continue offline" },
   "gate.bar":            { zh: "离线 · 还有 {n} 份没传上去", en: "Offline · {n} not uploaded yet" },

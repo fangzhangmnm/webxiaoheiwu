@@ -90,7 +90,7 @@ scenario("txt · 下载内容不通 · 推送冲突 → 面多一行实话、默
   let push = B.pushNow();
   let v = await waitGateSheet(B);
   check("面弹出来了（推送撞冲突；自愈那一拉下载不下来）", v.up, JSON.stringify(v));
-  check("正文多一行：刚才下载云端那份的内容没成功", /\n刚才下载云端那份的内容没成功。选「云端覆盖本地」可能完不成；选「本地覆盖云端」会把别的设备写的换成这台的，被换掉的那份进备份箱。$/.test(v.message), v.message);
+  check("正文多一行：这台设备刚才有文件内容没能从云端下载下来", /\n这台设备刚才有文件内容没能从云端下载下来。选「云端覆盖本地」可能完不成；选「本地覆盖云端」会把别的设备写的换成这台的，被换掉的那份进备份箱。$/.test(v.message), v.message);
   check("三个钮都在（一个不藏）", JSON.stringify(v.buttons.map((b) => b.label)) === JSON.stringify(["云端覆盖本地", "本地覆盖云端", "取消"]), JSON.stringify(v.buttons));
   check("默认钮 = 取消（只有它一个高亮）", JSON.stringify(v.buttons.filter((b) => b.primary).map((b) => b.label)) === JSON.stringify(["取消"]), JSON.stringify(v.buttons));
   check("钮都能点（不变灰）", await B.eval(() => [...document.querySelectorAll("#gateActions button")].every((b) => !b.disabled)), "");
