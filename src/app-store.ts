@@ -10,8 +10,8 @@
 //   · autoCacheOpenedFile:true：写作稿是 Work，开即留本地（离线可读可写）。
 //   · offlineUploadReplay:"auto"：离线新建的稿回线自动补推（草稿本来就该同步，不问）。
 
-import { createStore, createOneDriveProvider, requestStoragePersistence, isCached, isDirty, DEFAULT_GRAPH_TIMEOUTS } from "@internal/store";
-import type { Store, Collection, OneDriveAuth, CloudProvider, GraphTransportOptions } from "@internal/store";
+import { createStore, createOneDriveProvider, requestStoragePersistence, isCached, isDirty } from "@internal/store";
+import type { Store, Collection, OneDriveAuth, CloudProvider } from "@internal/store";
 import { APP_ID, CLIENT_ID, AUTHORITY, SCOPES, MSAL_URL, COLLECTIONS } from "./config.ts";
 import { DOC_KINDS } from "./identifiers.ts";
 import { storeUI } from "./store-ui.ts";
@@ -22,13 +22,7 @@ import { zipReadEntry } from "./zip.ts";
 import { THUMBNAIL_ENTRY } from "./project/format.ts";
 import { cloudOnline } from "./cloud-gate.ts";
 
-/** 传输层三个开关一起开（v3.0.21，2026-11-12 小黑屋维修线施工单第 4 条；和 MoonSinger / CatsUp 同形）：
- *  timeouts = 每个请求带超时（元数据 30 s / 分块 120 s / 按范围 60 s / 整份下载 15 分钟），挂死的变成网络错 → 留脏、之后重试，不再永远挂着；
- *  chunkResume = 大于 4 MB 的书分块上传时单块断了，问会话传到哪了接着传，不从零重传；
- *  verifyChunkedCommit = 分块上传提交最后一块前再核一次云端版本（多一个 GET，只在分块上传时），防这几十秒里别的设备改了云端那份被盖掉。
- *  数字用库的推荐值，不自己调（施工单：大书因为超时传不上去就停下来报）。added by Claude Opus 5.5 2026-11-12 */
-const GRAPH_TRANSPORT: GraphTransportOptions = { timeouts: DEFAULT_GRAPH_TIMEOUTS, chunkResume: true, verifyChunkedCommit: true };
-const od = createOneDriveProvider({ clientId: CLIENT_ID, scopes: SCOPES, authority: AUTHORITY, msalUrl: MSAL_URL, transport: GRAPH_TRANSPORT });
+const od = createOneDriveProvider({ clientId: CLIENT_ID, scopes: SCOPES, authority: AUTHORITY, msalUrl: MSAL_URL });
 /** OneDrive auth 面（signIn/signOut/isSignedIn/onAuthChanged）。 */
 export const auth: OneDriveAuth = od.auth;
 /** 问云端一次、真走一趟网（闸门「离线继续」期间静默再试用；家族设计稿 cloud-gate §3，WeebPaint / KudsRocket 同形）：名字不存在 = 云端答了 null，也算通；不通 = 抛。
