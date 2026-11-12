@@ -4,7 +4,7 @@ import { APP_VERSION } from "./version.ts";
 import { IS_QUEST_BROWSER, PTT_HOLD_MS, USER_DICT_PUSH_INTERVAL_MS, FOREGROUND_POLL_MS, IDLE_OVERLAY_MS, OFFLINE_RETRY_MS, COLLECTIONS } from "./config.ts";
 import { initI18n, t, lang, setLang, LANGS, LANG_NAME, type Lang } from "./i18n/index.ts";
 import { initErrorBadge, reportError} from "./error-badge.ts";
-import { setBeforeModal, initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openScopedChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice, isSheetOpen, isBusyActive } from "./sheets.ts";
+import { setBeforeModal, initSheets, openConfirmSheet, openConfirmSheetEx, openInputSheet, openInputSheetEx, openChoiceSheet, openScopedChoiceSheet, openPickSheet, withBusy, showBusy, hideBusy, INPUT_SECONDARY, type Choice, isSheetOpen, isBusyActive, gateIsUp } from "./sheets.ts";
 import { cloudOnline, createCloudGate, isUserOffline, onUserOfflineChange, rawOnline } from "./cloud-gate.ts";
 import { planReturn, afterPushAll } from "./cloud-return.ts";
 import { createGateUi } from "./cloud-gate-ui.ts";
@@ -1001,7 +1001,7 @@ async function offerFiles(files: File[], title: string, message: string, opts: {
  *  默认留下（先留着它）；导出 = 屏上这一篇的全文交成一个 .txt（走「好了」那张面：分享 / 下载；不经过库，库正写不进去），交出去了才走，取消回到这三选；
  *  丢掉 = 这一篇停在上一次存上的样子，走。别的面 / 遮罩正开着 = 不弹（弹了会把那一张顶掉），按留下算。 */
 async function cannotKeepFlow(o: { name: string; text: string; error: string }): Promise<"go" | "stay" | "not-asked"> {
-  if (isSheetOpen() || isBusyActive()) return "not-asked";
+  if (isSheetOpen() || isBusyActive() || gateIsUp()) return "not-asked";   // v3.0.21：锁屏位上有面（冲突面 / 罩）也算——弹了会被它盖住
   const stem = parseDocName(o.name).stem;
   for (;;) {
     const v = await openChoiceSheet(t("leave.cannotKeepTitle"), t("leave.cannotKeepMsg", { name: stem, e: o.error }), [
@@ -2562,7 +2562,7 @@ async function settleReturn(): Promise<void> {
   diagNote("sync", `back with unsynced: ${JSON.stringify(plan)}`);
   if (plan.kind === "none" || plan.kind === "hold") return;
   if (plan.kind === "ask") {
-    if (isSheetOpen() || isBusyActive()) { diagNote("sync", "never-uploaded: sheet / busy open → ask later"); return; }   // 别盖住冲突面；下次回线 / 解锁再问
+    if (isSheetOpen() || isBusyActive() || gateIsUp()) { diagNote("sync", "never-uploaded: sheet / busy / gate face open → ask later"); return; }   // 别盖住冲突面；下次回线 / 解锁再问（v3.0.21：锁屏位上有面也算，否则这张会被它盖住，施工单第 6 条）
     askedNeverUploaded = true;
     const msg = (plan.others > 0 ? t("pushAll.askAlso", { m: String(plan.others) }) + "\n\n" : "") + t("pushAll.askNote");
     let go = false;
@@ -2580,7 +2580,7 @@ async function settleReturn(): Promise<void> {
   if (after.kind === "done") { if (plan.kind === "ask") setStatus(t("pushAll.allDone", { n: String(after.pushed) })); return; }
   if (after.kind === "retryLater") { setStatus(t("pushAll.retryLater", { n: String(after.left) })); return; }
   const names = after.names.slice(0, 3).map((x) => parseDocName(x).stem).join("、");
-  if (offeredAttention || isSheetOpen() || isBusyActive()) { setStatus(t("pushAll.inList", { n: String(after.left) })); return; }
+  if (offeredAttention || isSheetOpen() || isBusyActive() || gateIsUp()) { setStatus(t("pushAll.inList", { n: String(after.left) })); return; }   // v3.0.21：锁屏位上有面也不弹（会被盖住；施工单第 6 条）
   offeredAttention = true;
   const go = await openConfirmSheet(t("pushAll.partialTitle", { n: String(after.left) }),
     t("pushAll.partialMsg", { pushed: String(after.pushed), names: names ? t("pushAll.partialNames", { names: after.names.length > 3 ? names + " …" : names }) : "" }),

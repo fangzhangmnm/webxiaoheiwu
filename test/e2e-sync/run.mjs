@@ -758,6 +758,33 @@ scenario("闸门 ④ 没网：直接进闸，不等超时、不续签", async (w
   await D.close();
 });
 
+// v3.0.21（施工单第 6 条，Claude Opus 5.5）：11-12 user 截图——「正在检查云端…（跳过，先离线打开）」压在一个等回答的框上，后面的字和钮都看不到。
+//   规矩：等人回答的框亮着时别的框不许盖上去；后来的排队，不许把它自动关掉。
+scenario("闸门 ⑨ 转圈的罩不盖等回答的框：框开着时库去核对云端 → 罩排队、框的字和钮一直看得见；框答完、检查还没完 → 罩出来，跳过能用", async (w) => {
+  const A = await w.device("A");
+  await A.boot(server.url); await A.type("一篇。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  const name = await A.eval(() => window.__xhw.editor.state.name);
+  await A.eval(() => { window.__e2eGate = { ...(window.__e2eGate ?? {}), hangCloud: true }; });   // 云端调用挂着：核对一直没完
+  const answered = A.eval(() => window.__xhw.confirm("测试：等你回答", "后面这个框的字和钮要一直看得见")).catch(() => null);
+  await A.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 5000 });
+  void A.eval((n) => { void window.__xhw.store().file(n, { mode: "existing" }).open().catch(() => {}); }, name);   // 库开稿 → 核对云端前叫「跳过到离线」
+  await A.wait(800);
+  const sheetUp = await A.eval(() => !document.getElementById("sheet").classList.contains("hidden") && document.getElementById("sheetTitle").textContent === "测试：等你回答");
+  let v = await A.gateView();
+  check("框还亮着、字在", sheetUp, "");
+  check("罩没有盖上去（排队）", !v.up, JSON.stringify(v));
+  check("框的钮点得到（最上面一层是它）", await A.eval(() => { const b = document.getElementById("sheetCancel"); const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; }), "");
+  await A.page.click("#sheetCancel", { timeout: 2000 }).catch(() => A.eval(() => document.getElementById("sheetCancel").click()));   // 被盖住点不到（改坏时）= 用程序点，让后面的检查照常打红
+  await answered;
+  await A.page.waitForFunction(() => !document.getElementById("gateSheet").classList.contains("hidden"), null, { timeout: 3000 }).catch(() => {});
+  v = await A.gateView();
+  check("框答完、检查还没完 → 罩出来", v.up && v.title === "正在检查云端…" && v.buttons.join("|") === "跳过，先离线打开", JSON.stringify(v));
+  if (v.up) { await A.clickGate("跳过，先离线打开"); await A.wait(300); v = await A.gateView(); check("跳过能用：罩收了", !v.up, JSON.stringify(v)); }
+  await A.eval(() => { window.__e2eGate = { ...(window.__e2eGate ?? {}), hangCloud: false }; });
+  check("页面零报错", A.errors.length === 0, A.errors.join(" ; "));
+  await A.close();
+});
+
 scenario("闸门 ⑤ 云端慢：先离线用 立刻放行", async (w) => {
   const { D } = await seedThenReopen(w, "A", { hangCloud: true }, false);
   await waitPhase(D, "checking", 5000);

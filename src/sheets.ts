@@ -363,10 +363,15 @@ interface GateOpts<T> { title: string; message: string; note?: string; showSpinn
 let _gatePending: ((v: unknown) => void) | null = null;
 let _gateFocusBack: HTMLElement | null = null;
 let _gateGen = 0;   // 锁屏位每被占一次 +1：闸门 / 逃生罩靠它认「上面还是不是我那张」（2026-11-03，库的冲突面可能已经盖上来了，不许顺手关掉别人的面）
+let _gateAsks = false;   // v3.0.21：锁屏位上这张是不是在等人回答（冲突面 / 改名问旧的）；转圈的罩（showSpinner）不算
 export function gateGeneration(): number { return _gateGen; }
 export function gateIsUp(): boolean { return !$("gateSheet").classList.contains("hidden"); }
+/** v3.0.21（施工单第 6 条，Claude Opus 5.5）：现在有没有一个框在等人回答——普通对话框开着，或者锁屏位上是问人的那种（不是转圈的罩）。
+ *  规矩：等人回答的框亮着时，别的框不许盖在它上面；后来的排队（等它关了再出来），不许把它自动关掉（那等于替人回答）。 */
+export function awaitingAnswerUp(): boolean { return isSheetOpen() || (gateIsUp() && _gateAsks); }
 export function lockSyncGate<T = string>({ title, message, note, showSpinner, actions }: GateOpts<T>): Promise<T> {
   _gateGen++;
+  _gateAsks = !showSpinner;
   _beforeModal?.();   // 小窗开着 → 先收回（冲突面必须被人看见）
   // 冲突面是不可 dismiss 的锁屏：焦点还留在正文里的话，键盘会隔着遮罩继续往里打字（推云是 30 s 心跳，弹出来时常常正在打字）——先把焦点拿走，关了再还（2026-09-29）。
   const a = document.activeElement;
@@ -388,7 +393,7 @@ export function lockSyncGate<T = string>({ title, message, note, showSpinner, ac
   });
 }
 export function unlockSyncGate(): void {
-  $("gateSheet").classList.add("hidden"); _gatePending = null;
+  $("gateSheet").classList.add("hidden"); _gatePending = null; _gateAsks = false;
   const back = _gateFocusBack; _gateFocusBack = null;
   if (back && back.isConnected && (document.activeElement === document.body || document.activeElement == null)) { try { back.focus({ preventScroll: true }); } catch { /* ignore */ } }
 }

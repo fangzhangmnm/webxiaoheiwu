@@ -3,7 +3,7 @@
 //   冲突必 surface（ADR-0009）：绝不静默 cancel——真 gate sheet，按 occasion 分两套按钮。
 //   v1 的 sibling-copy（「不要 diff」）在库模型里 = keepMine/takeCloud 二选一 + 败方自动进 .backup（不丢字节，也不做 diff）。
 import type { StoreUI, StoreTextKey, StoreTextParams } from "@internal/store";
-import { withBusy, lockSyncGate, settleSyncGate, gateGeneration } from "./sheets.ts";
+import { withBusy, lockSyncGate, settleSyncGate, gateGeneration, awaitingAnswerUp } from "./sheets.ts";
 import { noteAuthFailure, noteContentFailure, type CloudGate } from "./cloud-gate.ts";
 import { t, type Key } from "./i18n/index.ts";
 import { reportError } from "./error-badge.ts";
@@ -112,9 +112,18 @@ export const storeUI: StoreUI = {
     if (viaGate) return viaGate;
     let onSkip!: () => void;
     const probe = new Promise<unknown>((res) => { onSkip = () => res(undefined); });
-    void lockSyncGate<"skip" | null>({ title: t("cf.checkingCloud"), message: "", showSpinner: true, actions: [{ label: t("cf.skipToOffline"), value: "skip" }] })
-      .then((v) => { if (v === "skip") onSkip(); });
-    const mine = gateGeneration();
-    return { probe, settle: () => { if (gateGeneration() === mine) settleSyncGate(null); } };
+    let mine = -1, settled = false, waiter: ReturnType<typeof setInterval> | null = null;
+    const show = (): void => {
+      void lockSyncGate<"skip" | null>({ title: t("cf.checkingCloud"), message: "", showSpinner: true, actions: [{ label: t("cf.skipToOffline"), value: "skip" }] })
+        .then((v) => { if (v === "skip") onSkip(); });
+      mine = gateGeneration();
+    };
+    // v3.0.21（施工单第 6 条）：别的框正等着人回答（「还有 N 份没传成」、冲突面……）→ 转圈的罩不盖上去，排队：等那个框关了、检查还没完再出来。
+    //   不把那个框关掉（等于替人回答）；排队期间人在答那个框，本来也顾不上「跳过」。11-12 user 截图：这张罩压在一个等回答的框上，后面的字和钮都看不到。
+    if (awaitingAnswerUp()) {
+      diagNote("sync", "cloud-check cover queued: another face is waiting for an answer");
+      waiter = setInterval(() => { if (settled) return; if (!awaitingAnswerUp()) { clearInterval(waiter!); waiter = null; show(); } }, 150);
+    } else show();
+    return { probe, settle: () => { settled = true; if (waiter) { clearInterval(waiter); waiter = null; } if (mine >= 0 && gateGeneration() === mine) settleSyncGate(null); } };
   },
 };

@@ -196,7 +196,7 @@ describe("换稿守卫 · 存不上、也另存不了时的出口（user 2026-11
   });
   it("app 的三选：默认留下；导出走「好了」那张面、交出去了才走；别的面开着不弹", () => {
     const b = body(app, /async function cannotKeepFlow\(/).text;
-    assert(/if \(isSheetOpen\(\) \|\| isBusyActive\(\)\) return "not-asked";/.test(b), "别的面 / 遮罩开着不弹");
+    assert(/if \(isSheetOpen\(\) \|\| isBusyActive\(\) \|\| gateIsUp\(\)\) return "not-asked";/.test(b), "别的面 / 遮罩 / 锁屏位上的面开着不弹（v3.0.21 施工单第 6 条加了锁屏位）");
     assert(/value: "stay" as const, primary: true/.test(b), "留下是默认（primary）");
     assert(/if \(v !== "export"\) return "stay";/.test(b), "取消 = 留下");
     assert(/if \(await offerFiles\(\[file\]/.test(b), "导出走 offerFiles，交出去了才 go");
