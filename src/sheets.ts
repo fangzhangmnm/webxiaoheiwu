@@ -4,6 +4,7 @@
 // busy/sheet 互斥护栏（WeebPaint 2026-06-12 死锁修复）：busy 遮罩盖住输入框 → await 永不 resolve。
 //   → 交互输入必须在 withBusy 之外；这里对 confirm/input/choice **响亮 throw**。gate 不受此限（自带 spinner，与 busy 协同）。
 
+import { createGateFaces, type Face, type GateFaces } from "./gate-faces.ts";
 import { isCompositionKey } from "./ui/text-field.ts";   // v2.1.13：系统输入法合成态守卫（窄接口）
 import { APP_ID } from "./config.ts";   // 密码管理器的账号键默认值（口令态 sheetUser.value）
 
@@ -358,20 +359,15 @@ export function openPickSheet<T, A extends string>(title: string, opts: PickOpts
 }
 
 // ── sync gate（#gateSheet：锁屏 + 有限选项；冲突必 surface、不可 dismiss；允许穿透 busy）──
+//   v3.0.21（统筹 Claude Fable 5.2 重审裁定四，代码 Claude Opus 5.5）：谁露着、谁排队归 gate-faces.ts（纯逻辑，性质测试守着）。
+//   问人的面（没有转圈）一个都不丢、先来先答；转圈的面（showSpinner）有问人的面时不出来、被问人的面顶掉时结果 = null。
+//   以前后叫的直接盖掉先叫的、先叫的 promise 永远悬着 = 库那条推送一直占着那一篇的写队，之后的保存全卡住。
 interface GateAction<T> { label: string; value: T; primary?: boolean }
 interface GateOpts<T> { title: string; message: string; note?: string; showSpinner?: boolean; actions: GateAction<T>[] }
-let _gatePending: ((v: unknown) => void) | null = null;
 let _gateFocusBack: HTMLElement | null = null;
-let _gateGen = 0;   // 锁屏位每被占一次 +1：闸门 / 逃生罩靠它认「上面还是不是我那张」（2026-11-03，库的冲突面可能已经盖上来了，不许顺手关掉别人的面）
-let _gateAsks = false;   // v3.0.21：锁屏位上这张是不是在等人回答（冲突面 / 改名问旧的）；转圈的罩（showSpinner）不算
-export function gateGeneration(): number { return _gateGen; }
-export function gateIsUp(): boolean { return !$("gateSheet").classList.contains("hidden"); }
-/** v3.0.21（施工单第 6 条，Claude Opus 5.5）：现在有没有一个框在等人回答——普通对话框开着，或者锁屏位上是问人的那种（不是转圈的罩）。
- *  规矩：等人回答的框亮着时，别的框不许盖在它上面；后来的排队（等它关了再出来），不许把它自动关掉（那等于替人回答）。 */
-export function awaitingAnswerUp(): boolean { return isSheetOpen() || (gateIsUp() && _gateAsks); }
-export function lockSyncGate<T = string>({ title, message, note, showSpinner, actions }: GateOpts<T>): Promise<T> {
-  _gateGen++;
-  _gateAsks = !showSpinner;
+let _lastFaceId = 0;
+function renderGateFace(face: Face<GateOpts<unknown>>): void {
+  const { title, message, note, showSpinner, actions } = face.opts;
   _beforeModal?.();   // 小窗开着 → 先收回（冲突面必须被人看见）
   // 冲突面是不可 dismiss 的锁屏：焦点还留在正文里的话，键盘会隔着遮罩继续往里打字（推云是 30 s 心跳，弹出来时常常正在打字）——先把焦点拿走，关了再还（2026-09-29）。
   const a = document.activeElement;
@@ -381,22 +377,34 @@ export function lockSyncGate<T = string>({ title, message, note, showSpinner, ac
   $("gateNote").textContent = note ?? ""; $("gateNote").classList.toggle("hidden", !note);
   $("gateSpinner").classList.toggle("hidden", !showSpinner);
   const box = $("gateActions"); box.innerHTML = "";
-  return new Promise<T>((resolve) => {
-    for (const a of actions) {
-      const btn = document.createElement("button");
-      btn.type = "button"; btn.textContent = a.label; if (a.primary) btn.classList.add("primary");
-      btn.addEventListener("click", () => { unlockSyncGate(); resolve(a.value); });
-      box.appendChild(btn);
-    }
-    $("gateSheet").classList.remove("hidden");
-    _gatePending = resolve as (v: unknown) => void;
-  });
+  for (const act of actions) {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.textContent = act.label; if (act.primary) btn.classList.add("primary");
+    btn.addEventListener("click", () => { _faces.answer(face.id, act.value); });   // 只认这一张：它已经不露着（迟到的点击）= 什么都不做
+    box.appendChild(btn);
+  }
+  $("gateSheet").classList.remove("hidden");
 }
-export function unlockSyncGate(): void {
-  $("gateSheet").classList.add("hidden"); _gatePending = null; _gateAsks = false;
+function hideGateFace(): void {
+  $("gateSheet").classList.add("hidden");
   const back = _gateFocusBack; _gateFocusBack = null;
   if (back && back.isConnected && (document.activeElement === document.body || document.activeElement == null)) { try { back.focus({ preventScroll: true }); } catch { /* ignore */ } }
 }
-export function settleSyncGate(value: unknown): void {
-  if (_gatePending) { const r = _gatePending; unlockSyncGate(); r(value); }
+const _faces: GateFaces<GateOpts<unknown>> = createGateFaces<GateOpts<unknown>>({ show: renderGateFace, hide: hideGateFace });
+/** 锁屏位上现在露着的那张的号（没有 = 0）。拿来比「上面还是不是我那张」。 */
+export function gateGeneration(): number { return _faces.current()?.id ?? 0; }
+/** 刚才那一次 lockSyncGate 叫出来的那张的号（它可能露着、在排队，或者已经结束）。叫完立刻读它 = 记下「我那张」。 */
+export function lastGateFaceId(): number { return _lastFaceId; }
+export function gateIsUp(): boolean { return !$("gateSheet").classList.contains("hidden"); }
+/** v3.0.21（施工单第 6 条，Claude Opus 5.5）：现在有没有一个框在等人回答——普通对话框开着，或者锁屏位上露着的是问人的那种（不是转圈的罩）。
+ *  规矩：等人回答的框亮着时，别的框不许盖在它上面；后来的排队（等它关了再出来），不许把它自动关掉（那等于替人回答）。 */
+export function awaitingAnswerUp(): boolean { return isSheetOpen() || _faces.current()?.kind === "ask" || _faces.queued() > 0; }
+/** 叫一张锁屏面。没有转圈（showSpinner）= 问人的面：排队、先来先答；转圈的：有问人的面就不出来。
+ *  结果 = 人点的值；转圈的被顶掉 / 不出来、或者主人收回 = null（不会悬着）。 */
+export function lockSyncGate<T = string>(opts: GateOpts<T>): Promise<T> {
+  const { id, result } = _faces.request(opts.showSpinner ? "spin" : "ask", opts as GateOpts<unknown>);
+  _lastFaceId = id;
+  return result as Promise<T>;
 }
+/** 主人收回自己那张（露着或排着都行；结果 = null）。只许收自己的号——别人的面不许关。 */
+export function withdrawGateFace(id: number): void { if (id > 0) _faces.withdraw(id); }

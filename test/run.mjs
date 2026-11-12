@@ -2,6 +2,7 @@
 import "./doc-model.test.mjs";
 import "./zh-punct.test.mjs";
 import "./egress-redact.test.mjs";   // 2026-11-12 出口关：黑匣子 / 横幅写之前地址截到主机、密钥参数抹掉（统筹重审裁定二）
+import "./gate-faces.test.mjs";   // 2026-11-12 锁屏位的面：问人的先来先答、一个不丢；转圈的让位不悬着（统筹重审裁定四；性质测试）
 import "./ime-fuzzy.test.mjs";   // 2026-10-19 模糊音：十对开关 → RIME 方案补丁
 import "./rime-userdb.test.mjs";   // 2026-11-03 D3：RIME 词库字节读写
 import "./enc-dict.test.mjs";      // 2026-11-03 D3：加密词库的规矩

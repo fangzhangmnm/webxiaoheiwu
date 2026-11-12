@@ -112,6 +112,45 @@ scenario("txt · 下载内容不通 · 推送冲突 → 面多一行实话、默
   await A.close(); await B.close();
 });
 
+// v3.0.21（统筹 Claude Fable 5.2 重审裁定四，Claude Opus 5.5）：锁屏位上后叫的问人的面以前直接盖掉先叫的，先叫的 promise 永远悬着——
+//   库那条推送一直占着那一篇的写队，之后打的字（连只存本机的）全卡在内存里。在 bd4d1ff（v3.0.20）上这个场景是红的。
+const idbText = (D, n) => D.eval(async (name) => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open("webxiaoheiwu.defaultStore"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  try {
+    const v = await new Promise((res, rej) => { const t = db.transaction("blobs", "readonly"); const q = t.objectStore("blobs").get("files/" + name); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+    if (!v) return null;
+    const b = v.blob ?? v;
+    return b instanceof Blob ? await b.text() : new TextDecoder().decode(b);
+  } finally { db.close(); }
+}, n);
+scenario("txt · 推送冲突 · 冲突面亮着时又来一张问人的面 → 两张按先后都答到；第一篇后面打的字确实落盘（IndexedDB）", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  const other = "乙篇.txt";
+  await B.eval(async (n) => { const f = window.__xhw.store().file(n, { mode: "new" }); await f.save(new TextEncoder().encode("乙篇原文。"), { tryPush: true }); await f.save(new TextEncoder().encode("乙篇这台改了。"), { tryPush: false }); }, other);   // 第二篇：传过、这台又改了没传
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  await B.type("B也改了。"); await B.wait(500);
+  const push = B.pushNow().catch(() => {});
+  const first = await waitGateSheet(B);
+  check("第一张面（这一篇的冲突）出来了", first.up && first.message.includes(name.replace(/\.txt$/i, "")), JSON.stringify(first));
+  void B.eval((n) => { void window.__xhw.store().file(n, { mode: "existing" }).resolve().catch(() => {}); }, other);   // 第二张问人的面（「处理…」乙篇）
+  await B.wait(600);
+  let v = await gateSheetView(B);
+  check("第二张来了，第一张还露着（没被盖掉）", v.up && v.message.includes(name.replace(/\.txt$/i, "")), JSON.stringify(v));
+  await B.resolveGate(/取消/);
+  await B.wait(400);
+  v = await gateSheetView(B);
+  check("第一张答完 → 第二张露出来（先来先答）", v.up && v.message.includes("乙篇"), JSON.stringify(v));
+  if (v.up) await B.resolveGate(/取消/);
+  const settled = await Promise.race([push.then(() => "done"), new Promise((r) => setTimeout(() => r("HUNG"), 4000))]);
+  check("第一篇那次推送有了结局（没悬着）", settled === "done", String(settled));
+  await B.type("之后的字。"); await B.wait(1500);
+  const disk = await idbText(B, name);
+  check("第一篇后面打的字落进了本机（IndexedDB）", (disk ?? "").includes("之后的字。"), String(disk));
+  check("页面零报错", [...A.errors, ...B.errors].length === 0, [...A.errors, ...B.errors].join(" ; "));
+  await A.close(); await B.close();
+});
+
 scenario("txt · 推送冲突 → 本地覆盖云端：云端输家进云端 .backup 夹", async (w) => {
   const A = await w.device("A"), B = await w.device("B");
   const name = await seedTxt(w, A, B, "原文。");
