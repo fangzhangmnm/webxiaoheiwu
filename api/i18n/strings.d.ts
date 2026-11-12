@@ -152,6 +152,10 @@ export declare const S: {
         readonly zh: "没能核对云端，这次没有上传。";
         readonly en: "Couldn't check the cloud; nothing was uploaded this time.";
     };
+    readonly "save.notVerifiedTxt": {
+        readonly zh: "没能核对云端，不确定是不是最新。";
+        readonly en: "Couldn't check the cloud; not sure this is the latest.";
+    };
     readonly "save.upToDate": {
         readonly zh: "已是云端最新";
         readonly en: "Up to date with the cloud";

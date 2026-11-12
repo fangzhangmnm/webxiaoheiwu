@@ -167,6 +167,14 @@ export function createProjectMode(d: ProjectModeDeps) {
   }   // 图片页的 textarea 是空壳，绝不提交   // 打不开的书 = 空 session 没有当前页，别把 textarea 提交进去（2026-09-10 审计抓到「no current node」）
   /** 切节点 / 落盘前：章节名框 + 正文都先落进内存图。force=false（定时落盘 / 推云）：章节名框还聚焦着就别碰它——半截名字不是名字，离开框自会提交（v2.1.13）。 */
   function commitEditor(force = true): void { if (force || document.activeElement !== d.titleEl) commitTitle(); commitTextarea(); }
+  // v3.0.21（统筹重审裁定七补，B）：会话干净时，强制写能改掉的只有不标脏的看法状态（editor-state：导航位置 / 回退栈 / 参考窗显隐和位置 / 排版档…）。
+  //   开书成功时、每次真写了之后记下它序列化的样子（只放内存）；保存钮强制推之前比一下：一样 = 一个字节都不写、不推（不用重新打包、不用比密文，加密书一样有效）。
+  //   判错的两个方向都无害：该写没写 = 这一次看法状态没带上去、下次再按还会带；不该写写了 = 和以前一样。脏的书的正常保存路径不看它。
+  //   没比进来的：参考窗目录（flush 顺手收的翻页 / 滚动）——比不到 = 这一次没带上去，同样无害。
+  let viewSaved: string | null = null;
+  const viewNow = (): string | null => (session ? JSON.stringify(session.project.editorState) : null);
+  /** 保存钮强制推之前问：这一次强制写会不会写出和上次落盘 / 开书时不一样的东西。没记过 = 当会（和以前一样写）。 */
+  function forceWouldWrite(): boolean { const v = viewNow(); return v === null || viewSaved === null || v !== viewSaved; }
   async function persist(push: boolean, force = false): Promise<void> {
     if (persistInFlight) await persistInFlight;
     const g = gen;
@@ -182,7 +190,9 @@ export function createProjectMode(d: ProjectModeDeps) {
         return;
       }
       const t0 = performance.now();
-      const r = await session!.flush(push, { force: push && (pushPending || force) });   // 推云：本地落盘已清 dirty，同一份字节还得以 tryPush 交给库（否则永远推不出去）；force = 手动保存顺手捞（不标脏的 editor-state：参考窗显隐 / 排版档 / 导航）
+      const viewAtWrite = viewNow();   // 这一次写进去的看法状态（flush 里打包的就是此刻的 editor-state）
+      const r = await session!.flush(push, { force: push && (pushPending || force) });
+      if (r.wrote) viewSaved = viewAtWrite;   // 推云：本地落盘已清 dirty，同一份字节还得以 tryPush 交给库（否则永远推不出去）；force = 手动保存顺手捞（不标脏的 editor-state：参考窗显隐 / 排版档 / 导航）
       if (r.wrote && !push) lastPersistMs = performance.now() - t0;   // 只量本地落盘（推云那次含网络，不算体重）
       if (g !== gen) return;
       if (r.wrote && push) diagNote("book", `push "${home!.name}": ${r.pushed ? "pushed" : `not pushed (${r.reason ?? "?"})`}${r.resolution ? ` resolution=${r.resolution}` : ""} in ${Math.round(performance.now() - t0)}ms`);
@@ -323,7 +333,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   }
   function enterLocked(projectName: string): void {
     home = { kind: "store", name: projectName }; session = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
-    encrypted = true; locked = true; back = []; forward = []; pushPending = false;
+    encrypted = true; locked = true; back = []; forward = []; pushPending = false; viewSaved = null;
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     hideImage();
     d.editorEl.value = ""; d.editorEl.readOnly = true; d.editorEl.classList.add("locked");
@@ -353,7 +363,8 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (g !== gen) return true;
     if (!textareaIsOurs(`"${projectName}"`)) return true;
     diagNote("book", `open "${projectName}": ${r.kind}${r.kind === "ok" ? ` pages=${s.project.contents.size}` : ""} encrypted=${encrypted}`);
-    home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; forward = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;   // 回退栈跟着书回来
+    home = { kind: "store", name: projectName }; session = s; locked = false; back = [...s.project.editorState.back]; forward = []; pushPending = false; pushFailures = 0; firstDirtyAt = 0;
+    viewSaved = r.kind === "ok" ? viewNow() : null;   // v3.0.21：开书成功 = 盘上的看法状态就是这一份   // 回退栈跟着书回来
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     if (r.kind === "unavailable" && encrypted) { enterLocked(projectName); d.setStatus(t("st.wrongPasswordOrLocked"), { error: true }); return true; }   // 密码解不开这份（别的密码）
     const ok = reportOpen(r);
@@ -434,7 +445,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     const r = await s.open(lh.fileName);
     if (g !== gen) return true;
     if (!textareaIsOurs(`local book "${lh.fileName}"`)) return true;
-    home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; forward = []; pushPending = false; encrypted = false; locked = false;
+    home = { kind: "local", home: lh }; session = s; back = [...s.project.editorState.back]; forward = []; pushPending = false; encrypted = false; locked = false; viewSaved = null;
     setActiveDoc(null); deviceKvSet(KV_LAST_OPEN, null);   // 本机工程不跨启动记忆（句柄不持久）
     const ok = reportOpen(r);
     applyReferences();
@@ -448,7 +459,7 @@ export function createProjectMode(d: ProjectModeDeps) {
     if (!textareaIsOurs(`new book "${projectName}"`)) return;   // 书已经建在书库里了，只是不接手编辑框
     const s = createProjectSession({ references: d.references, read: readProjectBlob, write: (n, blob, o) => saveProjectBlob(n, blob, { push: o.push }) });
     s.create(projectName, firstNode);
-    home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = !!opts.encrypted; locked = false;   // 调用方已先封再存（库按已存字节继续封）
+    home = { kind: "store", name: projectName }; session = s; back = []; forward = []; pushPending = false; encrypted = !!opts.encrypted; locked = false; viewSaved = null;   // 新书：第一次落盘时记   // 调用方已先封再存（库按已存字节继续封）
     setActiveDoc(projectName); deviceKvSet(KV_LAST_OPEN, projectName);
     applyReferences();
     await s.flush(false);
@@ -667,7 +678,7 @@ export function createProjectMode(d: ProjectModeDeps) {
   return {
     active, canEdit, name, displayName, syncKind, stateText, home: () => home, session: () => session,
     encrypted: () => encrypted, locked: () => locked, unlock, toggleEncryption, readOnly: () => userReadOnly(), toggleReadOnly,
-    openStore, openLocal, createInStore, abandonOpen, adoptName, close, flushLocal, pushNow, refreshIfClean, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs,
+    openStore, openLocal, createInStore, abandonOpen, adoptName, close, flushLocal, pushNow, refreshIfClean, noteExternalEdit, pendingLocalSave: () => !!localTimer, lastPersistMs: () => lastPersistMs, forceWouldWrite,
     jump, goBack, goForward, canGoBack: () => back.length > 0, canGoForward: () => forward.length > 0, prevPage, nextPage, neighborhood, spawnFromSelection, newNode, newSibling, newChild, treeMove, detachFromTree, archiveAfterCurrent, archiveUnderCurrent, movePage, moveTargets, exportBranchText, commitEditor,
     addLink, removeLink, moveLink, lastDetached: () => lastDetached, setPageTime, pageTime: (n: string) => session?.project.nodes.get(n)?.modified ?? 0, discardPage, lastDiscarded: () => lastDiscarded, subtreeCount, isDiscarded, purgePage, isInTree: (n: string) => session?.isInTree(n) ?? false, commitTitle, focusTitle, nodeNames: () => [...(session?.project.contents.keys() ?? [])],
     current: () => session?.current() ?? null, currentKind,

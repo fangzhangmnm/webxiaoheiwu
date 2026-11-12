@@ -602,6 +602,125 @@ scenario("回来 · 干净的书 · 云端有新版、下载不通（没选离�
   check("状态行说实话：没能核对云端，这次没有上传。", status.includes("没能核对云端，这次没有上传。"), status);
   await A.close(); await B.close();
 });
+// ── v3.0.21 统筹审裁定七补的：保存钮只说事实（核对真去做了而没成 / 根本没做 / 云端没了，各说各的）──
+const clearToast = (D) => D.eval(() => { const t = document.getElementById("toast"); if (t) t.textContent = ""; });   // 上一次的字还挂着时，等新字会先匹配到旧的
+async function waitToast(D, re, ms = 4000) { for (let t0 = Date.now(); Date.now() - t0 < ms; ) { const x = await toastText(D); if (re.test(x)) return x; await D.wait(100); } return toastText(D); }
+scenario("回来 · 保存钮说实话 · 书：网盘上这本已经没了（别的设备删进回收站）→ 按 Ctrl+S 不推、留着「云端已不存在」，不盖成「没能核对」", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const bk = await seedBook(w, A, B);
+  await A.eval((n) => window.__xhw.store().zip(n, { mode: "existing" }).trash(), bk.name); await A.wait(400);
+  check("网盘上这本没了", (await w.cloudBytes(bk.name)) == null, "");
+  await B.page.keyboard.press("Control+s");
+  const x = await waitToast(B, /此文件在云端已不存在/);
+  check("状态行是「此文件在云端已不存在」", x.includes("此文件在云端已不存在"), x);
+  await B.wait(800);
+  check("没盖成「没能核对云端」", !(await toastText(B)).includes("没能核对云端"), await toastText(B));
+  check("没推上去（网盘上还是没有）", (await w.cloudBytes(bk.name)) == null, "");
+  await A.close(); await B.close();
+});
+scenario("回来 · 保存钮说实话 · 书：核对是同一版 → 按 Ctrl+S 照常顺手推，不说「没能核对」", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const bk = await seedBook(w, A, B);
+  await B.page.keyboard.press("Control+s"); await B.wait(1500);
+  check("不说「没能核对云端」", !(await toastText(B)).includes("没能核对云端"), await toastText(B));
+  check("库里待传 = 0", (await B.eval(() => window.__xhw.store().files.dirty.count())) === 0, "");
+  await A.close(); await B.close();
+});
+scenario("回来 · 保存钮说实话 · 文本稿：同一版 → 已是云端最新；网盘有新版但下载不通 / 选了离线 → 没能核对云端，不确定是不是最新", async (w) => {
+  const A = await w.device("A"), B = await w.device("B");
+  const name = await seedTxt(w, A, B, "原文。");
+  await clearToast(B); await B.page.keyboard.press("Control+s");
+  let x = await waitToast(B, /已是云端最新|没能核对/);
+  check("同一版 → 已是云端最新", x.includes("已是云端最新"), x);
+  await A.type("A改了。"); await A.wait(500); await A.pushNow(); await A.wait(300);
+  await B.eval(() => { window.__e2eContentBlocked = true; });
+  await clearToast(B); await B.page.keyboard.press("Control+s");
+  x = await waitToast(B, /没能核对|已是云端最新/);
+  check("网盘有新版、下载不通 → 没能核对云端，不确定是不是最新。", x.includes("没能核对云端，不确定是不是最新。"), x);
+  check("网盘字节没被动（文本稿按保存本来就不推干净的）", new TextDecoder().decode(await w.cloudBytes(name)) === "原文。A改了。", "");
+  await offlineContinueBlockedDownloads(B);
+  await B.eval(() => window.__xhw.setSidebar?.(false));
+  await clearToast(B); await B.page.keyboard.press("Control+s");
+  x = await waitToast(B, /没能核对|已是云端最新/);
+  check("选了离线 → 没能核对云端，不确定是不是最新。", x.includes("没能核对云端，不确定是不是最新。"), x);
+  await A.close(); await B.close();
+});
+
+// ── v3.0.21 统筹审裁定七补（B）：干净的书按保存，这次强制写写不出不一样的东西 = 一个字节都不写、不推；看法状态变了才照旧写和推 ──
+async function makeCleanBook(D, encrypted) {
+  if (encrypted) { await D.eval(() => window.__xhw.setPassword("e2e-pw")); await D.wait(200); }
+  await D.eval((enc) => window.__xhw.newDraft(enc ? { encrypted: true } : {}), encrypted); await D.wait(400);
+  await D.type("第一章原文。"); await D.wait(800);
+  const lifting = D.eval(() => window.__xhw.liftDraft());
+  await D.page.waitForFunction(() => !document.getElementById("sheet").classList.contains("hidden"), null, { timeout: 8000 });
+  await D.page.click("#sheetConfirm");
+  await lifting; await D.wait(800);
+  await D.eval(() => window.__xhw.setSidebar(false));
+  const first = await D.eval(() => window.__xhw.project.current());
+  await D.eval(() => window.__xhw.project.newSibling("第二章")); await D.wait(300);
+  await D.type("第二章原文。"); await D.wait(500);
+  await D.pushNow(); await D.wait(800);
+  const name = await D.eval(() => window.__xhw.project.name());
+  return { name, first };
+}
+const bookWrites = (D, name) => D.eval((n) => (window.__idbWrites ?? []).filter((x) => String(x.key).includes(n)).length, name);
+const uploads = (D) => D.eval(() => window.__e2eUploadAttempts ?? 0);
+const dirtyN = (D) => D.eval(() => window.__xhw.store().files.dirty.count());   // 整个库的待传（拆书剩下的原稿也在里面）：看增减，不看绝对值
+const bookKind = (D) => D.eval(() => window.__xhw.project.syncKind());
+async function pollUntil(cond, ms) { for (let t0 = Date.now(); Date.now() - t0 < ms; ) { if (await cond()) return true; await new Promise((r) => setTimeout(r, 200)); } return false; }
+const cloudBook = async (w, n) => (await w.cloudBytes(n)) ?? (await w.cloudBytes(`${n}.zip`));   // 加密书在网盘上的名字多一个 .zip（容器）
+for (const enc of [false, true]) {
+  const kind = enc ? "加密书" : "明文书";
+  scenario(`回来 · 保存钮 · ${kind} 干净、什么都没变、核对是同一版、上传会出错 → 按 Ctrl+S 本机一笔不写、不发上传、待传 0`, async (w) => {
+    const D = await w.device("A");
+    await D.ctx.addInitScript(IDB_SPY);
+    await D.boot(server.url);
+    const bk = await makeCleanBook(D, enc);
+    check(`${kind}建好了、干净`, !!bk.name && (await bookKind(D)) === "clean" && (await D.eval(() => window.__xhw.project.encrypted())) === enc, `${bk.name} ${await bookKind(D)}`);
+    const base = await dirtyN(D);
+    await clearWrites(D);
+    await D.eval(() => { window.__e2eUploadAttempts = 0; window.__e2eUploadFail = true; });
+    await clearToast(D); await D.page.keyboard.press("Control+s");
+    const x = await waitToast(D, /已是云端最新|没能核对|同步/);
+    check("状态行：已是云端最新", x.includes("已是云端最新"), x);
+    await D.wait(600);
+    check("本机一笔都没写（这本书）", (await bookWrites(D, bk.name)) === 0, String(await bookWrites(D, bk.name)));
+    check("没发上传", (await uploads(D)) === 0, String(await uploads(D)));
+    check("待传没多（这本书没被记成待传）", (await dirtyN(D)) === base && (await bookKind(D)) === "clean", `${base} → ${await dirtyN(D)} ${await bookKind(D)}`);
+    await D.close();
+  });
+  scenario(`回来 · 保存钮 · ${kind} 干净、只换了一页（导航位置，不标脏）→ 按 Ctrl+S 照旧写、照旧推上去；上传出错时显示没传、之后自动重推成功`, async (w) => {
+    const D = await w.device("A");
+    await D.boot(server.url);
+    const bk = await makeCleanBook(D, enc);
+    const cloudBefore = await cloudBook(w, bk.name);
+    check("网盘上有这本书（取得到字节）", !!cloudBefore, "");
+    const base = await dirtyN(D);
+    // ① 上传正常：换一页 → 按保存 → 写了、推上去了
+    await D.eval((p) => window.__xhw.project.jump(p), bk.first); await D.wait(300);
+    console.log(`  换页之后：current=${await D.eval(() => window.__xhw.project.current())} kind=${await bookKind(D)} forceWouldWrite=${await D.eval(() => window.__xhw.project.forceWouldWrite())}`);
+    await D.eval(() => { window.__e2eUploadAttempts = 0; });
+    await clearToast(D); await D.page.keyboard.press("Control+s");
+    await pollUntil(async () => (await uploads(D)) >= 1 && !sameBytes(cloudBefore, await cloudBook(w, bk.name)) && (await dirtyN(D)) === base, 10000);   // 等状态到了（轮询，不猜机器多快）
+    console.log(`  按保存之后：toast=${JSON.stringify(await toastText(D))} uploads=${await uploads(D)} kind=${await bookKind(D)} dirty ${base}→${await dirtyN(D)} paths=${JSON.stringify(await D.eval(() => (window.__e2eUploadPaths ?? []).slice(-4)))}`);
+    check("换了一页：发了上传", (await uploads(D)) >= 1, String(await uploads(D)));
+    check("换了一页：推上去了（网盘字节变了）、待传没多", !sameBytes(cloudBefore, await cloudBook(w, bk.name)) && (await dirtyN(D)) === base, `${base} → ${await dirtyN(D)}`);
+    // ② 上传出错：再换一页 → 按保存 → 写了本机、显示没传 → 网通后自动重推成功
+    const cloudMid = await cloudBook(w, bk.name);
+    await D.eval(() => { window.__e2eUploadFail = true; });
+    await D.eval(() => window.__xhw.project.jump("第二章.txt")); await D.wait(300);
+    await D.page.keyboard.press("Control+s");
+    await pollUntil(async () => (await bookKind(D)) === "unsynced" && (await dirtyN(D)) === base + 1, 10000);   // 加密书重新封 + 上传失败后库退避重试：机器忙时要好几秒
+    check("上传出错：这本书显示没传（待传多了一份）", (await dirtyN(D)) === base + 1 && (await bookKind(D)) === "unsynced", `${base} → ${await dirtyN(D)} ${await bookKind(D)}`);
+    check("上传出错：网盘还是上一版", sameBytes(cloudMid, await cloudBook(w, bk.name)), "");
+    await D.eval(() => { window.__e2eUploadFail = false; });
+    let ok = false;
+    for (let t0 = Date.now(); Date.now() - t0 < 25000 && !ok; ) { ok = (await dirtyN(D)) === base && !sameBytes(cloudMid, await cloudBook(w, bk.name)); if (!ok) await D.wait(500); }
+    check("网通后自动重推成功（待传 0、网盘是新的）", ok, "");
+    await D.close();
+  });
+}
+
 // 反方向的守卫：真的打了字的，照旧落本机、照旧欠推、网通后照旧推上去（不许把真改动吞掉）
 for (const kind of ["txt", "书"]) {
   scenario(`回来 · 离线时真打了字的${kind} → 照旧落本机、网通后照旧推上去（不许吞掉真改动）`, async (w) => {

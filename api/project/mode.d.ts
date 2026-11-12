@@ -193,6 +193,7 @@ export declare function createProjectMode(d: ProjectModeDeps): {
     noteExternalEdit: () => void;
     pendingLocalSave: () => boolean;
     lastPersistMs: () => number;
+    forceWouldWrite: () => boolean;
     jump: (target: string) => void;
     goBack: () => boolean;
     goForward: () => boolean;

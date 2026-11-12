@@ -110,21 +110,41 @@ function renderSaveButton(): void {
 /** Ctrl+S 与顶栏保存钮同一入口：脏 → 立即上传/落本地；干净且已登录 → 复查云端（同 WeebPaint「新鲜时点=刷新」）；
  *  已配置未登录（不含本机工程）→ 本地落盘照做 + 弹「去登录 / 暂不」（WeebPaint smartSaveAndPush 同款；user 2026-09-10「smart save 会 trigger onedrive login 吧？weebpaint 应该是这样的」）。 */
 let _cloudSignInPromptDeclined = false;   // 同一 session 点过「暂不」→ 之后只状态行提示，不再弹（抄 WeebPaint 防烦旗；点背板/Esc 不记）
+/** v3.0.21（统筹重审：保存钮只说事实）：这一次核对的结局——
+ *  confirmed = 回了「和云端同一版」或快进成功；failed = 真去核对了而没成（云端出错 / 快进失败 / 人点了跳过 / 离线）；
+ *  silent = 根本没去核对（只读 / 另一次核对在路上 / 有没落盘的字 / 换稿途中…），或云端没了（那一路自己报过「云端没了」，不盖掉）。 */
+function checkOutcome(r: string | undefined): "confirmed" | "failed" | "silent" {
+  if (r === "in-sync" || r === "fast-forwarded") return "confirmed";
+  if (r === "cloud-error" || r === "ff-failed" || r === "escaped" || r === "offline") return "failed";
+  if (r === undefined && !cloudOnline()) return "failed";   // 离线：书那一路离线时不去核对、直接回 undefined——对人来说就是「没能核对」
+  return "silent";
+}
 async function smartSave(): Promise<void> {
   const before = syncKindAny();
   if (before === "none" || before === "locked" || before === "unavailable") return;
   saveButton.classList.add("flash"); setTimeout(() => saveButton.classList.remove("flash"), 500);
   void requestStoragePersistence();   // 首存手势：persist 申请（persistence:"app-managed"）
   if (before === "clean") {
-    const checked = await refreshIfCleanAny();
+    const checked = checkOutcome(await refreshIfCleanAny());
     // 书：干净态也 force 写 + 推——把不标脏的 editor-state（参考窗显隐 / 排版档 / 导航位置）顺手捞上去（user 2026-09-30；WeebPaint smartSaveAndPush 同款不看脏）；txt 稿没有这种状态，只快进
-    //   v3.0.21（统筹重审裁定七）：只有这次核对明确回了「和云端同一版」或快进成功才推。核对没成（离线 / 云端出错 / 快进失败 / 跳过 / 没结果）= 不推：
-    //   推上去的是可能已经过时的旧书，网盘比它新时弹「在你编辑期间被别的设备改过」（11-12 下载被拦那天）。状态行说实话。
+    //   v3.0.21（统筹重审裁定七）：只有这次核对明确回了「和云端同一版」或快进成功才推。核对没成 = 不推：推上去的是可能已经过时的旧书，
+    //   网盘比它新时弹「在你编辑期间被别的设备改过」（11-12 下载被拦那天）。状态行说实话；核对根本没去做（或云端没了，那一路自己报过）= 不推也不说。
     if (project.active() && project.home()?.kind === "store" && auth.isSignedIn()) {
-      if (checked !== "in-sync" && checked !== "fast-forwarded") { setStatus(t("save.notVerified")); renderSaveButton(); return; }
-      if (syncKindAny() === "clean") { await project.pushNow({ force: true }); renderSaveButton(); return; }
+      if (checked === "failed") { setStatus(t("save.notVerified")); renderSaveButton(); return; }
+      if (checked === "silent") { renderSaveButton(); return; }
+      if (syncKindAny() === "clean") {
+        // v3.0.21（统筹重审裁定七补，B）：干净 ∧ 看法状态（editor-state）也和盘上一样 = 这次强制写写不出任何不一样的东西 → 一个字节都不写、不推。
+        //   以前一律重新打包（加密书重新封）写进本机再推：写了本机就算一份待传，推失败就留着、之后再推。
+        if (!project.forceWouldWrite()) { setStatus(t("save.upToDate")); renderSaveButton(); return; }
+        await project.pushNow({ force: true }); renderSaveButton(); return;
+      }
     }
-    if (syncKindAny() === "clean") setStatus(t("save.upToDate")); renderSaveButton(); return;
+    // 文本稿（v3.0.21）：核对回了同一版 / 快进成功才说「已是最新」；真去核对了而没成说「没能核对云端，不确定是不是最新。」；没去核对的不说（以前一律「已是最新」）。
+    if (syncKindAny() === "clean") {
+      if (checked === "confirmed") setStatus(t("save.upToDate"));
+      else if (checked === "failed") setStatus(t("save.notVerifiedTxt"));
+    }
+    renderSaveButton(); return;
   }
   if (before === "local" && !auth.isSignedIn() && !(project.active() && project.home()?.kind === "local")) {
     await pushNowAny();   // 未登录 = 只落本机

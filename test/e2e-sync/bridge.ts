@@ -95,7 +95,14 @@ export function createBridgeProvider(): { provider: CloudProvider; auth: unknown
     getApprootRef: () => call("getApprootRef") as Promise<string>,
     download: async (ref: string) => { contentGate(); return blobOf(await call("download", ref)); },
     downloadRange: async (ref: string, offset: number, length: number) => { contentGate(); return (await call("downloadRange", ref, offset, length)) as Uint8Array; },
-    upload: (path: string, blob: unknown, opts?: unknown) => call("upload", path, blob, opts) as Promise<CloudItem>,
+    // v3.0.21（裁定七补）：数上传尝试的次数（window.__e2eUploadAttempts）；window.__e2eUploadFail = 上传一律断（网络错，没有 status），别的照常
+    upload: (path: string, blob: unknown, opts?: unknown) => {
+      const w = window as unknown as { __e2eUploadAttempts?: number; __e2eUploadFail?: boolean };
+      w.__e2eUploadAttempts = (w.__e2eUploadAttempts ?? 0) + 1;
+      ((window as unknown as { __e2eUploadPaths?: string[] }).__e2eUploadPaths ??= []).push(`${path} @${Math.round(performance.now())}`);
+      if (w.__e2eUploadFail) { const e = new Error("e2e upload failed (network)") as Error & { name: string }; e.name = "CloudNetworkError"; return Promise.reject(e); }
+      return call("upload", path, blob, opts) as Promise<CloudItem>;
+    },
     ensureFolder: (path: string) => call("ensureFolder", path) as Promise<string>,
     delete: (ref: string, eTag?: string) => call("delete", ref, eTag) as Promise<void>,
     deleteEmptyFolder: (path: string) => call("deleteEmptyFolder", path),
