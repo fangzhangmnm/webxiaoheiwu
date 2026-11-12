@@ -1,4 +1,4 @@
-export type GateReason = "expired" | "offline" | "noResponse";
+export type GateReason = "expired" | "offline" | "noResponse" | "content";
 export type GatePhase = "open" | "checking" | "blocked";
 /** 常驻条三态：不显示 / 离线（带份数）/ 已连上正在补传。 */
 export type BarState = "hidden" | "offline" | "syncing";
@@ -14,6 +14,7 @@ export interface AuthFailure {
     sub: string;
     reason: GateReason;
 }
+export declare function noteContentFailure(): void;
 export declare function parseAuthFailure(message: string): AuthFailure | null;
 /** 从库的日志行里捡原因码（不是这种行 = 不管）。回 true = 认出来了。 */
 export declare function noteAuthFailure(message: string): AuthFailure | null;

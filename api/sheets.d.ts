@@ -141,9 +141,17 @@ interface GateOpts<T> {
     showSpinner?: boolean;
     actions: GateAction<T>[];
 }
+/** 锁屏位上现在露着的那张的号（没有 = 0）。拿来比「上面还是不是我那张」。 */
 export declare function gateGeneration(): number;
+/** 刚才那一次 lockSyncGate 叫出来的那张的号（它可能露着、在排队，或者已经结束）。叫完立刻读它 = 记下「我那张」。 */
+export declare function lastGateFaceId(): number;
 export declare function gateIsUp(): boolean;
-export declare function lockSyncGate<T = string>({ title, message, note, showSpinner, actions }: GateOpts<T>): Promise<T>;
-export declare function unlockSyncGate(): void;
-export declare function settleSyncGate(value: unknown): void;
+/** v3.0.21（施工单第 6 条，Claude Opus 5.5）：现在有没有一个框在等人回答——普通对话框开着，或者锁屏位上露着的是问人的那种（不是转圈的罩）。
+ *  规矩：等人回答的框亮着时，别的框不许盖在它上面；后来的排队（等它关了再出来），不许把它自动关掉（那等于替人回答）。 */
+export declare function awaitingAnswerUp(): boolean;
+/** 叫一张锁屏面。没有转圈（showSpinner）= 问人的面：排队、先来先答；转圈的：有问人的面就不出来。
+ *  结果 = 人点的值；转圈的被顶掉 / 不出来、或者主人收回 = null（不会悬着）。 */
+export declare function lockSyncGate<T = string>(opts: GateOpts<T>): Promise<T>;
+/** 主人收回自己那张（露着或排着都行；结果 = null）。只许收自己的号——别人的面不许关。 */
+export declare function withdrawGateFace(id: number): void;
 export {};

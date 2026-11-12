@@ -28,6 +28,10 @@ export declare const S: {
         readonly zh: "连不上云端（网络问题），本地已保留，稍后自动重试";
         readonly en: "Cloud unreachable (network); kept locally, will retry";
     };
+    readonly "err.cloudContent": {
+        readonly zh: "云端连得上，但文件内容刚才没下载下来。本地已保留。";
+        readonly en: "OneDrive is reachable, but the file contents didn't download just now. Kept locally.";
+    };
     readonly "ui.appTitle": {
         readonly zh: "网页版小黑屋";
         readonly en: "WebXiaoHeiWu";
@@ -143,6 +147,10 @@ export declare const S: {
     readonly "save.stillPending": {
         readonly zh: "还没推上去，稍后自动重试";
         readonly en: "Not uploaded yet — will retry";
+    };
+    readonly "save.notVerified": {
+        readonly zh: "没能核对云端，这次没有上传。";
+        readonly en: "Couldn't check the cloud; nothing was uploaded this time.";
     };
     readonly "save.upToDate": {
         readonly zh: "已是云端最新";
@@ -1100,6 +1108,14 @@ export declare const S: {
         readonly zh: "被替换的版本会自动留底，不会丢失。";
         readonly en: "The replaced version is kept as a backup; nothing is lost.";
     };
+    readonly "cf.contentFailingPush": {
+        readonly zh: "这台设备刚才有文件内容没能从云端下载下来。选「云端覆盖本地」可能完不成；选「本地覆盖云端」会把别的设备写的换成这台的，被换掉的那份进备份箱。";
+        readonly en: "This device couldn't download some file contents from the cloud just now. “Cloud wins” may not be able to finish; “Local wins” replaces what the other device wrote with this device's version, and the replaced copy goes to the backup box.";
+    };
+    readonly "cf.contentFailingOpen": {
+        readonly zh: "这台设备刚才有文件内容没能从云端下载下来。选「云端覆盖本地」可能完不成。";
+        readonly en: "This device couldn't download some file contents from the cloud just now. “Cloud wins” may not be able to finish.";
+    };
     readonly "cf.openLocal": {
         readonly zh: "先打开本地";
         readonly en: "Open local for now";
@@ -1227,6 +1243,14 @@ export declare const S: {
     readonly "gate.reasonNoResponse": {
         readonly zh: "网盘没有回应";
         readonly en: "OneDrive isn't responding";
+    };
+    readonly "gate.titleContent": {
+        readonly zh: "文件内容没下载下来";
+        readonly en: "File contents didn't download";
+    };
+    readonly "gate.reasonContent": {
+        readonly zh: "云端连得上，但文件内容刚才没下载下来。本地已保留。";
+        readonly en: "OneDrive is reachable, but the file contents didn't download just now. Kept locally.";
     };
     readonly "gate.signIn": {
         readonly zh: "重新登录";
